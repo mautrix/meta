@@ -1,0 +1,13 @@
+.idea
+
+*.yaml
+!.pre-commit-config.yaml
+!example-config.yaml
+
+*.json
+*.db
+*.log
+*.bak
+
+/mautrix-meta
+/start
