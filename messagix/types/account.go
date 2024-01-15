@@ -142,11 +142,11 @@ type ViewerData struct {
 	Biography                string `json:"biography,omitempty"`
 	BusinessAddressJSON      any    `json:"business_address_json,omitempty"`
 	BusinessContactMethod    string `json:"business_contact_method,omitempty"`
-	BusinessEmail            string    `json:"business_email,omitempty"`
+	BusinessEmail            string `json:"business_email,omitempty"`
 	BusinessPhoneNumber      any    `json:"business_phone_number,omitempty"`
 	CanSeeOrganicInsights    bool   `json:"can_see_organic_insights,omitempty"`
 	CategoryName             any    `json:"category_name,omitempty"`
-	ExternalURL              string    `json:"external_url,omitempty"`
+	ExternalURL              string `json:"external_url,omitempty"`
 	Fbid                     string `json:"fbid,omitempty"`
 	FullName                 string `json:"full_name,omitempty"`
 	HasPhoneNumber           bool   `json:"has_phone_number,omitempty"`
@@ -175,7 +175,7 @@ type ViewerData struct {
 
 type PolarisViewer struct {
 	Data ViewerData `json:"data,omitempty"`
-	ID string `json:"id,omitempty"`
+	ID   string     `json:"id,omitempty"`
 }
 
 func (p *PolarisViewer) GetUserId() string {

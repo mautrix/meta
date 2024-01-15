@@ -1,8 +1,8 @@
 package messagix
 
 import (
-	"github.com/0xzer/messagix/byter"
-	"github.com/0xzer/messagix/packets"
+	"go.mau.fi/mautrix-meta/messagix/byter"
+	"go.mau.fi/mautrix-meta/messagix/packets"
 )
 
 type Payload interface {
@@ -10,12 +10,12 @@ type Payload interface {
 }
 
 type ConnectPayload struct {
-	ProtocolName string `lengthType:"uint16"`
+	ProtocolName  string `lengthType:"uint16"`
 	ProtocolLevel uint8
-	ConnectFlags uint8
+	ConnectFlags  uint8
 	KeepAliveTime uint16
-	ClientId string `lengthType:"uint16"`
-	JSONData string `lengthType:"uint16"`
+	ClientId      string `lengthType:"uint16"`
+	JSONData      string `lengthType:"uint16"`
 }
 
 func (cp *ConnectPayload) Write() ([]byte, error) {
@@ -24,12 +24,12 @@ func (cp *ConnectPayload) Write() ([]byte, error) {
 
 func (c *Client) NewConnectRequest(jsonData string, connectFlags uint8) ([]byte, error) {
 	payload := &ConnectPayload{
-		ProtocolName: protocolName,
+		ProtocolName:  protocolName,
 		ProtocolLevel: uint8(protocolLevel),
-		ConnectFlags: connectFlags,
+		ConnectFlags:  connectFlags,
 		KeepAliveTime: uint16(keepAliveTimeout),
-		ClientId: protocolClientId,
-		JSONData: jsonData,
+		ClientId:      protocolClientId,
+		JSONData:      jsonData,
 	}
 
 	packet := &packets.ConnectPacket{}
@@ -40,11 +40,10 @@ func (c *Client) NewConnectRequest(jsonData string, connectFlags uint8) ([]byte,
 }
 
 type PublishPayload struct {
-	Topic Topic `lengthType:"uint16"`
+	Topic    Topic `lengthType:"uint16"`
 	PacketId uint16
 	JSONData string `lengthType:""`
 }
-
 
 func (pb *PublishPayload) Write() ([]byte, error) {
 	return byter.NewWriter().WriteFromStruct(pb)
@@ -52,11 +51,11 @@ func (pb *PublishPayload) Write() ([]byte, error) {
 
 func (c *Client) NewPublishRequest(topic Topic, jsonData string, packetByte byte, packetId uint16) ([]byte, uint16, error) {
 	payload := &PublishPayload{
-		Topic: topic,
+		Topic:    topic,
 		PacketId: packetId,
 		JSONData: jsonData,
 	}
-	
+
 	c.socket.responseHandler.addPacketChannel(packetId)
 	c.socket.responseHandler.addRequestChannel(packetId)
 
@@ -74,7 +73,7 @@ func (c *Client) NewPublishRequest(topic Topic, jsonData string, packetByte byte
 
 type SubscribePayload struct {
 	PacketId uint16
-	Topic Topic `lengthType:"uint16"`
+	Topic    Topic `lengthType:"uint16"`
 	QoSLevel packets.QoS
 }
 
@@ -88,10 +87,10 @@ func (c *Client) NewSubscribeRequest(topic Topic, qos packets.QoS) ([]byte, uint
 	c.socket.responseHandler.addPacketChannel(packetId)
 	payload := &SubscribePayload{
 		PacketId: packetId,
-		Topic: topic,
+		Topic:    topic,
 		QoSLevel: qos,
 	}
-	
+
 	request := &Request{
 		PacketByte: packetByte.Compress(),
 	}

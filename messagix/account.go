@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"github.com/0xzer/messagix/cookies"
-	"github.com/0xzer/messagix/socket"
-	"github.com/0xzer/messagix/table"
-	"github.com/0xzer/messagix/types"
+
 	"github.com/google/uuid"
+
+	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/socket"
+	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type Account struct {
@@ -28,7 +30,7 @@ func (a *Account) processLogin(resp *http.Response, respBody []byte) error {
 		var loginResp *types.InstagramLoginResponse
 		err = json.Unmarshal(respBody, &loginResp)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal instagram login response to *types.InstagramLoginResponse (statusCode=%d): %e", statusCode, err)
+			return fmt.Errorf("failed to unmarshal instagram login response to *types.InstagramLoginResponse (statusCode=%d): %v", statusCode, err)
 		}
 		if loginResp.Status == "fail" {
 			err = fmt.Errorf("failed to process login request (message=%s, statusText=%s, statusCode=%d)", loginResp.Message, loginResp.Status, statusCode)
@@ -38,7 +40,7 @@ func (a *Account) processLogin(resp *http.Response, respBody []byte) error {
 			a.client.cookies.(*cookies.InstagramCookies).IgWWWClaim = resp.Header.Get("x-ig-set-www-claim")
 		}
 	}
-	
+
 	if err == nil {
 		cookies.UpdateFromResponse(a.client.cookies, resp.Header)
 	}
@@ -107,7 +109,6 @@ func (a *Account) ReportAppState(state table.AppState) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 
 	resp := a.client.socket.responseHandler.waitForPubResponseDetails(packetId)
 	if resp == nil {

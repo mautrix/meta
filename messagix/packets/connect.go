@@ -27,11 +27,11 @@ func (p *ConnACKPacket) Decompress(packetByte byte) error {
 }
 
 type ConnectFlags struct {
-	Username      bool
-	Password      bool
-	Retain    bool
-	QoS       uint8 // 0, 1, 2, or 3
-	CleanSession  bool
+	Username     bool
+	Password     bool
+	Retain       bool
+	QoS          uint8 // 0, 1, 2, or 3
+	CleanSession bool
 }
 
 func CreateConnectFlagByte(flags ConnectFlags) uint8 {

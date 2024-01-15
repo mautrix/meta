@@ -4,27 +4,37 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/0xzer/messagix/byter"
-	"github.com/0xzer/messagix/packets"
+
+	"go.mau.fi/mautrix-meta/messagix/byter"
+	"go.mau.fi/mautrix-meta/messagix/packets"
 )
 
 type ResponseData interface {
 	Finish() ResponseData
-	SetIdentifier(identifier int16)
+	SetIdentifier(identifier uint16)
 }
-type responseHandler func() (ResponseData)
+type responseHandler func() ResponseData
+
 var responseMap = map[uint8]responseHandler{
-	packets.CONNACK: func() ResponseData {return &Event_Ready{}},
-	packets.PUBACK: func() ResponseData {return &Event_PublishACK{}},
-	packets.SUBACK: func() ResponseData {return &Event_SubscribeACK{}},
-	packets.PUBLISH: func() ResponseData {return &Event_PublishResponse{}},
-	packets.PINGRESP: func () ResponseData {return &Event_PingResp{}},
+	packets.CONNACK:  func() ResponseData { return &Event_Ready{} },
+	packets.PUBACK:   func() ResponseData { return &Event_PublishACK{} },
+	packets.SUBACK:   func() ResponseData { return &Event_SubscribeACK{} },
+	packets.PUBLISH:  func() ResponseData { return &Event_PublishResponse{} },
+	packets.PINGRESP: func() ResponseData { return &Event_PingResp{} },
 }
 
 type Response struct {
-	PacketByte uint8
-    RemainingLength uint32 `vlq:"true"`
-	ResponseData ResponseData
+	PacketByte      uint8
+	RemainingLength uint32 `vlq:"true"`
+	ResponseData    ResponseData
+}
+
+func (r *Response) QOS() packets.QoS {
+	return packets.QoS((r.PacketByte >> 1) & 0x03)
+}
+
+func (r *Response) PacketType() uint8 {
+	return r.PacketByte >> 4
 }
 
 func (r *Response) Read(data []byte) error {
@@ -47,7 +57,7 @@ func (r *Response) Read(data []byte) error {
 	if packetType == packets.PUBLISH && qosLevel == 1 {
 		identifierBytes := bufferBytes[10:12]
 		identifier := binary.BigEndian.Uint16(identifierBytes)
-		r.ResponseData.SetIdentifier(int16(identifier))
+		r.ResponseData.SetIdentifier(identifier)
 		// remove the msg identifier
 		bufferBytes = append(bufferBytes[:10], bufferBytes[12:]...)
 		reader.Buff = bytes.NewBuffer(bufferBytes)

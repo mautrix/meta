@@ -5,10 +5,11 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/0xzer/messagix/cookies"
-	"github.com/0xzer/messagix/crypto"
-	"github.com/0xzer/messagix/types"
 	"github.com/google/go-querystring/query"
+
+	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/crypto"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type FacebookMethods struct {
@@ -40,10 +41,10 @@ func (fb *FacebookMethods) Login(identifier, password string) (cookies.Cookies, 
 
 	testDataSimulator := crypto.NewABTestData()
 	data := testDataSimulator.GenerateAbTestData([]string{identifier, password})
-	
+
 	encryptedPW, err := crypto.EncryptPassword(int(types.Facebook), crypto.FacebookPubKeyId, crypto.FacebookPubKey, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt password for facebook: %e", err)
+		return nil, fmt.Errorf("failed to encrypt password for facebook: %v", err)
 	}
 
 	loginForm.Email = identifier

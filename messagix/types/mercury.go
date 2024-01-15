@@ -1,13 +1,13 @@
 package types
 
 type MercuryUploadResponse struct {
-	Ar      int     `json:"__ar,omitempty"`
-	Error            int    `json:"error,omitempty"`
-	ErrorSummary     string `json:"errorSummary,omitempty"`
-	ErrorDescription string `json:"errorDescription,omitempty"`
-	Payload MediaPayloads `json:"payload,omitempty"`
-	Hsrp    Hsrp    `json:"hsrp,omitempty"`
-	Lid     string  `json:"lid,omitempty"`
+	Ar               int           `json:"__ar,omitempty"`
+	Error            int           `json:"error,omitempty"`
+	ErrorSummary     string        `json:"errorSummary,omitempty"`
+	ErrorDescription string        `json:"errorDescription,omitempty"`
+	Payload          MediaPayloads `json:"payload,omitempty"`
+	Hsrp             Hsrp          `json:"hsrp,omitempty"`
+	Lid              string        `json:"lid,omitempty"`
 }
 
 type MediaMetadata interface {
@@ -38,7 +38,8 @@ func (vid *VideoMetadata) GetFbId() int64 {
 }
 
 /*
-	Metadata returns a map (object) for a video like this:
+Metadata returns a map (object) for a video like this:
+
 	"metadata": {
 		"0": {
 			"video_id": 0,
@@ -46,7 +47,9 @@ func (vid *VideoMetadata) GetFbId() int64 {
 			"filetype": "",
 			"thumbnail_src": ""
 	}
-	and for an image it returns a slice/array like this:
+
+and for an image it returns a slice/array like this:
+
 	"metadata": [{
 		"image_id": ,
 		"filename": "",
@@ -54,10 +57,11 @@ func (vid *VideoMetadata) GetFbId() int64 {
 		"src": "",
 		"fbid": 0
 	}]
-	So you will have to use type assertion to handle these cases seperately.
+
+So you will have to use type assertion to handle these cases seperately.
 */
 type MediaPayloads struct {
-	UploadID any        `json:"uploadID,omitempty"`
+	UploadID any         `json:"uploadID,omitempty"`
 	Metadata interface{} `json:"metadata,omitempty"`
 }
 

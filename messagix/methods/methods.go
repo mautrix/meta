@@ -12,10 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xzer/messagix/table"
 	"github.com/google/uuid"
+	"go.mau.fi/mautrix-meta/messagix/table"
 )
-
 
 var (
 	epochMutex    sync.Mutex
@@ -26,7 +25,7 @@ var Charset = []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456
 var jsObjectRe = regexp.MustCompile(`(?m)(\s*{|\s*,\s*)\s*([a-zA-Z0-9_]+)\s*:`)
 
 /*
-	Counter + Mutex logic to ensure unique epoch id for all calls
+Counter + Mutex logic to ensure unique epoch id for all calls
 */
 func GenerateEpochId() int64 {
 	epochMutex.Lock()
@@ -59,10 +58,10 @@ func GenerateSessionId() int64 {
 
 func RandStr(length int) string {
 	b := make([]rune, length)
-    for i := range b {
-        b[i] = Charset[rand.Intn(len(Charset))]
-    }
-    return string(b)
+	for i := range b {
+		b[i] = Charset[rand.Intn(len(Charset))]
+	}
+	return string(b)
 }
 
 func GenerateWebsessionID(loggedIn bool) string {
@@ -103,5 +102,5 @@ func InterfaceToStructJSON(data interface{}, i interface{}) error {
 
 func NeedUpdateSyncGroups(data table.LSTable) bool {
 	return len(data.LSExecuteFirstBlockForSyncTransaction) > 0 ||
-	len(data.LSUpsertSyncGroupThreadsRange) > 0
+		len(data.LSUpsertSyncGroupThreadsRange) > 0
 }

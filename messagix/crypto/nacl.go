@@ -7,13 +7,13 @@ import (
 	"golang.org/x/crypto/nacl/box"
 )
 
-func encryptWithNaCl(aesKey , publicKeyBytes []byte) ([]byte, error) {
+func encryptWithNaCl(aesKey, publicKeyBytes []byte) ([]byte, error) {
 	result := make([]byte, 80)
 	publicKey, privateKey, err := box.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var peerPublicKey [32]byte
 	copy(peerPublicKey[:], publicKeyBytes)
 

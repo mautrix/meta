@@ -7,10 +7,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/0xzer/messagix"
-	"github.com/0xzer/messagix/graphql"
-	"github.com/0xzer/messagix/lightspeed"
-	"github.com/0xzer/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix"
+	"go.mau.fi/mautrix-meta/messagix/graphql"
+	"go.mau.fi/mautrix-meta/messagix/lightspeed"
+	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
 func TestDecode(t *testing.T) {
@@ -48,7 +48,7 @@ func TestDecodeIG(t *testing.T) {
 	var queryData *graphql.LSPlatformGraphQLLightspeedRequestForIGDQuery
 	err = json.Unmarshal(data, &queryData)
 	if err != nil {
-		log.Fatalf("failed to parse LightSpeedQLRequest data from html (INSTAGRAM): %e", err)
+		log.Fatalf("failed to parse LightSpeedQLRequest data from html (INSTAGRAM): %v", err)
 	}
 	lsPayloadStr := queryData.Data.LightspeedWebRequestForIgd.Payload
 	deps := queryData.Data.LightspeedWebRequestForIgd.Dependencies

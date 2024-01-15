@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"github.com/0xzer/messagix/graphql"
-	"github.com/0xzer/messagix/lightspeed"
-	"github.com/0xzer/messagix/table"
-	"github.com/0xzer/messagix/types"
+
 	"github.com/google/go-querystring/query"
+
+	"go.mau.fi/mautrix-meta/messagix/graphql"
+	"go.mau.fi/mautrix-meta/messagix/lightspeed"
+	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.Response, []byte, error) {
@@ -19,9 +21,8 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal graphql variables to json string: %e", err)
+		return nil, nil, fmt.Errorf("failed to marshal graphql variables to json string: %v", err)
 	}
-
 
 	payload := c.NewHttpQuery()
 	payload.FbAPICallerClass = graphQLDoc.CallerClass
@@ -43,7 +44,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 	headers.Add("sec-fetch-mode", "cors")
 	headers.Add("sec-fetch-site", "same-origin")
 	headers.Add("origin", c.getEndpoint("base_url"))
-	headers.Add("referer", c.getEndpoint("messages") + "/")
+	headers.Add("referer", c.getEndpoint("messages")+"/")
 
 	reqUrl := c.getEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
@@ -55,13 +56,13 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	if err != nil {
 		return nil, err
 	}
-	
+
 	lsVariables := &graphql.LSPlatformGraphQLLightspeedRequestPayload{
-		DeviceID: c.configs.browserConfigTable.MqttWebDeviceID.ClientID,
+		DeviceID:              c.configs.browserConfigTable.MqttWebDeviceID.ClientID,
 		IncludeChatVisibility: false,
-		RequestID: c.lsRequests,
-		RequestPayload: string(strPayload),
-		RequestType: reqType,
+		RequestID:             c.lsRequests,
+		RequestPayload:        string(strPayload),
+		RequestType:           reqType,
 	}
 	c.lsRequests++
 
@@ -82,7 +83,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestQuery
 		err = json.Unmarshal(respBody, &graphQLData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %e", err)
+			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %v", err)
 		}
 		lightSpeedRes = []byte(graphQLData.Data.Viewer.LightspeedWebRequest.Payload)
 		deps = graphQLData.Data.Viewer.LightspeedWebRequest.Dependencies
@@ -90,16 +91,16 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestForIGDQuery
 		err = json.Unmarshal(respBody, &graphQLData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestForIGDQuery struct: %e", err)
+			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestForIGDQuery struct: %v", err)
 		}
 		lightSpeedRes = []byte(graphQLData.Data.LightspeedWebRequestForIgd.Payload)
 		deps = graphQLData.Data.LightspeedWebRequestForIgd.Dependencies
 	}
-	
+
 	var lsData *lightspeed.LightSpeedData
 	err = json.Unmarshal([]byte(lightSpeedRes), &lsData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %e", err)
+		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %v", err)
 	}
 
 	dependencies := lightspeed.DependenciesToMap(deps)

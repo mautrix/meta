@@ -54,7 +54,7 @@ func (b *byter) ReadToStruct(s interface{}) error {
 		switch field.Kind() {
 		case reflect.Bool:
 			boolByte := b.Buff.Next(1)
-			field.SetBool(boolByte[0] != 0)			
+			field.SetBool(boolByte[0] != 0)
 		case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			hasVLQTag := tags.Get("vlq")
 			if hasVLQTag != "" {
@@ -100,7 +100,6 @@ func (b *byter) ReadToStruct(s interface{}) error {
 	return nil
 }
 
-
 func (b *byter) readString(lengthType string, endianess string) (string, error) {
 	if endianess == "" {
 		endianess = "big"
@@ -131,24 +130,24 @@ func (b *byter) readString(lengthType string, endianess string) (string, error) 
 }
 
 func (b *byter) DecodeVLQ() (int, error) {
-    multiplier := 1
-    value := 0
-    var encodedByte byte
-    var err error
+	multiplier := 1
+	value := 0
+	var encodedByte byte
+	var err error
 
-    for {
-        encodedByte, err = b.Buff.ReadByte()
-        if err != nil {
-            return 0, err
-        }
-        value += int(encodedByte&0x7F) * multiplier
-        if multiplier > 2097152 {
-            return 0, errors.New("malformed vlq encoded data")
-        }
-        multiplier *= 128
-        if (encodedByte & 0x80) == 0 {
-            break
-        }
-    }
-    return value, nil
+	for {
+		encodedByte, err = b.Buff.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+		value += int(encodedByte&0x7F) * multiplier
+		if multiplier > 2097152 {
+			return 0, errors.New("malformed vlq encoded data")
+		}
+		multiplier *= 128
+		if (encodedByte & 0x80) == 0 {
+			break
+		}
+	}
+	return value, nil
 }

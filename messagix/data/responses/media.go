@@ -20,10 +20,10 @@ type FriendshipStatus struct {
 	IsFeedFavorite  bool `json:"is_feed_favorite"`
 }
 type In struct {
-	User                  User  `json:"user"`
+	User                  User      `json:"user"`
 	Position              []float64 `json:"position"`
-	StartTimeInVideoInSec any   `json:"start_time_in_video_in_sec"`
-	DurationInVideoInSec  any   `json:"duration_in_video_in_sec"`
+	StartTimeInVideoInSec any       `json:"start_time_in_video_in_sec"`
+	DurationInVideoInSec  any       `json:"duration_in_video_in_sec"`
 }
 type Usertags struct {
 	In []In `json:"in"`

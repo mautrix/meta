@@ -7,8 +7,9 @@ import (
 )
 
 const charMap = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
+
 type Bitmap struct {
-	BMap        []int
+	BMap          []int
 	CompressedStr string
 }
 
@@ -63,7 +64,7 @@ func (b *Bitmap) ToCompressedString() *Bitmap {
 			count = 1
 		}
 	}
-	
+
 	if count > 0 {
 		buf.WriteString(encodeRunLength(count))
 	}

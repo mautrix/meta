@@ -1,12 +1,12 @@
 package messagix
 
 import (
-	"github.com/0xzer/messagix/byter"
+	"go.mau.fi/mautrix-meta/messagix/byter"
 )
 
 type Request struct {
-    PacketByte uint8
-    RemainingLength uint32 `vlq:"true"`
+	PacketByte      uint8
+	RemainingLength uint32 `vlq:"true"`
 }
 
 func (r *Request) Write(payload Payload) ([]byte, error) {
@@ -14,7 +14,6 @@ func (r *Request) Write(payload Payload) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 
 	r.RemainingLength = uint32(len(payloadBytes))
 	header, err := byter.NewWriter().WriteFromStruct(r)

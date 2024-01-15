@@ -30,7 +30,7 @@ type Consistency struct {
 type RsrcDetails struct {
 	Type string `json:"type,omitempty"`
 	Src  string `json:"src,omitempty"`
-	C    int64 `json:"c,omitempty"`
+	C    int64  `json:"c,omitempty"`
 	Tsrc string `json:"tsrc,omitempty"`
 	P    string `json:"p,omitempty"`
 	M    string `json:"m,omitempty"`

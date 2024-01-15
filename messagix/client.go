@@ -12,14 +12,15 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/0xzer/messagix/cookies"
-	"github.com/0xzer/messagix/crypto"
-	"github.com/0xzer/messagix/data/endpoints"
-	"github.com/0xzer/messagix/table"
-	"github.com/0xzer/messagix/types"
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
 	"golang.org/x/exp/slices"
+
+	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/crypto"
+	"go.mau.fi/mautrix-meta/messagix/data/endpoints"
+	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
@@ -27,28 +28,28 @@ var ErrRedirectAttempted = errors.New("redirect attempted")
 
 type EventHandler func(evt interface{})
 type Client struct {
-	Account *Account
-	Threads *Threads
-	Messages *Messages
+	Account   *Account
+	Threads   *Threads
+	Messages  *Messages
 	Instagram *InstagramMethods
-	Facebook *FacebookMethods
-	Logger zerolog.Logger
+	Facebook  *FacebookMethods
+	Logger    zerolog.Logger
 
-	http *http.Client
-	socket *Socket
+	http         *http.Client
+	socket       *Socket
 	eventHandler EventHandler
-	configs *Configs
-	SyncManager *SyncManager
+	configs      *Configs
+	SyncManager  *SyncManager
 
 	cookies cookies.Cookies
-	proxy func(*http.Request) (*url.URL, error)
+	proxy   func(*http.Request) (*url.URL, error)
 
-	lsRequests int
+	lsRequests      int
 	graphQLRequests int
-	platform types.Platform
-	endpoints map[string]string
-	taskMutex *sync.Mutex
-	activeTasks []int
+	platform        types.Platform
+	endpoints       map[string]string
+	taskMutex       *sync.Mutex
+	activeTasks     []int
 }
 
 // pass an empty zerolog.Logger{} for no logging
@@ -57,13 +58,13 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 		http: &http.Client{
 			Transport: &http.Transport{},
 		},
-		cookies: cookies,
-		Logger: logger,
-		lsRequests: 0,
+		cookies:         cookies,
+		Logger:          logger,
+		lsRequests:      0,
 		graphQLRequests: 1,
-		platform: platform,
-		activeTasks: make([]int, 0),
-		taskMutex: &sync.Mutex{},
+		platform:        platform,
+		activeTasks:     make([]int, 0),
+		taskMutex:       &sync.Mutex{},
 	}
 
 	cli.Account = &Account{client: cli}
@@ -71,17 +72,17 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 	cli.Threads = &Threads{client: cli}
 	cli.configurePlatformClient()
 	cli.configs = &Configs{
-		client: cli,
-		needSync: false,
+		client:             cli,
+		needSync:           false,
 		browserConfigTable: &types.SchedulerJSDefineConfig{},
 		accountConfigTable: &table.LSTable{},
-		Bitmap: crypto.NewBitmap(),
-		CsrBitmap: crypto.NewBitmap(),
+		Bitmap:             crypto.NewBitmap(),
+		CsrBitmap:          crypto.NewBitmap(),
 	}
 	if proxy != "" {
 		err := cli.SetProxy(proxy)
 		if err != nil {
-			return nil, fmt.Errorf("messagix-client: failed to set proxy (%e)", err)
+			return nil, fmt.Errorf("messagix-client: failed to set proxy (%v)", err)
 		}
 	}
 
@@ -93,7 +94,7 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return cli, nil
 }
 
@@ -113,7 +114,7 @@ func (c *Client) configureAfterLogin() error {
 	c.SyncManager = c.NewSyncManager()
 	err = c.configs.SetupConfigs()
 	if err != nil {
-		return fmt.Errorf("messagix-configs: failed to setup configs (%e)", err)
+		return fmt.Errorf("messagix-configs: failed to setup configs (%v)", err)
 	}
 
 	return nil
@@ -121,7 +122,7 @@ func (c *Client) configureAfterLogin() error {
 
 func (c *Client) loadLoginPage() *ModuleParser {
 	moduleLoader := &ModuleParser{client: c}
-    moduleLoader.Load(c.getEndpoint("login_page"))
+	moduleLoader.Load(c.getEndpoint("login_page"))
 	return moduleLoader
 }
 
@@ -192,7 +193,7 @@ func (c *Client) IsConnected() bool {
 }
 
 func (c *Client) sendCookieConsent(jsDatr string) error {
-	
+
 	var payloadQuery interface{}
 	h := c.buildHeaders(false)
 	h.Add("sec-fetch-dest", "empty")
@@ -213,20 +214,22 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		h.Add("sec-fetch-site", "same-site") // header is required
 		h.Add("host", c.getEndpoint("host"))
 		h.Add("origin", c.getEndpoint("base_url"))
-		h.Add("referer", c.getEndpoint("base_url") + "/")
+		h.Add("referer", c.getEndpoint("base_url")+"/")
 		h.Add("x-instagram-ajax", strconv.Itoa(int(c.configs.browserConfigTable.SiteData.ServerRevision)))
 		variables, err := json.Marshal(&types.InstagramCookiesVariables{
 			FirstPartyTrackingOptIn: true,
-			IgDid: c.cookies.GetValue("ig_did"),
+			IgDid:                   c.cookies.GetValue("ig_did"),
 			ThirdPartyTrackingOptIn: true,
-			Input: struct{ClientMutationID int "json:\"client_mutation_id,omitempty\""}{0},
+			Input: struct {
+				ClientMutationID int "json:\"client_mutation_id,omitempty\""
+			}{0},
 		})
 		h.Del("x-csrftoken")
 		if err != nil {
-			return fmt.Errorf("failed to marshal *types.InstagramCookiesVariables into bytes: %e", err)
+			return fmt.Errorf("failed to marshal *types.InstagramCookiesVariables into bytes: %v", err)
 		}
 		q := &HttpQuery{
-			DocID: "3810865872362889",
+			DocID:     "3810865872362889",
 			Variables: string(variables),
 		}
 		payloadQuery = q
@@ -248,10 +251,10 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		if datr == nil {
 			return fmt.Errorf("consenting to facebook cookies failed, could not find datr cookie in set-cookie header")
 		}
-	
+
 		c.cookies = &cookies.FacebookCookies{
 			Datr: datr.Value,
-			Wd: "2276x1156",
+			Wd:   "2276x1156",
 		}
 	}
 	return nil
@@ -268,12 +271,12 @@ func (c *Client) disableRedirects() {
 }
 
 func (c *Client) getEndpoint(name string) string {
-    if endpoint, ok := c.endpoints[name]; ok {
-        return endpoint
-    }
+	if endpoint, ok := c.endpoints[name]; ok {
+		return endpoint
+	}
 
-    log.Fatalf("failed to find endpoint for name: %s (platform=%v)", name, c.platform)
-    return ""
+	log.Fatalf("failed to find endpoint for name: %s (platform=%v)", name, c.platform)
+	return ""
 }
 
 func (c *Client) IsAuthenticated() bool {

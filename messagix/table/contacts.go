@@ -1,86 +1,93 @@
 package table
 
-
 type LSVerifyContactRowExists struct {
-	ContactId int64 `index:"0"`
-	Unknown1 int64 `index:"1"`
-	ProfilePictureUrl string `index:"2"`
-	Name string `index:"3"`
-	ContactType int64 `index:"4"`
-	ProfilePictureFallbackUrl string `index:"5"`
-	Unknown6 int64 `index:"6"`
-	Unknown7 int64 `index:"7"`
-	IsMemorialized bool `index:"9"`
-	BlockedByViewerStatus int64 `index:"11"`
-	CanViewerMessage bool `index:"12"`
-	AuthorityLevel int64 `index:"14"`
-	Capabilities int64 `index:"15"`
-	Capabilities2 int64 `index:"16"`
-	Gender Gender `index:"18"`
-	ContactViewerRelationship ContactViewerRelationship `index:"19"`
-	SecondaryName string `index:"20"`
+	ContactId                 int64                     `index:"0" json:",omitempty"`
+	Unknown1                  int64                     `index:"1" json:",omitempty"`
+	ProfilePictureUrl         string                    `index:"2" json:",omitempty"`
+	Name                      string                    `index:"3" json:",omitempty"`
+	ContactType               int64                     `index:"4" json:",omitempty"`
+	ProfilePictureFallbackUrl string                    `index:"5" json:",omitempty"`
+	Unknown6                  int64                     `index:"6" json:",omitempty"`
+	Unknown7                  int64                     `index:"7" json:",omitempty"`
+	IsMemorialized            bool                      `index:"9" json:",omitempty"`
+	BlockedByViewerStatus     int64                     `index:"11" json:",omitempty"`
+	CanViewerMessage          bool                      `index:"12" json:",omitempty"`
+	AuthorityLevel            int64                     `index:"14" json:",omitempty"`
+	Capabilities              int64                     `index:"15" json:",omitempty"`
+	Capabilities2             int64                     `index:"16" json:",omitempty"`
+	Gender                    Gender                    `index:"18" json:",omitempty"`
+	ContactViewerRelationship ContactViewerRelationship `index:"19" json:",omitempty"`
+	SecondaryName             string                    `index:"20" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSDeleteThenInsertContact struct {
-    Id int64 `index:"0"`
-    ProfileRingState int64 `index:"0"`
-    ProfilePictureUrl string `index:"2"`
-    ProfilePictureFallbackUrl string `index:"3"`
-    ProfilePictureUrlExpirationTimestampMs int64 `index:"4"`
-    ProfilePictureLargeUrl string `index:"5"`
-    ProfilePictureLargeFallbackUrl string `index:"6"`
-    ProfilePictureLargeUrlExpirationTimestampMs int64 `index:"7"`
-    Name string `index:"9"`
-    NormalizedNameForSearch string `index:"10"`
-    IsMessengerUser bool `index:"11"`
-    IsMemorialized bool `index:"12"`
-    BlockedByViewerStatus int64 `index:"14"`
-    Rank float64 `index:"17"`
-    FirstName string `index:"18"`
-    ContactType int64 `index:"19"`
-    ContactTypeExact int64 `index:"20"`
-    AuthorityLevel int64 `index:"21"`
-    MessengerCallLogThirdPartyId string `index:"22"`
-    ProfileRingColor int64 `index:"23"`
-    RequiresMultiway bool `index:"24"`
-    BlockedSinceTimestampMs int64 `index:"25"`
-    CanViewerMessage bool `index:"26"`
-    ProfileRingColorExpirationTimestampMs int64 `index:"27"`
-    PhoneNumber int64 `index:"28"`
-    EmailAddress string `index:"29"`
-    WorkCompanyId int64 `index:"30"`
-    WorkCompanyName string `index:"31"`
-    WorkJobTitle string `index:"32"`
-    NormalizedSearchTerms string `index:"33"`
-    DeviceContactId int64 `index:"34"`
-    IsManagedByViewer bool `index:"35"`
-    WorkForeignEntityType int64 `index:"36"`
-    Capabilities int64 `index:"37"`
-    Capabilities2 int64 `index:"38"`
-    ContactViewerRelationship ContactViewerRelationship `index:"39"`
-    Gender Gender `index:"40"`
-    SecondaryName string `index:"41"`
-    ContactReachabilityStatusType int64 `index:"43"`
-    RestrictionType int64 `index:"44"`
-    WaConnectStatus int64 `index:"45"`
-    FbUnblockedSinceTimestampMs int64 `index:"46"`
+	Id                                          int64                     `index:"0" json:",omitempty"`
+	ProfileRingState                            int64                     `index:"0" json:",omitempty"`
+	ProfilePictureUrl                           string                    `index:"2" json:",omitempty"`
+	ProfilePictureFallbackUrl                   string                    `index:"3" json:",omitempty"`
+	ProfilePictureUrlExpirationTimestampMs      int64                     `index:"4" json:",omitempty"`
+	ProfilePictureLargeUrl                      string                    `index:"5" json:",omitempty"`
+	ProfilePictureLargeFallbackUrl              string                    `index:"6" json:",omitempty"`
+	ProfilePictureLargeUrlExpirationTimestampMs int64                     `index:"7" json:",omitempty"`
+	Name                                        string                    `index:"9" json:",omitempty"`
+	NormalizedNameForSearch                     string                    `index:"10" json:",omitempty"`
+	IsMessengerUser                             bool                      `index:"11" json:",omitempty"`
+	IsMemorialized                              bool                      `index:"12" json:",omitempty"`
+	BlockedByViewerStatus                       int64                     `index:"14" json:",omitempty"`
+	Rank                                        float64                   `index:"17" json:",omitempty"`
+	FirstName                                   string                    `index:"18" json:",omitempty"`
+	ContactType                                 int64                     `index:"19" json:",omitempty"`
+	ContactTypeExact                            int64                     `index:"20" json:",omitempty"`
+	AuthorityLevel                              int64                     `index:"21" json:",omitempty"`
+	MessengerCallLogThirdPartyId                string                    `index:"22" json:",omitempty"`
+	ProfileRingColor                            int64                     `index:"23" json:",omitempty"`
+	RequiresMultiway                            bool                      `index:"24" json:",omitempty"`
+	BlockedSinceTimestampMs                     int64                     `index:"25" json:",omitempty"`
+	CanViewerMessage                            bool                      `index:"26" json:",omitempty"`
+	ProfileRingColorExpirationTimestampMs       int64                     `index:"27" json:",omitempty"`
+	PhoneNumber                                 int64                     `index:"28" json:",omitempty"`
+	EmailAddress                                string                    `index:"29" json:",omitempty"`
+	WorkCompanyId                               int64                     `index:"30" json:",omitempty"`
+	WorkCompanyName                             string                    `index:"31" json:",omitempty"`
+	WorkJobTitle                                string                    `index:"32" json:",omitempty"`
+	NormalizedSearchTerms                       string                    `index:"33" json:",omitempty"`
+	DeviceContactId                             int64                     `index:"34" json:",omitempty"`
+	IsManagedByViewer                           bool                      `index:"35" json:",omitempty"`
+	WorkForeignEntityType                       int64                     `index:"36" json:",omitempty"`
+	Capabilities                                int64                     `index:"37" json:",omitempty"`
+	Capabilities2                               int64                     `index:"38" json:",omitempty"`
+	ContactViewerRelationship                   ContactViewerRelationship `index:"39" json:",omitempty"`
+	Gender                                      Gender                    `index:"40" json:",omitempty"`
+	SecondaryName                               string                    `index:"41" json:",omitempty"`
+	ContactReachabilityStatusType               int64                     `index:"43" json:",omitempty"`
+	RestrictionType                             int64                     `index:"44" json:",omitempty"`
+	WaConnectStatus                             int64                     `index:"45" json:",omitempty"`
+	FbUnblockedSinceTimestampMs                 int64                     `index:"46" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSDeleteThenInsertContactPresence struct {
-    ContactId int64 `index:"0"`
-    Status int64 `index:"1"` // make enum ?
-    LastActiveTimestampMs int64 `index:"2"`
-    ExpirationTimestampMs int64 `index:"3"`
-    Capabilities int64 `index:"4"`
-    PublishId string `index:"5"`
+	ContactId             int64  `index:"0" json:",omitempty"`
+	Status                int64  `index:"1" json:",omitempty"` // make enum ?
+	LastActiveTimestampMs int64  `index:"2" json:",omitempty"`
+	ExpirationTimestampMs int64  `index:"3" json:",omitempty"`
+	Capabilities          int64  `index:"4" json:",omitempty"`
+	PublishId             string `index:"5" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSDeleteThenInsertIGContactInfo struct {
-    ContactId int64 `index:"0"`
-    IgId string `index:"1"`
-    LinkedFbid int64 `index:"2"`
-    IgFollowStatus int64 `index:"4"`
-    VerificationStatus int64 `index:"5"`
-    E2eeEligibility int64 `index:"6"`
-    SupportsE2eeSpamdStorage bool `index:"7"`
+	ContactId                int64  `index:"0" json:",omitempty"`
+	IgId                     string `index:"1" json:",omitempty"`
+	LinkedFbid               int64  `index:"2" json:",omitempty"`
+	IgFollowStatus           int64  `index:"4" json:",omitempty"`
+	VerificationStatus       int64  `index:"5" json:",omitempty"`
+	E2eeEligibility          int64  `index:"6" json:",omitempty"`
+	SupportsE2eeSpamdStorage bool   `index:"7" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }

@@ -1,6 +1,6 @@
 package socket
 
-import "github.com/0xzer/messagix/methods"
+import "go.mau.fi/mautrix-meta/messagix/methods"
 
 type GetContactsTask struct {
 	Limit int64 `json:"limit,omitempty"`

@@ -1,10 +1,10 @@
 package socket
 
-import "github.com/0xzer/messagix/table"
+import "go.mau.fi/mautrix-meta/messagix/table"
 
 type ReportAppStateTask struct {
-	AppState table.AppState `json:"app_state"`
-	RequestId string `json:"request_id"`
+	AppState  table.AppState `json:"app_state"`
+	RequestId string         `json:"request_id"`
 }
 
 func (t *ReportAppStateTask) GetLabel() string {

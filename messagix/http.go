@@ -9,37 +9,37 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/0xzer/messagix/cookies"
-	"github.com/0xzer/messagix/types"
+	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type HttpQuery struct {
 	AcceptOnlyEssential  string `url:"accept_only_essential,omitempty"`
-	Av                   string `url:"av,omitempty"` // not required
-	User                 string `url:"__user,omitempty"` // not required
-	A                    string `url:"__a,omitempty"` // 1 or 0 wether to include "suggestion_keys" or not in the response - no idea what this is
-	Req                  string `url:"__req,omitempty"` // not required
-	Hs                   string `url:"__hs,omitempty"` // not required
-	Dpr                  string `url:"dpr,omitempty"` // not required
-	Ccg                  string `url:"__ccg,omitempty"` // not required
-	Rev                  string `url:"__rev,omitempty"` // not required
-	S                    string `url:"__s,omitempty"` // not required
-	Hsi                  string `url:"__hsi,omitempty"` // not required
-	Dyn                  string `url:"__dyn,omitempty"` // not required
-	Csr                  string `url:"__csr"` // not required
+	Av                   string `url:"av,omitempty"`          // not required
+	User                 string `url:"__user,omitempty"`      // not required
+	A                    string `url:"__a,omitempty"`         // 1 or 0 wether to include "suggestion_keys" or not in the response - no idea what this is
+	Req                  string `url:"__req,omitempty"`       // not required
+	Hs                   string `url:"__hs,omitempty"`        // not required
+	Dpr                  string `url:"dpr,omitempty"`         // not required
+	Ccg                  string `url:"__ccg,omitempty"`       // not required
+	Rev                  string `url:"__rev,omitempty"`       // not required
+	S                    string `url:"__s,omitempty"`         // not required
+	Hsi                  string `url:"__hsi,omitempty"`       // not required
+	Dyn                  string `url:"__dyn,omitempty"`       // not required
+	Csr                  string `url:"__csr"`                 // not required
 	CometReq             string `url:"__comet_req,omitempty"` // not required but idk what this is
 	FbDtsg               string `url:"fb_dtsg,omitempty"`
-	Jazoest              string `url:"jazoest,omitempty"` // not required
-	Lsd                  string `url:"lsd,omitempty"` // required
-	SpinR                string `url:"__spin_r,omitempty"` // not required
-	SpinB                string `url:"__spin_b,omitempty"` // not required
-	SpinT                string `url:"__spin_t,omitempty"` // not required
-	FbAPICallerClass     string `url:"fb_api_caller_class,omitempty"` // not required
+	Jazoest              string `url:"jazoest,omitempty"`                  // not required
+	Lsd                  string `url:"lsd,omitempty"`                      // required
+	SpinR                string `url:"__spin_r,omitempty"`                 // not required
+	SpinB                string `url:"__spin_b,omitempty"`                 // not required
+	SpinT                string `url:"__spin_t,omitempty"`                 // not required
+	FbAPICallerClass     string `url:"fb_api_caller_class,omitempty"`      // not required
 	FbAPIReqFriendlyName string `url:"fb_api_req_friendly_name,omitempty"` // not required
 	Variables            string `url:"variables,omitempty"`
 	ServerTimestamps     string `url:"server_timestamps,omitempty"` // "true" or "false"
 	DocID                string `url:"doc_id,omitempty"`
-	D					 string `url:"__d,omitempty"` // for insta
+	D                    string `url:"__d,omitempty"` // for insta
 }
 
 func (c *Client) NewHttpQuery() *HttpQuery {
@@ -47,24 +47,24 @@ func (c *Client) NewHttpQuery() *HttpQuery {
 	siteConfig := c.configs.browserConfigTable.SiteData
 	dpr := strconv.FormatFloat(siteConfig.Pr, 'g', 4, 64)
 	query := &HttpQuery{
-		User: c.configs.browserConfigTable.CurrentUserInitialData.UserID,
-		A: "1",
-		Req: strconv.Itoa(c.graphQLRequests),
-		Hs: siteConfig.HasteSession,
-		Dpr: dpr,
-		Ccg: c.configs.browserConfigTable.WebConnectionClassServerGuess.ConnectionClass,
-		Rev: strconv.Itoa(siteConfig.SpinR),
-		S: c.configs.WebSessionId,
-		Hsi: siteConfig.Hsi,
-		Dyn: c.configs.Bitmap.CompressedStr,
-		Csr: c.configs.CsrBitmap.CompressedStr,
+		User:     c.configs.browserConfigTable.CurrentUserInitialData.UserID,
+		A:        "1",
+		Req:      strconv.Itoa(c.graphQLRequests),
+		Hs:       siteConfig.HasteSession,
+		Dpr:      dpr,
+		Ccg:      c.configs.browserConfigTable.WebConnectionClassServerGuess.ConnectionClass,
+		Rev:      strconv.Itoa(siteConfig.SpinR),
+		S:        c.configs.WebSessionId,
+		Hsi:      siteConfig.Hsi,
+		Dyn:      c.configs.Bitmap.CompressedStr,
+		Csr:      c.configs.CsrBitmap.CompressedStr,
 		CometReq: c.configs.CometReq,
-		FbDtsg: c.configs.browserConfigTable.DTSGInitData.Token,
-		Jazoest: c.configs.Jazoest,
-		Lsd: c.configs.LsdToken,
-		SpinR: strconv.Itoa(siteConfig.SpinR),
-		SpinB: siteConfig.SpinB,
-		SpinT: strconv.Itoa(siteConfig.SpinT),
+		FbDtsg:   c.configs.browserConfigTable.DTSGInitData.Token,
+		Jazoest:  c.configs.Jazoest,
+		Lsd:      c.configs.LsdToken,
+		SpinR:    strconv.Itoa(siteConfig.SpinR),
+		SpinB:    siteConfig.SpinB,
+		SpinT:    strconv.Itoa(siteConfig.SpinT),
 	}
 	if c.configs.browserConfigTable.CurrentUserInitialData.UserID != "0" {
 		query.Av = c.configs.browserConfigTable.CurrentUserInitialData.UserID
@@ -188,44 +188,44 @@ func (c *Client) findCookie(cookies []*http.Cookie, name string) *http.Cookie {
 }
 
 func (a *Account) sendLoginRequest(form url.Values, loginUrl string) (*http.Response, []byte, error) {
-    h := a.buildLoginHeaders()
-    loginPayload := []byte(form.Encode())
-    
-    resp, respBody, err := a.client.MakeRequest(loginUrl, "POST", h, loginPayload, types.FORM)
-    if err != nil {
-        return nil, nil, fmt.Errorf("failed to send login request: %e", err)
-    }
+	h := a.buildLoginHeaders()
+	loginPayload := []byte(form.Encode())
 
-    return resp, respBody, nil
+	resp, respBody, err := a.client.MakeRequest(loginUrl, "POST", h, loginPayload, types.FORM)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to send login request: %v", err)
+	}
+
+	return resp, respBody, nil
 }
 
 func (a *Account) buildLoginHeaders() http.Header {
-    h := a.client.buildHeaders(true)
-    if a.client.platform == types.Facebook {
-        h = a.addFacebookHeaders(h)
-    } else {
-        h = a.addInstagramHeaders(h)
-    }
-    h.Add("origin", a.client.getEndpoint("base_url"))
-    h.Add("referer", a.client.getEndpoint("login_page"))
+	h := a.client.buildHeaders(true)
+	if a.client.platform == types.Facebook {
+		h = a.addFacebookHeaders(h)
+	} else {
+		h = a.addInstagramHeaders(h)
+	}
+	h.Add("origin", a.client.getEndpoint("base_url"))
+	h.Add("referer", a.client.getEndpoint("login_page"))
 
-    return h
+	return h
 }
 
 func (a *Account) addFacebookHeaders(h http.Header) http.Header {
-    h.Add("sec-fetch-dest", "document")
-    h.Add("sec-fetch-mode", "navigate")
-    h.Add("sec-fetch-site", "same-origin") // header is required
-    h.Add("sec-fetch-user", "?1")
-    h.Add("upgrade-insecure-requests", "1")
-    return h
+	h.Add("sec-fetch-dest", "document")
+	h.Add("sec-fetch-mode", "navigate")
+	h.Add("sec-fetch-site", "same-origin") // header is required
+	h.Add("sec-fetch-user", "?1")
+	h.Add("upgrade-insecure-requests", "1")
+	return h
 }
 
 func (a *Account) addInstagramHeaders(h http.Header) http.Header {
-    h.Add("x-instagram-ajax", strconv.Itoa(int(a.client.configs.browserConfigTable.SiteData.ServerRevision)))
-    h.Add("sec-fetch-dest", "empty")
-    h.Add("sec-fetch-mode", "cors")
-    h.Add("sec-fetch-site", "same-origin") // header is required
-    h.Add("x-requested-with", "XMLHttpRequest")
-    return h
+	h.Add("x-instagram-ajax", strconv.Itoa(int(a.client.configs.browserConfigTable.SiteData.ServerRevision)))
+	h.Add("sec-fetch-dest", "empty")
+	h.Add("sec-fetch-mode", "cors")
+	h.Add("sec-fetch-site", "same-origin") // header is required
+	h.Add("x-requested-with", "XMLHttpRequest")
+	return h
 }

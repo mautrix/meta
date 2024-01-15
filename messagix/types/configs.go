@@ -5,7 +5,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"github.com/0xzer/messagix/table"
+
+	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
 type MqttWebDeviceID struct {
@@ -25,27 +26,27 @@ type MQTTWebConfig struct {
 }
 
 type MQTTConfig struct {
-	ProtocolName string
-	ProtocolLevel uint8
-	ClientId string
-	Broker string
-	KeepAliveTimeout uint16
-	SessionId int64
-	AppId int64
+	ProtocolName       string
+	ProtocolLevel      uint8
+	ClientId           string
+	Broker             string
+	KeepAliveTimeout   uint16
+	SessionId          int64
+	AppId              int64
 	ClientCapabilities int
-	Capabilities int
-	ChatOn bool
-	SubscribedTopics []any
-	ConnectionType string
-	HostNameOverride string
-	Cid string // device id
+	Capabilities       int
+	ChatOn             bool
+	SubscribedTopics   []any
+	ConnectionType     string
+	HostNameOverride   string
+	Cid                string // device id
 }
 
 func (m *MQTTConfig) BuildBrokerUrl() string {
 	query := &url.Values{}
 	query.Add("cid", m.Cid)
 	query.Add("sid", strconv.Itoa(int(m.SessionId)))
-	
+
 	encodedQuery := query.Encode()
 	if !strings.HasSuffix(m.Broker, "=") {
 		return m.Broker + encodedQuery
@@ -129,11 +130,11 @@ type InstagramPasswordEncryption struct {
 
 type XIGSharedData struct {
 	ConfigData *XIGConfigData
-	Raw    string `json:"raw,omitempty"`
-	Native struct {
+	Raw        string `json:"raw,omitempty"`
+	Native     struct {
 		Config struct {
 			CsrfToken string `json:"csrf_token,omitempty"`
-			ViewerID  string    `json:"viewerId,omitempty"`
+			ViewerID  string `json:"viewerId,omitempty"`
 			Viewer    struct {
 				IsBasicAdsOptedIn bool `json:"is_basic_ads_opted_in,omitempty"`
 				BasicAdsTier      int  `json:"basic_ads_tier,omitempty"`
@@ -175,18 +176,18 @@ type RelayAPIConfigDefaults struct {
 		XIGAppID string `json:"X-IG-App-ID,omitempty"`
 		XIGD     string `json:"X-IG-D,omitempty"`
 	} `json:"customHeaders,omitempty"`
-	EnableNetworkLogger       bool   `json:"enableNetworkLogger,omitempty"`
-	FetchTimeout              int    `json:"fetchTimeout,omitempty"`
-	GraphBatchURI             string `json:"graphBatchURI,omitempty"`
-	GraphURI                  string `json:"graphURI,omitempty"`
-	RetryDelays               []int  `json:"retryDelays,omitempty"`
-	UseXController            bool   `json:"useXController,omitempty"`
-	XhrEncoding               interface{}    `json:"xhrEncoding,omitempty"`
-	SubscriptionTopicURI      interface{}    `json:"subscriptionTopicURI,omitempty"`
-	WithCredentials           bool   `json:"withCredentials,omitempty"`
-	IsProductionEndpoint      bool   `json:"isProductionEndpoint,omitempty"`
-	WorkRequestTaggingProduct interface{}    `json:"workRequestTaggingProduct,omitempty"`
-	EncryptionKeyParams       interface{}    `json:"encryptionKeyParams,omitempty"`
+	EnableNetworkLogger       bool        `json:"enableNetworkLogger,omitempty"`
+	FetchTimeout              int         `json:"fetchTimeout,omitempty"`
+	GraphBatchURI             string      `json:"graphBatchURI,omitempty"`
+	GraphURI                  string      `json:"graphURI,omitempty"`
+	RetryDelays               []int       `json:"retryDelays,omitempty"`
+	UseXController            bool        `json:"useXController,omitempty"`
+	XhrEncoding               interface{} `json:"xhrEncoding,omitempty"`
+	SubscriptionTopicURI      interface{} `json:"subscriptionTopicURI,omitempty"`
+	WithCredentials           bool        `json:"withCredentials,omitempty"`
+	IsProductionEndpoint      bool        `json:"isProductionEndpoint,omitempty"`
+	WorkRequestTaggingProduct interface{} `json:"workRequestTaggingProduct,omitempty"`
+	EncryptionKeyParams       interface{} `json:"encryptionKeyParams,omitempty"`
 }
 
 type EnvJSON struct {
@@ -200,12 +201,12 @@ type EnvJSON struct {
 }
 
 type Eqmc struct {
-	AjaxURL string `json:"u,omitempty"`
+	AjaxURL        string `json:"u,omitempty"`
 	HasteSessionId string `json:"e,omitempty"`
-	S string `json:"s,omitempty"`
-	W int    `json:"w,omitempty"`
-	FbDtsg string `json:"f,omitempty"`
-	L any    `json:"l,omitempty"`
+	S              string `json:"s,omitempty"`
+	W              int    `json:"w,omitempty"`
+	FbDtsg         string `json:"f,omitempty"`
+	L              any    `json:"l,omitempty"`
 }
 
 type AjaxQueryParams struct {
@@ -236,35 +237,35 @@ func (e *Eqmc) ParseAjaxURLData() (*AjaxQueryParams, error) {
 }
 
 type RawJSONConfigs struct {
-	Eqmc Eqmc
+	Eqmc    Eqmc
 	EnvJSON EnvJSON
 }
 
 type SchedulerJSDefineConfig struct {
-	MqttWebConfig            MqttWebConfig
-	MqttWebDeviceID          MqttWebDeviceID
-	WebDevicePerfClassData   WebDevicePerfClassData
-	BootloaderConfig         BootLoaderConfig
-	CurrentBusinessUser      CurrentBusinessAccount
-	SiteData                 SiteData
-	SprinkleConfig           SprinkleConfig
-	USIDMetadata             USIDMetadata
+	MqttWebConfig                 MqttWebConfig
+	MqttWebDeviceID               MqttWebDeviceID
+	WebDevicePerfClassData        WebDevicePerfClassData
+	BootloaderConfig              BootLoaderConfig
+	CurrentBusinessUser           CurrentBusinessAccount
+	SiteData                      SiteData
+	SprinkleConfig                SprinkleConfig
+	USIDMetadata                  USIDMetadata
 	WebConnectionClassServerGuess WebConnectionClassServerGuess
-	MessengerWebRegion       MessengerWebRegion
-	MessengerWebInitData     MessengerWebInitData
-	LSD                      LSD
-	IntlViewerContext        IntlViewerContext
-	IntlCurrentLocale        IntlCurrentLocale
-	DTSGInitData             DTSGInitData
-	DTSGInitialData          DTSGInitialData
-	CurrentUserInitialData   CurrentUserInitialData
+	MessengerWebRegion            MessengerWebRegion
+	MessengerWebInitData          MessengerWebInitData
+	LSD                           LSD
+	IntlViewerContext             IntlViewerContext
+	IntlCurrentLocale             IntlCurrentLocale
+	DTSGInitData                  DTSGInitData
+	DTSGInitialData               DTSGInitialData
+	CurrentUserInitialData        CurrentUserInitialData
 	LSPlatformMessengerSyncParams LSPlatformMessengerSyncParams
-	ServerNonce ServerNonce
-	InitialCookieConsent InitialCookieConsent
-	InstagramPasswordEncryption InstagramPasswordEncryption
-	XIGSharedData XIGSharedData
-	RelayAPIConfigDefaults RelayAPIConfigDefaults
-	PolarisViewer PolarisViewer
+	ServerNonce                   ServerNonce
+	InitialCookieConsent          InitialCookieConsent
+	InstagramPasswordEncryption   InstagramPasswordEncryption
+	XIGSharedData                 XIGSharedData
+	RelayAPIConfigDefaults        RelayAPIConfigDefaults
+	PolarisViewer                 PolarisViewer
 }
 
 type MqttWebConfig struct {
@@ -280,33 +281,33 @@ type MqttWebConfig struct {
 }
 
 type SiteData struct {
-	SpinB                 string `json:"__spin_b,omitempty"`
-	SpinR                 int    `json:"__spin_r,omitempty"`
-	SpinT                 int    `json:"__spin_t,omitempty"`
-	BeOneAhead            bool   `json:"be_one_ahead,omitempty"`
-	BlHashVersion         int64    `json:"bl_hash_version,omitempty"`
-	ClientRevision        int64    `json:"client_revision,omitempty"`
-	CometEnv              int64    `json:"comet_env,omitempty"`
-	HasteSession          string `json:"haste_session,omitempty"`
-	HasteSite             string `json:"haste_site,omitempty"`
-	Hsi                   string `json:"hsi,omitempty"`
-	IsComet               bool   `json:"is_comet,omitempty"`
-	IsExperimentalTier    bool   `json:"is_experimental_tier,omitempty"`
-	IsJitWarmedUp         bool   `json:"is_jit_warmed_up,omitempty"`
-	IsRtl                 bool   `json:"is_rtl,omitempty"`
-	ManifestBaseURI       string `json:"manifest_base_uri,omitempty"`
-	ManifestOrigin        string `json:"manifest_origin,omitempty"`
-	ManifestVersionPrefix string `json:"manifest_version_prefix,omitempty"`
-	PkgCohort             string `json:"pkg_cohort,omitempty"`
-	Pr                    float64    `json:"pr,omitempty"`
-	PushPhase             string `json:"push_phase,omitempty"`
-	SemrHostBucket        string `json:"semr_host_bucket,omitempty"`
-	ServerRevision        int64    `json:"server_revision,omitempty"`
-	SkipRdBl              bool   `json:"skip_rd_bl,omitempty"`
-	Spin                  int64    `json:"spin,omitempty"`
-	Tier                  string `json:"tier,omitempty"`
-	Vip                   string `json:"vip,omitempty"`
-	WbloksEnv             bool   `json:"wbloks_env,omitempty"`
+	SpinB                 string  `json:"__spin_b,omitempty"`
+	SpinR                 int     `json:"__spin_r,omitempty"`
+	SpinT                 int     `json:"__spin_t,omitempty"`
+	BeOneAhead            bool    `json:"be_one_ahead,omitempty"`
+	BlHashVersion         int64   `json:"bl_hash_version,omitempty"`
+	ClientRevision        int64   `json:"client_revision,omitempty"`
+	CometEnv              int64   `json:"comet_env,omitempty"`
+	HasteSession          string  `json:"haste_session,omitempty"`
+	HasteSite             string  `json:"haste_site,omitempty"`
+	Hsi                   string  `json:"hsi,omitempty"`
+	IsComet               bool    `json:"is_comet,omitempty"`
+	IsExperimentalTier    bool    `json:"is_experimental_tier,omitempty"`
+	IsJitWarmedUp         bool    `json:"is_jit_warmed_up,omitempty"`
+	IsRtl                 bool    `json:"is_rtl,omitempty"`
+	ManifestBaseURI       string  `json:"manifest_base_uri,omitempty"`
+	ManifestOrigin        string  `json:"manifest_origin,omitempty"`
+	ManifestVersionPrefix string  `json:"manifest_version_prefix,omitempty"`
+	PkgCohort             string  `json:"pkg_cohort,omitempty"`
+	Pr                    float64 `json:"pr,omitempty"`
+	PushPhase             string  `json:"push_phase,omitempty"`
+	SemrHostBucket        string  `json:"semr_host_bucket,omitempty"`
+	ServerRevision        int64   `json:"server_revision,omitempty"`
+	SkipRdBl              bool    `json:"skip_rd_bl,omitempty"`
+	Spin                  int64   `json:"spin,omitempty"`
+	Tier                  string  `json:"tier,omitempty"`
+	Vip                   string  `json:"vip,omitempty"`
+	WbloksEnv             bool    `json:"wbloks_env,omitempty"`
 }
 
 type ServerNonce struct {

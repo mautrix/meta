@@ -3,15 +3,15 @@ package cookies
 import "encoding/json"
 
 type InstagramCookies struct {
-	SessionId  string `cookie:"sessionid,omitempty" json:"SessionId,omitempty"`
-	CsrfToken  string `cookie:"csrftoken,omitempty" json:"CsrfToken,omitempty"`
-	MachineId  string `cookie:"mid,omitempty" json:"MachineId,omitempty"`
-	IgDeviceId string `cookie:"ig_did,omitempty" json:"IgDeviceId,omitempty"`
-	Rur 	   string `cookie:"rur,omitempty" json:"Rur,omitempty"`
-	UserId 	   string `cookie:"ds_user_id,omitempty" json:"UserId,omitempty"`
-	ShbId 	   string `cookie:"shbid,omitempty" json:"ShbId,omitempty"`
-	Shbts 	   string `cookie:"shbts,omitempty" json:"Shbts,omitempty"`
-	IgWWWClaim string `json:"IgWWWClaim,omitempty"`
+	SessionId  string `cookie:"sessionid,omitempty" json:"sessionid,omitempty"`
+	CsrfToken  string `cookie:"csrftoken,omitempty" json:"csrftoken,omitempty"`
+	MachineId  string `cookie:"mid,omitempty" json:"mid,omitempty"`
+	IgDeviceId string `cookie:"ig_did,omitempty" json:"ig_did,omitempty"`
+	Rur        string `cookie:"rur,omitempty" json:"rur,omitempty"`
+	UserId     string `cookie:"ds_user_id,omitempty" json:"ds_user_id,omitempty"`
+	ShbId      string `cookie:"shbid,omitempty" json:"shbid,omitempty"`
+	Shbts      string `cookie:"shbts,omitempty" json:"shbts,omitempty"`
+	IgWWWClaim string `json:"ig_www_claim,omitempty"`
 }
 
 func (ig *InstagramCookies) ToJSON() ([]byte, error) {

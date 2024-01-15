@@ -7,19 +7,22 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"reflect"
-	"github.com/0xzer/messagix/methods"
-	"github.com/0xzer/messagix/types"
+
 	"github.com/google/go-querystring/query"
+
+	"go.mau.fi/mautrix-meta/messagix/methods"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type MediaType string
+
 const (
 	IMAGE_JPEG MediaType = "image/jpeg"
-	VIDEO_MP4 MediaType = "video/mp4"
+	VIDEO_MP4  MediaType = "video/mp4"
 )
 
 type MercuryUploadMedia struct {
-	Filename string
+	Filename  string
 	MediaType MediaType
 	MediaData []byte
 }
@@ -30,7 +33,7 @@ func (c *Client) SendMercuryUploadRequest(medias []*MercuryUploadMedia) ([]*type
 		urlQueries := c.NewHttpQuery()
 		queryValues, err := query.Values(urlQueries)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %e", err)
+			return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %v", err)
 		}
 
 		payloadQuery := queryValues.Encode()
@@ -46,15 +49,15 @@ func (c *Client) SendMercuryUploadRequest(medias []*MercuryUploadMedia) ([]*type
 		h.Add("sec-fetch-dest", "empty")
 		h.Add("sec-fetch-mode", "cors")
 		h.Add("sec-fetch-site", "same-origin") // header is required
-		
+
 		_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
 		if err != nil {
-			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %e", err)
+			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %v", err)
 		}
 
 		resp, err := c.parseMercuryResponse(respBody)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse mercury response: %e", err)
+			return nil, fmt.Errorf("failed to parse mercury response: %v", err)
 		}
 
 		responses = append(responses, resp)
@@ -108,27 +111,27 @@ func (c *Client) NewMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, stri
 
 	err := writer.SetBoundary("----WebKitFormBoundary" + methods.RandStr(16))
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to set boundary (%e)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to set boundary (%v)", err)
 	}
-	
+
 	partHeader := textproto.MIMEHeader{
 		"Content-Disposition": []string{`form-data; name="farr"; filename="` + media.Filename + `"`},
-		"Content-Type": []string{string(media.MediaType)},
+		"Content-Type":        []string{string(media.MediaType)},
 	}
 
 	mediaPart, err := writer.CreatePart(partHeader)
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to create multipart writer (%e)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to create multipart writer (%v)", err)
 	}
 
 	_, err = mediaPart.Write(media.MediaData)
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to write data to multipart section (%e)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to write data to multipart section (%v)", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to close multipart writer (%e)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to close multipart writer (%v)", err)
 	}
 
 	return mercuryPayload.Bytes(), writer.FormDataContentType(), nil

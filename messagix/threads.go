@@ -5,10 +5,10 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/0xzer/messagix/methods"
-	"github.com/0xzer/messagix/socket"
-	"github.com/0xzer/messagix/table"
-	"github.com/0xzer/messagix/types"
+	"go.mau.fi/mautrix-meta/messagix/methods"
+	"go.mau.fi/mautrix-meta/messagix/socket"
+	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type Threads struct {
@@ -29,7 +29,6 @@ func (t *Threads) FetchMessages(ThreadId int64, ReferenceTimestampMs int64, Refe
 		log.Fatal(err)
 	}
 
-
 	resp := t.client.socket.responseHandler.waitForPubResponseDetails(packetId)
 	if resp == nil {
 		return nil, fmt.Errorf("failed to receive response from socket while trying to fetch messages. (packetId=%d, thread_key=%d, cursor=%s, reference_message_id=%s, reference_timestamp_ms=%d)", packetId, ThreadId, Cursor, ReferenceMessageId, ReferenceTimestampMs)
@@ -39,8 +38,8 @@ func (t *Threads) FetchMessages(ThreadId int64, ReferenceTimestampMs int64, Refe
 }
 
 type MessageBuilder struct {
-	client *Client
-	payload *socket.SendMessageTask
+	client      *Client
+	payload     *socket.SendMessageTask
 	readPayload *socket.ThreadMarkReadTask
 }
 
@@ -48,13 +47,13 @@ func (t *Threads) NewMessageBuilder(threadId int64) *MessageBuilder {
 	return &MessageBuilder{
 		client: t.client,
 		payload: &socket.SendMessageTask{
-			ThreadId: threadId,
+			ThreadId:          threadId,
 			SkipUrlPreviewGen: 0,
-			TextHasLinks: 0,
-			AttachmentFBIds: make([]int64, 0),
+			TextHasLinks:      0,
+			AttachmentFBIds:   make([]int64, 0),
 		},
 		readPayload: &socket.ThreadMarkReadTask{
-			ThreadId: threadId,
+			ThreadId:  threadId,
 			SyncGroup: 1,
 		},
 	}
@@ -112,7 +111,7 @@ func (m *MessageBuilder) SetLastReadWatermarkTs(ts int64) *MessageBuilder {
 	return m
 }
 
-func (m *MessageBuilder) Execute() (*table.LSTable, error){
+func (m *MessageBuilder) Execute() (*table.LSTable, error) {
 	tskm := m.client.NewTaskManager()
 
 	if m.payload.Source == 0 {
@@ -130,17 +129,17 @@ func (m *MessageBuilder) Execute() (*table.LSTable, error){
 	otid := int(methods.GenerateEpochId())
 	if m.payload.Text != nil {
 		tskm.AddNewTask(&socket.SendMessageTask{
-			ThreadId: m.payload.ThreadId,
-			Otid: strconv.Itoa(otid),
-			Source: m.payload.Source,
-			SyncGroup: m.payload.SyncGroup,
-			ReplyMetaData: m.payload.ReplyMetaData,
-			Text: m.payload.Text,
-			InitiatingSource: m.payload.InitiatingSource,
+			ThreadId:          m.payload.ThreadId,
+			Otid:              strconv.Itoa(otid),
+			Source:            m.payload.Source,
+			SyncGroup:         m.payload.SyncGroup,
+			ReplyMetaData:     m.payload.ReplyMetaData,
+			Text:              m.payload.Text,
+			InitiatingSource:  m.payload.InitiatingSource,
 			SkipUrlPreviewGen: m.payload.SkipUrlPreviewGen,
-			TextHasLinks: m.payload.TextHasLinks,
-			SendType: table.TEXT,
-			MultiTabEnv: 0,
+			TextHasLinks:      m.payload.TextHasLinks,
+			SendType:          table.TEXT,
+			MultiTabEnv:       0,
 		})
 	}
 
@@ -153,12 +152,12 @@ func (m *MessageBuilder) Execute() (*table.LSTable, error){
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		return nil, fmt.Errorf("failed to finalize payload for SendMessageTask: %e", err)
+		return nil, fmt.Errorf("failed to finalize payload for SendMessageTask: %v", err)
 	}
 
 	packetId, err := m.client.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make LS request for SendMessageTask: %e", err)
+		return nil, fmt.Errorf("failed to make LS request for SendMessageTask: %v", err)
 	}
 
 	resp := m.client.socket.responseHandler.waitForPubResponseDetails(packetId)
@@ -174,24 +173,24 @@ func (m *MessageBuilder) addAttachmentTasks(tskm *TaskManager) {
 	if m.client.platform == types.Facebook {
 		otid := int(methods.GenerateEpochId())
 		tskm.AddNewTask(&socket.SendMessageTask{
-			ThreadId: m.payload.ThreadId,
-			Otid: strconv.Itoa(otid+100),
-			Source: m.payload.Source,
-			SyncGroup: m.payload.SyncGroup,
-			ReplyMetaData: m.payload.ReplyMetaData,
-			SendType: table.MEDIA,
+			ThreadId:        m.payload.ThreadId,
+			Otid:            strconv.Itoa(otid + 100),
+			Source:          m.payload.Source,
+			SyncGroup:       m.payload.SyncGroup,
+			ReplyMetaData:   m.payload.ReplyMetaData,
+			SendType:        table.MEDIA,
 			AttachmentFBIds: m.payload.AttachmentFBIds,
 		})
 	} else {
 		for _, mediaId := range m.payload.AttachmentFBIds {
 			otid := int(methods.GenerateEpochId())
 			tskm.AddNewTask(&socket.SendMessageTask{
-				ThreadId: m.payload.ThreadId,
-				Otid: strconv.Itoa(otid+100),
-				Source: m.payload.Source,
-				SyncGroup: m.payload.SyncGroup,
-				ReplyMetaData: m.payload.ReplyMetaData,
-				SendType: table.MEDIA,
+				ThreadId:        m.payload.ThreadId,
+				Otid:            strconv.Itoa(otid + 100),
+				Source:          m.payload.Source,
+				SyncGroup:       m.payload.SyncGroup,
+				ReplyMetaData:   m.payload.ReplyMetaData,
+				SendType:        table.MEDIA,
 				AttachmentFBIds: []int64{mediaId},
 			})
 		}

@@ -6,12 +6,12 @@ import (
 )
 
 type FacebookCookies struct {
-	Datr 	  string `cookie:"datr,omitempty" json:"datr,omitempty"`
-	Sb   	  string `cookie:"sb,omitempty" json:"sb,omitempty"`
+	Datr      string `cookie:"datr,omitempty" json:"datr,omitempty"`
+	Sb        string `cookie:"sb,omitempty" json:"sb,omitempty"`
 	AccountId string `cookie:"c_user,omitempty" json:"c_user,omitempty"`
-	Xs 		  string `cookie:"xs,omitempty" json:"xs,omitempty"`
-	Fr 		  string `cookie:"fr,omitempty" json:"fr,omitempty"`
-	Wd 		  string `cookie:"wd,omitempty" json:"wd,omitempty"`
+	Xs        string `cookie:"xs,omitempty" json:"xs,omitempty"`
+	Fr        string `cookie:"fr,omitempty" json:"fr,omitempty"`
+	Wd        string `cookie:"wd,omitempty" json:"wd,omitempty"`
 	Presence  string `cookie:"presence,omitempty" json:"presence,omitempty"`
 }
 

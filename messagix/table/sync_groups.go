@@ -1,120 +1,153 @@
 package table
 
 type LSTruncateTablesForSyncGroup struct {
-	SyncGroup int64 `index:"0"`
+	SyncGroup int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSTruncateThreadRangeTablesForSyncGroup struct {
-	ParentThreadKey int64 `index:"0"`
+	ParentThreadKey int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSUpsertSyncGroupThreadsRange struct {
-	SyncGroup int64 `index:"0"`
-	ParentThreadKey int64 `index:"1"`
-	MinLastActivityTimestampMs int64 `index:"2"`
-	HasMoreBefore bool `index:"3"`
-	IsLoadingBefore bool `index:"4"`
-	MinThreadKey int64 `index:"5"`
+	SyncGroup                  int64 `index:"0" json:",omitempty"`
+	ParentThreadKey            int64 `index:"1" json:",omitempty"`
+	MinLastActivityTimestampMs int64 `index:"2" json:",omitempty"`
+	HasMoreBefore              bool  `index:"3" json:",omitempty"`
+	IsLoadingBefore            bool  `index:"4" json:",omitempty"`
+	MinThreadKey               int64 `index:"5" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSMciTraceLog struct {
-	SomeInt0 int64 `index:"0"`
-	MCITraceUnsampledEventTraceId string `index:"1"`
-	Unknown2 interface{} `index:"2"`
-	SomeInt3 int64 `index:"3"`
-	Unknown4 interface{} `index:"4"`
-	DatascriptExecute string `index:"5"`
-	SomeInt6 int64 `index:"6"`
+	SomeInt0                      int64       `index:"0" json:",omitempty"`
+	MCITraceUnsampledEventTraceId string      `index:"1" json:",omitempty"`
+	Unknown2                      interface{} `index:"2" json:",omitempty"`
+	SomeInt3                      int64       `index:"3" json:",omitempty"`
+	Unknown4                      interface{} `index:"4" json:",omitempty"`
+	DatascriptExecute             string      `index:"5" json:",omitempty"`
+	SomeInt6                      int64       `index:"6" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSExecuteFirstBlockForSyncTransaction struct {
-	DatabaseId int64 `index:"0"`
-	EpochId int64 `index:"1"`
-    CurrentCursor string `index:"2"`
-	NextCursor string `index:"3"`
-	SyncStatus int64 `index:"4"`
-	SendSyncParams bool `index:"5"`
-	MinTimeToSyncTimestampMs int64 `index:"6"` // fix this, use conditionIndex
-	CanIgnoreTimestamp bool `index:"7"`
-	SyncChannel int64 `index:"8"`
+	DatabaseId               int64  `index:"0" json:",omitempty"`
+	EpochId                  int64  `index:"1" json:",omitempty"`
+	CurrentCursor            string `index:"2" json:",omitempty"`
+	NextCursor               string `index:"3" json:",omitempty"`
+	SyncStatus               int64  `index:"4" json:",omitempty"`
+	SendSyncParams           bool   `index:"5" json:",omitempty"`
+	MinTimeToSyncTimestampMs int64  `index:"6" json:",omitempty"` // fix this, use conditionIndex
+	CanIgnoreTimestamp       bool   `index:"7" json:",omitempty"`
+	SyncChannel              int64  `index:"8" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSExecuteFinallyBlockForSyncTransaction struct {
-	ShouldFlush bool `index:"0"` // shouldFlush ? should sync ?
-	SyncDatabaseId int64 `index:"1"`
-	EpochId int64 `index:"2"`
+	ShouldFlush    bool  `index:"0" json:",omitempty"` // shouldFlush ? should sync ?
+	SyncDatabaseId int64 `index:"1" json:",omitempty"`
+	EpochId        int64 `index:"2" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSSetHMPSStatus struct {
-	AccountId int64 `index:"0"`
-	Unknown1 int64 `index:"1"`
-	Timestamp int64 `index:"2"`
+	AccountId int64 `index:"0" json:",omitempty"`
+	Unknown1  int64 `index:"1" json:",omitempty"`
+	Timestamp int64 `index:"2" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSUpsertSequenceId struct {
-	LastAppliedMailboxSequenceId int64 `index:"0"`
+	LastAppliedMailboxSequenceId int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSSetRegionHint struct {
-	Unknown0 int64 `index:"0"`
-	RegionHint string `index:"1"`
+	Unknown0   int64  `index:"0" json:",omitempty"`
+	RegionHint string `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSUpsertGradientColor struct {
-	ThemeFbid int64 `index:"0"`
-	GradientIndex int64 `index:"1"`
-	Color int64 `index:"2"`
-	Type int64 `index:"3"`
+	ThemeFbid     int64 `index:"0" json:",omitempty"`
+	GradientIndex int64 `index:"1" json:",omitempty"`
+	Color         int64 `index:"2" json:",omitempty"`
+	Type          int64 `index:"3" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSUpsertTheme struct {
-    Fbid int64 `index:"0"`
-    NormalThemeId int64 `index:"0"`
-    ThemeIdx int64 `index:"1"`
-    FallbackColor int64 `index:"2"`
-    ReverseGradiantsForRadial bool `index:"3"`
-    AccessibilityLabel string `index:"4"`
-    IconUrl string `index:"5"`
-    IconUrlFallback string `index:"6"`
-    BackgroundUrl string `index:"8"`
-    IsDeprecated bool `index:"11"`
-    AppColorMode int64 `index:"13"`
-    TitlebarBackgroundColor int64 `index:"14"`
-    TitlebarButtonTintColor int64 `index:"15"`
-    TitlebarTextColor int64 `index:"16"`
-    ComposerTintColor int64 `index:"17"`
-    ComposerUnselectedTintColor int64 `index:"18"`
-    ComposerInputTextPlaceholderColor int64 `index:"19"`
-    ComposerInputBackgroundColor int64 `index:"20"`
-    ComposerInputBorderColor int64 `index:"21"`
-    ComposerInputBorderWidth int64 `index:"22"`
-    ComposerBackgroundColor int64 `index:"23"`
-    MessageTextColor int64 `index:"24"`
-    MessageBorderColor int64 `index:"25"`
-    MessageBorderWidth int64 `index:"26"`
-    IncomingMessageTextColor int64 `index:"27"`
-    IncomingMessageBorderColor int64 `index:"28"`
-    IncomingMessageBorderWidth int64 `index:"29"`
-    DeliveryReceiptColor int64 `index:"30"`
-    TertiaryTextColor int64 `index:"31"`
-    PrimaryButtonBackgroundColor int64 `index:"32"`
-    HotLikeColor int64 `index:"33"`
-    SecondaryTextColor int64 `index:"34"`
-    QuotedIncomingMessageBubbleColor int64 `index:"35"`
-    CornerRadius int64 `index:"36"`
-    BlurredComposerBackgroundColor int64 `index:"37"`
-    ComposerSecondaryButtonColor int64 `index:"38"`
-    ComposerPlaceholderTextColor int64 `index:"39"`
+	Fbid                              int64  `index:"0" json:",omitempty"`
+	NormalThemeId                     int64  `index:"0" json:",omitempty"`
+	ThemeIdx                          int64  `index:"1" json:",omitempty"`
+	FallbackColor                     int64  `index:"2" json:",omitempty"`
+	ReverseGradiantsForRadial         bool   `index:"3" json:",omitempty"`
+	AccessibilityLabel                string `index:"4" json:",omitempty"`
+	IconUrl                           string `index:"5" json:",omitempty"`
+	IconUrlFallback                   string `index:"6" json:",omitempty"`
+	BackgroundUrl                     string `index:"8" json:",omitempty"`
+	IsDeprecated                      bool   `index:"11" json:",omitempty"`
+	AppColorMode                      int64  `index:"13" json:",omitempty"`
+	TitlebarBackgroundColor           int64  `index:"14" json:",omitempty"`
+	TitlebarButtonTintColor           int64  `index:"15" json:",omitempty"`
+	TitlebarTextColor                 int64  `index:"16" json:",omitempty"`
+	ComposerTintColor                 int64  `index:"17" json:",omitempty"`
+	ComposerUnselectedTintColor       int64  `index:"18" json:",omitempty"`
+	ComposerInputTextPlaceholderColor int64  `index:"19" json:",omitempty"`
+	ComposerInputBackgroundColor      int64  `index:"20" json:",omitempty"`
+	ComposerInputBorderColor          int64  `index:"21" json:",omitempty"`
+	ComposerInputBorderWidth          int64  `index:"22" json:",omitempty"`
+	ComposerBackgroundColor           int64  `index:"23" json:",omitempty"`
+	MessageTextColor                  int64  `index:"24" json:",omitempty"`
+	MessageBorderColor                int64  `index:"25" json:",omitempty"`
+	MessageBorderWidth                int64  `index:"26" json:",omitempty"`
+	IncomingMessageTextColor          int64  `index:"27" json:",omitempty"`
+	IncomingMessageBorderColor        int64  `index:"28" json:",omitempty"`
+	IncomingMessageBorderWidth        int64  `index:"29" json:",omitempty"`
+	DeliveryReceiptColor              int64  `index:"30" json:",omitempty"`
+	TertiaryTextColor                 int64  `index:"31" json:",omitempty"`
+	PrimaryButtonBackgroundColor      int64  `index:"32" json:",omitempty"`
+	HotLikeColor                      int64  `index:"33" json:",omitempty"`
+	SecondaryTextColor                int64  `index:"34" json:",omitempty"`
+	QuotedIncomingMessageBubbleColor  int64  `index:"35" json:",omitempty"`
+	CornerRadius                      int64  `index:"36" json:",omitempty"`
+	BlurredComposerBackgroundColor    int64  `index:"37" json:",omitempty"`
+	ComposerSecondaryButtonColor      int64  `index:"38" json:",omitempty"`
+	ComposerPlaceholderTextColor      int64  `index:"39" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSAppendDataTraceAddon struct {
-    TraceId string `index:"0"`
-    CheckPointId int64 `index:"1"`
-    SyncChannel int64 `index:"2"`
-    ErrorMessage string `index:"3"`
-    Tags string `index:"4"`
+	TraceId      string `index:"0" json:",omitempty"`
+	CheckPointId int64  `index:"1" json:",omitempty"`
+	SyncChannel  int64  `index:"2" json:",omitempty"`
+	ErrorMessage string `index:"3" json:",omitempty"`
+	Tags         string `index:"4" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSTruncatePresenceDatabase struct {
-    ShouldTruncate bool `index:"0"`
+	ShouldTruncate bool `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSUpdateLastSyncCompletedTimestampMsToNow struct {
+	Unknown0 int64 `index:"0" json:",omitempty"`
+	Unknown1 int64 `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }

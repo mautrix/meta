@@ -422,6 +422,6 @@ type LSPlatformGraphQLLightspeedRequestForIGDQuery struct {
 		} `json:"lightspeed_web_request_for_igd,omitempty"`
 	} `json:"data,omitempty"`
 	Extensions struct {
-		IsFinal   bool `json:"is_final,omitempty"`
+		IsFinal bool `json:"is_final,omitempty"`
 	} `json:"extensions,omitempty"`
 }

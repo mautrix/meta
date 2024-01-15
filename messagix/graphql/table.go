@@ -1,21 +1,21 @@
 package graphql
 
 type GraphQLTable struct {
-	CometActorGatewayHandlerQuery []CometActorGatewayHandlerQuery
-	CometAppNavigationProfileSwitcherConfigQuery []CometAppNavigationProfileSwitcherConfigQuery
+	CometActorGatewayHandlerQuery                         []CometActorGatewayHandlerQuery
+	CometAppNavigationProfileSwitcherConfigQuery          []CometAppNavigationProfileSwitcherConfigQuery
 	CometAppNavigationTargetedTabBarContentInnerImplQuery []CometAppNavigationTargetedTabBarContentInnerImplQuery
-	CometLogoutHandlerQuery []CometLogoutHandlerQuery
-	CometNotificationsBadgeCountQuery []CometNotificationsBadgeCountQuery
-	CometQuickPromotionInterstitialQuery []CometQuickPromotionInterstitialQuery
-	CometSearchBootstrapKeywordsDataSourceQuery []CometSearchBootstrapKeywordsDataSourceQuery
-	CometSearchRecentDataSourceQuery []CometSearchRecentDataSourceQuery
-	CometSettingsBadgeQuery []CometSettingsBadgeQuery
-	CometSettingsDropdownListQuery []CometSettingsDropdownListQuery
-	CometSettingsDropdownTriggerQuery []CometSettingsDropdownTriggerQuery
-	MWChatBadgeCountQuery []MWChatBadgeCountQuery
-	MWChatVideoAutoplaySettingContextQuery []MWChatVideoAutoplaySettingContextQuery
-	MWLSInboxQuery []MWLSInboxQuery
-	PresenceStatusProviderSubscriptionComponentQuery []PresenceStatusProviderSubscriptionComponentQuery
+	CometLogoutHandlerQuery                               []CometLogoutHandlerQuery
+	CometNotificationsBadgeCountQuery                     []CometNotificationsBadgeCountQuery
+	CometQuickPromotionInterstitialQuery                  []CometQuickPromotionInterstitialQuery
+	CometSearchBootstrapKeywordsDataSourceQuery           []CometSearchBootstrapKeywordsDataSourceQuery
+	CometSearchRecentDataSourceQuery                      []CometSearchRecentDataSourceQuery
+	CometSettingsBadgeQuery                               []CometSettingsBadgeQuery
+	CometSettingsDropdownListQuery                        []CometSettingsDropdownListQuery
+	CometSettingsDropdownTriggerQuery                     []CometSettingsDropdownTriggerQuery
+	MWChatBadgeCountQuery                                 []MWChatBadgeCountQuery
+	MWChatVideoAutoplaySettingContextQuery                []MWChatVideoAutoplaySettingContextQuery
+	MWLSInboxQuery                                        []MWLSInboxQuery
+	PresenceStatusProviderSubscriptionComponentQuery      []PresenceStatusProviderSubscriptionComponentQuery
 }
 
 type GraphQLPreloader struct {

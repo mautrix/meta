@@ -1,12 +1,12 @@
 package responses
 
 /*
-	Reel info is mapped by the reel id
+Reel info is mapped by the reel id
 */
 type ReelInfoResponse struct {
-	Reels map[string]ReelInfo `json:"reels,omitempty"`
-	ReelsMedia []ReelInfo `json:"reels_media,omitempty"`
-	Status string `json:"status,omitempty"`
+	Reels      map[string]ReelInfo `json:"reels,omitempty"`
+	ReelsMedia []ReelInfo          `json:"reels_media,omitempty"`
+	Status     string              `json:"status,omitempty"`
 }
 
 type ReelInfo struct {
@@ -24,7 +24,7 @@ type ReelInfo struct {
 	IsCtaStickerAvailable       any    `json:"is_cta_sticker_available,omitempty"`
 	AppStickerInfo              any    `json:"app_sticker_info,omitempty"`
 	ShouldTreatLinkStickerAsCta any    `json:"should_treat_link_sticker_as_cta,omitempty"`
-	CoverMedia struct {
+	CoverMedia                  struct {
 		CropRect            []float64 `json:"crop_rect,omitempty"`
 		CroppedImageVersion struct {
 			Height       int    `json:"height,omitempty"`
@@ -34,9 +34,9 @@ type ReelInfo struct {
 		} `json:"cropped_image_version,omitempty"`
 		FullImageVersion any    `json:"full_image_version,omitempty"`
 		MediaID          string `json:"media_id,omitempty"`
-		UploadID         string    `json:"upload_id,omitempty"`
+		UploadID         string `json:"upload_id,omitempty"`
 	} `json:"cover_media,omitempty"`
-	User                        struct {
+	User struct {
 		Pk                       string `json:"pk,omitempty"`
 		PkID                     string `json:"pk_id,omitempty"`
 		FullName                 string `json:"full_name,omitempty"`
@@ -58,37 +58,37 @@ type ReelInfo struct {
 		ProfilePicURL string `json:"profile_pic_url,omitempty"`
 	} `json:"user,omitempty"`
 	Items []struct {
-		TakenAt                             int    `json:"taken_at,omitempty"`
-		Pk                                  string `json:"pk,omitempty"`
-		ID                                  string `json:"id,omitempty"`
-		CaptionPosition                     float64    `json:"caption_position,omitempty"`
-		IsReelMedia                         bool   `json:"is_reel_media,omitempty"`
-		IsTerminalVideoSegment              bool   `json:"is_terminal_video_segment,omitempty"`
-		DeviceTimestamp                     int64  `json:"device_timestamp,omitempty"`
-		ClientCacheKey                      string `json:"client_cache_key,omitempty"`
-		FilterType                          int    `json:"filter_type,omitempty"`
-		CaptionIsEdited                     bool   `json:"caption_is_edited,omitempty"`
-		LikeAndViewCountsDisabled           bool   `json:"like_and_view_counts_disabled,omitempty"`
-		StrongID                            string `json:"strong_id__,omitempty"`
-		IsReshareOfTextPostAppMediaInIg     bool   `json:"is_reshare_of_text_post_app_media_in_ig,omitempty"`
-		IsPostLiveClipsMedia                bool   `json:"is_post_live_clips_media,omitempty"`
-		DeletedReason                       int    `json:"deleted_reason,omitempty"`
-		IntegrityReviewDecision             string `json:"integrity_review_decision,omitempty"`
-		HasSharedToFb                       int    `json:"has_shared_to_fb,omitempty"`
-		ExpiringAt                          int    `json:"expiring_at,omitempty"`
-		IsUnifiedVideo                      bool   `json:"is_unified_video,omitempty"`
-		ShouldRequestAds                    bool   `json:"should_request_ads,omitempty"`
-		IsVisualReplyCommenterNoticeEnabled bool   `json:"is_visual_reply_commenter_notice_enabled,omitempty"`
-		CommercialityStatus                 string `json:"commerciality_status,omitempty"`
-		ExploreHideComments                 bool   `json:"explore_hide_comments,omitempty"`
-		ShopRoutingUserID                   any    `json:"shop_routing_user_id,omitempty"`
-		CanSeeInsightsAsBrand               bool   `json:"can_see_insights_as_brand,omitempty"`
-		IsOrganicProductTaggingEligible     bool   `json:"is_organic_product_tagging_eligible,omitempty"`
-		Likers                              []any  `json:"likers,omitempty"`
-		MediaType                           int    `json:"media_type,omitempty"`
-		Code                                string `json:"code,omitempty"`
-		Caption                             any    `json:"caption,omitempty"`
-		ClipsTabPinnedUserIds               []any  `json:"clips_tab_pinned_user_ids,omitempty"`
+		TakenAt                             int     `json:"taken_at,omitempty"`
+		Pk                                  string  `json:"pk,omitempty"`
+		ID                                  string  `json:"id,omitempty"`
+		CaptionPosition                     float64 `json:"caption_position,omitempty"`
+		IsReelMedia                         bool    `json:"is_reel_media,omitempty"`
+		IsTerminalVideoSegment              bool    `json:"is_terminal_video_segment,omitempty"`
+		DeviceTimestamp                     int64   `json:"device_timestamp,omitempty"`
+		ClientCacheKey                      string  `json:"client_cache_key,omitempty"`
+		FilterType                          int     `json:"filter_type,omitempty"`
+		CaptionIsEdited                     bool    `json:"caption_is_edited,omitempty"`
+		LikeAndViewCountsDisabled           bool    `json:"like_and_view_counts_disabled,omitempty"`
+		StrongID                            string  `json:"strong_id__,omitempty"`
+		IsReshareOfTextPostAppMediaInIg     bool    `json:"is_reshare_of_text_post_app_media_in_ig,omitempty"`
+		IsPostLiveClipsMedia                bool    `json:"is_post_live_clips_media,omitempty"`
+		DeletedReason                       int     `json:"deleted_reason,omitempty"`
+		IntegrityReviewDecision             string  `json:"integrity_review_decision,omitempty"`
+		HasSharedToFb                       int     `json:"has_shared_to_fb,omitempty"`
+		ExpiringAt                          int     `json:"expiring_at,omitempty"`
+		IsUnifiedVideo                      bool    `json:"is_unified_video,omitempty"`
+		ShouldRequestAds                    bool    `json:"should_request_ads,omitempty"`
+		IsVisualReplyCommenterNoticeEnabled bool    `json:"is_visual_reply_commenter_notice_enabled,omitempty"`
+		CommercialityStatus                 string  `json:"commerciality_status,omitempty"`
+		ExploreHideComments                 bool    `json:"explore_hide_comments,omitempty"`
+		ShopRoutingUserID                   any     `json:"shop_routing_user_id,omitempty"`
+		CanSeeInsightsAsBrand               bool    `json:"can_see_insights_as_brand,omitempty"`
+		IsOrganicProductTaggingEligible     bool    `json:"is_organic_product_tagging_eligible,omitempty"`
+		Likers                              []any   `json:"likers,omitempty"`
+		MediaType                           int     `json:"media_type,omitempty"`
+		Code                                string  `json:"code,omitempty"`
+		Caption                             any     `json:"caption,omitempty"`
+		ClipsTabPinnedUserIds               []any   `json:"clips_tab_pinned_user_ids,omitempty"`
 		CommentInformTreatment              struct {
 			ShouldHaveInformTreatment bool   `json:"should_have_inform_treatment,omitempty"`
 			Text                      string `json:"text,omitempty"`
@@ -113,9 +113,9 @@ type ReelInfo struct {
 				Title  string `json:"title,omitempty"`
 			} `json:"added_to,omitempty"`
 		} `json:"highlights_info,omitempty"`
-		ProductSuggestions               []any  `json:"product_suggestions,omitempty"`
-		AttributionContentURL            string `json:"attribution_content_url,omitempty"`
-		ImageVersions2                   struct {
+		ProductSuggestions    []any  `json:"product_suggestions,omitempty"`
+		AttributionContentURL string `json:"attribution_content_url,omitempty"`
+		ImageVersions2        struct {
 			Candidates []struct {
 				Width  int    `json:"width,omitempty"`
 				Height int    `json:"height,omitempty"`
@@ -151,16 +151,16 @@ type ReelInfo struct {
 		StoryFeedMedia              []struct {
 			X                float64 `json:"x,omitempty"`
 			Y                float64 `json:"y,omitempty"`
-			Z                float64     `json:"z,omitempty"`
+			Z                float64 `json:"z,omitempty"`
 			Width            float64 `json:"width,omitempty"`
 			Height           float64 `json:"height,omitempty"`
-			Rotation         float64     `json:"rotation,omitempty"`
+			Rotation         float64 `json:"rotation,omitempty"`
 			IsPinned         int     `json:"is_pinned,omitempty"`
 			IsHidden         int     `json:"is_hidden,omitempty"`
 			IsSticker        int     `json:"is_sticker,omitempty"`
 			IsFbSticker      int     `json:"is_fb_sticker,omitempty"`
-			StartTimeMs      float64     `json:"start_time_ms,omitempty"`
-			EndTimeMs        float64     `json:"end_time_ms,omitempty"`
+			StartTimeMs      float64 `json:"start_time_ms,omitempty"`
+			EndTimeMs        float64 `json:"end_time_ms,omitempty"`
 			MediaID          string  `json:"media_id,omitempty"`
 			ProductType      string  `json:"product_type,omitempty"`
 			MediaCode        string  `json:"media_code,omitempty"`

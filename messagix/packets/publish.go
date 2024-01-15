@@ -7,8 +7,8 @@ import "fmt"
 // 0010
 type PublishPacket struct {
 	packetType uint8 // packet type. (PUBLISH)
-	DUP uint8 // duplicate delivery flag (bit 3) - this is 1 or 0, 1 = is re-delivery/duplicate of message
-	QOSLevel QoS // quality of service level (bit 2 & 1)
+	DUP        uint8 // duplicate delivery flag (bit 3) - this is 1 or 0, 1 = is re-delivery/duplicate of message
+	QOSLevel   QoS   // quality of service level (bit 2 & 1)
 	RetainFlag uint8 // retain flag (bit 0) - if set to 1, the message should be retained by the broker and delivered to future subscribers with a matching subscription
 }
 
@@ -42,7 +42,7 @@ func (p *PublishPacket) Decompress(packetByte byte) error {
 	}
 
 	p.QOSLevel = QoS((packetByte & 0x06) >> 1)
-	
+
 	if (packetByte & 0x01) != 0 {
 		p.RetainFlag = 1
 	} else {

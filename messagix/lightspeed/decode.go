@@ -11,8 +11,8 @@ import (
 )
 
 type LightSpeedDecoder struct {
-	Table interface{} // struct that contains pointers to all the dependencies/stores
-	Dependencies map[string]string
+	Table               interface{} // struct that contains pointers to all the dependencies/stores
+	Dependencies        map[string]string
 	StatementReferences map[int]interface{}
 }
 
@@ -21,8 +21,8 @@ func NewLightSpeedDecoder(dependencies map[string]string, table interface{}) *Li
 		return nil
 	}
 	return &LightSpeedDecoder{
-		Table:              table,
-		Dependencies:       dependencies,
+		Table:               table,
+		Dependencies:        dependencies,
 		StatementReferences: make(map[int]interface{}),
 	}
 }
@@ -33,7 +33,7 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	if !ok {
 		return data
 	}
-	
+
 	stepType := StepType(int(s[0].(float64)))
 	stepData := s[1:]
 	switch stepType {
@@ -48,7 +48,7 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 			log.Println("[LOAD] failed to store key to float64")
 			return 0
 		}
-		
+
 		shouldLoad, ok := ls.StatementReferences[int(key)]
 		if !ok {
 			log.Println("[LOAD] failed to fetch statement reference for key:", key)
@@ -133,16 +133,16 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []interface{}) {
 	depReference, ok := ls.Dependencies[referenceName]
 	if !ok {
-		log.Println("Skipping dependency with reference name:",referenceName, data)
+		log.Println("Skipping dependency with reference name:", referenceName, data)
 		return
 	}
 
 	reflectedMs := reflect.ValueOf(ls.Table).Elem()
 	//log.Println(depReference)
 	depField := reflectedMs.FieldByName(depReference)
-	
+
 	if !depField.IsValid() {
-		log.Println("Skipping dependency with reference name:",referenceName, data)
+		log.Println("Skipping dependency with reference name:", referenceName, data)
 		return
 	}
 
@@ -150,8 +150,15 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 
 	depFieldsType := depField.Type().Elem()
 	newDepInstance := reflect.New(depFieldsType).Elem()
+	decodedData := make([]any, len(data))
+	for i, d := range data {
+		decodedData[i] = ls.Decode(d)
+	}
 	for i := 0; i < depFieldsType.NumField(); i++ {
 		fieldInfo := depFieldsType.Field(i)
+		if fieldInfo.Name == "Unrecognized" {
+			continue
+		}
 		var index int
 		conditionField := fieldInfo.Tag.Get("conditionField")
 		if conditionField != "" {
@@ -165,14 +172,14 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 		} else {
 			index, _ = strconv.Atoi(fieldInfo.Tag.Get("index"))
 		}
-		
-		if index > len(data)-1 {
+
+		if index >= len(data) {
 			log.Println(fmt.Sprintf("breaking handleStoredProcedure loop because the defined struct exceeds the length of the lightspeed data slice: (index=%d, sliceLen=%d, field=%s, dependency=%s)", index, len(data)-1, fieldInfo.Name, depFieldsType.Name()))
 			break
 		}
 
 		kind := fieldInfo.Type.Kind()
-		val := ls.Decode(data[index])
+		val := decodedData[index]
 		if val == nil { // skip setting field, because the index in the array was [9] which is undefined.
 			continue
 		}
@@ -223,6 +230,21 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 		default:
 			log.Println("invalid kind:", kind, val, valType)
 			os.Exit(1)
+		}
+		decodedData[index] = nil
+	}
+	for i, item := range decodedData {
+		if item != nil {
+			unrec := newDepInstance.FieldByName("Unrecognized")
+			if unrec.IsValid() {
+				if unrec.IsNil() {
+					unrec.Set(reflect.MakeMap(reflect.TypeOf(make(map[int]any))))
+				}
+				unrecMap := unrec.Interface().(map[int]any)
+				unrecMap[i] = item
+			} else {
+				log.Printf("Found unknown non-nil field in dependency %v at index %d with value %T %+v", depFieldsType.Name(), i, item, item)
+			}
 		}
 	}
 	newSlice := reflect.Append(depField, newDepInstance)

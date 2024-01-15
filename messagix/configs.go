@@ -5,25 +5,25 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/0xzer/messagix/crypto"
-	"github.com/0xzer/messagix/methods"
-	"github.com/0xzer/messagix/socket"
-	"github.com/0xzer/messagix/table"
-	"github.com/0xzer/messagix/types"
+	"go.mau.fi/mautrix-meta/messagix/crypto"
+	"go.mau.fi/mautrix-meta/messagix/methods"
+	"go.mau.fi/mautrix-meta/messagix/socket"
+	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type Configs struct {
-	client *Client
-	needSync bool
+	client             *Client
+	needSync           bool
 	browserConfigTable *types.SchedulerJSDefineConfig
 	accountConfigTable *table.LSTable
-	LsdToken string
-	CometReq string
-	VersionId int64
-	Jazoest string
-	WebSessionId string
-	Bitmap *crypto.Bitmap
-	CsrBitmap *crypto.Bitmap
+	LsdToken           string
+	CometReq           string
+	VersionId          int64
+	Jazoest            string
+	WebSessionId       string
+	Bitmap             *crypto.Bitmap
+	CsrBitmap          *crypto.Bitmap
 }
 
 func (c *Configs) SetupConfigs() error {
@@ -50,12 +50,12 @@ func (c *Configs) SetupConfigs() error {
 				},
 			)
 			if err != nil {
-				return fmt.Errorf("failed to update sync params for databases: 1, 2, 95")
+				return fmt.Errorf("failed to update sync params for databases: 1, 2, 95: %w", err)
 			}
 
-			lsData, err := c.client.SyncManager.SyncDataGraphQL([]int64{1,2,95})
+			lsData, err := c.client.SyncManager.SyncDataGraphQL([]int64{1, 2, 95})
 			if err != nil {
-				return fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95")
+				return fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95: %w", err)
 			}
 
 			//c.client.Logger.Info().Any("lsData", lsData).Msg("Synced data through graphql query")
@@ -63,7 +63,7 @@ func (c *Configs) SetupConfigs() error {
 		} else {
 			err := c.client.SyncManager.SyncTransactions(c.accountConfigTable.LSExecuteFirstBlockForSyncTransaction)
 			if err != nil {
-				return fmt.Errorf("failed to sync transactions from js module data with syncManager: %e", err)
+				return fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
 			}
 			log.Println("hi")
 		}
@@ -78,7 +78,7 @@ func (c *Configs) SetupConfigs() error {
 		}
 		c.client.Logger.Info().Any("platform", c.client.platform).Msg("Configs loaded, but not yet logged in.")
 	}
-	
+
 	return nil
 }
 

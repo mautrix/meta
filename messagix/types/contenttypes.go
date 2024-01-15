@@ -1,6 +1,7 @@
 package types
 
 type ContentType string
+
 const (
 	NONE ContentType = ""
 	JSON ContentType = "application/json"

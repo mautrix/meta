@@ -47,7 +47,7 @@ type ProfileInfoResponse struct {
 				Edges []any `json:"edges"`
 			} `json:"edge_mutual_followed_by"`
 			EdgeOwnerToTimelineMedia EdgeOwnerToTimelineMedia `json:"edge_owner_to_timeline_media"`
-			EdgeSavedMedia struct {
+			EdgeSavedMedia           struct {
 				Count    int   `json:"count"`
 				Edges    []any `json:"edges"`
 				PageInfo struct {
@@ -104,104 +104,103 @@ type ProfileInfoResponse struct {
 	Status string `json:"status"`
 }
 
-
 type EdgeOwnerToTimelineMedia struct {
-		Count int `json:"count"`
-		Edges []struct {
-			Node struct {
-				Typename             string `json:"__typename"`
-				AccessibilityCaption string `json:"accessibility_caption"`
-				CoauthorProducers    []any  `json:"coauthor_producers"`
-				CommentsDisabled     bool   `json:"comments_disabled"`
-				Dimensions           struct {
-					Height int `json:"height"`
-					Width  int `json:"width"`
-				} `json:"dimensions"`
-				DisplayURL  string `json:"display_url"`
-				EdgeLikedBy struct {
-					Count int `json:"count"`
-				} `json:"edge_liked_by"`
-				EdgeMediaPreviewLike struct {
-					Count int `json:"count"`
-				} `json:"edge_media_preview_like"`
-				EdgeMediaToCaption struct {
-					Edges []struct {
-						Node struct {
-							Text string `json:"text"`
-						} `json:"node"`
-					} `json:"edges"`
-				} `json:"edge_media_to_caption"`
-				EdgeMediaToComment struct {
-					Count int `json:"count"`
-				} `json:"edge_media_to_comment"`
-				EdgeMediaToTaggedUser struct {
-					Edges []any `json:"edges"`
-				} `json:"edge_media_to_tagged_user"`
-				EdgeSidecarToChildren struct {
-					Edges []struct {
-						Node struct {
-							Typename             string `json:"__typename"`
-							AccessibilityCaption string `json:"accessibility_caption"`
-							Dimensions           struct {
-								Height int `json:"height"`
-								Width  int `json:"width"`
-							} `json:"dimensions"`
-							DisplayURL            string `json:"display_url"`
-							EdgeMediaToTaggedUser struct {
-								Edges []any `json:"edges"`
-							} `json:"edge_media_to_tagged_user"`
-							FactCheckInformation   any    `json:"fact_check_information"`
-							FactCheckOverallRating any    `json:"fact_check_overall_rating"`
-							GatingInfo             any    `json:"gating_info"`
-							HasUpcomingEvent       bool   `json:"has_upcoming_event"`
-							ID                     string `json:"id"`
-							IsVideo                bool   `json:"is_video"`
-							MediaOverlayInfo       any    `json:"media_overlay_info"`
-							MediaPreview           string `json:"media_preview"`
-							Owner                  struct {
-								ID       string `json:"id"`
-								Username string `json:"username"`
-							} `json:"owner"`
-							SharingFrictionInfo struct {
-								BloksAppURL               any  `json:"bloks_app_url"`
-								ShouldHaveSharingFriction bool `json:"should_have_sharing_friction"`
-							} `json:"sharing_friction_info"`
-							Shortcode string `json:"shortcode"`
-						} `json:"node"`
-					} `json:"edges"`
-				} `json:"edge_sidecar_to_children"`
-				FactCheckInformation   any    `json:"fact_check_information"`
-				FactCheckOverallRating any    `json:"fact_check_overall_rating"`
-				GatingInfo             any    `json:"gating_info"`
-				HasUpcomingEvent       bool   `json:"has_upcoming_event"`
-				ID                     string `json:"id"`
-				IsVideo                bool   `json:"is_video"`
-				Location               any    `json:"location"`
-				MediaOverlayInfo       any    `json:"media_overlay_info"`
-				MediaPreview           any    `json:"media_preview"`
-				NftAssetInfo           any    `json:"nft_asset_info"`
-				Owner                  struct {
-					ID       string `json:"id"`
-					Username string `json:"username"`
-				} `json:"owner"`
-				PinnedForUsers      []any `json:"pinned_for_users"`
-				SharingFrictionInfo struct {
-					BloksAppURL               any  `json:"bloks_app_url"`
-					ShouldHaveSharingFriction bool `json:"should_have_sharing_friction"`
-				} `json:"sharing_friction_info"`
-				Shortcode          string `json:"shortcode"`
-				TakenAtTimestamp   int    `json:"taken_at_timestamp"`
-				ThumbnailResources []struct {
-					ConfigHeight int    `json:"config_height"`
-					ConfigWidth  int    `json:"config_width"`
-					Src          string `json:"src"`
-				} `json:"thumbnail_resources"`
-				ThumbnailSrc     string `json:"thumbnail_src"`
-				ViewerCanReshare bool   `json:"viewer_can_reshare"`
-			} `json:"node,omitempty"`
-		} `json:"edges"`
-		PageInfo struct {
-			EndCursor   string `json:"end_cursor"`
-			HasNextPage bool   `json:"has_next_page"`
-		} `json:"page_info"`
-	}
+	Count int `json:"count"`
+	Edges []struct {
+		Node struct {
+			Typename             string `json:"__typename"`
+			AccessibilityCaption string `json:"accessibility_caption"`
+			CoauthorProducers    []any  `json:"coauthor_producers"`
+			CommentsDisabled     bool   `json:"comments_disabled"`
+			Dimensions           struct {
+				Height int `json:"height"`
+				Width  int `json:"width"`
+			} `json:"dimensions"`
+			DisplayURL  string `json:"display_url"`
+			EdgeLikedBy struct {
+				Count int `json:"count"`
+			} `json:"edge_liked_by"`
+			EdgeMediaPreviewLike struct {
+				Count int `json:"count"`
+			} `json:"edge_media_preview_like"`
+			EdgeMediaToCaption struct {
+				Edges []struct {
+					Node struct {
+						Text string `json:"text"`
+					} `json:"node"`
+				} `json:"edges"`
+			} `json:"edge_media_to_caption"`
+			EdgeMediaToComment struct {
+				Count int `json:"count"`
+			} `json:"edge_media_to_comment"`
+			EdgeMediaToTaggedUser struct {
+				Edges []any `json:"edges"`
+			} `json:"edge_media_to_tagged_user"`
+			EdgeSidecarToChildren struct {
+				Edges []struct {
+					Node struct {
+						Typename             string `json:"__typename"`
+						AccessibilityCaption string `json:"accessibility_caption"`
+						Dimensions           struct {
+							Height int `json:"height"`
+							Width  int `json:"width"`
+						} `json:"dimensions"`
+						DisplayURL            string `json:"display_url"`
+						EdgeMediaToTaggedUser struct {
+							Edges []any `json:"edges"`
+						} `json:"edge_media_to_tagged_user"`
+						FactCheckInformation   any    `json:"fact_check_information"`
+						FactCheckOverallRating any    `json:"fact_check_overall_rating"`
+						GatingInfo             any    `json:"gating_info"`
+						HasUpcomingEvent       bool   `json:"has_upcoming_event"`
+						ID                     string `json:"id"`
+						IsVideo                bool   `json:"is_video"`
+						MediaOverlayInfo       any    `json:"media_overlay_info"`
+						MediaPreview           string `json:"media_preview"`
+						Owner                  struct {
+							ID       string `json:"id"`
+							Username string `json:"username"`
+						} `json:"owner"`
+						SharingFrictionInfo struct {
+							BloksAppURL               any  `json:"bloks_app_url"`
+							ShouldHaveSharingFriction bool `json:"should_have_sharing_friction"`
+						} `json:"sharing_friction_info"`
+						Shortcode string `json:"shortcode"`
+					} `json:"node"`
+				} `json:"edges"`
+			} `json:"edge_sidecar_to_children"`
+			FactCheckInformation   any    `json:"fact_check_information"`
+			FactCheckOverallRating any    `json:"fact_check_overall_rating"`
+			GatingInfo             any    `json:"gating_info"`
+			HasUpcomingEvent       bool   `json:"has_upcoming_event"`
+			ID                     string `json:"id"`
+			IsVideo                bool   `json:"is_video"`
+			Location               any    `json:"location"`
+			MediaOverlayInfo       any    `json:"media_overlay_info"`
+			MediaPreview           any    `json:"media_preview"`
+			NftAssetInfo           any    `json:"nft_asset_info"`
+			Owner                  struct {
+				ID       string `json:"id"`
+				Username string `json:"username"`
+			} `json:"owner"`
+			PinnedForUsers      []any `json:"pinned_for_users"`
+			SharingFrictionInfo struct {
+				BloksAppURL               any  `json:"bloks_app_url"`
+				ShouldHaveSharingFriction bool `json:"should_have_sharing_friction"`
+			} `json:"sharing_friction_info"`
+			Shortcode          string `json:"shortcode"`
+			TakenAtTimestamp   int    `json:"taken_at_timestamp"`
+			ThumbnailResources []struct {
+				ConfigHeight int    `json:"config_height"`
+				ConfigWidth  int    `json:"config_width"`
+				Src          string `json:"src"`
+			} `json:"thumbnail_resources"`
+			ThumbnailSrc     string `json:"thumbnail_src"`
+			ViewerCanReshare bool   `json:"viewer_can_reshare"`
+		} `json:"node,omitempty"`
+	} `json:"edges"`
+	PageInfo struct {
+		EndCursor   string `json:"end_cursor"`
+		HasNextPage bool   `json:"has_next_page"`
+	} `json:"page_info"`
+}

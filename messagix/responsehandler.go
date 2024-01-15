@@ -13,10 +13,10 @@ const (
 )
 
 type ResponseHandler struct {
-	client *Client
+	client          *Client
 	requestChannels map[uint16]chan interface{}
-	packetChannels map[uint16]chan interface{}
-    packetTimeout time.Duration
+	packetChannels  map[uint16]chan interface{}
+	packetTimeout   time.Duration
 }
 
 func (p *ResponseHandler) SetPacketTimeout(d time.Duration) {
@@ -56,7 +56,6 @@ func (p *ResponseHandler) updateRequestChannel(packetId uint16, packetData inter
 	return fmt.Errorf("failed to update request channel for packetId %d", packetId)
 }
 
-
 func (p *ResponseHandler) waitForPubACKDetails(packetId uint16) *Event_PublishACK {
 	return p.waitForDetails(packetId, PacketChannel).(*Event_PublishACK)
 }
@@ -71,20 +70,19 @@ func (p *ResponseHandler) waitForPubResponseDetails(packetId uint16) *Event_Publ
 
 func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelType) interface{} {
 	ch, ok := p.getChannel(packetId, channelType)
-    if !ok {
-        return nil
+	if !ok {
+		return nil
 	}
 
-    select {
-		case response := <- ch:
-			p.deleteDetails(packetId, channelType)
-			return response
-		case <-time.After(p.packetTimeout):
-			p.deleteDetails(packetId, channelType)
-			return &Event_PublishResponse{}
-    }
+	select {
+	case response := <-ch:
+		p.deleteDetails(packetId, channelType)
+		return response
+	case <-time.After(p.packetTimeout):
+		p.deleteDetails(packetId, channelType)
+		return &Event_PublishResponse{}
+	}
 }
-
 
 func (p *ResponseHandler) deleteDetails(packetId uint16, channelType ChannelType) {
 	if ch, ok := p.getChannel(packetId, channelType); ok {
@@ -101,10 +99,10 @@ func (p *ResponseHandler) getChannel(packetId uint16, channelType ChannelType) (
 	var ch chan interface{}
 	var ok bool
 	switch channelType {
-		case RequestChannel:
-			ch, ok = p.requestChannels[packetId]
-		case PacketChannel:
-			ch, ok = p.packetChannels[packetId]
+	case RequestChannel:
+		ch, ok = p.requestChannels[packetId]
+	case PacketChannel:
+		ch, ok = p.packetChannels[packetId]
 	}
 	return ch, ok
 }

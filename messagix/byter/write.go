@@ -73,12 +73,12 @@ func (b *byter) WriteFromStruct(s interface{}) ([]byte, error) {
 				return nil, err
 			}
 		/*
-		case reflect.Struct:
-			sBytes, err := b.WriteFromStruct(field)
-			if err != nil {
-				return nil, err
-			}
-			b.Buff.Write(sBytes)
+			case reflect.Struct:
+				sBytes, err := b.WriteFromStruct(field)
+				if err != nil {
+					return nil, err
+				}
+				b.Buff.Write(sBytes)
 		*/
 		default:
 			log.Printf("Unsupported type %s for field %s\n", field.Type(), values.Type().Field(i).Name)
@@ -101,23 +101,23 @@ func (b *byter) writeString(s string, lengthType string, endianess string) error
 }
 
 func (b *byter) EncodeVLQ(value int) error {
-    var encodedByte byte
-    for {
-        encodedByte = byte(value & 0x7F)
-        value >>= 7
-        if value > 0 {
-            encodedByte |= 0x80
-        }
+	var encodedByte byte
+	for {
+		encodedByte = byte(value & 0x7F)
+		value >>= 7
+		if value > 0 {
+			encodedByte |= 0x80
+		}
 
-        err := b.Buff.WriteByte(encodedByte)
-        if err != nil {
-            return err
-        }
+		err := b.Buff.WriteByte(encodedByte)
+		if err != nil {
+			return err
+		}
 
-        if value == 0 {
-            break
-        }
-    }
+		if value == 0 {
+			break
+		}
+	}
 
-    return nil
+	return nil
 }

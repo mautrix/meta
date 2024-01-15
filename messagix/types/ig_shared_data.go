@@ -2,13 +2,13 @@ package types
 
 type XIGConfigData struct {
 	Config struct {
-		CsrfToken string `json:"csrf_token,omitempty"`
-		Viewer    ViewerData    `json:"viewer,omitempty"`
-		ViewerID  string    `json:"viewerId,omitempty"`
+		CsrfToken string     `json:"csrf_token,omitempty"`
+		Viewer    ViewerData `json:"viewer,omitempty"`
+		ViewerID  string     `json:"viewerId,omitempty"`
 	} `json:"config,omitempty"`
-	CountryCode  string `json:"country_code,omitempty"`
-	LanguageCode string `json:"language_code,omitempty"`
-	Locale       string `json:"locale,omitempty"`
+	CountryCode             string  `json:"country_code,omitempty"`
+	LanguageCode            string  `json:"language_code,omitempty"`
+	Locale                  string  `json:"locale,omitempty"`
 	Hostname                string  `json:"hostname,omitempty"`
 	IsWhitelistedCrawlBot   bool    `json:"is_whitelisted_crawl_bot,omitempty"`
 	ConnectionQualityRating string  `json:"connection_quality_rating,omitempty"`
@@ -16,10 +16,10 @@ type XIGConfigData struct {
 	Platform                string  `json:"platform,omitempty"`
 	Nonce                   string  `json:"nonce,omitempty"`
 	MidPct                  float64 `json:"mid_pct,omitempty"`
-	CacheSchemaVersion int `json:"cache_schema_version,omitempty"`
-	DeviceID          string `json:"device_id,omitempty"`
-	BrowserPushPubKey string `json:"browser_push_pub_key,omitempty"`
-	Encryption        struct {
+	CacheSchemaVersion      int     `json:"cache_schema_version,omitempty"`
+	DeviceID                string  `json:"device_id,omitempty"`
+	BrowserPushPubKey       string  `json:"browser_push_pub_key,omitempty"`
+	Encryption              struct {
 		KeyID     string `json:"key_id,omitempty"`
 		PublicKey string `json:"public_key,omitempty"`
 		Version   string `json:"version,omitempty"`
