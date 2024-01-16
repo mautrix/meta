@@ -1,11 +1,16 @@
 package table
 
-type ThreadInfo interface {
+type MinimalThreadInfo interface {
 	GetThreadKey() int64
-	GetThreadName() string
 	GetThreadType() ThreadType
+}
+
+type ThreadInfo interface {
+	MinimalThreadInfo
+	GetThreadName() string
 	GetLastReadWatermarkTimestampMs() int64
 	GetThreadDescription() string
+	GetThreadPictureUrl() string
 	GetFolderName() string
 }
 
@@ -115,27 +120,31 @@ type LSDeleteThenInsertThread struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
-func (lsdt LSDeleteThenInsertThread) GetThreadKey() int64 {
+func (lsdt *LSDeleteThenInsertThread) GetThreadKey() int64 {
 	return lsdt.ThreadKey
 }
 
-func (lsdt LSDeleteThenInsertThread) GetThreadName() string {
+func (lsdt *LSDeleteThenInsertThread) GetThreadName() string {
 	return lsdt.ThreadName
 }
 
-func (lsdt LSDeleteThenInsertThread) GetThreadType() ThreadType {
+func (lsdt *LSDeleteThenInsertThread) GetThreadPictureUrl() string {
+	return lsdt.ThreadPictureUrl
+}
+
+func (lsdt *LSDeleteThenInsertThread) GetThreadType() ThreadType {
 	return lsdt.ThreadType
 }
 
-func (lsdt LSDeleteThenInsertThread) GetLastReadWatermarkTimestampMs() int64 {
+func (lsdt *LSDeleteThenInsertThread) GetLastReadWatermarkTimestampMs() int64 {
 	return lsdt.LastReadWatermarkTimestampMs
 }
 
-func (lsdt LSDeleteThenInsertThread) GetThreadDescription() string {
+func (lsdt *LSDeleteThenInsertThread) GetThreadDescription() string {
 	return lsdt.ThreadDescription
 }
 
-func (lsdt LSDeleteThenInsertThread) GetFolderName() string {
+func (lsdt *LSDeleteThenInsertThread) GetFolderName() string {
 	return lsdt.FolderName
 }
 
@@ -223,27 +232,15 @@ type LSVerifyThreadExists struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
-func (lsui LSVerifyThreadExists) GetThreadKey() int64 {
+func (lsui *LSVerifyThreadExists) GetThreadKey() int64 {
 	return lsui.ThreadKey
 }
 
-func (lsui LSVerifyThreadExists) GetThreadName() string {
-	return ""
-}
-
-func (lsui LSVerifyThreadExists) GetThreadType() ThreadType {
+func (lsui *LSVerifyThreadExists) GetThreadType() ThreadType {
 	return lsui.ThreadType
 }
 
-func (lsui LSVerifyThreadExists) GetLastReadWatermarkTimestampMs() int64 {
-	return 0
-}
-
-func (lsui LSVerifyThreadExists) GetThreadDescription() string {
-	return ""
-}
-
-func (lsui LSVerifyThreadExists) GetFolderName() string {
+func (lsui *LSVerifyThreadExists) GetFolderName() string {
 	return lsui.FolderName
 }
 
@@ -253,30 +250,6 @@ type LSBumpThread struct {
 	ThreadKey                    int64            `index:"2" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
-}
-
-func (lsui LSBumpThread) GetThreadKey() int64 {
-	return lsui.ThreadKey
-}
-
-func (lsui LSBumpThread) GetThreadName() string {
-	return ""
-}
-
-func (lsui LSBumpThread) GetThreadType() ThreadType {
-	return 0
-}
-
-func (lsui LSBumpThread) GetLastReadWatermarkTimestampMs() int64 {
-	return lsui.LastReadWatermarkTimestampMs
-}
-
-func (lsui LSBumpThread) GetThreadDescription() string {
-	return ""
-}
-
-func (lsui LSBumpThread) GetFolderName() string {
-	return ""
 }
 
 // Idk which snippet is the correct, there's like 6 (snippet, snippetStringHash, snippetStringArgument1, snippetAttribution, snippetAttributionStringHash)
@@ -436,30 +409,6 @@ type LSMarkThreadRead struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
-func (lsui LSMarkThreadRead) GetThreadKey() int64 {
-	return lsui.ThreadKey
-}
-
-func (lsui LSMarkThreadRead) GetThreadName() string {
-	return ""
-}
-
-func (lsui LSMarkThreadRead) GetThreadType() ThreadType {
-	return 0
-}
-
-func (lsui LSMarkThreadRead) GetLastReadWatermarkTimestampMs() int64 {
-	return lsui.LastReadWatermarkTimestampMs
-}
-
-func (lsui LSMarkThreadRead) GetThreadDescription() string {
-	return ""
-}
-
-func (lsui LSMarkThreadRead) GetFolderName() string {
-	return ""
-}
-
 type LSUpdateParentFolderReadWatermark struct {
 	ThreadKey int64 `index:"0" json:",omitempty"`
 	// ShouldUpdate bool `index:"1" json:",omitempty"` // condition ?
@@ -558,27 +507,31 @@ type LSUpdateOrInsertThread struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
-func (lsui LSUpdateOrInsertThread) GetThreadKey() int64 {
+func (lsui *LSUpdateOrInsertThread) GetThreadKey() int64 {
 	return lsui.ThreadKey
 }
 
-func (lsui LSUpdateOrInsertThread) GetThreadName() string {
+func (lsui *LSUpdateOrInsertThread) GetThreadName() string {
 	return lsui.ThreadName
 }
 
-func (lsui LSUpdateOrInsertThread) GetThreadType() ThreadType {
+func (lsui *LSUpdateOrInsertThread) GetThreadPictureUrl() string {
+	return lsui.ThreadPictureUrl
+}
+
+func (lsui *LSUpdateOrInsertThread) GetThreadType() ThreadType {
 	return lsui.ThreadType
 }
 
-func (lsui LSUpdateOrInsertThread) GetLastReadWatermarkTimestampMs() int64 {
+func (lsui *LSUpdateOrInsertThread) GetLastReadWatermarkTimestampMs() int64 {
 	return lsui.LastReadWatermarkTimestampMs
 }
 
-func (lsui LSUpdateOrInsertThread) GetThreadDescription() string {
+func (lsui *LSUpdateOrInsertThread) GetThreadDescription() string {
 	return lsui.ThreadDescription
 }
 
-func (lsui LSUpdateOrInsertThread) GetFolderName() string {
+func (lsui *LSUpdateOrInsertThread) GetFolderName() string {
 	return lsui.FolderName
 }
 

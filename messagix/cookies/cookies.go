@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/mautrix-meta/messagix/types"
 	"golang.org/x/net/http/httpguts"
+
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type Cookies interface {
@@ -20,6 +21,8 @@ type Cookies interface {
 	GetViewports() (string, string)
 	IsLoggedIn() bool
 	ToJSON() ([]byte, error)
+	GetUserID() int64
+	AllCookiesPresent() bool
 }
 
 func UpdateValue(cookieStruct Cookies, name, val string) {

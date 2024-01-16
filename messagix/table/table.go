@@ -111,6 +111,10 @@ type LSTable struct {
 	LSUpdateThreadApprovalMode                    []LSUpdateThreadApprovalMode                    `json:",omitempty"`
 	LSRemoveAllRequestsFromAdminApprovalQueue     []LSRemoveAllRequestsFromAdminApprovalQueue     `json:",omitempty"`
 	LSUpdateLastSyncCompletedTimestampMsToNow     []LSUpdateLastSyncCompletedTimestampMsToNow     `json:",omitempty"`
+	LSDeleteMessage                               []LSDeleteMessage                               `json:",omitempty"`
+	LSHandleRepliesOnRemove                       []LSHandleRepliesOnRemove                       `json:",omitempty"`
+	LSRefreshLastActivityTimestamp                []LSRefreshLastActivityTimestamp                `json:",omitempty"`
+	LSSetPinnedMessage                            []LSSetPinnedMessage                            `json:",omitempty"`
 }
 
 var SPTable = map[string]string{
@@ -210,6 +214,10 @@ var SPTable = map[string]string{
 	"insertStickerAttachment":                     "LSInsertStickerAttachment",
 	"updateForRollCallMessageDeleted":             "LSUpdateForRollCallMessageDeleted",
 	"updateLastSyncCompletedTimestampMsToNow":     "LSUpdateLastSyncCompletedTimestampMsToNow",
+	"deleteMessage":                               "LSDeleteMessage",
+	"handleRepliesOnRemove":                       "LSHandleRepliesOnRemove",
+	"refreshLastActivityTimestamp":                "LSRefreshLastActivityTimestamp",
+	"setPinnedMessage":                            "LSSetPinnedMessage",
 }
 
 func SPToDepMap(sp []string) map[string]string {

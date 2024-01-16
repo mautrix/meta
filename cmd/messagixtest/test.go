@@ -100,7 +100,7 @@ func evHandler(evt any) {
 			Any("connectionCode", evtData.ConnectionCode.ToString()).
 			Any("isNewSession", evtData.IsNewSession).
 			Msg("Client is ready!")
-		_ = json.NewEncoder(exerrors.Must(os.OpenFile("table.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600))).Encode(evtData.Table)
+		_ = json.NewEncoder(exerrors.Must(os.OpenFile("table.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600))).Encode(evtData)
 
 		contacts, err := cli.Account.GetContacts(100)
 		if err != nil {

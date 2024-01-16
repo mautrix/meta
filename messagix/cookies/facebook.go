@@ -2,6 +2,7 @@ package cookies
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 )
 
@@ -33,4 +34,13 @@ func (fb *FacebookCookies) GetViewports() (string, string) {
 		return "2276", "1156"
 	}
 	return pxs[0], pxs[1]
+}
+
+func (fb *FacebookCookies) GetUserID() int64 {
+	userID, _ := strconv.ParseInt(fb.AccountId, 10, 64)
+	return userID
+}
+
+func (fb *FacebookCookies) AllCookiesPresent() bool {
+	return fb.Datr != "" && fb.Sb != "" && fb.AccountId != "" && fb.Xs != "" && fb.Fr != "" && fb.Wd != "" && fb.Presence != ""
 }

@@ -1,6 +1,9 @@
 # mautrix-meta
 A Matrix-Facebook Messenger and Instagram DM puppeting bridge.
 
+**This bridge is highly experimental and will have bugs.**
+The Facebook side has not been tested at all.
+
 ## Documentation
 All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
 

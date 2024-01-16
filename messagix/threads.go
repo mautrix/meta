@@ -3,7 +3,6 @@ package messagix
 import (
 	"fmt"
 	"log"
-	"strconv"
 
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
@@ -111,6 +110,11 @@ func (m *MessageBuilder) SetLastReadWatermarkTs(ts int64) *MessageBuilder {
 	return m
 }
 
+func (m *MessageBuilder) SetOfflineThreadingID(otid int64) *MessageBuilder {
+	m.payload.Otid = otid
+	return m
+}
+
 func (m *MessageBuilder) Execute() (*table.LSTable, error) {
 	tskm := m.client.NewTaskManager()
 
@@ -126,11 +130,14 @@ func (m *MessageBuilder) Execute() (*table.LSTable, error) {
 		m.payload.InitiatingSource = table.FACEBOOK_INBOX
 	}
 
-	otid := int(methods.GenerateEpochId())
+	if m.payload.Otid == 0 {
+		m.payload.Otid = methods.GenerateEpochId()
+	}
+
 	if m.payload.Text != nil {
 		tskm.AddNewTask(&socket.SendMessageTask{
 			ThreadId:          m.payload.ThreadId,
-			Otid:              strconv.Itoa(otid),
+			Otid:              m.payload.Otid,
 			Source:            m.payload.Source,
 			SyncGroup:         m.payload.SyncGroup,
 			ReplyMetaData:     m.payload.ReplyMetaData,
@@ -171,10 +178,10 @@ func (m *MessageBuilder) Execute() (*table.LSTable, error) {
 
 func (m *MessageBuilder) addAttachmentTasks(tskm *TaskManager) {
 	if m.client.platform == types.Facebook {
-		otid := int(methods.GenerateEpochId())
+		otid := methods.GenerateEpochId()
 		tskm.AddNewTask(&socket.SendMessageTask{
 			ThreadId:        m.payload.ThreadId,
-			Otid:            strconv.Itoa(otid + 100),
+			Otid:            otid + 100,
 			Source:          m.payload.Source,
 			SyncGroup:       m.payload.SyncGroup,
 			ReplyMetaData:   m.payload.ReplyMetaData,
@@ -183,10 +190,10 @@ func (m *MessageBuilder) addAttachmentTasks(tskm *TaskManager) {
 		})
 	} else {
 		for _, mediaId := range m.payload.AttachmentFBIds {
-			otid := int(methods.GenerateEpochId())
+			otid := methods.GenerateEpochId()
 			tskm.AddNewTask(&socket.SendMessageTask{
 				ThreadId:        m.payload.ThreadId,
-				Otid:            strconv.Itoa(otid + 100),
+				Otid:            otid + 100,
 				Source:          m.payload.Source,
 				SyncGroup:       m.payload.SyncGroup,
 				ReplyMetaData:   m.payload.ReplyMetaData,

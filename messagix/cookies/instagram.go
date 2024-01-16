@@ -1,6 +1,9 @@
 package cookies
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 type InstagramCookies struct {
 	SessionId  string `cookie:"sessionid,omitempty" json:"sessionid,omitempty"`
@@ -28,4 +31,13 @@ func (ig *InstagramCookies) IsLoggedIn() bool {
 
 func (ig *InstagramCookies) GetViewports() (string, string) {
 	return "2276", "1156"
+}
+
+func (ig *InstagramCookies) GetUserID() int64 {
+	userID, _ := strconv.ParseInt(ig.UserId, 10, 64)
+	return userID
+}
+
+func (ig *InstagramCookies) AllCookiesPresent() bool {
+	return ig.SessionId != "" && ig.CsrfToken != "" && ig.MachineId != "" && ig.IgDeviceId != "" && ig.Rur != "" && ig.UserId != "" && ig.ShbId != "" && ig.Shbts != ""
 }

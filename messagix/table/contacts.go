@@ -1,30 +1,45 @@
 package table
 
 type LSVerifyContactRowExists struct {
-	ContactId                 int64                     `index:"0" json:",omitempty"`
-	Unknown1                  int64                     `index:"1" json:",omitempty"`
-	ProfilePictureUrl         string                    `index:"2" json:",omitempty"`
-	Name                      string                    `index:"3" json:",omitempty"`
-	ContactType               int64                     `index:"4" json:",omitempty"`
-	ProfilePictureFallbackUrl string                    `index:"5" json:",omitempty"`
-	Unknown6                  int64                     `index:"6" json:",omitempty"`
-	Unknown7                  int64                     `index:"7" json:",omitempty"`
-	IsMemorialized            bool                      `index:"9" json:",omitempty"`
-	BlockedByViewerStatus     int64                     `index:"11" json:",omitempty"`
-	CanViewerMessage          bool                      `index:"12" json:",omitempty"`
-	AuthorityLevel            int64                     `index:"14" json:",omitempty"`
-	Capabilities              int64                     `index:"15" json:",omitempty"`
-	Capabilities2             int64                     `index:"16" json:",omitempty"`
-	Gender                    Gender                    `index:"18" json:",omitempty"`
-	ContactViewerRelationship ContactViewerRelationship `index:"19" json:",omitempty"`
-	SecondaryName             string                    `index:"20" json:",omitempty"`
+	ContactId                              int64                     `index:"0" json:",omitempty"`
+	ContactIdType                          ContactIDType             `index:"1" json:",omitempty"`
+	ProfilePictureUrl                      string                    `index:"2" json:",omitempty"`
+	Name                                   string                    `index:"3" json:",omitempty"`
+	ContactType                            int64                     `index:"4" json:",omitempty"`
+	ProfilePictureFallbackUrl              string                    `index:"5" json:",omitempty"`
+	ProfilePictureUrlExpirationTimestampMs int64                     `index:"6" json:",omitempty"`
+	UrlExpirationTimestampMs               int64                     `index:"7" json:",omitempty"`
+	NormalizedNameForSearch                string                    `index:"8" json:",omitempty"`
+	IsMemorialized                         bool                      `index:"9" json:",omitempty"`
+	IsBlocked                              bool                      `index:"10" json:",omitempty"`
+	BlockedByViewerStatus                  int64                     `index:"11" json:",omitempty"`
+	CanViewerMessage                       bool                      `index:"12" json:",omitempty"`
+	IsSelf                                 bool                      `index:"13" json:",omitempty"`
+	AuthorityLevel                         int64                     `index:"14" json:",omitempty"`
+	Capabilities                           int64                     `index:"15" json:",omitempty"`
+	Capabilities2                          int64                     `index:"16" json:",omitempty"`
+	WorkForeignEntityType                  int64                     `index:"17" json:",omitempty"` // TODO enum
+	Gender                                 Gender                    `index:"18" json:",omitempty"`
+	ContactViewerRelationship              ContactViewerRelationship `index:"19" json:",omitempty"`
+	SecondaryName                          string                    `index:"20" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (vcre *LSVerifyContactRowExists) GetUsername() string {
+	return vcre.SecondaryName
+}
+
+func (vcre *LSVerifyContactRowExists) GetName() string {
+	return vcre.Name
+}
+
+func (vcre *LSVerifyContactRowExists) GetAvatarURL() string {
+	return vcre.ProfilePictureUrl
+}
+
 type LSDeleteThenInsertContact struct {
 	Id                                          int64                     `index:"0" json:",omitempty"`
-	ProfileRingState                            int64                     `index:"0" json:",omitempty"`
 	ProfilePictureUrl                           string                    `index:"2" json:",omitempty"`
 	ProfilePictureFallbackUrl                   string                    `index:"3" json:",omitempty"`
 	ProfilePictureUrlExpirationTimestampMs      int64                     `index:"4" json:",omitempty"`
@@ -38,8 +53,8 @@ type LSDeleteThenInsertContact struct {
 	BlockedByViewerStatus                       int64                     `index:"14" json:",omitempty"`
 	Rank                                        float64                   `index:"17" json:",omitempty"`
 	FirstName                                   string                    `index:"18" json:",omitempty"`
-	ContactType                                 int64                     `index:"19" json:",omitempty"`
-	ContactTypeExact                            int64                     `index:"20" json:",omitempty"`
+	ContactType                                 int64                     `index:"19" json:",omitempty"` // TODO enum
+	ContactTypeExact                            int64                     `index:"20" json:",omitempty"` // TODO enum
 	AuthorityLevel                              int64                     `index:"21" json:",omitempty"`
 	MessengerCallLogThirdPartyId                string                    `index:"22" json:",omitempty"`
 	ProfileRingColor                            int64                     `index:"23" json:",omitempty"`
@@ -61,10 +76,13 @@ type LSDeleteThenInsertContact struct {
 	ContactViewerRelationship                   ContactViewerRelationship `index:"39" json:",omitempty"`
 	Gender                                      Gender                    `index:"40" json:",omitempty"`
 	SecondaryName                               string                    `index:"41" json:",omitempty"`
-	ContactReachabilityStatusType               int64                     `index:"43" json:",omitempty"`
-	RestrictionType                             int64                     `index:"44" json:",omitempty"`
+	ContactReachabilityStatusType               int64                     `index:"43" json:",omitempty"` // TODO enum
+	RestrictionType                             int64                     `index:"44" json:",omitempty"` // TODO enum
 	WaConnectStatus                             int64                     `index:"45" json:",omitempty"`
 	FbUnblockedSinceTimestampMs                 int64                     `index:"46" json:",omitempty"`
+
+	// TODO figure out where this is
+	//ProfileRingState                            int64                     `index:"0" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -84,8 +102,8 @@ type LSDeleteThenInsertIGContactInfo struct {
 	ContactId                int64  `index:"0" json:",omitempty"`
 	IgId                     string `index:"1" json:",omitempty"`
 	LinkedFbid               int64  `index:"2" json:",omitempty"`
-	IgFollowStatus           int64  `index:"4" json:",omitempty"`
-	VerificationStatus       int64  `index:"5" json:",omitempty"`
+	IgFollowStatus           int64  `index:"4" json:",omitempty"` // TODO enum?
+	VerificationStatus       int64  `index:"5" json:",omitempty"` // TODO enum?
 	E2eeEligibility          int64  `index:"6" json:",omitempty"`
 	SupportsE2eeSpamdStorage bool   `index:"7" json:",omitempty"`
 

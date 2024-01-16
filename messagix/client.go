@@ -300,7 +300,7 @@ func (c *Client) CurrentPlatform() string {
 	return s
 }
 
-func (c *Client) GetCurrentAccount() (types.AccountInfo, error) {
+func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
 	if !c.IsAuthenticated() {
 		return nil, fmt.Errorf("messagix-client: not yet authenticated")
 	}

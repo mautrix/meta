@@ -211,7 +211,7 @@ type Event_Ready struct {
 	client         *Client
 	IsNewSession   bool
 	ConnectionCode ConnectionCode
-	CurrentUser    types.AccountInfo `skip:"1"`
+	CurrentUser    types.UserInfo `skip:"1"`
 	Table          *table.LSTable
 	//Threads []table.LSDeleteThenInsertThread `skip:"1"`
 	//Messages []table.LSUpsertMessage `skip:"1"`

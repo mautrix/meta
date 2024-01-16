@@ -28,11 +28,11 @@ homeserver:
 # Changing these values requires regeneration of the registration.
 appservice:
     # The address that the homeserver can use to connect to this appservice.
-    address: http://localhost:29328
+    address: http://localhost:29319
 
     # The hostname and port where this appservice should listen.
     hostname: 0.0.0.0
-    port: 29328
+    port: 29319
 
     # Database config.
     database:
@@ -53,20 +53,20 @@ appservice:
         max_conn_lifetime: null
 
     # The unique ID of this appservice.
-    id: meta
+    id: instagram
     # Appservice bot details.
     bot:
         # Username of the appservice bot.
-        username: metabot
+        username: instagrambot
         # Display name and avatar for bot. Set to "remove" to remove display name/avatar, leave empty
         # to leave display name/avatar as-is.
-        displayname: Meta bridge bot
-        avatar: mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak
+        displayname: Instagram bridge bot
+        # You can use mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak for a Facebook Messenger avatar
+        avatar: mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv
 
     # Whether or not to receive ephemeral events via appservice transactions.
     # Requires MSC2409 support (i.e. Synapse 1.22+).
     ephemeral_events: true
-
     # Should incoming events be handled asynchronously?
     # This may be necessary for large public instances with lots of messages going through.
     # However, messages will not be guaranteed to be bridged in the same order they were sent in.
@@ -84,17 +84,20 @@ metrics:
     listen: 127.0.0.1:8000
 
 meta:
-    # Which service is this bridge for? Either "facebook" or "instagram"
-    mode: facebook
+    # Which service is this bridge for? Either "facebook" or "instagram".
+    # Remember to change the appservice id, bot profile info and bridge username_template too.
+    mode: instagram
 
 # Bridge config
 bridge:
     # Localpart template of MXIDs for FB/IG users.
     # {{.}} is replaced with the internal ID of the FB/IG user.
-    username_template: meta_{{.}}
+    username_template: instagram_{{.}}
     # Displayname template for FB/IG users. This is also used as the room name in DMs if private_chat_portal_meta is enabled.
     # {{.DisplayName}} - The display name set by the user.
-    displayname_template: '{{or .DisplayName "Unknown user"}}'
+    # {{.Username}} - The username set by the user.
+    # {{.ID}} - The internal user ID of the user.
+    displayname_template: '{{or .DisplayName .Username "Unknown user"}}'
     # Whether to explicitly set the avatar and room name for private chat portal rooms.
     # If set to `default`, this will be enabled in encrypted rooms and disabled in unencrypted rooms.
     # If set to `always`, all DM rooms will have explicit names and avatars set.
@@ -114,6 +117,9 @@ bridge:
     message_status_events: false
     # Whether the bridge should send error notices via m.notice events when a message fails to bridge.
     message_error_notices: true
+    # Should the bridge update the m.direct account data event when double puppeting is enabled.
+    # Note that updating the m.direct event is not atomic and is therefore prone to race conditions.
+    sync_direct_chat_list: false
     # Set this to true to tell the bridge to re-send m.bridge events to all rooms on the next run.
     # This field will automatically be changed back to false after it, except if the config file is not writable.
     resend_bridge_info: false
@@ -137,12 +143,14 @@ bridge:
         example.com: foobar
 
     # The prefix for commands. Only required in non-management rooms.
-    command_prefix: '!meta'
+    # If set to "default", will be determined based on meta -> mode, "!ig" for instagram and "!fb" for facebook
+    command_prefix: default
+
     # Messages sent upon joining a management room.
     # Markdown is supported. The defaults are listed below.
     management_room_text:
-        # Sent when joining a room.
-        welcome: "Hello, I'm a Meta bridge bot."
+        # Sent when joining a room. %[1]s is replaced with the protocol name ("Instagram DM" or "Facebook Messenger")
+        welcome: "Hello, I'm a %[1]s bridge bot."
         # Sent when joining a management room and the user is already logged in.
         welcome_connected: "Use `help` for help."
         # Sent when joining a management room and the user is not logged in.
@@ -198,7 +206,7 @@ bridge:
         #   verified - Require manual per-device verification
         #              (currently only possible by modifying the `trust` column in the `crypto_device` database table).
         verification_levels:
-            # Minimum level for which the bridge should send keys to when bridging messages from Signal to Matrix.
+            # Minimum level for which the bridge should send keys to when bridging messages from FB/IG to Matrix.
             receive: unverified
             # Minimum level that the bridge should accept for incoming Matrix messages.
             send: unverified

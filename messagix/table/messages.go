@@ -40,6 +40,7 @@ type LSUpsertMessage struct {
 	ReplyToUserId                   int64                      `index:"29" json:",omitempty"`
 	ReplyMediaExpirationTimestampMs int64                      `index:"30" json:",omitempty"`
 	ReplyMediaUrl                   string                     `index:"31" json:",omitempty"`
+	ReplyMediaUnknownTimestampS     int64                      `index:"32" json:",omitempty"`
 	ReplyMediaPreviewWidth          int64                      `index:"33" json:",omitempty"`
 	ReplyMediaPreviewHeight         int64                      `index:"34" json:",omitempty"`
 	ReplyMediaUrlMimeType           string                     `index:"35" json:",omitempty"`
@@ -71,8 +72,35 @@ type LSUpsertMessage struct {
 	TakedownState                   int64                      `index:"61" json:",omitempty"`
 	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
 	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
+	BotResponseID                   int64                      `index:"64" json:",omitempty"`
+	EditCount                       int64                      `index:"65" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"66" json:",omitempty"`
+	AdminSignatureName              string                     `index:"67" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"68" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"69" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSDeleteMessage struct {
+	ThreadKey int64  `index:"0" json:",omitempty"`
+	MessageId string `index:"1" json:",omitempty"`
+}
+
+type LSHandleRepliesOnRemove struct {
+	ThreadKey int64  `index:"0" json:",omitempty"`
+	MessageId string `index:"1" json:",omitempty"`
+}
+
+type LSRefreshLastActivityTimestamp struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+}
+
+type LSSetPinnedMessage struct {
+	ThreadKey         int64  `index:"0" json:",omitempty"`
+	MessageId         string `index:"1" json:",omitempty"`
+	PinnedTimestampMs int64  `index:"2" json:",omitempty"`
+	AuthorityLevel    int64  `index:"3" json:",omitempty"`
 }
 
 type LSSetForwardScore struct {
@@ -153,7 +181,7 @@ type LSInsertMessage struct {
 	MentionLengths                  int64                      `index:"20" json:",omitempty"`
 	MentionIds                      int64                      `index:"21" json:",omitempty"`
 	MentionTypes                    int64                      `index:"22" json:",omitempty"`
-	ReplySourceId                   int64                      `index:"23" json:",omitempty"`
+	ReplySourceId                   string                     `index:"23" json:",omitempty"`
 	ReplySourceType                 int64                      `index:"24" json:",omitempty"`
 	ReplySourceTypeV2               int64                      `index:"25" json:",omitempty"`
 	ReplyStatus                     int64                      `index:"26" json:",omitempty"`
@@ -162,9 +190,10 @@ type LSInsertMessage struct {
 	ReplyToUserId                   int64                      `index:"29" json:",omitempty"`
 	ReplyMediaExpirationTimestampMs int64                      `index:"30" json:",omitempty"`
 	ReplyMediaUrl                   string                     `index:"31" json:",omitempty"`
+	ReplyMediaUnknownTimestampS     int64                      `index:"32" json:",omitempty"`
 	ReplyMediaPreviewWidth          int64                      `index:"33" json:",omitempty"`
 	ReplyMediaPreviewHeight         int64                      `index:"34" json:",omitempty"`
-	ReplyMediaUrlMimeType           int64                      `index:"35" json:",omitempty"`
+	ReplyMediaUrlMimeType           string                     `index:"35" json:",omitempty"`
 	ReplyMediaUrlFallback           string                     `index:"36" json:",omitempty"`
 	ReplyCtaId                      int64                      `index:"37" json:",omitempty"`
 	ReplyCtaTitle                   string                     `index:"38" json:",omitempty"`
@@ -192,7 +221,12 @@ type LSInsertMessage struct {
 	TakedownState                   int64                      `index:"60" json:",omitempty"`
 	IsCollapsed                     bool                       `index:"61" json:",omitempty"`
 	SubthreadKey                    int64                      `index:"62" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"63" json:",omitempty"`
+	BotResponseID                   int64                      `index:"63" json:",omitempty"`
+	EditCount                       int64                      `index:"64" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"65" json:",omitempty"`
+	AdminSignatureName              string                     `index:"66" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"67" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"68" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

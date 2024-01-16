@@ -6,6 +6,14 @@ const (
 	TEXT_MSG DisplayedContentTypes = 1
 )
 
+type ContactIDType int64
+
+const (
+	UnknownContactIDType ContactIDType = iota
+	ContactIDTypeFBID
+	ContactIDTypeSMSLocalID
+)
+
 type Gender int64
 
 const (
@@ -167,6 +175,15 @@ const (
 )
 
 type ThreadType int64
+
+func (tt ThreadType) IsOneToOne() bool {
+	switch tt {
+	case ONE_TO_ONE, ENCRYPTED_ONE_TO_ONE, CARRIER_MESSAGING_ONE_TO_ONE, ENCRYPTED_ONE_TO_ONE_DISAPPEARING, ENCRYPTED_OVER_WA_ONE_TO_ONE:
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	UNKNOWN_THREAD_TYPE               ThreadType = 0

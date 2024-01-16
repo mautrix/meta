@@ -9,7 +9,7 @@ import (
 type SendMessageTask struct {
 	// If you are forwarding a message, you set the ThreadId to the thread you would like to forward it to
 	ThreadId                 int64                  `json:"thread_id"`
-	Otid                     string                 `json:"otid"`
+	Otid                     int64                  `json:"otid,string"`
 	Source                   table.ThreadSourceType `json:"source"`
 	SendType                 table.SendType         `json:"send_type"`
 	AttachmentFBIds          []int64                `json:"attachment_fbids,omitempty"`

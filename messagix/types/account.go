@@ -1,17 +1,9 @@
 package types
 
-type AccountInfo interface {
-	GetUserId() string
-	GetFbId() string
+type UserInfo interface {
 	GetUsername() string
 	GetName() string
 	GetAvatarURL() string
-	GetAvatarURLHD() string
-	GetBiography() string
-	GetExternalUrl() string
-	GetBusinessEmail() string
-	HasPhoneNumber() bool
-	IsPrivate() bool
 }
 
 type CurrentBusinessAccount struct {
@@ -199,6 +191,9 @@ func (p *PolarisViewer) GetAvatarURLHD() string {
 }
 
 func (p *PolarisViewer) GetAvatarURL() string {
+	if p.Data.ProfilePicURLHd != "" {
+		return p.Data.ProfilePicURLHd
+	}
 	return p.Data.ProfilePicURL
 }
 
