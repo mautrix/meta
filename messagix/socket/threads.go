@@ -88,3 +88,9 @@ type MuteThreadTask struct {
 	MuteExpireTimeMS int64 `json:"mute_expire_time_ms"`
 	SyncGroup        int64 `json:"sync_group"` // 1
 }
+
+type UpdateThreadTask struct {
+	ThreadKey  int64  `json:"thread_key"`
+	ThreadName string `json:"thread_name"`
+	SyncGroup  int64  `json:"sync_group"` // 1
+}

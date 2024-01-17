@@ -2,7 +2,7 @@
 
 * Matrix → Messenger/Instagram
   * [ ] Message content
-    * [ ] Text
+    * [x] Text
     * [ ] Media
       * [ ] Stickers
       * [ ] Files
@@ -13,8 +13,8 @@
     * [ ] Formatting (Messenger only)
     * [ ] Replies
     * [ ] Mentions
-  * [ ] Message redactions
-  * [ ] Message reactions
+  * [x] Message redactions
+  * [x] Message reactions
   * [ ] Presence
   * [ ] Typing notifications
   * [ ] Read receipts
@@ -29,7 +29,7 @@
     * [ ] Per-room user nick
 * Messenger/Instagram → Matrix
   * [ ] Message content
-    * [ ] Text
+    * [x] Text
     * [ ] Media
       * [ ] Images
       * [ ] Videos
@@ -45,8 +45,8 @@
     * [ ] Replies
     * [ ] Mentions
     * [ ] Polls
-  * [ ] Message unsend
-  * [ ] Message reactions
+  * [x] Message unsend
+  * [x] Message reactions
   * [ ] Message history
   * [ ] Presence
   * [ ] Typing notifications
@@ -59,17 +59,17 @@
   * [ ] Chat metadata changes
     * [ ] Title
     * [ ] Avatar
-  * [ ] Initial chat metadata
-  * [ ] User metadata
-    * [ ] Name
+  * [x] Initial chat metadata
+  * [x] User metadata
+    * [x] Name
     * [ ] Per-chat nickname
-    * [ ] Avatar
+    * [x] Avatar
 * Misc
-  * [ ] Multi-user support
-  * [ ] Shared group chat portals
+  * [x] Multi-user support
+  * [x] Shared group chat portals
   * [ ] Automatic portal creation
-    * [ ] At startup
+    * [x] At startup
     * [ ] When added to chat
     * [ ] When receiving message
   * [ ] Private chat creation by inviting Matrix puppet of Messenger/Instagram user to new room
-  * [ ] Option to use own Matrix account for messages sent from other Messenger/Instagram clients
+  * [x] Option to use own Matrix account for messages sent from other Messenger/Instagram clients

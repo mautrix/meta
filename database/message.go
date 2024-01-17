@@ -113,5 +113,5 @@ func (msg *Message) Insert(ctx context.Context) error {
 }
 
 func (msg *Message) Delete(ctx context.Context) error {
-	return msg.qh.Exec(ctx, deleteMessageQuery, msg.ID, msg.ThreadReceiver)
+	return msg.qh.Exec(ctx, deleteMessageQuery, msg.ID, msg.ThreadReceiver, msg.PartIndex)
 }

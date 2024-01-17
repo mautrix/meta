@@ -16,6 +16,7 @@ var TaskLabels = map[string]string{
 	"DeleteMessageTask":       "33",
 	"DeleteMessageMeOnlyTask": "155",
 	"MuteThreadTask":          "144",
+	"UpdateThreadTask":        "32", // might be rename thread
 }
 
 type Task interface {
