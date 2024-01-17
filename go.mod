@@ -3,6 +3,7 @@ module go.mau.fi/mautrix-meta
 go 1.20
 
 require (
+	github.com/beeper/libserv v0.0.0-20231231202820-c7303abfc32c
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.5.0
 	github.com/gorilla/websocket v1.5.0
@@ -23,6 +24,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/rs/xid v1.5.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect

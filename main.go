@@ -51,7 +51,7 @@ type MetaBridge struct {
 	Config *config.Config
 	DB     *database.Database
 
-	//provisioning *ProvisioningAPI
+	provisioning *ProvisioningAPI
 
 	usersByMXID   map[id.UserID]*User
 	usersByMetaID map[int64]*User
@@ -124,17 +124,17 @@ func (br *MetaBridge) Init() {
 
 	br.DB = database.New(br.Bridge.DB)
 
-	//ss := br.Config.Bridge.Provisioning.SharedSecret
-	//if len(ss) > 0 && ss != "disable" {
-	//	br.provisioning = &ProvisioningAPI{bridge: br, log: br.ZLog.With().Str("component", "provisioning").Logger()}
-	//}
+	ss := br.Config.Bridge.Provisioning.SharedSecret
+	if len(ss) > 0 && ss != "disable" {
+		br.provisioning = &ProvisioningAPI{bridge: br, log: br.ZLog.With().Str("component", "provisioning").Logger()}
+	}
 }
 
 func (br *MetaBridge) Start() {
-	//	if br.provisioning != nil {
-	//		br.ZLog.Debug().Msg("Initializing provisioning API")
-	//		br.provisioning.Init()
-	//	}
+	if br.provisioning != nil {
+		br.ZLog.Debug().Msg("Initializing provisioning API")
+		br.provisioning.Init()
+	}
 	go br.StartUsers()
 }
 
