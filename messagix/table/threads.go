@@ -65,8 +65,8 @@ type LSDeleteThenInsertThread struct {
 	DisappearingSettingUpdatedBy          int64      `index:"27" json:",omitempty"`
 	OngoingCallState                      int64      `index:"29" json:",omitempty"`
 	CannotReplyReason                     int64      `index:"30" json:",omitempty"`
-	CustomEmoji                           int64      `index:"31" json:",omitempty"`
-	CustomEmojiImageUrl                   int64      `index:"32" json:",omitempty"`
+	CustomEmoji                           string     `index:"31" json:",omitempty"`
+	CustomEmojiImageUrl                   string     `index:"32" json:",omitempty"`
 	OutgoingBubbleColor                   int64      `index:"33" json:",omitempty"`
 	ThemeFbid                             int64      `index:"34" json:",omitempty"`
 	ParentThreadKey                       int64      `index:"35" json:",omitempty"`
@@ -380,9 +380,9 @@ type LSSyncUpdateThreadName struct {
 }
 
 type LSWriteCTAIdToThreadsTable struct {
-	ThreadKey                 int64 `index:"0" json:",omitempty"`
-	LastMessageCtaType        int64 `index:"1" json:",omitempty"`
-	LastMessageCtaTimestampMs int64 `index:"2" json:",omitempty"`
+	ThreadKey                 int64  `index:"0" json:",omitempty"`
+	LastMessageCtaType        string `index:"1" json:",omitempty"`
+	LastMessageCtaTimestampMs int64  `index:"2" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

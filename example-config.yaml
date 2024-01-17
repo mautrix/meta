@@ -61,7 +61,8 @@ appservice:
         # Display name and avatar for bot. Set to "remove" to remove display name/avatar, leave empty
         # to leave display name/avatar as-is.
         displayname: Instagram bridge bot
-        # You can use mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak for a Facebook Messenger avatar
+        # You can use mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv for an Instagram avatar,
+        # or mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak for Facebook Messenger
         avatar: mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv
 
     # Whether or not to receive ephemeral events via appservice transactions.

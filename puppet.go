@@ -329,8 +329,11 @@ func updateAvatar(
 	intent *appservice.IntentAPI, setAvatar func(context.Context, id.ContentURI) error,
 ) bool {
 	log := zerolog.Ctx(ctx)
-	parsedAvatarURL, _ := url.Parse(newAvatarURL)
-	newAvatarID := path.Base(parsedAvatarURL.Path)
+	var newAvatarID string
+	if newAvatarURL != "" {
+		parsedAvatarURL, _ := url.Parse(newAvatarURL)
+		newAvatarID = path.Base(parsedAvatarURL.Path)
+	}
 	if *avatarID == newAvatarID && (*avatarSet || setAvatar == nil) {
 		return false
 	}

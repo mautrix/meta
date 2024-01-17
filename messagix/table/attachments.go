@@ -65,7 +65,7 @@ type LSInsertXmaAttachment struct {
 	XmasTemplateType                           int64  `index:"34" json:",omitempty"`
 	CollapsibleId                              int64  `index:"35" json:",omitempty"`
 	DefaultCtaId                               int64  `index:"36" json:",omitempty"`
-	DefaultCtaTitle                            int64  `index:"37" json:",omitempty"`
+	DefaultCtaTitle                            string `index:"37" json:",omitempty"`
 	DefaultCtaType                             int64  `index:"38" json:",omitempty"`
 	AttachmentCta1Id                           int64  `index:"40" json:",omitempty"`
 	Cta1Title                                  int64  `index:"41" json:",omitempty"`
@@ -79,7 +79,7 @@ type LSInsertXmaAttachment struct {
 	Cta3Title                                  string `index:"51" json:",omitempty"`
 	Cta3IconType                               int64  `index:"52" json:",omitempty"`
 	Cta3Type                                   int64  `index:"53" json:",omitempty"`
-	ImageUrl                                   int64  `string:"54"`
+	ImageUrl                                   string `index:"54" json:",omitempty"`
 	ImageUrlFallback                           string `index:"55" json:",omitempty"`
 	ImageUrlExpirationTimestampMs              int64  `index:"56" json:",omitempty"`
 	ActionUrl                                  string `index:"57" json:",omitempty"`

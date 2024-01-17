@@ -42,5 +42,5 @@ func (fb *FacebookCookies) GetUserID() int64 {
 }
 
 func (fb *FacebookCookies) AllCookiesPresent() bool {
-	return fb.Datr != "" && fb.Sb != "" && fb.AccountId != "" && fb.Xs != "" && fb.Fr != "" && fb.Wd != "" && fb.Presence != ""
+	return fb.Datr != "" && fb.Sb != "" && fb.AccountId != "" && fb.Xs != ""
 }
