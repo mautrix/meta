@@ -143,7 +143,7 @@ func (m *ModuleParser) Load(page string) error {
 	// when this is the case, the server "preloads" the js files in the link tags, so we need to loop through them until we can find the "LSVersion" module and extract the exported version string
 	if m.client.configs.VersionId == 0 && authenticated {
 		m.client.configs.needSync = true
-		m.client.Logger.Info().Msg("Setting configs.needSync to true")
+		m.client.Logger.Debug().Msg("Setting configs.needSync to true")
 		var doneCrawling bool
 		linkTags := m.findLinkTags(doc)
 		for _, tag := range linkTags {
@@ -169,7 +169,7 @@ func (m *ModuleParser) Load(page string) error {
 		if err != nil {
 			return fmt.Errorf("messagix-moduleparser: failed to parse XIGSharedData raw string into *types.XIGConfigData (%v)", err)
 		}
-		m.client.Logger.Info().Any("authenticated", authenticated).Msg("Instagram Authentication Status")
+		m.client.Logger.Debug().Any("authenticated", authenticated).Msg("Instagram Authentication Status")
 		if !authenticated {
 			err = cookies.UpdateMultipleValues(
 				m.client.cookies,

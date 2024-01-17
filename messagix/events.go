@@ -98,7 +98,7 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		return fmt.Errorf("failed to finalize sync tasks: %w", err)
 	}
 
-	s.client.Logger.Debug().Any("data", string(payload)).Msg("Sync groups tasks")
+	s.client.Logger.Trace().Any("data", string(payload)).Msg("Sync groups tasks")
 	packetId, err = s.makeLSRequest(payload, 3)
 	if err != nil {
 		return fmt.Errorf("failed to send sync tasks: %w", err)

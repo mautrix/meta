@@ -45,13 +45,13 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case LOAD:
 		key, ok := stepData[0].(float64)
 		if !ok {
-			badGlobalLog.Debug().Msg("[LOAD] failed to store key to float64")
+			badGlobalLog.Warn().Msg("[LOAD] failed to store key to float64")
 			return 0
 		}
 
 		shouldLoad, ok := ls.StatementReferences[int(key)]
 		if !ok {
-			badGlobalLog.Debug().Float64("key", key).Msg("[LOAD] failed to fetch statement reference for key")
+			badGlobalLog.Warn().Float64("key", key).Msg("[LOAD] failed to fetch statement reference for key")
 			return 0
 		}
 		return shouldLoad
@@ -61,13 +61,13 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case STORE_ARRAY:
 		key, ok := stepData[0].(float64)
 		if !ok {
-			badGlobalLog.Debug().Any("step_data", stepData).Msg("Bad step data in STORE_ARRAY")
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Bad step data in STORE_ARRAY")
 			os.Exit(1)
 		}
 
 		shouldStore, ok := stepData[1].(float64)
 		if !ok {
-			badGlobalLog.Debug().Any("step_data", stepData).Msg("Bad step data in STORE_ARRAY")
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Bad step data in STORE_ARRAY")
 			os.Exit(1)
 		}
 
@@ -100,14 +100,14 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case NATIVE_OP_CURRENT_TIME:
 		return time.Now().UnixMilli()
 	case CALL_NATIVE_OPERATION:
-		badGlobalLog.Debug().Any("step_data", stepData).Msg("Call native operation")
+		badGlobalLog.Warn().Any("step_data", stepData).Msg("Call native operation")
 		return nil
 	case NATIVE_OP_MAP_CREATE:
 		return make(map[interface{}]interface{}, 0)
 	case NATIVE_OP_MAP_SET:
 		mapToUpdate, ok := ls.Decode(stepData[0]).(map[interface{}]interface{})
 		if !ok {
-			badGlobalLog.Debug().Msg("failed to type assert map from statement references...")
+			badGlobalLog.Warn().Msg("failed to type assert map from statement references...")
 			return nil
 		}
 		mapKey := ls.Decode(stepData[1])
@@ -121,7 +121,7 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 		second := ls.Decode(stepData[1]).(int64)
 		return first + second
 	default:
-		badGlobalLog.Debug().Int("step_type", int(stepType)).Any("step_data", stepData).Msg("Got unknown step type")
+		badGlobalLog.Warn().Int("step_type", int(stepType)).Any("step_data", stepData).Msg("Got unknown step type")
 		os.Exit(1)
 	}
 
@@ -131,7 +131,7 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []interface{}) {
 	depReference, ok := ls.Dependencies[referenceName]
 	if !ok {
-		badGlobalLog.Debug().
+		badGlobalLog.Warn().
 			Str("reference_name", referenceName).
 			Any("data", data).
 			Msg("Skipping dependency with reference name (unknown dependency)")
@@ -143,7 +143,7 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 	depField := reflectedMs.FieldByName(depReference)
 
 	if !depField.IsValid() {
-		badGlobalLog.Debug().
+		badGlobalLog.Warn().
 			Str("reference_name", referenceName).
 			Any("data", data).
 			Msg("Skipping dependency with reference name (invalid field)")

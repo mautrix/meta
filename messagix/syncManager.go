@@ -225,7 +225,7 @@ func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThrea
 		keyStore.MinThreadKey = syncGroupData.MinThreadKey
 		keyStore.ParentThreadKey = syncGroupData.ParentThreadKey
 
-		sm.client.Logger.Info().Any("keyStore", keyStore).Any("databaseId", syncGroup).Msg("Updated thread ranges.")
+		sm.client.Logger.Debug().Any("keyStore", keyStore).Any("databaseId", syncGroup).Msg("Updated thread ranges.")
 	}
 	return err
 }

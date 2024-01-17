@@ -68,16 +68,16 @@ func (c *Configs) SetupConfigs() error {
 				return fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
 			}
 		}
-		c.client.Logger.Info().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
-		c.client.Logger.Info().Any("value", c.CsrBitmap.CompressedStr).Msg("Loaded __csr bitmap")
-		c.client.Logger.Info().Any("versionId", c.VersionId).Any("appId", c.browserConfigTable.MessengerWebInitData.AppID).Msg("Loaded versionId & appId")
-		c.client.Logger.Info().Any("broker", c.client.socket.broker).Msg("Configs successfully setup!")
+		c.client.Logger.Trace().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
+		c.client.Logger.Trace().Any("value", c.CsrBitmap.CompressedStr).Msg("Loaded __csr bitmap")
+		c.client.Logger.Trace().Any("versionId", c.VersionId).Any("appId", c.browserConfigTable.MessengerWebInitData.AppID).Msg("Loaded versionId & appId")
+		c.client.Logger.Debug().Any("broker", c.client.socket.broker).Msg("Configs successfully setup!")
 	} else {
 		if c.Bitmap.CompressedStr != "" {
-			c.client.Logger.Info().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
-			c.client.Logger.Info().Any("value", c.CsrBitmap.CompressedStr).Msg("Loaded __csr bitmap")
+			c.client.Logger.Trace().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
+			c.client.Logger.Trace().Any("value", c.CsrBitmap.CompressedStr).Msg("Loaded __csr bitmap")
 		}
-		c.client.Logger.Info().Any("platform", c.client.platform).Msg("Configs loaded, but not yet logged in.")
+		c.client.Logger.Debug().Any("platform", c.client.platform).Msg("Configs loaded, but not yet logged in.")
 	}
 
 	return nil
