@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -102,10 +101,10 @@ func (m *ModuleParser) Load(page string) error {
 
 	scriptTags := m.findScriptTags(doc)
 	for _, tag := range scriptTags {
-		rel, ok := tag.Attributes["rel"]
-		if ok {
-			log.Println(rel)
-		}
+		//rel, ok := tag.Attributes["rel"]
+		//if ok {
+		//	log.Println(rel)
+		//}
 		id := tag.Attributes["id"]
 		switch id {
 		case "envjson", "__eqmc":
@@ -280,10 +279,6 @@ func (m *ModuleParser) crawlJavascriptFile(href string) (bool, error) {
 	_, jsContent, err := m.client.MakeRequest(href, "GET", http.Header{}, nil, types.NONE)
 	if err != nil {
 		return false, err
-	}
-
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	versionMatches := versionPattern.FindStringSubmatch(string(jsContent))

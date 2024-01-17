@@ -2,7 +2,7 @@ package lightspeed
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 )
 
 type StepType int
@@ -149,16 +149,16 @@ type DependencyValue struct {
 	ReferenceName string `json:"__dr,omitempty"`
 }
 
-func DependenciesToMap(dep interface{}) map[string]string {
+func DependenciesToMap(dep interface{}) (map[string]string, error) {
 	var converted []Dependency
 	b, err := json.Marshal(dep)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to marshal dependencies: %v", err)
 	}
 
 	err = json.Unmarshal(b, &converted)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to unmarshal dependencies: %v", err)
 	}
 
 	depMap := make(map[string]string, 0)
@@ -166,5 +166,5 @@ func DependenciesToMap(dep interface{}) map[string]string {
 		depMap[d.Name] = d.Value.ReferenceName
 	}
 
-	return depMap
+	return depMap, nil
 }

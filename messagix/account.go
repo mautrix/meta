@@ -3,7 +3,6 @@ package messagix
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -54,12 +53,12 @@ func (a *Account) GetContacts(limit int64) ([]*table.LSVerifyContactRowExists, e
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to finalize payload for GetContactsTask: %w", err)
 	}
 
 	packetId, err := a.client.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	resp := a.client.socket.responseHandler.waitForPubResponseDetails(packetId)
@@ -80,12 +79,12 @@ func (a *Account) GetContactsFull(contactIds []int64) ([]*table.LSDeleteThenInse
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to finalize payload for GetContactsFullTask: %w", err)
 	}
 
 	packetId, err := a.client.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	resp := a.client.socket.responseHandler.waitForPubResponseDetails(packetId)
@@ -102,12 +101,12 @@ func (a *Account) ReportAppState(state table.AppState) error {
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to finalize payload for ReportAppStateTask: %w", err)
 	}
 
 	packetId, err := a.client.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to send request: %w", err)
 	}
 
 	resp := a.client.socket.responseHandler.waitForPubResponseDetails(packetId)

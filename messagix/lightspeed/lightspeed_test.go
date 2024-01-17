@@ -58,7 +58,7 @@ func TestDecodeIG(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	depsMap := lightspeed.DependenciesToMap(deps)
+	depsMap, _ := lightspeed.DependenciesToMap(deps)
 	lsTable := &table.LSTable{}
 	lsDecoder := lightspeed.NewLightSpeedDecoder(depsMap, lsTable)
 	lsDecoder.Decode(lsData.Steps)

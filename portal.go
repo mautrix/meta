@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.mau.fi/util/variationselector"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -1246,7 +1245,7 @@ func (portal *Portal) UpdateInfoFromPuppet(ctx context.Context, puppet *Puppet) 
 	if update {
 		err := portal.Update(ctx)
 		if err != nil {
-			log.Err(err).Msg("Failed to save portal in database after updating DM info")
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save portal in database after updating DM info")
 		}
 		portal.UpdateBridgeInfo(ctx)
 	}

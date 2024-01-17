@@ -3,10 +3,11 @@ package messagix
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
+
+	badGlobalLog "github.com/rs/zerolog/log"
 
 	"go.mau.fi/mautrix-meta/messagix/graphql"
 	"go.mau.fi/mautrix-meta/messagix/lightspeed"
@@ -159,11 +160,14 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data interface{}, parserFunc st
 		return nil
 	}
 
-	dependencies := lightspeed.DependenciesToMap(deps)
+	dependencies, err := lightspeed.DependenciesToMap(deps)
+	if err != nil {
+		return fmt.Errorf("failed to convert dependencies to map: %v", err)
+	}
 	decoder := lightspeed.NewLightSpeedDecoder(dependencies, m.client.configs.accountConfigTable)
 
 	var payload lightspeed.LightSpeedData
-	err := json.Unmarshal([]byte(lsPayloadStr), &payload)
+	err = json.Unmarshal([]byte(lsPayloadStr), &payload)
 	if err != nil {
 		return fmt.Errorf("messagix-moduleparser: failed to marshal lsPayloadStr into LightSpeedData: %v", err)
 	}
@@ -176,7 +180,7 @@ func (m *ModuleParser) handleGraphQLData(name string, data interface{}) {
 	reflectedMs := reflect.ValueOf(GraphQLData).Elem()
 	dataField := reflectedMs.FieldByName(name)
 	if !dataField.IsValid() {
-		log.Println("Not handling GraphQLData for operation:", name)
+		badGlobalLog.Error().Str("field_name", name).Msg("Not handling GraphQLData for operation")
 		return
 	}
 
@@ -185,13 +189,13 @@ func (m *ModuleParser) handleGraphQLData(name string, data interface{}) {
 
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
-		log.Println(fmt.Sprintf("failed to marshal GraphQL operation data %s", name))
+		badGlobalLog.Err(err).Msg("failed to marshal GraphQL operation data")
 		return
 	}
 
 	err = json.Unmarshal(jsonBytes, newDefinition)
 	if err != nil {
-		log.Println(fmt.Sprintf("failed to unmarshal GraphQL operation data %s", name))
+		badGlobalLog.Err(err).Msg("failed to unmarshal GraphQL operation data")
 		return
 	}
 

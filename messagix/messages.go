@@ -2,7 +2,6 @@ package messagix
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 
 	"go.mau.fi/mautrix-meta/messagix/socket"
@@ -29,12 +28,12 @@ func (m *Messages) SendReaction(threadId int64, messageId string, reaction strin
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to finalize payload: %v", err)
 	}
 
 	packetId, err := m.client.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to send request: %v", err)
 	}
 
 	resp := m.client.socket.responseHandler.waitForPubResponseDetails(packetId)
@@ -58,12 +57,12 @@ func (m *Messages) DeleteMessage(messageId string, deleteForMeOnly bool) (*table
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to finalize payload: %v", err)
 	}
 
 	packetId, err := m.client.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to send request: %v", err)
 	}
 
 	resp := m.client.socket.responseHandler.waitForPubResponseDetails(packetId)

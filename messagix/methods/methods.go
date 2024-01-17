@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"log"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mau.fi/util/exerrors"
 
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
@@ -77,10 +77,7 @@ func GenerateWebsessionID(loggedIn bool) string {
 
 func GenerateTraceId() string {
 	uuidHex := strings.ReplaceAll(uuid.NewString(), "-", "")
-	decodedHex, err := hex.DecodeString(uuidHex)
-	if err != nil {
-		log.Fatalf("failed to decode traceId string: %s", err)
-	}
+	decodedHex := exerrors.Must(hex.DecodeString(uuidHex))
 	return "#" + base64.RawURLEncoding.EncodeToString(decodedHex)
 }
 

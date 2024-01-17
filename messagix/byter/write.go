@@ -3,8 +3,9 @@ package byter
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"reflect"
+
+	badGlobalLog "github.com/rs/zerolog/log"
 )
 
 func NewWriter() *byter {
@@ -81,7 +82,11 @@ func (b *byter) WriteFromStruct(s interface{}) ([]byte, error) {
 				b.Buff.Write(sBytes)
 		*/
 		default:
-			log.Printf("Unsupported type %s for field %s\n", field.Type(), values.Type().Field(i).Name)
+			badGlobalLog.Warn().
+				Str("field_type", field.Type().Name()).
+				Str("field_name", values.Type().Field(i).Name).
+				Str("struct_name", values.Type().Name()).
+				Msg("Byter.WriteFromStruct: unsupported type")
 		}
 	}
 

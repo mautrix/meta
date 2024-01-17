@@ -2,7 +2,6 @@ package messagix
 
 import (
 	"fmt"
-	"log"
 
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
@@ -20,12 +19,12 @@ func (t *Threads) FetchMessages(ThreadId int64, ReferenceTimestampMs int64, Refe
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to finalize payload: %v", err)
 	}
 
 	packetId, err := t.client.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to send request: %v", err)
 	}
 
 	resp := t.client.socket.responseHandler.waitForPubResponseDetails(packetId)
@@ -61,11 +60,11 @@ func (t *Threads) NewMessageBuilder(threadId int64) *MessageBuilder {
 func (m *MessageBuilder) SetMedias(medias []*types.MercuryUploadResponse) {
 	for _, media := range medias {
 		data, ok := media.Payload.Metadata.(types.MediaMetadata)
-		if !ok {
-			log.Println("failed to convert media passed to types.MediaMetadata interface{}")
+		if ok {
+			m.payload.AttachmentFBIds = append(m.payload.AttachmentFBIds, data.GetFbId())
+		} else {
+			// TODO do something?
 		}
-
-		m.payload.AttachmentFBIds = append(m.payload.AttachmentFBIds, data.GetFbId())
 	}
 }
 

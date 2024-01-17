@@ -103,7 +103,10 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %v", err)
 	}
 
-	dependencies := lightspeed.DependenciesToMap(deps)
+	dependencies, err := lightspeed.DependenciesToMap(deps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert dependencies to map: %v", err)
+	}
 
 	lsTable := &table.LSTable{}
 	lsDecoder := lightspeed.NewLightSpeedDecoder(dependencies, lsTable)

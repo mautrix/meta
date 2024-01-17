@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -315,9 +314,7 @@ func (c *Client) getEndpoint(name string) string {
 	if endpoint, ok := c.endpoints[name]; ok {
 		return endpoint
 	}
-
-	log.Fatalf("failed to find endpoint for name: %s (platform=%v)", name, c.platform)
-	return ""
+	panic(fmt.Sprintf("messagix-client: endpoint %s not found", name))
 }
 
 func (c *Client) IsAuthenticated() bool {

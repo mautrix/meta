@@ -1,8 +1,7 @@
 package table
 
 import (
-	"fmt"
-	"log"
+	badGlobalLog "github.com/rs/zerolog/log"
 )
 
 /*
@@ -229,7 +228,7 @@ func SPToDepMap(sp []string) map[string]string {
 	for _, d := range sp {
 		depName, ok := SPTable[d]
 		if !ok {
-			log.Println(fmt.Sprintf("can't convert sp %s to dependency name because it wasn't found in the SPTable", d))
+			badGlobalLog.Warn().Str("dependency", d).Msg("Unknown dependency in sp")
 			continue
 		}
 		m[d] = depName

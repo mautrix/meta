@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/rs/zerolog/log"
+	badGlobalLog "github.com/rs/zerolog/log"
 )
 
 func NewReader(data []byte) *byter {
@@ -96,7 +96,7 @@ func (b *byter) ReadToStruct(s interface{}) error {
 			}
 		default:
 			// TODO figure out why this happens when reconnecting
-			log.Warn().
+			badGlobalLog.Warn().
 				Str("field_type", field.Type().Name()).
 				Str("field_name", values.Type().Field(i).Name).
 				Str("struct_name", values.Type().Name()).

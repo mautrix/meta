@@ -1,13 +1,13 @@
 package lightspeed
 
 import (
-	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	badGlobalLog "github.com/rs/zerolog/log"
 )
 
 type LightSpeedDecoder struct {
@@ -45,13 +45,13 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case LOAD:
 		key, ok := stepData[0].(float64)
 		if !ok {
-			log.Println("[LOAD] failed to store key to float64")
+			badGlobalLog.Debug().Msg("[LOAD] failed to store key to float64")
 			return 0
 		}
 
 		shouldLoad, ok := ls.StatementReferences[int(key)]
 		if !ok {
-			log.Println("[LOAD] failed to fetch statement reference for key:", key)
+			badGlobalLog.Debug().Float64("key", key).Msg("[LOAD] failed to fetch statement reference for key")
 			return 0
 		}
 		return shouldLoad
@@ -61,13 +61,13 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case STORE_ARRAY:
 		key, ok := stepData[0].(float64)
 		if !ok {
-			log.Println(stepData...)
+			badGlobalLog.Debug().Any("step_data", stepData).Msg("Bad step data in STORE_ARRAY")
 			os.Exit(1)
 		}
 
 		shouldStore, ok := stepData[1].(float64)
 		if !ok {
-			log.Println(stepData...)
+			badGlobalLog.Debug().Any("step_data", stepData).Msg("Bad step data in STORE_ARRAY")
 			os.Exit(1)
 		}
 
@@ -81,7 +81,7 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case I64_FROM_STRING:
 		i64, err := strconv.ParseInt(stepData[0].(string), 10, 64)
 		if err != nil {
-			log.Println("[I64_FROM_STRING] failed to convert string to int64:", err.Error())
+			badGlobalLog.Err(err).Any("input_data", stepData[0]).Msg("[I64_FROM_STRING] failed to convert string to int64")
 			return 0
 		}
 		return i64
@@ -100,30 +100,28 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case NATIVE_OP_CURRENT_TIME:
 		return time.Now().UnixMilli()
 	case CALL_NATIVE_OPERATION:
-		log.Println("call native operation...", stepData)
+		badGlobalLog.Debug().Any("step_data", stepData).Msg("Call native operation")
 		return nil
 	case NATIVE_OP_MAP_CREATE:
 		return make(map[interface{}]interface{}, 0)
 	case NATIVE_OP_MAP_SET:
 		mapToUpdate, ok := ls.Decode(stepData[0]).(map[interface{}]interface{})
 		if !ok {
-			log.Println("failed to type assert map from statement references...")
+			badGlobalLog.Debug().Msg("failed to type assert map from statement references...")
 			return nil
 		}
 		mapKey := ls.Decode(stepData[1])
 		mapVal := ls.Decode(stepData[2])
 		mapToUpdate[mapKey] = mapVal
 	case LOGGER_LOG:
-		log.Println("[FB-LOGGER] Server log:", stepData[0])
+		badGlobalLog.Debug().Msgf("Facebook server log: %v", stepData[0]) // zerolog-allow-msgf
 		return nil
 	case I64_ADD:
 		first := ls.Decode(stepData[0]).(int64)
 		second := ls.Decode(stepData[1]).(int64)
 		return first + second
 	default:
-		log.Println("got unknown step type:", stepType)
-		log.Println(stepData...)
-		log.Println(s...)
+		badGlobalLog.Debug().Int("step_type", int(stepType)).Any("step_data", stepData).Msg("Got unknown step type")
 		os.Exit(1)
 	}
 
@@ -133,16 +131,22 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []interface{}) {
 	depReference, ok := ls.Dependencies[referenceName]
 	if !ok {
-		log.Println("Skipping dependency with reference name:", referenceName, data)
+		badGlobalLog.Debug().
+			Str("reference_name", referenceName).
+			Any("data", data).
+			Msg("Skipping dependency with reference name (unknown dependency)")
 		return
 	}
 
 	reflectedMs := reflect.ValueOf(ls.Table).Elem()
-	//log.Println(depReference)
+	//badGlobalLog.Println(depReference)
 	depField := reflectedMs.FieldByName(depReference)
 
 	if !depField.IsValid() {
-		log.Println("Skipping dependency with reference name:", referenceName, data)
+		badGlobalLog.Debug().
+			Str("reference_name", referenceName).
+			Any("data", data).
+			Msg("Skipping dependency with reference name (invalid field)")
 		return
 	}
 
@@ -167,7 +171,7 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 			conditionVal := newDepInstance.FieldByName(conditionField)
 			index, err = ls.parseConditionIndex(conditionVal.Bool(), indexChoices)
 			if err != nil {
-				log.Println(fmt.Sprintf("failed to parse condition index in dependency %v for field %v", depFieldsType.Name(), fieldInfo.Name))
+				badGlobalLog.Warn().Str("struct_name", depFieldsType.Name()).Str("field_name", fieldInfo.Name).Msg("Failed to parse condition index")
 				continue
 			}
 		} else {
@@ -175,7 +179,10 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 		}
 
 		if index >= len(data) {
-			log.Println(fmt.Sprintf("breaking handleStoredProcedure loop because the defined struct exceeds the length of the lightspeed data slice: (index=%d, sliceLen=%d, field=%s, dependency=%s)", index, len(data)-1, fieldInfo.Name, depFieldsType.Name()))
+			badGlobalLog.Warn().
+				Int("data_length", len(data)).
+				Str("struct_name", depFieldsType.Name()).
+				Msg("Struct has more fields than the data slice")
 			break
 		}
 
@@ -190,14 +197,14 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 		case reflect.Int64:
 			i64, ok := val.(int64)
 			if !ok {
-				log.Println(fmt.Sprintf("failed to set int64 to %v in dependency %v for field %v (index=%d, actualType=%v)", val, depFieldsType.Name(), fieldInfo.Name, index, valType))
+				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int64")
 				continue
 			}
 			newDepInstance.Field(i).SetInt(i64)
 		case reflect.String:
 			str, ok := val.(string)
 			if !ok {
-				log.Println(fmt.Sprintf("failed to set string to %v in dependency %v for field %v (index=%d, actualType=%v)", val, depFieldsType.Name(), fieldInfo.Name, index, valType))
+				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set string")
 				continue
 			}
 			newDepInstance.Field(i).SetString(str)
@@ -205,31 +212,30 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 			if val == nil {
 				continue
 			}
-			log.Println(val)
 			newDepInstance.Field(i).Set(reflect.ValueOf(val))
 		case reflect.Bool:
 			boolean, ok := val.(bool)
 			if !ok {
-				log.Println(fmt.Sprintf("failed to set bool to %v in dependency %v for field %v (index=%d, actualType=%v)", val, depFieldsType.Name(), fieldInfo.Name, index, valType))
+				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set bool")
 				continue
 			}
 			newDepInstance.Field(i).SetBool(boolean)
 		case reflect.Int:
 			integer, ok := val.(int)
 			if !ok {
-				log.Println(fmt.Sprintf("failed to set int to %v in dependency %v for field %v (index=%d, actualType=%v)", val, depFieldsType.Name(), fieldInfo.Name, index, valType))
+				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int")
 				continue
 			}
 			newDepInstance.Field(i).SetInt(int64(integer))
 		case reflect.Float64:
 			floatVal, ok := val.(float64)
 			if !ok {
-				log.Println(fmt.Sprintf("failed to set float64 to %v in dependency %v for field %v (index=%d, actualType=%v)", val, depFieldsType.Name(), fieldInfo.Name, index, valType))
+				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set float64")
 				continue
 			}
 			newDepInstance.Field(i).SetFloat(floatVal)
 		default:
-			log.Println("invalid kind:", kind, val, valType)
+			badGlobalLog.Warn().Stringer("kind", kind).Any("val", val).Type("val_type", val).Msg("Unknown kind")
 			os.Exit(1)
 		}
 		decodedData[index] = nil
@@ -244,7 +250,7 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 				unrecMap := unrec.Interface().(map[int]any)
 				unrecMap[i] = item
 			} else {
-				log.Printf("Found unknown non-nil field in dependency %v at index %d with value %T %+v", depFieldsType.Name(), i, item, item)
+				badGlobalLog.Warn().Str("struct_name", depFieldsType.Name()).Int("index", i).Any("item", item).Type("item_type", item).Msg("Found unknown non-nil field")
 			}
 		}
 	}

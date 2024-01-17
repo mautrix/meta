@@ -4,7 +4,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"log"
+
+	badGlobalLog "github.com/rs/zerolog/log"
 
 	"go.mau.fi/mautrix-meta/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/messagix/methods"
@@ -273,7 +274,7 @@ func (pb *Event_PublishResponse) Finish() ResponseData {
 	var lsData *lightspeed.LightSpeedData
 	err := json.Unmarshal([]byte(pb.Data.Payload), &lsData)
 	if err != nil {
-		log.Printf("failed to unmarshal PublishResponseData JSON payload into lightspeed.LightSpeedData struct: %v", err)
+		badGlobalLog.Err(err).Msg("failed to unmarshal PublishResponseData JSON payload into lightspeed.LightSpeedData struct")
 		return pb
 	}
 
