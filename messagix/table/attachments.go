@@ -142,7 +142,7 @@ type LSInsertXmaAttachment struct {
 	ShouldBlurSubattachments                   int64  `index:"119" json:",omitempty"`
 	VerifiedType                               int64  `index:"120" json:",omitempty"`
 	CaptionBodyText                            int64  `index:"121" json:",omitempty"`
-	IsPublicXma                                int64  `index:"122" json:",omitempty"`
+	IsPublicXma                                bool   `index:"122" json:",omitempty"`
 	ReplyCount                                 int64  `index:"123" json:",omitempty"`
 	AuthorityLevel                             int64  `index:"124" json:",omitempty"`
 

@@ -599,7 +599,7 @@ func (portal *Portal) handleMatrixRedaction(ctx context.Context, sender *User, e
 		resp, err := sender.Client.Messages.SendReaction(portal.ThreadID, dbReaction.MessageID, "")
 		if err != nil {
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
-			log.Err(err).Msg("Failed to send reaction redaction to Signal")
+			log.Err(err).Msg("Failed to send reaction redaction to Meta")
 			return
 		}
 		// TODO does the response data need to be checked?
@@ -1018,7 +1018,7 @@ func (portal *Portal) handleMetaTypingMessage(typing *table.LSUpdateTypingIndica
 	if err != nil {
 		portal.log.Err(err).
 			Int64("user_id", sender.ID).
-			Msg("Failed to handle Signal typing notification")
+			Msg("Failed to handle Meta typing notification")
 	}
 }
 

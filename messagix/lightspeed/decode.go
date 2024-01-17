@@ -192,19 +192,18 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 			continue
 		}
 
-		valType := reflect.TypeOf(val)
 		switch kind {
 		case reflect.Int64:
 			i64, ok := val.(int64)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int64")
+				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int64")
 				continue
 			}
 			newDepInstance.Field(i).SetInt(i64)
 		case reflect.String:
 			str, ok := val.(string)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set string")
+				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set string")
 				continue
 			}
 			newDepInstance.Field(i).SetString(str)
@@ -216,21 +215,21 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 		case reflect.Bool:
 			boolean, ok := val.(bool)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set bool")
+				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set bool")
 				continue
 			}
 			newDepInstance.Field(i).SetBool(boolean)
 		case reflect.Int:
 			integer, ok := val.(int)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int")
+				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int")
 				continue
 			}
 			newDepInstance.Field(i).SetInt(int64(integer))
 		case reflect.Float64:
 			floatVal, ok := val.(float64)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", valType).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set float64")
+				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set float64")
 				continue
 			}
 			newDepInstance.Field(i).SetFloat(floatVal)
