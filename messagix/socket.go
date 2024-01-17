@@ -256,7 +256,11 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 }
 
 func (s *Socket) sendData(data []byte) error {
-	err := s.conn.WriteMessage(websocket.BinaryMessage, data)
+	conn := s.conn
+	if conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	err := conn.WriteMessage(websocket.BinaryMessage, data)
 	if err != nil {
 		return fmt.Errorf("failed to write to websocket: %w", err)
 	}
