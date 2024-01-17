@@ -86,7 +86,7 @@ metrics:
 
 meta:
     # Which service is this bridge for? Either "facebook" or "instagram".
-    # Remember to change the appservice id, bot profile info and bridge username_template too.
+    # Remember to change the appservice id, bot profile info, bridge username_template and management_room_text too.
     mode: instagram
 
 # Bridge config
@@ -150,8 +150,8 @@ bridge:
     # Messages sent upon joining a management room.
     # Markdown is supported. The defaults are listed below.
     management_room_text:
-        # Sent when joining a room. %[1]s is replaced with the protocol name ("Instagram DM" or "Facebook Messenger")
-        welcome: "Hello, I'm a %[1]s bridge bot."
+        # Sent when joining a room.
+        welcome: "Hello, I'm an Instagram bridge bot."
         # Sent when joining a management room and the user is already logged in.
         welcome_connected: "Use `help` for help."
         # Sent when joining a management room and the user is not logged in.

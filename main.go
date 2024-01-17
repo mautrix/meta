@@ -118,7 +118,6 @@ func (br *MetaBridge) Init() {
 	if br.Config.Bridge.CommandPrefix == "default" {
 		br.Config.Bridge.CommandPrefix = defaultCommandPrefix
 	}
-	br.Config.Bridge.ManagementRoomText.Welcome = fmt.Sprintf(br.Config.Bridge.ManagementRoomText.Welcome, br.ProtocolName)
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
 	br.RegisterCommands()
 
