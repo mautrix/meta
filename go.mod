@@ -1,6 +1,6 @@
 module go.mau.fi/mautrix-meta
 
-go 1.20
+go 1.21
 
 require (
 	github.com/beeper/libserv v0.0.0-20231231202820-c7303abfc32c
