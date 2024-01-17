@@ -3,6 +3,7 @@ package messagix
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"log"
 
 	"go.mau.fi/mautrix-meta/messagix/lightspeed"
@@ -13,63 +14,41 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
-func (s *Socket) handleBinaryMessage(data []byte) {
-	//s.client.Logger.Debug().Any("hex-data", debug.BeautifyHex(data)).Bytes("bytes", data).Msg("Received BinaryMessage")
-	if s.client.eventHandler == nil {
-		return
-	}
-
-	resp := &Response{}
-	err := resp.Read(data)
-	if err != nil {
-		s.handleErrorEvent(err)
-	} else {
-		switch evt := resp.ResponseData.(type) {
-		case *Event_PingResp:
-			s.client.Logger.Info().Msg("Got PingResp packet")
-		case *Event_PublishResponse:
-			if resp.QOS() == packets.QOS_LEVEL_1 {
-				err = s.sendData(binary.BigEndian.AppendUint16([]byte{packets.PUBACK << 4, 2}, evt.MessageIdentifier))
-				if err != nil {
-					s.client.Logger.Err(err).Uint16("message_id", evt.MessageIdentifier).Msg("Failed to send puback")
-				}
-			}
-			s.handlePublishResponseEvent(evt)
-		case *Event_PublishACK, *Event_SubscribeACK:
-			s.handleACKEvent(evt.(AckEvent))
-		case *Event_Ready:
-			s.handleReadyEvent(evt)
-		default:
-			s.client.Logger.Info().Any("data", data).Msg("sending default event...")
-			s.client.eventHandler(resp.ResponseData.Finish())
+func (s *Socket) handleReadyEvent(data *Event_Ready) error {
+	if s.previouslyConnected {
+		err := s.client.SyncManager.EnsureSyncedSocket([]int64{
+			1,
+			2,
+			//16,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to sync after reconnect: %w", err)
 		}
+		return nil
 	}
-}
-
-func (s *Socket) handleReadyEvent(data *Event_Ready) {
 	appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionId)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to get app settings JSON: %w", err)
 	}
 
 	packetId, err := s.sendPublishPacket(LS_APP_SETTINGS, appSettingPublishJSON, &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, s.SafePacketId())
 	if err != nil {
-		log.Fatalf("failed to send APP_SETTINGS publish packet: %v", err)
+		return fmt.Errorf("failed to send app settings packet: %w", err)
 	}
 
 	appSettingAck := s.responseHandler.waitForPubACKDetails(packetId)
 	if appSettingAck == nil {
-		log.Fatalf("failed to get pubAck for packetId: %d", appSettingAck.PacketId)
+		return fmt.Errorf("didn't get ack for app settings packet %d", packetId)
 	}
 
 	_, err = s.sendSubscribePacket(LS_FOREGROUND_STATE, packets.QOS_LEVEL_0, true)
 	if err != nil {
-		log.Fatalf("failed to subscribe to ls_foreground_state: %v", err)
+		return fmt.Errorf("failed to subscribe to /ls_foreground_state: %w", err)
 	}
 
 	_, err = s.sendSubscribePacket(LS_RESP, packets.QOS_LEVEL_0, true)
 	if err != nil {
-		log.Fatalf("failed to subscribe to ls_resp: %v", err)
+		return fmt.Errorf("failed to subscribe to /ls_resp: %w", err)
 	}
 
 	tskm := s.client.NewTaskManager()
@@ -115,55 +94,46 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) {
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to finalize sync tasks: %w", err)
 	}
 
 	s.client.Logger.Debug().Any("data", string(payload)).Msg("Sync groups tasks")
 	packetId, err = s.makeLSRequest(payload, 3)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to send sync tasks: %w", err)
 	}
 
 	resp := s.responseHandler.waitForPubResponseDetails(packetId)
 	if resp == nil {
-		log.Fatalf("failed to receive response from task 145 request")
+		return fmt.Errorf("didn't receive response to sync task %d", packetId)
 	}
-
-	s.client.Logger.Info().Any("syncgroup", resp.Table.LSUpsertSyncGroupThreadsRange).Any("threads", resp.Table.LSDeleteThenInsertThread).Msg("145 RESP.")
 
 	err = s.client.Account.ReportAppState(table.FOREGROUND)
 	if err != nil {
-		log.Fatalf("failed to report app state to foreground (active): %v", err)
+		return fmt.Errorf("failed to report app state: %w", err)
 	}
 
 	err = s.client.SyncManager.EnsureSyncedSocket([]int64{
 		1,
 	})
-
 	if err != nil {
-		log.Fatalf("EnsureSyncedSocket failed to sync db 1: %v", err)
+		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
 	}
 
 	data.client = s.client
 	s.client.eventHandler(data.Finish())
-	go s.startHandshakeInterval()
+	s.previouslyConnected = true
+	return nil
 }
 
 func (s *Socket) handleACKEvent(ackData AckEvent) {
-	packetId := ackData.GetPacketId()
-	err := s.responseHandler.updatePacketChannel(uint16(packetId), ackData)
-	if err != nil {
-		s.client.Logger.Err(err).Any("data", ackData).Any("packetId", packetId).Msg("failed to handle ack event")
-		return
+	ok := s.responseHandler.updatePacketChannel(ackData.GetPacketId(), ackData)
+	if !ok {
+		s.client.Logger.Debug().Uint16("packet_id", ackData.GetPacketId()).Msg("Got unexpected publish ack")
 	}
 }
 
-func (s *Socket) handleErrorEvent(err error) {
-	errEvent := &Event_Error{Err: err}
-	s.client.eventHandler(errEvent)
-}
-
-func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse) {
+func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse, qos packets.QoS) {
 	packetId := resp.Data.RequestID
 	hasPacket := s.responseHandler.hasPacket(uint16(packetId))
 	// s.client.Logger.Debug().Any("packetId", packetId).Any("resp", resp).Msg("got response!")
@@ -171,12 +141,10 @@ func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse) {
 	case string(LS_RESP):
 		resp.Finish()
 		if hasPacket {
-			err := s.responseHandler.updateRequestChannel(uint16(packetId), resp)
-			if err != nil {
-				s.handleErrorEvent(err)
-				return
+			ok := s.responseHandler.updateRequestChannel(uint16(packetId), resp)
+			if !ok {
+				s.client.Logger.Warn().Int64("packet_id", packetId).Msg("Dropped response to packet")
 			}
-			return
 		} else if packetId == 0 {
 			syncGroupsNeedUpdate := methods.NeedUpdateSyncGroups(resp.Table)
 			if syncGroupsNeedUpdate {
@@ -191,18 +159,29 @@ func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse) {
 				}
 			}
 			s.client.eventHandler(resp)
-			return
+		} else {
+			s.client.Logger.Debug().Int64("packet_id", packetId).Msg("Got unexpected lightspeed publish response")
 		}
-		// s.client.Logger.Info().Any("packetId", packetId).Any("data", resp).Msg("Got publish response but was not expecting it for specific packet identifier.")
 	default:
-		s.client.Logger.Info().Any("packetId", packetId).Any("topic", resp.Topic).Any("data", resp.Data).Msg("Got unknown publish response topic!")
+		s.client.Logger.Info().Any("packetId", packetId).Any("topic", resp.Topic).Any("data", resp.Data).
+			Msg("Got unknown publish response topic")
 	}
+	go func() {
+		if qos == packets.QOS_LEVEL_1 {
+			err := s.sendData(binary.BigEndian.AppendUint16([]byte{packets.PUBACK << 4, 2}, resp.MessageIdentifier))
+			if err != nil {
+				s.client.Logger.Err(err).Uint16("message_id", resp.MessageIdentifier).Msg("Failed to send puback")
+			}
+		}
+	}()
 }
 
 type Event_PingResp struct{}
 
 func (pr *Event_PingResp) SetIdentifier(identifier uint16) {}
 func (e *Event_PingResp) Finish() ResponseData             { return e }
+
+type Event_SocketError struct{ Err error }
 
 // Event_Ready represents the CONNACK packet's response.
 //
@@ -230,33 +209,6 @@ func (e *Event_Ready) Finish() ResponseData {
 	//e.Threads = e.client.configs.accountConfigTable.LSDeleteThenInsertThread
 	//e.Messages = e.client.configs.accountConfigTable.LSUpsertMessage
 	//e.Contacts = e.client.configs.accountConfigTable.LSVerifyContactRowExists
-	return e
-}
-
-// Event_Error is emitted whenever the library encounters/receives an error.
-//
-// These errors can be for example: failed to send data, failed to read response data and so on.
-type Event_Error struct {
-	Err error
-}
-
-func (pb *Event_Error) SetIdentifier(identifier uint16) {}
-
-func (e *Event_Error) Finish() ResponseData {
-	return e
-}
-
-// Event_SocketClosed is emitted whenever the websockets CloseHandler() is called.
-//
-// This provides great flexability because the user can then decide whether the client should reconnect or not.
-type Event_SocketClosed struct {
-	Code int
-	Text string
-}
-
-func (pb *Event_SocketClosed) SetIdentifier(identifier uint16) {}
-
-func (e *Event_SocketClosed) Finish() ResponseData {
 	return e
 }
 
@@ -301,7 +253,7 @@ func (pb *Event_SubscribeACK) Finish() ResponseData {
 type Event_PublishResponse struct {
 	Topic             string              `lengthType:"uint16" endian:"big"`
 	Data              PublishResponseData `jsonString:"1"`
-	Table             table.LSTable
+	Table             *table.LSTable
 	MessageIdentifier uint16
 }
 
@@ -317,7 +269,7 @@ func (pb *Event_PublishResponse) SetIdentifier(identifier uint16) {
 }
 
 func (pb *Event_PublishResponse) Finish() ResponseData {
-	pb.Table = table.LSTable{}
+	pb.Table = &table.LSTable{}
 	var lsData *lightspeed.LightSpeedData
 	err := json.Unmarshal([]byte(pb.Data.Payload), &lsData)
 	if err != nil {
@@ -326,7 +278,7 @@ func (pb *Event_PublishResponse) Finish() ResponseData {
 	}
 
 	dependencies := table.SPToDepMap(pb.Data.Sp)
-	decoder := lightspeed.NewLightSpeedDecoder(dependencies, &pb.Table)
+	decoder := lightspeed.NewLightSpeedDecoder(dependencies, pb.Table)
 	decoder.Decode(lsData.Steps)
 	return pb
 }

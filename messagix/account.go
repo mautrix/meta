@@ -48,7 +48,7 @@ func (a *Account) processLogin(resp *http.Response, respBody []byte) error {
 	return err
 }
 
-func (a *Account) GetContacts(limit int64) ([]table.LSVerifyContactRowExists, error) {
+func (a *Account) GetContacts(limit int64) ([]*table.LSVerifyContactRowExists, error) {
 	tskm := a.client.NewTaskManager()
 	tskm.AddNewTask(&socket.GetContactsTask{Limit: limit})
 
@@ -70,7 +70,7 @@ func (a *Account) GetContacts(limit int64) ([]table.LSVerifyContactRowExists, er
 	return resp.Table.LSVerifyContactRowExists, nil
 }
 
-func (a *Account) GetContactsFull(contactIds []int64) ([]table.LSDeleteThenInsertContact, error) {
+func (a *Account) GetContactsFull(contactIds []int64) ([]*table.LSDeleteThenInsertContact, error) {
 	tskm := a.client.NewTaskManager()
 	for _, id := range contactIds {
 		tskm.AddNewTask(&socket.GetContactsFullTask{

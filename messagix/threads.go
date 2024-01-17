@@ -33,7 +33,7 @@ func (t *Threads) FetchMessages(ThreadId int64, ReferenceTimestampMs int64, Refe
 		return nil, fmt.Errorf("failed to receive response from socket while trying to fetch messages. (packetId=%d, thread_key=%d, cursor=%s, reference_message_id=%s, reference_timestamp_ms=%d)", packetId, ThreadId, Cursor, ReferenceMessageId, ReferenceTimestampMs)
 	}
 
-	return &resp.Table, nil
+	return resp.Table, nil
 }
 
 type MessageBuilder struct {
@@ -173,7 +173,7 @@ func (m *MessageBuilder) Execute() (*table.LSTable, error) {
 	}
 	resp.Finish()
 
-	return &resp.Table, nil
+	return resp.Table, nil
 }
 
 func (m *MessageBuilder) addAttachmentTasks(tskm *TaskManager) {

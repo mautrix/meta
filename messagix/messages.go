@@ -43,7 +43,7 @@ func (m *Messages) SendReaction(threadId int64, messageId string, reaction strin
 	}
 	resp.Finish()
 
-	return &resp.Table, nil
+	return resp.Table, nil
 }
 
 func (m *Messages) DeleteMessage(messageId string, deleteForMeOnly bool) (*table.LSTable, error) {
@@ -72,5 +72,5 @@ func (m *Messages) DeleteMessage(messageId string, deleteForMeOnly bool) (*table
 	}
 	resp.Finish()
 
-	return &resp.Table, nil
+	return resp.Table, nil
 }

@@ -1,7 +1,6 @@
 package messagix
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -16,11 +15,6 @@ type ResponseHandler struct {
 	client          *Client
 	requestChannels map[uint16]chan interface{}
 	packetChannels  map[uint16]chan interface{}
-	packetTimeout   time.Duration
-}
-
-func (p *ResponseHandler) SetPacketTimeout(d time.Duration) {
-	p.packetTimeout = d
 }
 
 func (p *ResponseHandler) hasPacket(packetId uint16) bool {
@@ -36,24 +30,20 @@ func (p *ResponseHandler) addRequestChannel(packetId uint16) {
 	p.requestChannels[packetId] = make(chan interface{}, 1)
 }
 
-func (p *ResponseHandler) updatePacketChannel(packetId uint16, packetData interface{}) error {
+func (p *ResponseHandler) updatePacketChannel(packetId uint16, packetData interface{}) bool {
 	if ch, ok := p.packetChannels[packetId]; ok {
 		ch <- packetData
-		//p.client.Logger.Info().Any("data", packetData).Any("packetId", packetId).Msg("Updated packet channel!")
-		return nil
+		return true
 	}
-
-	return fmt.Errorf("failed to update packet channel for packetId %d", packetId)
+	return false
 }
 
-func (p *ResponseHandler) updateRequestChannel(packetId uint16, packetData interface{}) error {
+func (p *ResponseHandler) updateRequestChannel(packetId uint16, packetData interface{}) bool {
 	if ch, ok := p.requestChannels[packetId]; ok {
 		ch <- packetData
-		//p.client.Logger.Info().Any("data", packetData).Any("packetId", packetId).Msg("Updated request channel!")
-		return nil
+		return true
 	}
-
-	return fmt.Errorf("failed to update request channel for packetId %d", packetId)
+	return false
 }
 
 func (p *ResponseHandler) waitForPubACKDetails(packetId uint16) *Event_PublishACK {
@@ -78,7 +68,7 @@ func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelTyp
 	case response := <-ch:
 		p.deleteDetails(packetId, channelType)
 		return response
-	case <-time.After(p.packetTimeout):
+	case <-time.After(packetTimeout):
 		p.deleteDetails(packetId, channelType)
 		return &Event_PublishResponse{}
 	}

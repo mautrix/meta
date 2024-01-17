@@ -81,3 +81,10 @@ func (t *FetchMessagesTask) Create() (interface{}, interface{}, bool) {
 	queueName := "mrq." + threadStr
 	return t, queueName, false
 }
+
+type MuteThreadTask struct {
+	ThreadKey        int64 `json:"thread_key"`
+	MailboxType      int64 `json:"mailbox_type"` // 0
+	MuteExpireTimeMS int64 `json:"mute_expire_time_ms"`
+	SyncGroup        int64 `json:"sync_group"` // 1
+}

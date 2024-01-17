@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+
+	"github.com/rs/zerolog/log"
 )
 
 func NewReader(data []byte) *byter {
@@ -93,7 +95,13 @@ func (b *byter) ReadToStruct(s interface{}) error {
 				}
 			}
 		default:
-			return fmt.Errorf("unsupported type %s for field %s", field.Type(), values.Type().Field(i).Name)
+			// TODO figure out why this happens when reconnecting
+			log.Warn().
+				Str("field_type", field.Type().Name()).
+				Str("field_name", values.Type().Field(i).Name).
+				Str("struct_name", values.Type().Name()).
+				Msg("Byter.ReadToStruct: unsupported type")
+			//return fmt.Errorf("unsupported type %s for field %s of %s", field.Type(), values.Type().Field(i).Name, values.Type().Name())
 		}
 	}
 

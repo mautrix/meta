@@ -10,7 +10,7 @@ const (
 type QueryMetadata struct {
 	DatabaseId        int64
 	SendSyncParams    bool
-	LastAppliedCursor interface{}
+	LastAppliedCursor *string
 	SyncParams        interface{}
 	SyncChannel
 }

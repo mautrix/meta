@@ -27,6 +27,9 @@ type Configs struct {
 }
 
 func (c *Configs) SetupConfigs() error {
+	if c.client.socket != nil {
+		c.client.socket.previouslyConnected = false
+	}
 	authenticated := c.client.IsAuthenticated()
 	c.WebSessionId = methods.GenerateWebsessionID(authenticated)
 	c.LsdToken = c.browserConfigTable.LSD.Token

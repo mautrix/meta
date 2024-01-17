@@ -55,12 +55,8 @@ func evHandler(evt interface{}) {
 		for _, thread := range threads {
 			cli.Logger.Info().Any("thread_name", thread.ThreadName).Any("thread_key", thread.ThreadKey).Msg("[PUBLISH] Got thread info!")
 		}
-	case *messagix.Event_Error:
+	case *messagix.Event_SocketError:
 		cli.Logger.Err(evtData.Err).Msg("The library encountered an error")
-		os.Exit(1)
-	case *messagix.Event_SocketClosed:
-		cli.Logger.Info().Any("code", evtData.Code).Any("text", evtData.Text).Msg("Socket was closed.")
-		os.Exit(1)
 	default:
 		cli.Logger.Info().Any("data", evtData).Interface("type", evt).Msg("Got unknown event!")
 	}

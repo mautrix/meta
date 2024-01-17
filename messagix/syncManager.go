@@ -104,17 +104,17 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 			Any("response", resp.Data).
 			Any("table", resp.Table).
 			Msg("No transactions found")
-		return &resp.Table, nil
+		return resp.Table, nil
 	}
 	block := resp.Table.LSExecuteFirstBlockForSyncTransaction[0]
 	nextCursor, currentCursor := block.NextCursor, block.CurrentCursor
 	sm.client.Logger.Debug().Any("full_block", block).Any("block_response", block).Any("database_id", payload.Database).Any("payload", string(jsonPayload)).Msg("Synced database")
 	if nextCursor == currentCursor {
-		return &resp.Table, nil
+		return resp.Table, nil
 	}
 
 	// Update the last applied cursor to the next cursor and recursively fetch again
-	db.LastAppliedCursor = nextCursor
+	db.LastAppliedCursor = &nextCursor
 	db.SendSyncParams = block.SendSyncParams
 	db.SyncChannel = socket.SyncChannel(block.SyncChannel)
 	err = sm.updateSyncGroupCursors(resp.Table) // Also sync the transaction with the store map because the db param is just a copy of the map entry
@@ -151,7 +151,7 @@ func (sm *SyncManager) SyncDataGraphQL(dbs []int64) (*table.LSTable, error) {
 		if db == 1 {
 			tableData = lsTable
 		}
-		err = sm.updateSyncGroupCursors(*lsTable)
+		err = sm.updateSyncGroupCursors(lsTable)
 		if err != nil {
 			return nil, err
 		}
@@ -161,14 +161,14 @@ func (sm *SyncManager) SyncDataGraphQL(dbs []int64) (*table.LSTable, error) {
 	return tableData, nil
 }
 
-func (sm *SyncManager) SyncTransactions(transactions []table.LSExecuteFirstBlockForSyncTransaction) error {
+func (sm *SyncManager) SyncTransactions(transactions []*table.LSExecuteFirstBlockForSyncTransaction) error {
 	for _, transaction := range transactions {
 		database, ok := sm.store[transaction.DatabaseId]
 		if !ok {
 			return fmt.Errorf("failed to update database %d by block transaction", transaction.DatabaseId)
 		}
 
-		database.LastAppliedCursor = transaction.NextCursor
+		database.LastAppliedCursor = &transaction.NextCursor
 		database.SendSyncParams = transaction.SendSyncParams
 		database.SyncChannel = socket.SyncChannel(transaction.SyncChannel)
 		sm.client.Logger.Info().Any("new_cursor", database.LastAppliedCursor).Any("syncChannel", database.SyncChannel).Any("sendSyncParams", database.SendSyncParams).Any("database_id", transaction.DatabaseId).Msg("Updated database by transaction...")
@@ -189,12 +189,12 @@ func (sm *SyncManager) UpdateDatabaseSyncParams(dbs []*socket.QueryMetadata) err
 	return nil
 }
 
-func (sm *SyncManager) getSyncParams(ch socket.SyncChannel) interface{} {
+func (sm *SyncManager) getSyncParams(ch socket.SyncChannel) *string {
 	switch ch {
 	case socket.MailBox:
-		return sm.syncParams.Mailbox
+		return &sm.syncParams.Mailbox
 	case socket.Contact:
-		return sm.syncParams.Contact
+		return &sm.syncParams.Contact
 	default:
 		log.Fatalf("Unknown syncChannel: %d", ch)
 		return nil
@@ -203,13 +203,13 @@ func (sm *SyncManager) getSyncParams(ch socket.SyncChannel) interface{} {
 
 func (sm *SyncManager) GetCursor(db int64) string {
 	database, ok := sm.store[db]
-	if !ok {
+	if !ok || database.LastAppliedCursor == nil {
 		return ""
 	}
-	return database.LastAppliedCursor.(string)
+	return *database.LastAppliedCursor
 }
 
-func (sm *SyncManager) updateThreadRanges(ranges []table.LSUpsertSyncGroupThreadsRange) error {
+func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThreadsRange) error {
 	var err error
 	for _, syncGroupData := range ranges {
 		if !syncGroupData.HasMoreBefore {
@@ -245,7 +245,7 @@ func (sm *SyncManager) getSyncGroupKeyStore(db int64) *socket.KeyStoreData {
 these 3 return the same stuff
 updateThreadsRangesV2, upsertInboxThreadsRange, upsertSyncGroupThreadsRange
 */
-func (sm *SyncManager) updateSyncGroupCursors(table table.LSTable) error {
+func (sm *SyncManager) updateSyncGroupCursors(table *table.LSTable) error {
 	var err error
 	if len(table.LSUpsertSyncGroupThreadsRange) > 0 {
 		err = sm.updateThreadRanges(table.LSUpsertSyncGroupThreadsRange)

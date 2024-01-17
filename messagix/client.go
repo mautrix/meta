@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
@@ -50,6 +53,8 @@ type Client struct {
 	endpoints       map[string]string
 	taskMutex       *sync.Mutex
 	activeTasks     []int
+
+	stopCurrentConnection atomic.Pointer[context.CancelFunc]
 }
 
 // pass an empty zerolog.Logger{} for no logging
@@ -169,14 +174,50 @@ func (c *Client) Connect() error {
 		if err != nil {
 			return err
 		}
+	} else if err := c.socket.CanConnect(); err != nil {
+		return err
 	}
-	return c.socket.Connect()
+	ctx, cancel := context.WithCancel(context.TODO())
+	oldCancel := c.stopCurrentConnection.Swap(&cancel)
+	if oldCancel != nil {
+		(*oldCancel)()
+	}
+	go func() {
+		reconnectIn := 2 * time.Second
+		for {
+			err := c.socket.Connect()
+			if ctx.Err() != nil {
+				return
+			}
+			c.eventHandler(&Event_SocketError{Err: err})
+			if errors.Is(err, ErrInReadLoop) {
+				reconnectIn = 2 * time.Second
+			} else {
+				reconnectIn *= 2
+				if reconnectIn > 5*time.Minute {
+					reconnectIn = 5 * time.Minute
+				}
+			}
+			if err != nil {
+				c.Logger.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in connection, reconnecting")
+			} else {
+				c.Logger.Warn().Dur("reconnect_in", reconnectIn).Msg("Connection closed without error, reconnecting")
+			}
+			select {
+			case <-time.After(reconnectIn):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return nil
 }
 
 func (c *Client) Disconnect() {
-	if c.socket.conn != nil {
-		c.socket.conn.Close()
+	if fn := c.stopCurrentConnection.Load(); fn != nil {
+		(*fn)()
 	}
+	c.socket.Disconnect()
 }
 
 func (c *Client) SaveSession(path string) error {
@@ -284,7 +325,6 @@ func (c *Client) IsAuthenticated() bool {
 	if c.platform == types.Facebook {
 		isAuthenticated = c.configs.browserConfigTable.CurrentUserInitialData.AccountID != "0"
 	} else {
-		c.Logger.Info().Any("data", c.configs.browserConfigTable.PolarisViewer).Msg("PolarisViewer")
 		isAuthenticated = c.configs.browserConfigTable.PolarisViewer.ID != ""
 	}
 	return isAuthenticated

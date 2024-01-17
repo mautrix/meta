@@ -22,7 +22,7 @@ func (cp *ConnectPayload) Write() ([]byte, error) {
 	return byter.NewWriter().WriteFromStruct(cp)
 }
 
-func (c *Client) NewConnectRequest(jsonData string, connectFlags uint8) ([]byte, error) {
+func newConnectRequest(jsonData string, connectFlags uint8) ([]byte, error) {
 	payload := &ConnectPayload{
 		ProtocolName:  protocolName,
 		ProtocolLevel: uint8(protocolLevel),

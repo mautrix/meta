@@ -453,11 +453,11 @@ func (br *MetaBridge) StartUsers() {
 func (user *User) handleTable(table *table.LSTable) {
 	ctx := user.log.With().Str("action", "handle table").Logger().WithContext(context.TODO())
 	for _, contact := range table.LSVerifyContactRowExists {
-		user.bridge.GetPuppetByID(contact.ContactId).UpdateInfo(ctx, &contact)
+		user.bridge.GetPuppetByID(contact.ContactId).UpdateInfo(ctx, contact)
 	}
 	for _, thread := range table.LSDeleteThenInsertThread {
 		portal := user.GetPortalByThreadID(thread.ThreadKey, thread.ThreadType)
-		portal.UpdateInfo(ctx, &thread)
+		portal.UpdateInfo(ctx, thread)
 		if portal.MXID == "" {
 			err := portal.CreateMatrixRoom(ctx, user)
 			if err != nil {
@@ -503,16 +503,16 @@ func (user *User) handleTable(table *table.LSTable) {
 		}
 	}
 	for _, msg := range table.LSInsertMessage {
-		user.handlePortalEvent(msg.ThreadKey, &msg)
+		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
 	for _, msg := range table.LSDeleteMessage {
-		user.handlePortalEvent(msg.ThreadKey, &msg)
+		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
 	for _, msg := range table.LSUpsertReaction {
-		user.handlePortalEvent(msg.ThreadKey, &msg)
+		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
 	for _, msg := range table.LSDeleteReaction {
-		user.handlePortalEvent(msg.ThreadKey, &msg)
+		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
 }
 
@@ -551,29 +551,15 @@ func (user *User) eventHandler(rawEvt any) {
 	switch evt := rawEvt.(type) {
 	case *messagix.Event_PublishResponse:
 		user.log.Trace().Any("table", &evt.Table).Msg("Got new event")
-		user.handleTable(&evt.Table)
+		user.handleTable(evt.Table)
 	case *messagix.Event_Ready:
 		puppet := user.bridge.GetPuppetByID(user.MetaID)
 		puppet.UpdateInfo(context.TODO(), evt.CurrentUser)
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		user.tryAutomaticDoublePuppeting()
 		user.handleTable(evt.Table)
-	case *messagix.Event_Error:
-		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError})
-		// TODO move this handling into the library
-		user.log.Err(evt.Err).Msg("The library encountered an error")
-	case *messagix.Event_SocketClosed:
-		// TODO move this handling into the library
-		user.log.Info().
-			Any("code", evt.Code).
-			Any("text", evt.Text).
-			Msg("Connection was closed, reconnecting")
-		go func() {
-			err := user.Client.Connect()
-			if err != nil {
-				user.log.Err(err).Msg("Failed to connect")
-			}
-		}()
+	case *messagix.Event_SocketError:
+		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: evt.Err.Error()})
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}

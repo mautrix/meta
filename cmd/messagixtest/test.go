@@ -97,7 +97,7 @@ func evHandler(evt any) {
 	switch evtData := evt.(type) {
 	case *messagix.Event_Ready:
 		log.Info().
-			Any("connectionCode", evtData.ConnectionCode.ToString()).
+			Str("connectionCode", evtData.ConnectionCode.Error()).
 			Any("isNewSession", evtData.IsNewSession).
 			Msg("Client is ready!")
 		_ = json.NewEncoder(exerrors.Must(os.OpenFile("table.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600))).Encode(evtData)
@@ -119,23 +119,8 @@ func evHandler(evt any) {
 		if len(evtData.Table.LSInsertAttachmentCta) > 0 {
 			fmt.Println(evtData.Table.LSInsertAttachmentCta[0].TargetId)
 		}
-	case *messagix.Event_Error:
+	case *messagix.Event_SocketError:
 		log.Err(evtData.Err).Msg("The library encountered an error")
-		//os.Exit(1)
-	case *messagix.Event_SocketClosed:
-		log.Info().Any("code", evtData.Code).Any("text", evtData.Text).Msg("Socket was closed, reconnecting")
-
-		go func() {
-			err := cli.Connect()
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to connect")
-			}
-
-			err = cli.SaveSession("session.json")
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to save session")
-			}
-		}()
 	default:
 		log.Info().Any("data", evtData).Interface("type", evt).Msg("Got unknown event!")
 	}

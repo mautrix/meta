@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
@@ -100,7 +101,7 @@ func InterfaceToStructJSON(data interface{}, i interface{}) error {
 	return json.Unmarshal(b, &i)
 }
 
-func NeedUpdateSyncGroups(data table.LSTable) bool {
+func NeedUpdateSyncGroups(data *table.LSTable) bool {
 	return len(data.LSExecuteFirstBlockForSyncTransaction) > 0 ||
 		len(data.LSUpsertSyncGroupThreadsRange) > 0
 }

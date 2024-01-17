@@ -148,8 +148,9 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 
 	var err error
 
-	depFieldsType := depField.Type().Elem()
-	newDepInstance := reflect.New(depFieldsType).Elem()
+	depFieldsType := depField.Type().Elem().Elem()
+	newDepInstancePtr := reflect.New(depFieldsType)
+	newDepInstance := newDepInstancePtr.Elem()
 	decodedData := make([]any, len(data))
 	for i, d := range data {
 		decodedData[i] = ls.Decode(d)
@@ -247,7 +248,7 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 			}
 		}
 	}
-	newSlice := reflect.Append(depField, newDepInstance)
+	newSlice := reflect.Append(depField, newDepInstancePtr)
 	depField.Set(newSlice)
 }
 

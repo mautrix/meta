@@ -147,7 +147,10 @@ type LSTruncatePresenceDatabase struct {
 
 type LSUpdateLastSyncCompletedTimestampMsToNow struct {
 	Unknown0 int64 `index:"0" json:",omitempty"`
-	Unknown1 int64 `index:"1" json:",omitempty"`
 
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSStoryContactSyncFromBucket struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
