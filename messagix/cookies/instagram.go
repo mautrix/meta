@@ -39,5 +39,5 @@ func (ig *InstagramCookies) GetUserID() int64 {
 }
 
 func (ig *InstagramCookies) AllCookiesPresent() bool {
-	return ig.SessionId != "" && ig.CsrfToken != "" && ig.MachineId != "" && ig.IgDeviceId != "" && ig.UserId != "" && ig.ShbId != "" && ig.Shbts != ""
+	return ig.SessionId != "" && ig.CsrfToken != "" && ig.MachineId != "" && ig.IgDeviceId != "" && ig.UserId != ""
 }
