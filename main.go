@@ -100,7 +100,7 @@ func (br *MetaBridge) Init() {
 	case config.ModeInstagram:
 		msgconv.MediaReferer = "https://www.instagram.com/"
 		br.ProtocolName = "Instagram DM"
-		br.BeeperServiceName = "instagram"
+		br.BeeperServiceName = "instagramgo"
 		br.BeeperNetworkName = "instagram"
 		defaultCommandPrefix = "!ig"
 		MessagixPlatform = types.Instagram
@@ -110,7 +110,7 @@ func (br *MetaBridge) Init() {
 	case config.ModeFacebook:
 		msgconv.MediaReferer = "https://www.facebook.com/"
 		br.ProtocolName = "Facebook Messenger"
-		br.BeeperServiceName = "facebook"
+		br.BeeperServiceName = "facebookgo"
 		br.BeeperNetworkName = "facebook"
 		defaultCommandPrefix = "!fb"
 		MessagixPlatform = types.Facebook
