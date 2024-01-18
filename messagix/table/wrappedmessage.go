@@ -5,11 +5,16 @@ import (
 )
 
 func (table *LSTable) WrapMessages() []*WrappedMessage {
-	messages := make([]*WrappedMessage, len(table.LSInsertMessage))
-	messageMap := make(map[string]*WrappedMessage, len(table.LSInsertMessage))
-	for i, msg := range table.LSInsertMessage {
-		messages[i] = &WrappedMessage{LSInsertMessage: msg}
+	messages := make([]*WrappedMessage, len(table.LSInsertMessage)+len(table.LSUpsertMessage))
+	messageMap := make(map[string]*WrappedMessage, len(table.LSInsertMessage)+len(table.LSUpsertMessage))
+	for i, msg := range table.LSUpsertMessage {
+		messages[i] = &WrappedMessage{LSInsertMessage: msg.ToInsert(), IsUpsert: true}
 		messageMap[msg.MessageId] = messages[i]
+	}
+	iOffset := len(table.LSUpsertMessage)
+	for i, msg := range table.LSInsertMessage {
+		messages[iOffset+i] = &WrappedMessage{LSInsertMessage: msg}
+		messageMap[msg.MessageId] = messages[iOffset+i]
 	}
 	for _, blob := range table.LSInsertBlobAttachment {
 		msg, ok := messageMap[blob.MessageId]
@@ -54,6 +59,7 @@ func (table *LSTable) WrapMessages() []*WrappedMessage {
 
 type WrappedMessage struct {
 	*LSInsertMessage
+	IsUpsert        bool
 	BlobAttachments []*LSInsertBlobAttachment
 	XMAAttachments  []*WrappedXMA
 	Stickers        []*LSInsertStickerAttachment
