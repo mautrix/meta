@@ -304,7 +304,7 @@ func downloadAvatar(ctx context.Context, url string) ([]byte, error) {
 	// TODO use facebook.com when appropriate
 	req.Header.Set("Referer", "https://www.instagram.com/")
 	req.Header.Set("Accept", "image/avif,image/webp,*/*")
-	req.Header.Set("User-Agent", messagix.USER_AGENT)
+	req.Header.Set("User-Agent", messagix.UserAgent)
 	resp, err := avatarHTTPClient.Do(req)
 	defer func() {
 		if resp != nil && resp.Body != nil {

@@ -31,7 +31,7 @@ func (fb *FacebookCookies) IsLoggedIn() bool {
 func (fb *FacebookCookies) GetViewports() (string, string) {
 	pxs := strings.Split(fb.Wd, "x")
 	if len(pxs) != 2 {
-		return "2276", "1156"
+		return "1920", "1003"
 	}
 	return pxs[0], pxs[1]
 }

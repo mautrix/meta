@@ -110,19 +110,18 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 }
 
 func (c *Client) buildHeaders(withCookies bool) http.Header {
-
 	headers := http.Header{}
 	headers.Add("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 	headers.Add("accept-language", "en-US,en;q=0.9")
-	headers.Add("dpr", "1.125")
-	headers.Add("sec-ch-prefers-color-scheme", "light")
-	headers.Add("sec-ch-ua", "\"Google Chrome\";v=\"116\", \"Chromium\";v=\"116\", \"Not-A.Brand\";v=\"24\"")
-	headers.Add("sec-ch-ua-full-version-list", "\"Google Chrome\";v=\"116.0.5845.140\", \"Chromium\";v=\"116.0.5845.140\", \"Not-A.Brand\";v=\"24.0.0.0\"")
-	headers.Add("sec-ch-ua-mobile", "?0")
-	headers.Add("sec-ch-ua-model", "")
-	headers.Add("sec-ch-ua-platform", "Linux")
-	headers.Add("sec-ch-ua-platform-version", "6.4.12")
-	headers.Add("user-agent", USER_AGENT)
+	headers.Add("dpr", DPR)
+	headers.Add("user-agent", UserAgent)
+	headers.Add("sec-ch-ua", SecCHUserAgent)
+	headers.Add("sec-ch-ua-platform", SecCHPlatform)
+	headers.Add("sec-ch-prefers-color-scheme", SecCHPrefersColorScheme)
+	headers.Add("sec-ch-ua-full-version-list", SecCHFullVersionList)
+	headers.Add("sec-ch-ua-mobile", SecCHMobile)
+	headers.Add("sec-ch-ua-model", SecCHModel)
+	headers.Add("sec-ch-ua-platform-version", SecCHPlatformVersion)
 
 	if c.platform == types.Facebook {
 		c.addFacebookHeaders(&headers)

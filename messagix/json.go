@@ -59,7 +59,7 @@ func (s *Socket) newConnectJSON() (string, error) {
 		Pack:               make([]any, 0),
 		HostNameOverride:   s.client.configs.browserConfigTable.MqttWebConfig.HostNameOverride,
 		P:                  nil,
-		UserAgent:          USER_AGENT,
+		UserAgent:          UserAgent,
 		Aids:               nil,
 		Cid:                s.client.configs.browserConfigTable.MqttWebDeviceID.ClientID,
 	}

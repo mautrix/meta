@@ -25,7 +25,18 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
-var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+const DPR = "1"
+const ChromeVersion = "118"
+const ChromeVersionFull = ChromeVersion + ".0.5993.89"
+const UserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + ChromeVersion + ".0.0.0 Safari/537.36"
+const SecCHUserAgent = `"Chromium";v="` + ChromeVersion + `", "Google Chrome";v="` + ChromeVersion + `", "Not-A.Brand";v="99"`
+const SecCHFullVersionList = `"Chromium";v="` + ChromeVersionFull + `", "Google Chrome";v="` + ChromeVersionFull + `", "Not-A.Brand";v="99.0.0.0"`
+const SecCHPlatform = `"Linux"`
+const SecCHPlatformVersion = `"6.5.0"`
+const SecCHMobile = "?0"
+const SecCHModel = ""
+const SecCHPrefersColorScheme = "light"
+
 var ErrRedirectAttempted = errors.New("redirect attempted")
 
 type EventHandler func(evt interface{})

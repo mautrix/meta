@@ -30,7 +30,7 @@ func (ig *InstagramCookies) IsLoggedIn() bool {
 }
 
 func (ig *InstagramCookies) GetViewports() (string, string) {
-	return "2276", "1156"
+	return "1920", "1003"
 }
 
 func (ig *InstagramCookies) GetUserID() int64 {
@@ -39,5 +39,5 @@ func (ig *InstagramCookies) GetUserID() int64 {
 }
 
 func (ig *InstagramCookies) AllCookiesPresent() bool {
-	return ig.SessionId != "" && ig.CsrfToken != "" && ig.MachineId != "" && ig.IgDeviceId != "" && ig.Rur != "" && ig.UserId != "" && ig.ShbId != "" && ig.Shbts != ""
+	return ig.SessionId != "" && ig.CsrfToken != "" && ig.MachineId != "" && ig.IgDeviceId != "" && ig.UserId != "" && ig.ShbId != "" && ig.Shbts != ""
 }
