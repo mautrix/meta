@@ -552,7 +552,23 @@ func (user *User) eventHandler(rawEvt any) {
 		user.log.Trace().Any("table", &evt.Table).Msg("Got new event")
 		user.handleTable(evt.Table)
 	case *messagix.Event_Ready:
-		newFBID := evt.CurrentUser.GetFBID()
+		var newFBID int64
+		// TODO figure out why the contact IDs for self is different than the fbid in the ready event
+		for _, row := range evt.Table.LSVerifyContactRowExists {
+			if row.IsSelf && row.ContactId != newFBID {
+				if newFBID != 0 {
+					// Hopefully this won't happen
+					user.log.Warn().Int64("prev_fbid", newFBID).Int64("new_fbid", row.ContactId).Msg("Got multiple fbids for self")
+				} else {
+					user.log.Debug().Int64("fbid", row.ContactId).Msg("Found own fbid")
+				}
+				newFBID = row.ContactId
+			}
+		}
+		if newFBID == 0 {
+			newFBID = evt.CurrentUser.GetFBID()
+			user.log.Warn().Int64("fbid", newFBID).Msg("Own contact entry not found, falling back to fbid in current user object")
+		}
 		if user.MetaID != newFBID {
 			user.MetaID = newFBID
 			err := user.Update(context.TODO())
