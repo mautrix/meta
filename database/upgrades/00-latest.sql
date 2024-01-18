@@ -20,16 +20,15 @@ CREATE TABLE portal (
 );
 
 CREATE TABLE puppet (
-    id           BIGINT  NOT NULL PRIMARY KEY,
-    name         TEXT    NOT NULL,
-    username     TEXT    NOT NULL,
-    avatar_id    TEXT    NOT NULL,
-    avatar_url   TEXT    NOT NULL,
-    name_set     BOOLEAN NOT NULL DEFAULT false,
-    avatar_set   BOOLEAN NOT NULL DEFAULT false,
+    id         BIGINT  NOT NULL PRIMARY KEY,
+    name       TEXT    NOT NULL,
+    username   TEXT    NOT NULL,
+    avatar_id  TEXT    NOT NULL,
+    avatar_url TEXT    NOT NULL,
+    name_set   BOOLEAN NOT NULL DEFAULT false,
+    avatar_set BOOLEAN NOT NULL DEFAULT false,
 
     contact_info_set BOOLEAN NOT NULL DEFAULT false,
-    is_registered    BOOLEAN NOT NULL DEFAULT false,
 
     custom_mxid  TEXT,
     access_token TEXT NOT NULL,
