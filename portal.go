@@ -788,7 +788,7 @@ func (portal *Portal) GetMetaReply(ctx context.Context, content *event.MessageEv
 
 func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
-	case *table.LSInsertMessage:
+	case *table.WrappedMessage:
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
 	case *table.LSDeleteMessage:
 		portal.handleMetaDelete(typedEvt)
@@ -819,7 +819,7 @@ func (portal *Portal) checkPendingMessage(ctx context.Context, messageID string,
 	return true
 }
 
-func (portal *Portal) handleMetaInsertMessage(source *User, message *table.LSInsertMessage) {
+func (portal *Portal) handleMetaInsertMessage(source *User, message *table.WrappedMessage) {
 	sender := portal.bridge.GetPuppetByID(message.SenderId)
 	log := portal.log.With().
 		Str("action", "insert meta message").
@@ -854,9 +854,14 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.LSIns
 
 	intent := sender.IntentFor(portal)
 	ctx = context.WithValue(ctx, msgconvContextKeyIntent, intent)
+	ctx = context.WithValue(ctx, msgconvContextKeyClient, source.Client)
 	converted := portal.MsgConv.ToMatrix(ctx, message)
 	if portal.bridge.Config.Bridge.CaptionInMessage {
 		converted.MergeCaption()
+	}
+	if len(converted.Parts) == 0 {
+		log.Warn().Msg("Message was empty after conversion")
+		return
 	}
 	for i, part := range converted.Parts {
 		resp, err := portal.sendMatrixEvent(ctx, intent, part.Type, part.Content, part.Extra, messageTime.UnixMilli())
@@ -1325,10 +1330,10 @@ func (portal *Portal) updateAvatar(ctx context.Context, avatarURL string) bool {
 			return err
 		}
 	}
-	return updateAvatar(
+	return msgconv.UpdateAvatar(
 		ctx, avatarURL,
 		&portal.AvatarID, &portal.AvatarSet, &portal.AvatarURL,
-		portal.MainIntent(), setAvatar,
+		portal.MainIntent().UploadBytes, setAvatar,
 	)
 }
 

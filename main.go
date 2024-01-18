@@ -32,6 +32,7 @@ import (
 	"go.mau.fi/mautrix-meta/database"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/types"
+	"go.mau.fi/mautrix-meta/msgconv"
 )
 
 //go:embed example-config.yaml
@@ -97,6 +98,7 @@ func (br *MetaBridge) Init() {
 	var defaultCommandPrefix string
 	switch br.Config.Meta.Mode {
 	case config.ModeInstagram:
+		msgconv.MediaReferer = "https://www.instagram.com/"
 		br.ProtocolName = "Instagram DM"
 		br.BeeperServiceName = "instagram"
 		br.BeeperNetworkName = "instagram"
@@ -106,6 +108,7 @@ func (br *MetaBridge) Init() {
 			return &cookies.InstagramCookies{}
 		}
 	case config.ModeFacebook:
+		msgconv.MediaReferer = "https://www.facebook.com/"
 		br.ProtocolName = "Facebook Messenger"
 		br.BeeperServiceName = "facebook"
 		br.BeeperNetworkName = "facebook"

@@ -126,6 +126,27 @@ const (
 	UNKNOWN_THREAD_SOURCE_TYPE ThreadSourceType = 0
 )
 
+type AttachmentType int64
+
+const (
+	AttachmentTypeNone AttachmentType = iota
+	AttachmentTypeSticker
+	AttachmentTypeImage
+	AttachmentTypeAnimatedImage
+	AttachmentTypeVideo
+	AttachmentTypeAudio
+	AttachmentTypeFile
+	AttachmentTypeXMA
+	AttachmentTypeEphemeralImage
+	AttachmentTypeEphemeralVideo
+	AttachmentTypeSelfieSticker
+	_ // 11 is unknown
+	AttachmentTypeSoundBite
+	AttachmentTypeCatalogItem
+	AttachmentTypePowerUp
+	AttachmentTypeThirdPartySticker
+)
+
 type SendType int64
 
 const (

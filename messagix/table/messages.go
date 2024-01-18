@@ -47,15 +47,15 @@ type LSUpsertMessage struct {
 	ReplyMediaUrlFallback           string                     `index:"36" json:",omitempty"`
 	ReplyCtaId                      int64                      `index:"37" json:",omitempty"`
 	ReplyCtaTitle                   string                     `index:"38" json:",omitempty"`
-	ReplyAttachmentType             int64                      `index:"39" json:",omitempty"`
+	ReplyAttachmentType             AttachmentType             `index:"39" json:",omitempty"`
 	ReplyAttachmentId               int64                      `index:"40" json:",omitempty"`
-	ReplyAttachmentExtra            int64                      `index:"41" json:",omitempty"`
+	ReplyAttachmentExtra            string                     `index:"41" json:",omitempty"`
 	ReplyType                       int64                      `index:"42" json:",omitempty"`
 	IsForwarded                     bool                       `index:"43" json:",omitempty"`
 	ForwardScore                    int64                      `index:"44" json:",omitempty"`
 	HasQuickReplies                 bool                       `index:"45" json:",omitempty"`
 	AdminMsgCtaId                   int64                      `index:"46" json:",omitempty"`
-	AdminMsgCtaTitle                int64                      `index:"47" json:",omitempty"`
+	AdminMsgCtaTitle                string                     `index:"47" json:",omitempty"`
 	AdminMsgCtaType                 int64                      `index:"48" json:",omitempty"`
 	CannotUnsendReason              MessageUnsendabilityStatus `index:"49" json:",omitempty"`
 	TextHasLinks                    bool                       `index:"50" json:",omitempty"`
@@ -80,6 +80,79 @@ type LSUpsertMessage struct {
 	AdminSignatureCreatorType       any                        `index:"69" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (um *LSUpsertMessage) ToInsert() *LSInsertMessage {
+	return &LSInsertMessage{
+		Text:                            um.Text,
+		SubscriptErrorMessage:           um.SubscriptErrorMessage,
+		AuthorityLevel:                  um.AuthorityLevel,
+		ThreadKey:                       um.ThreadKey,
+		TimestampMs:                     um.TimestampMs,
+		PrimarySortKey:                  um.PrimarySortKey,
+		SecondarySortKey:                um.SecondarySortKey,
+		MessageId:                       um.MessageId,
+		OfflineThreadingId:              um.OfflineThreadingId,
+		SenderId:                        um.SenderId,
+		StickerId:                       um.StickerId,
+		IsAdminMessage:                  um.IsAdminMessage,
+		MessageRenderingType:            um.MessageRenderingType,
+		SendStatus:                      um.SendStatus,
+		SendStatusV2:                    um.SendStatusV2,
+		IsUnsent:                        um.IsUnsent,
+		UnsentTimestampMs:               um.UnsentTimestampMs,
+		MentionOffsets:                  um.MentionOffsets,
+		MentionLengths:                  um.MentionLengths,
+		MentionIds:                      um.MentionIds,
+		MentionTypes:                    um.MentionTypes,
+		ReplySourceId:                   um.ReplySourceId,
+		ReplySourceType:                 um.ReplySourceType,
+		ReplySourceTypeV2:               um.ReplySourceTypeV2,
+		ReplyStatus:                     um.ReplyStatus,
+		ReplySnippet:                    um.ReplySnippet,
+		ReplyMessageText:                um.ReplyMessageText,
+		ReplyToUserId:                   um.ReplyToUserId,
+		ReplyMediaExpirationTimestampMs: um.ReplyMediaExpirationTimestampMs,
+		ReplyMediaUrl:                   um.ReplyMediaUrl,
+		ReplyMediaUnknownTimestampS:     um.ReplyMediaUnknownTimestampS,
+		ReplyMediaPreviewWidth:          um.ReplyMediaPreviewWidth,
+		ReplyMediaPreviewHeight:         um.ReplyMediaPreviewHeight,
+		ReplyMediaUrlMimeType:           um.ReplyMediaUrlMimeType,
+		ReplyMediaUrlFallback:           um.ReplyMediaUrlFallback,
+		ReplyCtaId:                      um.ReplyCtaId,
+		ReplyCtaTitle:                   um.ReplyCtaTitle,
+		ReplyAttachmentType:             um.ReplyAttachmentType,
+		ReplyAttachmentId:               um.ReplyAttachmentId,
+		ReplyAttachmentExtra:            um.ReplyAttachmentExtra,
+		// LSInsertMessage doesn't have ReplyType, which would be here.
+		IsForwarded:               um.IsForwarded,
+		ForwardScore:              um.ForwardScore,
+		HasQuickReplies:           um.HasQuickReplies,
+		AdminMsgCtaId:             um.AdminMsgCtaId,
+		AdminMsgCtaTitle:          um.AdminMsgCtaTitle,
+		AdminMsgCtaType:           um.AdminMsgCtaType,
+		CannotUnsendReason:        um.CannotUnsendReason,
+		TextHasLinks:              um.TextHasLinks,
+		ViewFlags:                 um.ViewFlags,
+		DisplayedContentTypes:     um.DisplayedContentTypes,
+		ViewedPluginKey:           um.ViewedPluginKey,
+		ViewedPluginContext:       um.ViewedPluginContext,
+		QuickReplyType:            um.QuickReplyType,
+		HotEmojiSize:              um.HotEmojiSize,
+		ReplySourceTimestampMs:    um.ReplySourceTimestampMs,
+		EphemeralDurationInSec:    um.EphemeralDurationInSec,
+		MsUntilExpirationTs:       um.MsUntilExpirationTs,
+		EphemeralExpirationTs:     um.EphemeralExpirationTs,
+		TakedownState:             um.TakedownState,
+		IsCollapsed:               um.IsCollapsed,
+		SubthreadKey:              um.SubthreadKey,
+		BotResponseID:             um.BotResponseID,
+		EditCount:                 um.EditCount,
+		IsPaidPartnership:         um.IsPaidPartnership,
+		AdminSignatureName:        um.AdminSignatureName,
+		AdminSignatureProfileURL:  um.AdminSignatureProfileURL,
+		AdminSignatureCreatorType: um.AdminSignatureCreatorType,
+	}
 }
 
 type LSDeleteMessage struct {
@@ -177,10 +250,10 @@ type LSInsertMessage struct {
 	SendStatusV2                    int64                      `index:"16" json:",omitempty"`
 	IsUnsent                        bool                       `index:"17" json:",omitempty"`
 	UnsentTimestampMs               int64                      `index:"18" json:",omitempty"`
-	MentionOffsets                  int64                      `index:"19" json:",omitempty"`
-	MentionLengths                  int64                      `index:"20" json:",omitempty"`
-	MentionIds                      int64                      `index:"21" json:",omitempty"`
-	MentionTypes                    int64                      `index:"22" json:",omitempty"`
+	MentionOffsets                  string                     `index:"19" json:",omitempty"`
+	MentionLengths                  string                     `index:"20" json:",omitempty"`
+	MentionIds                      string                     `index:"21" json:",omitempty"`
+	MentionTypes                    string                     `index:"22" json:",omitempty"`
 	ReplySourceId                   string                     `index:"23" json:",omitempty"`
 	ReplySourceType                 int64                      `index:"24" json:",omitempty"`
 	ReplySourceTypeV2               int64                      `index:"25" json:",omitempty"`
@@ -197,7 +270,7 @@ type LSInsertMessage struct {
 	ReplyMediaUrlFallback           string                     `index:"36" json:",omitempty"`
 	ReplyCtaId                      int64                      `index:"37" json:",omitempty"`
 	ReplyCtaTitle                   string                     `index:"38" json:",omitempty"`
-	ReplyAttachmentType             int64                      `index:"39" json:",omitempty"`
+	ReplyAttachmentType             AttachmentType             `index:"39" json:",omitempty"`
 	ReplyAttachmentId               int64                      `index:"40" json:",omitempty"`
 	ReplyAttachmentExtra            string                     `index:"41" json:",omitempty"`
 	IsForwarded                     bool                       `index:"42" json:",omitempty"`
@@ -273,68 +346,68 @@ type LSUpdateUnsentMessageCollapsedStatus struct {
 }
 
 type LSDeleteThenInsertMessage struct {
-	Text                            string `index:"0" json:",omitempty"`
-	SubscriptErrorMessage           int64  `index:"1" json:",omitempty"`
-	AuthorityLevel                  int64  `index:"2" json:",omitempty"`
-	ThreadKey                       int64  `index:"3" json:",omitempty"`
-	TimestampMs                     int64  `index:"5" json:",omitempty"`
-	PrimarySortKey                  int64  `index:"6" json:",omitempty"`
-	SecondarySortKey                int64  `index:"7" json:",omitempty"`
-	MessageId                       string `index:"8" json:",omitempty"`
-	OfflineThreadingId              string `index:"9" json:",omitempty"`
-	SenderId                        int64  `index:"10" json:",omitempty"`
-	StickerId                       int64  `index:"11" json:",omitempty"`
-	IsAdminMessage                  bool   `index:"12" json:",omitempty"`
-	MessageRenderingType            int64  `index:"13" json:",omitempty"`
-	SendStatus                      int64  `index:"15" json:",omitempty"`
-	SendStatusV2                    int64  `index:"16" json:",omitempty"`
-	IsUnsent                        bool   `index:"17" json:",omitempty"`
-	UnsentTimestampMs               int64  `index:"18" json:",omitempty"`
-	MentionOffsets                  int64  `index:"19" json:",omitempty"`
-	MentionLengths                  int64  `index:"20" json:",omitempty"`
-	MentionIds                      int64  `index:"21" json:",omitempty"`
-	MentionTypes                    int64  `index:"22" json:",omitempty"`
-	ReplySourceId                   int64  `index:"23" json:",omitempty"`
-	ReplySourceType                 int64  `index:"24" json:",omitempty"`
-	ReplySourceTypeV2               int64  `index:"25" json:",omitempty"`
-	ReplyStatus                     int64  `index:"26" json:",omitempty"`
-	ReplySnippet                    int64  `index:"27" json:",omitempty"`
-	ReplyMessageText                int64  `index:"28" json:",omitempty"`
-	ReplyToUserId                   int64  `index:"29" json:",omitempty"`
-	ReplyMediaExpirationTimestampMs int64  `index:"30" json:",omitempty"`
-	ReplyMediaUrl                   int64  `index:"31" json:",omitempty"`
-	ReplyMediaPreviewWidth          int64  `index:"33" json:",omitempty"`
-	ReplyMediaPreviewHeight         int64  `index:"34" json:",omitempty"`
-	ReplyMediaUrlMimeType           int64  `index:"35" json:",omitempty"`
-	ReplyMediaUrlFallback           int64  `index:"36" json:",omitempty"`
-	ReplyCtaId                      int64  `index:"37" json:",omitempty"`
-	ReplyCtaTitle                   int64  `index:"38" json:",omitempty"`
-	ReplyAttachmentType             int64  `index:"39" json:",omitempty"`
-	ReplyAttachmentId               int64  `index:"40" json:",omitempty"`
-	ReplyAttachmentExtra            int64  `index:"41" json:",omitempty"`
-	IsForwarded                     bool   `index:"42" json:",omitempty"`
-	ForwardScore                    int64  `index:"43" json:",omitempty"`
-	HasQuickReplies                 bool   `index:"44" json:",omitempty"`
-	AdminMsgCtaId                   int64  `index:"45" json:",omitempty"`
-	AdminMsgCtaTitle                int64  `index:"46" json:",omitempty"`
-	AdminMsgCtaType                 int64  `index:"47" json:",omitempty"`
-	CannotUnsendReason              int64  `index:"48" json:",omitempty"`
-	TextHasLinks                    bool   `index:"49" json:",omitempty"`
-	ViewFlags                       int64  `index:"50" json:",omitempty"`
-	DisplayedContentTypes           int64  `index:"51" json:",omitempty"`
-	ViewedPluginKey                 int64  `index:"52" json:",omitempty"`
-	ViewedPluginContext             int64  `index:"53" json:",omitempty"`
-	QuickReplyType                  int64  `index:"54" json:",omitempty"`
-	HotEmojiSize                    int64  `index:"55" json:",omitempty"`
-	ReplySourceTimestampMs          int64  `index:"56" json:",omitempty"`
-	EphemeralDurationInSec          int64  `index:"57" json:",omitempty"`
-	MsUntilExpirationTs             int64  `index:"58" json:",omitempty"`
-	EphemeralExpirationTs           int64  `index:"59" json:",omitempty"`
-	TakedownState                   int64  `index:"60" json:",omitempty"`
-	IsCollapsed                     bool   `index:"61" json:",omitempty"`
-	SubthreadKey                    int64  `index:"62" json:",omitempty"`
-	BotResponseId                   int64  `index:"63" json:",omitempty"`
-	IsPaidPartnership               int64  `index:"64" json:",omitempty"`
+	Text                            string         `index:"0" json:",omitempty"`
+	SubscriptErrorMessage           int64          `index:"1" json:",omitempty"`
+	AuthorityLevel                  int64          `index:"2" json:",omitempty"`
+	ThreadKey                       int64          `index:"3" json:",omitempty"`
+	TimestampMs                     int64          `index:"5" json:",omitempty"`
+	PrimarySortKey                  int64          `index:"6" json:",omitempty"`
+	SecondarySortKey                int64          `index:"7" json:",omitempty"`
+	MessageId                       string         `index:"8" json:",omitempty"`
+	OfflineThreadingId              string         `index:"9" json:",omitempty"`
+	SenderId                        int64          `index:"10" json:",omitempty"`
+	StickerId                       int64          `index:"11" json:",omitempty"`
+	IsAdminMessage                  bool           `index:"12" json:",omitempty"`
+	MessageRenderingType            int64          `index:"13" json:",omitempty"`
+	SendStatus                      int64          `index:"15" json:",omitempty"`
+	SendStatusV2                    int64          `index:"16" json:",omitempty"`
+	IsUnsent                        bool           `index:"17" json:",omitempty"`
+	UnsentTimestampMs               int64          `index:"18" json:",omitempty"`
+	MentionOffsets                  int64          `index:"19" json:",omitempty"`
+	MentionLengths                  int64          `index:"20" json:",omitempty"`
+	MentionIds                      int64          `index:"21" json:",omitempty"`
+	MentionTypes                    int64          `index:"22" json:",omitempty"`
+	ReplySourceId                   int64          `index:"23" json:",omitempty"`
+	ReplySourceType                 int64          `index:"24" json:",omitempty"`
+	ReplySourceTypeV2               int64          `index:"25" json:",omitempty"`
+	ReplyStatus                     int64          `index:"26" json:",omitempty"`
+	ReplySnippet                    int64          `index:"27" json:",omitempty"`
+	ReplyMessageText                int64          `index:"28" json:",omitempty"`
+	ReplyToUserId                   int64          `index:"29" json:",omitempty"`
+	ReplyMediaExpirationTimestampMs int64          `index:"30" json:",omitempty"`
+	ReplyMediaUrl                   int64          `index:"31" json:",omitempty"`
+	ReplyMediaPreviewWidth          int64          `index:"33" json:",omitempty"`
+	ReplyMediaPreviewHeight         int64          `index:"34" json:",omitempty"`
+	ReplyMediaUrlMimeType           int64          `index:"35" json:",omitempty"`
+	ReplyMediaUrlFallback           int64          `index:"36" json:",omitempty"`
+	ReplyCtaId                      int64          `index:"37" json:",omitempty"`
+	ReplyCtaTitle                   int64          `index:"38" json:",omitempty"`
+	ReplyAttachmentType             AttachmentType `index:"39" json:",omitempty"`
+	ReplyAttachmentId               int64          `index:"40" json:",omitempty"`
+	ReplyAttachmentExtra            int64          `index:"41" json:",omitempty"`
+	IsForwarded                     bool           `index:"42" json:",omitempty"`
+	ForwardScore                    int64          `index:"43" json:",omitempty"`
+	HasQuickReplies                 bool           `index:"44" json:",omitempty"`
+	AdminMsgCtaId                   int64          `index:"45" json:",omitempty"`
+	AdminMsgCtaTitle                int64          `index:"46" json:",omitempty"`
+	AdminMsgCtaType                 int64          `index:"47" json:",omitempty"`
+	CannotUnsendReason              int64          `index:"48" json:",omitempty"`
+	TextHasLinks                    bool           `index:"49" json:",omitempty"`
+	ViewFlags                       int64          `index:"50" json:",omitempty"`
+	DisplayedContentTypes           int64          `index:"51" json:",omitempty"`
+	ViewedPluginKey                 int64          `index:"52" json:",omitempty"`
+	ViewedPluginContext             int64          `index:"53" json:",omitempty"`
+	QuickReplyType                  int64          `index:"54" json:",omitempty"`
+	HotEmojiSize                    int64          `index:"55" json:",omitempty"`
+	ReplySourceTimestampMs          int64          `index:"56" json:",omitempty"`
+	EphemeralDurationInSec          int64          `index:"57" json:",omitempty"`
+	MsUntilExpirationTs             int64          `index:"58" json:",omitempty"`
+	EphemeralExpirationTs           int64          `index:"59" json:",omitempty"`
+	TakedownState                   int64          `index:"60" json:",omitempty"`
+	IsCollapsed                     bool           `index:"61" json:",omitempty"`
+	SubthreadKey                    int64          `index:"62" json:",omitempty"`
+	BotResponseId                   int64          `index:"63" json:",omitempty"`
+	IsPaidPartnership               int64          `index:"64" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

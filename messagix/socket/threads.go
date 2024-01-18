@@ -1,7 +1,9 @@
 package socket
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
@@ -15,6 +17,7 @@ type SendMessageTask struct {
 	AttachmentFBIds          []int64                `json:"attachment_fbids,omitempty"`
 	SyncGroup                int64                  `json:"sync_group"`
 	ReplyMetaData            *ReplyMetaData         `json:"reply_metadata,omitempty"`
+	MentionData              *MentionData           `json:"mention_data,omitempty"`
 	Text                     interface{}            `json:"text"`
 	HotEmojiSize             int32                  `json:"hot_emoji_size,omitempty"`
 	StickerId                int64                  `json:"sticker_id,omitempty"`
@@ -37,6 +40,82 @@ type ReplyMetaData struct {
 	ReplyMessageId  string `json:"reply_source_id"`
 	ReplySourceType int64  `json:"reply_source_type"` // 1 ?
 	ReplyType       int64  `json:"reply_type"`        // ?
+}
+
+type MentionData struct {
+	// All fields here are comma-separated lists
+	MentionIDs     string `json:"mention_ids"`
+	MentionOffsets string `json:"mention_offsets"`
+	MentionLengths string `json:"mention_lengths"`
+	MentionTypes   string `json:"mention_types"`
+}
+
+func (md *MentionData) Parse() (Mentions, error) {
+	mentionIDs := strings.Split(md.MentionIDs, ",")
+	mentionOffsets := strings.Split(md.MentionOffsets, ",")
+	mentionLengths := strings.Split(md.MentionLengths, ",")
+	mentionTypes := strings.Split(md.MentionTypes, ",")
+	if len(mentionIDs) != len(mentionOffsets) || len(mentionOffsets) != len(mentionLengths) || len(mentionLengths) != len(mentionTypes) {
+		return nil, fmt.Errorf("mismatching mention data lengths: %d, %d, %d, %d", len(mentionIDs), len(mentionOffsets), len(mentionLengths), len(mentionTypes))
+	}
+	mentions := make(Mentions, len(mentionIDs))
+	for i := range mentionIDs {
+		userID, err := strconv.ParseInt(mentionIDs[i], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse mention #%d user ID: %w", i+1, err)
+		}
+		offset, err := strconv.Atoi(mentionOffsets[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse mention #%d offset: %w", i+1, err)
+		}
+		length, err := strconv.Atoi(mentionLengths[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse mention #%d length: %w", i+1, err)
+		}
+		mentions[i] = Mention{
+			UserID: userID,
+			Offset: offset,
+			Length: length,
+			Type:   MentionType(mentionTypes[i]),
+		}
+	}
+	return mentions, nil
+}
+
+type MentionType string
+
+const (
+	MentionTypePerson MentionType = "p"
+	MentionTypeSilent MentionType = "s"
+	MentionTypeThread MentionType = "t"
+)
+
+type Mention struct {
+	UserID int64
+	Offset int
+	Length int
+	Type   MentionType
+}
+
+type Mentions []Mention
+
+func (m Mentions) ToData() MentionData {
+	mentionIDs := make([]string, len(m))
+	mentionOffsets := make([]string, len(m))
+	mentionLengths := make([]string, len(m))
+	mentionTypes := make([]string, len(m))
+	for i, mention := range m {
+		mentionIDs[i] = strconv.FormatInt(mention.UserID, 10)
+		mentionOffsets[i] = strconv.Itoa(mention.Offset)
+		mentionLengths[i] = strconv.Itoa(mention.Length)
+		mentionTypes[i] = string(mention.Type)
+	}
+	return MentionData{
+		MentionIDs:     strings.Join(mentionIDs, ","),
+		MentionOffsets: strings.Join(mentionOffsets, ","),
+		MentionLengths: strings.Join(mentionLengths, ","),
+		MentionTypes:   strings.Join(mentionTypes, ","),
+	}
 }
 
 func (t *SendMessageTask) GetLabel() string {

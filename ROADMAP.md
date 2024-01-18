@@ -31,14 +31,14 @@
   * [ ] Message content
     * [x] Text
     * [ ] Media
-      * [ ] Images
-      * [ ] Videos
-      * [ ] Gifs
-      * [ ] Stickers
-      * [ ] Files
-      * [ ] Voice messages
+      * [x] Images
+      * [x] Videos
+      * [x] Gifs
+      * [x] Stickers
+      * [x] Files
+      * [x] Voice messages
       * [ ] Locations
-      * [ ] Story/reel/clip shares
+      * [x] Story/reel/clip shares
       * [ ] Profile shares
       * [ ] Product shares
     * [ ] Formatting (Messenger only)

@@ -502,7 +502,7 @@ func (user *User) handleTable(table *table.LSTable) {
 			go portal.addToPersonalSpace(ctx, user)
 		}
 	}
-	for _, msg := range table.LSInsertMessage {
+	for _, msg := range table.WrapMessages() {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
 	for _, msg := range table.LSDeleteMessage {
