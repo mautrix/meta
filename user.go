@@ -397,7 +397,6 @@ func (user *User) Login(ctx context.Context, cookies cookies.Cookies) error {
 	if err != nil {
 		return err
 	}
-	user.MetaID = cookies.GetUserID()
 	user.Client = cli
 	user.Cookies = cookies
 	err = user.Update(ctx)
@@ -553,6 +552,14 @@ func (user *User) eventHandler(rawEvt any) {
 		user.log.Trace().Any("table", &evt.Table).Msg("Got new event")
 		user.handleTable(evt.Table)
 	case *messagix.Event_Ready:
+		newFBID := evt.CurrentUser.GetFBID()
+		if user.MetaID != newFBID {
+			user.MetaID = newFBID
+			err := user.Update(context.TODO())
+			if err != nil {
+				user.log.Err(err).Msg("Failed to save user after getting meta ID")
+			}
+		}
 		puppet := user.bridge.GetPuppetByID(user.MetaID)
 		puppet.UpdateInfo(context.TODO(), evt.CurrentUser)
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})

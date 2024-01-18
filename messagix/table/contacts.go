@@ -38,6 +38,8 @@ func (vcre *LSVerifyContactRowExists) GetAvatarURL() string {
 	return vcre.ProfilePictureUrl
 }
 
+func (vcre *LSVerifyContactRowExists) GetFBID() int64 { return vcre.ContactId }
+
 type LSDeleteThenInsertContact struct {
 	Id                                          int64                     `index:"0" json:",omitempty"`
 	ProfilePictureUrl                           string                    `index:"2" json:",omitempty"`

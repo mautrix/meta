@@ -1,9 +1,14 @@
 package types
 
+import (
+	"strconv"
+)
+
 type UserInfo interface {
 	GetUsername() string
 	GetName() string
 	GetAvatarURL() string
+	GetFBID() int64
 }
 
 type CurrentBusinessAccount struct {
@@ -102,8 +107,9 @@ func (c *CurrentUserInitialData) GetUsername() string {
 	return c.ShortName
 }
 
-func (c *CurrentUserInitialData) GetFbId() string {
-	return c.AccountID
+func (c *CurrentUserInitialData) GetFBID() int64 {
+	id, _ := strconv.ParseInt(c.AccountID, 10, 64)
+	return id
 }
 
 func (c *CurrentUserInitialData) IsPrivate() bool {
@@ -182,8 +188,9 @@ func (p *PolarisViewer) GetName() string {
 	return p.Data.FullName
 }
 
-func (p *PolarisViewer) GetFbId() string {
-	return p.Data.Fbid
+func (p *PolarisViewer) GetFBID() int64 {
+	id, _ := strconv.ParseInt(p.Data.Fbid, 10, 64)
+	return id
 }
 
 func (p *PolarisViewer) GetAvatarURLHD() string {

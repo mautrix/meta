@@ -30,7 +30,7 @@ import (
 const (
 	getUserByMXIDQuery       = `SELECT mxid, meta_id, cookies, management_room, space_room FROM "user" WHERE mxid=$1`
 	getUserByMetaIDQuery     = `SELECT mxid, meta_id, cookies, management_room, space_room FROM "user" WHERE meta_id=$1`
-	getAllLoggedInUsersQuery = `SELECT mxid, meta_id, cookies, management_room, space_room FROM "user" WHERE meta_id IS NOT NULL AND cookies IS NOT NULL`
+	getAllLoggedInUsersQuery = `SELECT mxid, meta_id, cookies, management_room, space_room FROM "user" WHERE cookies IS NOT NULL`
 	insertUserQuery          = `INSERT INTO "user" (mxid, meta_id, cookies, management_room, space_room) VALUES ($1, $2, $3, $4, $5)`
 	updateUserQuery          = `UPDATE "user" SET meta_id=$2, cookies=$3, management_room=$4, space_room=$5 WHERE mxid=$1`
 )
