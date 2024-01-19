@@ -95,8 +95,11 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 		*/
 		return response, nil, nil
 	}
-	defer response.Body.Close()
-
+	defer func() {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+	}()
 	if err != nil {
 		return nil, nil, err
 	}

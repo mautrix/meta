@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -86,7 +85,7 @@ func (m *ModuleParser) Load(page string) error {
 	var err error
 	if m.testData == nil {
 		htmlData, err = m.fetchPageData(page)
-		os.WriteFile("test_files/res.html", htmlData, os.ModePerm)
+		//os.WriteFile("test_files/res.html", htmlData, os.ModePerm)
 		if err != nil {
 			return err
 		}
