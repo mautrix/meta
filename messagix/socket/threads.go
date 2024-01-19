@@ -19,7 +19,7 @@ type SendMessageTask struct {
 	SyncGroup                int64                  `json:"sync_group"`
 	ReplyMetaData            *ReplyMetaData         `json:"reply_metadata,omitempty"`
 	MentionData              *MentionData           `json:"mention_data,omitempty"`
-	Text                     interface{}            `json:"text"`
+	Text                     string                 `json:"text,omitempty"`
 	HotEmojiSize             int32                  `json:"hot_emoji_size,omitempty"`
 	StickerId                int64                  `json:"sticker_id,omitempty"`
 	InitiatingSource         table.InitiatingSource `json:"initiating_source,omitempty"`           // usually FACEBOOK_INBOX
@@ -27,7 +27,7 @@ type SendMessageTask struct {
 	TextHasLinks             int32                  `json:"text_has_links"`                        // 0 or 1
 	StripForwardedMsgCaption int32                  `json:"strip_forwarded_msg_caption,omitempty"` // 0 or 1
 	ForwardedMsgId           string                 `json:"forwarded_msg_id,omitempty"`
-	MultiTabEnv              int32                  `json:"multitab_env,omitempty"` // 0 ?
+	MultiTabEnv              int32                  `json:"multitab_env"` // 0 ?
 	// url to external media
 	// for example:
 	//
@@ -185,8 +185,39 @@ type MuteThreadTask struct {
 	SyncGroup        int64 `json:"sync_group"` // 1
 }
 
+func (t *MuteThreadTask) GetLabel() string {
+	return TaskLabels["MuteThreadTask"]
+}
+
+func (t *MuteThreadTask) Create() (interface{}, interface{}, bool) {
+	// TODO label
+	return t, "", false
+}
+
 type UpdateThreadTask struct {
 	ThreadKey  int64  `json:"thread_key"`
 	ThreadName string `json:"thread_name"`
 	SyncGroup  int64  `json:"sync_group"` // 1
+}
+
+func (t *UpdateThreadTask) GetLabel() string {
+	return TaskLabels["UpdateThreadTask"]
+}
+
+func (t *UpdateThreadTask) Create() (interface{}, interface{}, bool) {
+	// TODO label
+	return t, "", false
+}
+
+type EditMessageTask struct {
+	MessageID string `json:"message_id"`
+	Text      string `json:"text"`
+}
+
+func (t *EditMessageTask) GetLabel() string {
+	return TaskLabels["EditMessageTask"]
+}
+
+func (t *EditMessageTask) Create() (interface{}, interface{}, bool) {
+	return t, "edit_message", false
 }

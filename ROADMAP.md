@@ -5,17 +5,17 @@
     * [x] Text
     * [ ] Media
       * [ ] Stickers
-      * [ ] Files
-      * [ ] Voice messages
-      * [ ] Videos
-      * [ ] Images
+      * [x] Files
+      * [x] Voice messages
+      * [x] Videos
+      * [x] Images
       * [ ] Locations
     * [ ] Formatting (Messenger only)
-    * [ ] Replies
+    * [x] Replies
     * [ ] Mentions
   * [x] Message redactions
   * [x] Message reactions
-  * [ ] Message edits
+  * [x] Message edits
   * [ ] Presence
   * [ ] Typing notifications
   * [ ] Read receipts

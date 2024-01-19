@@ -38,7 +38,6 @@ import (
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
 	"go.mau.fi/mautrix-meta/messagix"
-	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/msgconv"
@@ -378,6 +377,8 @@ func (portal *Portal) handleMatrixMessages(msg portalMatrixMessage) {
 	}
 }
 
+const MaxEditCount = 5
+
 func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt *event.Event) {
 	log := zerolog.Ctx(ctx)
 	evtTS := time.UnixMilli(evt.Timestamp)
@@ -438,6 +439,10 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 		go ms.sendMessageMetrics(evt, fmt.Errorf("%w %T", errUnexpectedParsedContentType, evt.Content.Parsed), "Error converting", true)
 		return
 	}
+	if content.MsgType == event.MsgNotice && !portal.bridge.Config.Bridge.BridgeNotices {
+		go ms.sendMessageMetrics(evt, errMNoticeDisabled, "Error converting", true)
+		return
+	}
 
 	realSenderMXID := sender.MXID
 	isRelay := false
@@ -453,55 +458,28 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 		isRelay = true
 	}
 
-	var editTargetMsg *database.Message
 	if editTarget := content.RelatesTo.GetReplaceID(); editTarget != "" {
-		var err error
-		editTargetMsg, err = portal.bridge.DB.Message.GetByMXID(ctx, editTarget)
-		if err != nil {
-			log.Err(err).Stringer("edit_target_mxid", editTarget).Msg("Failed to get edit target message")
-			go ms.sendMessageMetrics(evt, errFailedToGetEditTarget, "Error converting", true)
-			return
-		} else if editTargetMsg == nil {
-			log.Err(err).Stringer("edit_target_mxid", editTarget).Msg("Edit target message not found")
-			go ms.sendMessageMetrics(evt, errEditUnknownTarget, "Error converting", true)
-			return
-		} else if editTargetMsg.Sender != sender.MetaID {
-			go ms.sendMessageMetrics(evt, errEditDifferentSender, "Error converting", true)
-			return
-		}
-		if content.NewContent != nil {
-			content = content.NewContent
-			evt.Content.Parsed = content
-		}
+		portal.handleMatrixEdit(ctx, sender, isRelay, realSenderMXID, &ms, evt, content)
+		return
 	}
 
 	relaybotFormatted := isRelay && portal.addRelaybotFormat(ctx, realSenderMXID, evt, content)
-	if content.MsgType == event.MsgNotice && !portal.bridge.Config.Bridge.BridgeNotices {
-		go ms.sendMessageMetrics(evt, errMNoticeDisabled, "Error converting", true)
+	ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
+	tasks, otid, err := portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
+	if err != nil {
+		log.Err(err).Msg("Failed to convert message")
+		go ms.sendMessageMetrics(evt, err, "Error converting", true)
 		return
 	}
-	_ = relaybotFormatted
-	// TODO use message converter
-	//ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
-	//msg, err := portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
-	//if err != nil {
-	//	log.Err(err).Msg("Failed to convert message")
-	//	go ms.sendMessageMetrics(evt, err, "Error converting", true)
-	//	return
-	//}
 
 	timings.convert = time.Since(start)
 	start = time.Now()
 
-	otid := methods.GenerateEpochId()
 	otidStr := strconv.FormatInt(otid, 10)
 	portal.pendingMessages[otid] = evt.ID
 	messageTS := time.Now()
-	resp, err := sender.Client.Threads.NewMessageBuilder(portal.ThreadID).
-		SetText(content.Body).
-		SetOfflineThreadingID(otid).
-		Execute()
-	log.Trace().Any("response", resp).Msg("Instagram send response")
+	resp, err := sender.Client.ExecuteTasks(tasks)
+	log.Trace().Any("response", resp).Msg("Meta send response")
 	var msgID string
 	if err == nil {
 		for _, replace := range resp.LSReplaceOptimsiticMessage {
@@ -526,6 +504,49 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 			log.Debug().Msg("Not storing message send response: pending message was already removed from map")
 		}
 		portal.pendingMessagesLock.Unlock()
+	}
+}
+
+func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRelay bool, realSenderMXID id.UserID, ms *metricSender, evt *event.Event, content *event.MessageEventContent) {
+	log := zerolog.Ctx(ctx)
+	editTarget := content.RelatesTo.GetReplaceID()
+	editTargetMsg, err := portal.bridge.DB.Message.GetByMXID(ctx, editTarget)
+	if err != nil {
+		log.Err(err).Stringer("edit_target_mxid", editTarget).Msg("Failed to get edit target message")
+		go ms.sendMessageMetrics(evt, errFailedToGetEditTarget, "Error converting", true)
+		return
+	} else if editTargetMsg == nil {
+		log.Err(err).Stringer("edit_target_mxid", editTarget).Msg("Edit target message not found")
+		go ms.sendMessageMetrics(evt, errEditUnknownTarget, "Error converting", true)
+		return
+	} else if editTargetMsg.Sender != sender.MetaID {
+		go ms.sendMessageMetrics(evt, errEditDifferentSender, "Error converting", true)
+		return
+	} else if editTargetMsg.EditCount >= MaxEditCount {
+		go ms.sendMessageMetrics(evt, errEditCountExceeded, "Error converting", true)
+		return
+	}
+	if content.NewContent != nil {
+		content = content.NewContent
+		evt.Content.Parsed = content
+	}
+
+	if isRelay {
+		portal.addRelaybotFormat(ctx, realSenderMXID, evt, content)
+	}
+	editTask := &socket.EditMessageTask{
+		MessageID: editTargetMsg.ID,
+		Text:      content.Body,
+	}
+	resp, err := sender.Client.ExecuteTasks([]socket.Task{editTask})
+	log.Trace().Any("response", resp).Msg("Meta edit response")
+	go ms.sendMessageMetrics(evt, err, "Error sending", true)
+	if err == nil {
+		// TODO does the response contain the edit count?
+		err = editTargetMsg.UpdateEditCount(ctx, editTargetMsg.EditCount+1)
+		if err != nil {
+			log.Err(err).Msg("Failed to update edit count")
+		}
 	}
 }
 

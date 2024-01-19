@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
@@ -9,25 +10,27 @@ import (
 	"reflect"
 
 	"github.com/google/go-querystring/query"
+	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
-type MediaType string
-
-const (
-	IMAGE_JPEG MediaType = "image/jpeg"
-	VIDEO_MP4  MediaType = "video/mp4"
-)
-
 type MercuryUploadMedia struct {
 	Filename  string
-	MediaType MediaType
+	MimeType  string
 	MediaData []byte
+
+	IsVoiceClip  bool
+	WaveformData *WaveformData
 }
 
-func (c *Client) SendMercuryUploadRequest(medias []*MercuryUploadMedia) ([]*types.MercuryUploadResponse, error) {
+type WaveformData struct {
+	Amplitudes        []float64 `json:"amplitudes"`
+	SamplingFrequency int       `json:"sampling_frequency"`
+}
+
+func (c *Client) SendMercuryUploadRequest(ctx context.Context, medias []*MercuryUploadMedia) ([]*types.MercuryUploadResponse, error) {
 	responses := make([]*types.MercuryUploadResponse, 0)
 	for _, media := range medias {
 		urlQueries := c.NewHttpQuery()
@@ -56,7 +59,7 @@ func (c *Client) SendMercuryUploadRequest(medias []*MercuryUploadMedia) ([]*type
 			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %v", err)
 		}
 
-		resp, err := c.parseMercuryResponse(respBody)
+		resp, err := c.parseMercuryResponse(ctx, respBody)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse mercury response: %v", err)
 		}
@@ -67,12 +70,18 @@ func (c *Client) SendMercuryUploadRequest(medias []*MercuryUploadMedia) ([]*type
 	return responses, nil
 }
 
-func (c *Client) parseMercuryResponse(respBody []byte) (*types.MercuryUploadResponse, error) {
-	if len(respBody) < 9 {
-		return nil, fmt.Errorf("mercury upload response body was less than 9 in size")
+var antiJSPrefix = []byte("for (;;);")
+
+func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*types.MercuryUploadResponse, error) {
+	jsonData := bytes.TrimPrefix(respBody, antiJSPrefix)
+
+	logEvt := zerolog.Ctx(ctx).Trace()
+	if json.Valid(jsonData) {
+		logEvt.RawJSON("response_body", jsonData).Msg("Mercury upload response")
+	} else {
+		logEvt.Bytes("response_body", respBody).Msg("Mercury upload response (invalid JSON)")
 	}
 
-	jsonData := respBody[9:]
 	var mercuryResponse *types.MercuryUploadResponse
 	if err := json.Unmarshal(jsonData, &mercuryResponse); err != nil {
 		return nil, err
@@ -115,10 +124,28 @@ func (c *Client) NewMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, stri
 		return nil, "", fmt.Errorf("messagix-mercury: Failed to set boundary (%v)", err)
 	}
 
-	partHeader := textproto.MIMEHeader{
-		"Content-Disposition": []string{`form-data; name="farr"; filename="` + media.Filename + `"`},
-		"Content-Type":        []string{string(media.MediaType)},
+	if media.IsVoiceClip {
+		err = writer.WriteField("voice_clip", "true")
+		if err != nil {
+			return nil, "", fmt.Errorf("messagix-mercury: Failed to write voice_clip field (%v)", err)
+		}
+
+		if media.WaveformData != nil {
+			waveformBytes, err := json.Marshal(media.WaveformData)
+			if err != nil {
+				return nil, "", fmt.Errorf("messagix-mercury: Failed to marshal waveform (%v)", err)
+			}
+
+			err = writer.WriteField("voice_clip_waveform_data", string(waveformBytes))
+			if err != nil {
+				return nil, "", fmt.Errorf("messagix-mercury: Failed to write waveform field (%v)", err)
+			}
+		}
 	}
+
+	partHeader := make(textproto.MIMEHeader)
+	partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="farr"; filename="%s"`, media.Filename))
+	partHeader.Set("Content-Type", media.MimeType)
 
 	mediaPart, err := writer.CreatePart(partHeader)
 	if err != nil {
