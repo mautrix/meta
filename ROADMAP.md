@@ -50,8 +50,8 @@
   * [x] Message reactions
   * [ ] Message history
   * [ ] Presence
-  * [ ] Typing notifications
-  * [ ] Read receipts
+  * [x] Typing notifications
+  * [x] Read receipts
   * [ ] Admin status
   * [ ] Membership actions
     * [ ] Add member

@@ -38,6 +38,11 @@ const (
         WHERE id=$1 AND thread_receiver=$2
         ORDER BY part_index DESC LIMIT 1
 	`
+	getLastPartByTimestampQuery = `
+        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp FROM message
+        WHERE thread_id=$1 AND thread_receiver=$2 AND timestamp<=$3
+        ORDER BY timestamp DESC, part_index DESC LIMIT 1
+	`
 	getAllMessagePartsByIDQuery = `
         SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp FROM message
         WHERE id=$1 AND thread_receiver=$2
@@ -82,6 +87,10 @@ func (mq *MessageQuery) GetByMXID(ctx context.Context, mxid id.EventID) (*Messag
 
 func (mq *MessageQuery) GetByID(ctx context.Context, id string, partIndex int, receiver int64) (*Message, error) {
 	return mq.QueryOne(ctx, getMessagePartByIDQuery, id, partIndex, receiver)
+}
+
+func (mq *MessageQuery) GetLastByTimestamp(ctx context.Context, key PortalKey, timestamp time.Time) (*Message, error) {
+	return mq.QueryOne(ctx, getLastPartByTimestampQuery, key.ThreadID, key.Receiver, timestamp.UnixMilli())
 }
 
 func (mq *MessageQuery) GetLastPartByID(ctx context.Context, id string, receiver int64) (*Message, error) {

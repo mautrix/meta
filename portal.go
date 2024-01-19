@@ -496,6 +496,7 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	otid := methods.GenerateEpochId()
 	otidStr := strconv.FormatInt(otid, 10)
 	portal.pendingMessages[otid] = evt.ID
+	messageTS := time.Now()
 	resp, err := sender.Client.Threads.NewMessageBuilder(portal.ThreadID).
 		SetText(content.Body).
 		SetOfflineThreadingID(otid).
@@ -519,7 +520,7 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 		portal.pendingMessagesLock.Lock()
 		_, ok = portal.pendingMessages[otid]
 		if ok {
-			portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, time.Now(), 0)
+			portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, messageTS, 0)
 			delete(portal.pendingMessages, otid)
 		} else {
 			log.Debug().Msg("Not storing message send response: pending message was already removed from map")
@@ -796,6 +797,10 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 		portal.handleMetaReaction(typedEvt)
 	case *table.LSDeleteReaction:
 		portal.handleMetaReactionDelete(typedEvt)
+	case *table.LSUpdateReadReceipt:
+		portal.handleMetaReadReceipt(typedEvt)
+	case *table.LSUpdateTypingIndicator:
+		portal.handleMetaTypingIndicator(typedEvt)
 	default:
 		portal.log.Error().
 			Type("data_type", typedEvt).
@@ -1004,10 +1009,63 @@ func (portal *Portal) handleMetaDelete(delete *table.LSDeleteMessage) {
 	}
 }
 
+type customReadReceipt struct {
+	Timestamp          int64  `json:"ts,omitempty"`
+	DoublePuppetSource string `json:"fi.mau.double_puppet_source,omitempty"`
+}
+
+type customReadMarkers struct {
+	mautrix.ReqSetReadMarkers
+	ReadExtra      customReadReceipt `json:"com.beeper.read.extra"`
+	FullyReadExtra customReadReceipt `json:"com.beeper.fully_read.extra"`
+}
+
+func (portal *Portal) SendReadReceipt(ctx context.Context, sender *Puppet, msg *database.Message) error {
+	intent := sender.IntentFor(portal)
+	if intent.IsCustomPuppet {
+		extra := customReadReceipt{DoublePuppetSource: portal.bridge.Name}
+		return intent.SetReadMarkers(ctx, portal.MXID, &customReadMarkers{
+			ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
+				Read:      msg.MXID,
+				FullyRead: msg.MXID,
+			},
+			ReadExtra:      extra,
+			FullyReadExtra: extra,
+		})
+	} else {
+		return intent.MarkRead(ctx, portal.MXID, msg.MXID)
+	}
+}
+
+func (portal *Portal) handleMetaReadReceipt(read *table.LSUpdateReadReceipt) {
+	if portal.MXID == "" {
+		portal.log.Debug().Msg("Dropping read receipt in chat with no portal")
+		return
+	}
+	sender := portal.bridge.GetPuppetByID(read.ContactId)
+	log := portal.log.With().
+		Str("action", "handle meta read receipt").
+		Int64("sender_id", sender.ID).
+		Int64("read_up_to_ms", read.ReadWatermarkTimestampMs).
+		Int64("read_at_ms", read.ReadActionTimestampMs).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	message, err := portal.bridge.DB.Message.GetLastByTimestamp(ctx, portal.PortalKey, time.UnixMilli(read.ReadWatermarkTimestampMs))
+	if err != nil {
+		log.Err(err).Msg("Failed to get message to mark as read")
+	} else if message == nil {
+		log.Warn().Msg("No message found to mark as read")
+	} else if err = portal.SendReadReceipt(ctx, sender, message); err != nil {
+		log.Err(err).Stringer("event_id", message.MXID).Msg("Failed to send read receipt")
+	} else {
+		log.Debug().Stringer("event_id", message.MXID).Msg("Sent read receipt to Matrix")
+	}
+}
+
 // TODO find if this is the correct timeout
 const MetaTypingTimeout = 15 * time.Second
 
-func (portal *Portal) handleMetaTypingMessage(typing *table.LSUpdateTypingIndicator) {
+func (portal *Portal) handleMetaTypingIndicator(typing *table.LSUpdateTypingIndicator) {
 	if portal.MXID == "" {
 		portal.log.Debug().Msg("Dropping typing message in chat with no portal")
 		return
@@ -1041,34 +1099,6 @@ func (portal *Portal) storeMessageInDB(ctx context.Context, eventID id.EventID, 
 	err := dbMessage.Insert(ctx)
 	if err != nil {
 		portal.log.Err(err).Msg("Failed to insert message into database")
-	}
-}
-
-type customReadReceipt struct {
-	Timestamp          int64  `json:"ts,omitempty"`
-	DoublePuppetSource string `json:"fi.mau.double_puppet_source,omitempty"`
-}
-
-type customReadMarkers struct {
-	mautrix.ReqSetReadMarkers
-	ReadExtra      customReadReceipt `json:"com.beeper.read.extra"`
-	FullyReadExtra customReadReceipt `json:"com.beeper.fully_read.extra"`
-}
-
-func (portal *Portal) SendReadReceipt(ctx context.Context, sender *Puppet, msg *database.Message) error {
-	intent := sender.IntentFor(portal)
-	if intent.IsCustomPuppet {
-		extra := customReadReceipt{DoublePuppetSource: portal.bridge.Name}
-		return intent.SetReadMarkers(ctx, portal.MXID, &customReadMarkers{
-			ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
-				Read:      msg.MXID,
-				FullyRead: msg.MXID,
-			},
-			ReadExtra:      extra,
-			FullyReadExtra: extra,
-		})
-	} else {
-		return intent.MarkRead(ctx, portal.MXID, msg.MXID)
 	}
 }
 
