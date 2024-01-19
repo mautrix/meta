@@ -513,6 +513,9 @@ func (user *User) handleTable(table *table.LSTable) {
 	for _, msg := range table.LSUpdateReadReceipt {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
+	for _, msg := range table.LSMarkThreadRead {
+		user.handlePortalEvent(msg.ThreadKey, msg)
+	}
 	for _, msg := range table.LSUpdateTypingIndicator {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}

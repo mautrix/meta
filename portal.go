@@ -866,6 +866,12 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 		portal.handleMetaReactionDelete(typedEvt)
 	case *table.LSUpdateReadReceipt:
 		portal.handleMetaReadReceipt(typedEvt)
+	case *table.LSMarkThreadRead:
+		portal.handleMetaReadReceipt(&table.LSUpdateReadReceipt{
+			ReadWatermarkTimestampMs: typedEvt.LastReadWatermarkTimestampMs,
+			ContactId:                portalMessage.user.MetaID,
+			ReadActionTimestampMs:    time.Now().UnixMilli(),
+		})
 	case *table.LSUpdateTypingIndicator:
 		portal.handleMetaTypingIndicator(typedEvt)
 	case *table.LSSyncUpdateThreadName:
