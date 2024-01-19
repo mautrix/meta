@@ -501,35 +501,27 @@ func (user *User) handleTable(table *table.LSTable) {
 			go portal.addToPersonalSpace(ctx, user)
 		}
 	}
-	for _, msg := range table.WrapMessages() {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
+	handlePortalEvents(user, table.WrapMessages())
 	for _, msg := range table.LSEditMessage {
 		user.handleEditEvent(ctx, msg)
 	}
-	for _, msg := range table.LSSyncUpdateThreadName {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
-	for _, msg := range table.LSUpdateReadReceipt {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
-	for _, msg := range table.LSMarkThreadRead {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
-	for _, msg := range table.LSUpdateTypingIndicator {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
-	for _, msg := range table.LSDeleteMessage {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
-	for _, msg := range table.LSDeleteThenInsertMessage {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
-	for _, msg := range table.LSUpsertReaction {
-		user.handlePortalEvent(msg.ThreadKey, msg)
-	}
-	for _, msg := range table.LSDeleteReaction {
-		user.handlePortalEvent(msg.ThreadKey, msg)
+	handlePortalEvents(user, table.LSSyncUpdateThreadName)
+	handlePortalEvents(user, table.LSUpdateReadReceipt)
+	handlePortalEvents(user, table.LSMarkThreadRead)
+	handlePortalEvents(user, table.LSUpdateTypingIndicator)
+	handlePortalEvents(user, table.LSDeleteMessage)
+	handlePortalEvents(user, table.LSDeleteThenInsertMessage)
+	handlePortalEvents(user, table.LSUpsertReaction)
+	handlePortalEvents(user, table.LSDeleteReaction)
+}
+
+type ThreadKeyable interface {
+	GetThreadKey() int64
+}
+
+func handlePortalEvents[T ThreadKeyable](user *User, msgs []T) {
+	for _, msg := range msgs {
+		user.handlePortalEvent(msg.GetThreadKey(), msg)
 	}
 }
 

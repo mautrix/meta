@@ -183,6 +183,10 @@ type LSUpdateReadReceipt struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (ls *LSUpdateReadReceipt) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSThreadsRangesQuery struct {
 	ParentThreadKey            int64 `index:"0" json:",omitempty"`
 	Unknown1                   bool  `index:"1" json:",omitempty"`
@@ -201,6 +205,10 @@ type LSUpdateTypingIndicator struct {
 	IsTyping  bool  `index:"2" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSUpdateTypingIndicator) GetThreadKey() int64 {
+	return ls.ThreadKey
 }
 
 type LSMoveThreadToInboxAndUpdateParent struct {
@@ -385,6 +393,10 @@ type LSSyncUpdateThreadName struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (utn *LSSyncUpdateThreadName) GetThreadKey() int64 {
+	return utn.ThreadKey
+}
+
 type LSWriteCTAIdToThreadsTable struct {
 	ThreadKey                 int64  `index:"0" json:",omitempty"`
 	LastMessageCtaType        string `index:"1" json:",omitempty"`
@@ -413,6 +425,10 @@ type LSMarkThreadRead struct {
 	ThreadKey                    int64 `index:"1" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSMarkThreadRead) GetThreadKey() int64 {
+	return ls.ThreadKey
 }
 
 type LSUpdateParentFolderReadWatermark struct {

@@ -160,6 +160,10 @@ type LSDeleteMessage struct {
 	MessageId string `index:"1" json:",omitempty"`
 }
 
+func (ls *LSDeleteMessage) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSHandleRepliesOnRemove struct {
 	ThreadKey int64  `index:"0" json:",omitempty"`
 	MessageId string `index:"1" json:",omitempty"`
@@ -304,6 +308,10 @@ type LSInsertMessage struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (ls *LSInsertMessage) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSUpsertReaction struct {
 	ThreadKey      int64  `index:"0" json:",omitempty"`
 	TimestampMs    int64  `index:"1" json:",omitempty"`
@@ -315,12 +323,20 @@ type LSUpsertReaction struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (ls *LSUpsertReaction) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSDeleteReaction struct {
 	ThreadKey int64  `index:"0" json:",omitempty"`
 	MessageId string `index:"1" json:",omitempty"`
 	ActorId   int64  `index:"2" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSDeleteReaction) GetThreadKey() int64 {
+	return ls.ThreadKey
 }
 
 type LSHandleRepliesOnUnsend struct {
@@ -417,6 +433,10 @@ type LSDeleteThenInsertMessage struct {
 	IsPaidPartnership               int64          `index:"64" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSDeleteThenInsertMessage) GetThreadKey() int64 {
+	return ls.ThreadKey
 }
 
 type LSEditMessage struct {
