@@ -96,6 +96,12 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 	}
 	resp.Finish()
 
+	if len(resp.Table.LSHandleSyncFailure) > 0 {
+		// TODO handle these somehow?
+		sm.client.Logger.Warn().
+			Any("sync_failures", resp.Table.LSHandleSyncFailure).
+			Msg("Sync failures found")
+	}
 	if len(resp.Table.LSExecuteFirstBlockForSyncTransaction) == 0 {
 		sm.client.Logger.Warn().
 			Any("database_id", databaseId).

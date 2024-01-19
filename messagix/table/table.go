@@ -123,6 +123,9 @@ type LSTable struct {
 	LSUpdateThreadSnippetFromLastMessageV2        []*LSUpdateThreadSnippetFromLastMessageV2        `json:",omitempty"`
 	LSMarkOptimisticMessageFailed                 []*LSMarkOptimisticMessageFailed                 `json:",omitempty"`
 	LSUpdateSubscriptErrorMessage                 []*LSUpdateSubscriptErrorMessage                 `json:",omitempty"`
+	LSDeleteThenInsertBotProfileInfoCategoryV2    []*LSDeleteThenInsertBotProfileInfoCategoryV2    `json:",omitempty"`
+	LSDeleteThenInsertBotProfileInfoV2            []*LSDeleteThenInsertBotProfileInfoV2            `json:",omitempty"`
+	LSHandleSyncFailure                           []*LSHandleSyncFailure                           `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -237,6 +240,9 @@ var SPTable = map[string]string{
 	"updateThreadSnippetFromLastMessageV2":        "LSUpdateThreadSnippetFromLastMessageV2",
 	"markOptimisticMessageFailed":                 "LSMarkOptimisticMessageFailed",
 	"updateSubscriptErrorMessage":                 "LSUpdateSubscriptErrorMessage",
+	"deleteThenInsertBotProfileInfoCategoryV2":    "LSDeleteThenInsertBotProfileInfoCategoryV2",
+	"deleteThenInsertBotProfileInfoV2":            "LSDeleteThenInsertBotProfileInfoV2",
+	"handleSyncFailure":                           "LSHandleSyncFailure",
 }
 
 func SPToDepMap(sp []string) map[string]string {
