@@ -37,12 +37,13 @@
       * [x] Stickers
       * [x] Files
       * [x] Voice messages
-      * [ ] Locations
+      * [x] Locations
+      * [ ] Live location sharing
       * [x] Story/reel/clip shares
       * [ ] Profile shares
       * [ ] Product shares
     * [ ] Formatting (Messenger only)
-    * [ ] Replies
+    * [x] Replies
     * [ ] Mentions
     * [ ] Polls
   * [x] Message unsend

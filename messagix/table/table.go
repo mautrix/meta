@@ -115,6 +115,8 @@ type LSTable struct {
 	LSRefreshLastActivityTimestamp                []*LSRefreshLastActivityTimestamp                `json:",omitempty"`
 	LSSetPinnedMessage                            []*LSSetPinnedMessage                            `json:",omitempty"`
 	LSStoryContactSyncFromBucket                  []*LSStoryContactSyncFromBucket                  `json:",omitempty"`
+	LSUpsertLiveLocationSharer                    []*LSUpsertLiveLocationSharer                    `json:",omitempty"`
+	LSDeleteLiveLocationSharer                    []*LSDeleteLiveLocationSharer                    `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -221,6 +223,8 @@ var SPTable = map[string]string{
 	"refreshLastActivityTimestamp":                "LSRefreshLastActivityTimestamp",
 	"setPinnedMessage":                            "LSSetPinnedMessage",
 	"storyContactSyncFromBucket":                  "LSStoryContactSyncFromBucket",
+	"upsertLiveLocationSharer":                    "LSUpsertLiveLocationSharer",
+	"deleteLiveLocationSharer":                    "LSDeleteLiveLocationSharer",
 }
 
 func SPToDepMap(sp []string) map[string]string {

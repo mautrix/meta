@@ -264,7 +264,7 @@ type LSInsertAttachmentCta struct {
 	ActionUrl           string `index:"9" json:",omitempty"`
 	NativeUrl           string `index:"10" json:",omitempty"`
 	UrlWebviewType      int64  `index:"11" json:",omitempty"`
-	ActionContentBlob   int64  `index:"12" json:",omitempty"`
+	ActionContentBlob   string `index:"12" json:",omitempty"`
 	EnableExtensions    bool   `index:"13" json:",omitempty"`
 	ExtensionHeightType int64  `index:"14" json:",omitempty"`
 	TargetId            int64  `index:"15" json:",omitempty"`
@@ -298,6 +298,24 @@ type LSUpdateAttachmentCtaAtIndexIgnoringAuthority struct {
 type LSHasMatchingAttachmentCTA struct {
 	ThreadKey      int64  `index:"0" json:",omitempty"`
 	AttachmentFbid string `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSUpsertLiveLocationSharer struct {
+	ThreadKey        int64   `index:"0" json:",omitempty"`
+	Sender           int64   `index:"1" json:",omitempty"`
+	Latitude         float64 `index:"2" json:",omitempty"`
+	Longitude        float64 `index:"3" json:",omitempty"`
+	StartTimestampMS int64   `index:"4" json:",omitempty"`
+	EndTimestampMS   int64   `index:"5" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSDeleteLiveLocationSharer struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+	Sender    int64 `index:"1" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

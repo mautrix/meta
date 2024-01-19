@@ -195,7 +195,32 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 	return converted
 }
 
+func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
+	if att.CTA.NativeUrl == "" {
+		// This happens for live locations
+		// TODO figure out how to support them properly
+		return &ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    fmt.Sprintf("%s\n%s", att.TitleText, att.SubtitleText),
+			},
+		}
+	}
+	return &ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgLocation,
+			GeoURI:  fmt.Sprintf("geo:%s", att.CTA.NativeUrl),
+			Body:    fmt.Sprintf("%s\n%s", att.TitleText, att.SubtitleText),
+		},
+	}
+}
+
 func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
+	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
+		return mc.xmaLocationToMatrix(ctx, att)
+	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	var width, height int64
@@ -251,6 +276,9 @@ func (mc *MessageConverter) reuploadAttachment(
 	url, fileName, mimeType string,
 	width, height, duration int,
 ) (*ConvertedMessagePart, error) {
+	if url == "" {
+		return nil, fmt.Errorf("url not found")
+	}
 	data, err := DownloadMedia(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download attachment: %w", err)
