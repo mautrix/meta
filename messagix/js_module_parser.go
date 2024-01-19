@@ -65,13 +65,13 @@ func (m *ModuleParser) SetTestData(data []byte) {
 
 func (m *ModuleParser) fetchPageData(page string) ([]byte, error) { // just log.fatal if theres an error because the library should not be able to continue then
 	headers := m.client.buildHeaders(true)
-	headers.Add("connection", "keep-alive")
-	//headers.Add("host", m.client.getEndpoint("host"))
-	headers.Add("sec-fetch-dest", "document")
-	headers.Add("sec-fetch-mode", "navigate")
-	headers.Add("sec-fetch-site", "none") // header is required, otherwise they dont send the csr bitmap data in the response. lets also include the other headers to be sure
-	headers.Add("sec-fetch-user", "?1")
-	headers.Add("upgrade-insecure-requests", "1")
+	headers.Set("connection", "keep-alive")
+	//headers.Set("host", m.client.getEndpoint("host"))
+	headers.Set("sec-fetch-dest", "document")
+	headers.Set("sec-fetch-mode", "navigate")
+	headers.Set("sec-fetch-site", "none") // header is required, otherwise they dont send the csr bitmap data in the response. lets also include the other headers to be sure
+	headers.Set("sec-fetch-user", "?1")
+	headers.Set("upgrade-insecure-requests", "1")
 	_, responseBody, err := m.client.MakeRequest(page, "GET", headers, nil, types.NONE)
 	if err != nil {
 		return nil, fmt.Errorf("messagix-moduleparser: failed to fetch page data for page %s (%v)", page, err)

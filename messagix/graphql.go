@@ -39,12 +39,12 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 	payloadBytes := []byte(form.Encode())
 
 	headers := c.buildHeaders(true)
-	headers.Add("x-fb-friendly-name", graphQLDoc.FriendlyName)
-	headers.Add("sec-fetch-dest", "empty")
-	headers.Add("sec-fetch-mode", "cors")
-	headers.Add("sec-fetch-site", "same-origin")
-	headers.Add("origin", c.getEndpoint("base_url"))
-	headers.Add("referer", c.getEndpoint("messages")+"/")
+	headers.Set("x-fb-friendly-name", graphQLDoc.FriendlyName)
+	headers.Set("sec-fetch-dest", "empty")
+	headers.Set("sec-fetch-mode", "cors")
+	headers.Set("sec-fetch-site", "same-origin")
+	headers.Set("origin", c.getEndpoint("base_url"))
+	headers.Set("referer", c.getEndpoint("messages")+"/")
 
 	reqUrl := c.getEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")

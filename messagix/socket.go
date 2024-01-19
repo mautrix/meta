@@ -356,12 +356,12 @@ func (s *Socket) makeLSRequest(payload []byte, t int) (uint16, error) {
 func (s *Socket) getConnHeaders() http.Header {
 	h := http.Header{}
 
-	h.Add("cookie", cookies.CookiesToString(s.client.cookies))
-	h.Add("user-agent", UserAgent)
-	h.Add("origin", s.client.getEndpoint("base_url"))
-	h.Add("Sec-Fetch-Dest", "empty")
-	h.Add("Sec-Fetch-Mode", "websocket")
-	h.Add("Sec-Fetch-Site", "same-site")
+	h.Set("cookie", cookies.CookiesToString(s.client.cookies))
+	h.Set("user-agent", UserAgent)
+	h.Set("origin", s.client.getEndpoint("base_url"))
+	h.Set("Sec-Fetch-Dest", "empty")
+	h.Set("Sec-Fetch-Mode", "websocket")
+	h.Set("Sec-Fetch-Site", "same-site")
 
 	return h
 }

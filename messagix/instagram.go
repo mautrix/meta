@@ -26,12 +26,12 @@ func (ig *InstagramMethods) Login(identifier, password string) (cookies.Cookies,
 		return nil, err
 	}
 	h := ig.client.buildHeaders(false)
-	h.Add("x-web-device-id", ig.client.cookies.GetValue("ig_did"))
-	h.Add("sec-fetch-dest", "empty")
-	h.Add("sec-fetch-mode", "cors")
-	h.Add("sec-fetch-site", "same-origin")
-	h.Add("x-requested-with", "XMLHttpRequest")
-	h.Add("referer", ig.client.getEndpoint("login_page"))
+	h.Set("x-web-device-id", ig.client.cookies.GetValue("ig_did"))
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-site", "same-origin")
+	h.Set("x-requested-with", "XMLHttpRequest")
+	h.Set("referer", ig.client.getEndpoint("login_page"))
 
 	login_page_v1 := ig.client.getEndpoint("web_login_page_v1")
 	_, _, err := ig.client.MakeRequest(login_page_v1, "GET", h, nil, types.NONE)
@@ -93,8 +93,8 @@ func (ig *InstagramMethods) Login(identifier, password string) (cookies.Cookies,
 
 func (ig *InstagramMethods) FetchProfile(username string) (*responses.ProfileInfoResponse, error) {
 	h := ig.client.buildHeaders(true)
-	h.Add("x-requested-with", "XMLHttpRequest")
-	h.Add("referer", ig.client.getEndpoint("base_url")+username+"/")
+	h.Set("x-requested-with", "XMLHttpRequest")
+	h.Set("referer", ig.client.getEndpoint("base_url")+username+"/")
 	reqUrl := ig.client.getEndpoint("web_profile_info") + "username=" + username
 
 	resp, respBody, err := ig.client.MakeRequest(reqUrl, "GET", h, nil, types.NONE)

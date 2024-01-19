@@ -43,12 +43,13 @@ func (c *Client) SendMercuryUploadRequest(medias []*MercuryUploadMedia) ([]*type
 			return nil, err
 		}
 		h := c.buildHeaders(true)
-		h.Add("content-type", contentType)
-		h.Add("origin", c.getEndpoint("base_url"))
-		h.Add("referer", c.getEndpoint("messages"))
-		h.Add("sec-fetch-dest", "empty")
-		h.Add("sec-fetch-mode", "cors")
-		h.Add("sec-fetch-site", "same-origin") // header is required
+		h.Set("accept", "*/*")
+		h.Set("content-type", contentType)
+		h.Set("origin", c.getEndpoint("base_url"))
+		h.Set("referer", c.getEndpoint("messages"))
+		h.Set("sec-fetch-dest", "empty")
+		h.Set("sec-fetch-mode", "cors")
+		h.Set("sec-fetch-site", "same-origin") // header is required
 
 		_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
 		if err != nil {

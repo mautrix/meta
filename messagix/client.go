@@ -251,26 +251,26 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 
 	var payloadQuery interface{}
 	h := c.buildHeaders(false)
-	h.Add("sec-fetch-dest", "empty")
-	h.Add("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
 
 	if c.platform == types.Facebook {
-		h.Add("sec-fetch-site", "same-origin") // header is required
-		h.Add("sec-fetch-user", "?1")
-		h.Add("host", c.getEndpoint("host"))
-		h.Add("upgrade-insecure-requests", "1")
-		h.Add("origin", c.getEndpoint("base_url"))
-		h.Add("cookie", "_js_datr="+jsDatr)
-		h.Add("referer", c.getEndpoint("login_page"))
+		h.Set("sec-fetch-site", "same-origin") // header is required
+		h.Set("sec-fetch-user", "?1")
+		h.Set("host", c.getEndpoint("host"))
+		h.Set("upgrade-insecure-requests", "1")
+		h.Set("origin", c.getEndpoint("base_url"))
+		h.Set("cookie", "_js_datr="+jsDatr)
+		h.Set("referer", c.getEndpoint("login_page"))
 		q := c.NewHttpQuery()
 		q.AcceptOnlyEssential = "false"
 		payloadQuery = q
 	} else {
-		h.Add("sec-fetch-site", "same-site") // header is required
-		h.Add("host", c.getEndpoint("host"))
-		h.Add("origin", c.getEndpoint("base_url"))
-		h.Add("referer", c.getEndpoint("base_url")+"/")
-		h.Add("x-instagram-ajax", strconv.Itoa(int(c.configs.browserConfigTable.SiteData.ServerRevision)))
+		h.Set("sec-fetch-site", "same-site") // header is required
+		h.Set("host", c.getEndpoint("host"))
+		h.Set("origin", c.getEndpoint("base_url"))
+		h.Set("referer", c.getEndpoint("base_url")+"/")
+		h.Set("x-instagram-ajax", strconv.Itoa(int(c.configs.browserConfigTable.SiteData.ServerRevision)))
 		variables, err := json.Marshal(&types.InstagramCookiesVariables{
 			FirstPartyTrackingOptIn: true,
 			IgDid:                   c.cookies.GetValue("ig_did"),

@@ -82,7 +82,7 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 	}
 
 	if contentType != types.NONE {
-		headers.Add("content-type", string(contentType))
+		headers.Set("content-type", string(contentType))
 	}
 
 	newRequest.Header = headers
@@ -114,17 +114,17 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 
 func (c *Client) buildHeaders(withCookies bool) http.Header {
 	headers := http.Header{}
-	headers.Add("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
-	headers.Add("accept-language", "en-US,en;q=0.9")
-	headers.Add("dpr", DPR)
-	headers.Add("user-agent", UserAgent)
-	headers.Add("sec-ch-ua", SecCHUserAgent)
-	headers.Add("sec-ch-ua-platform", SecCHPlatform)
-	headers.Add("sec-ch-prefers-color-scheme", SecCHPrefersColorScheme)
-	headers.Add("sec-ch-ua-full-version-list", SecCHFullVersionList)
-	headers.Add("sec-ch-ua-mobile", SecCHMobile)
-	headers.Add("sec-ch-ua-model", SecCHModel)
-	headers.Add("sec-ch-ua-platform-version", SecCHPlatformVersion)
+	headers.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	headers.Set("accept-language", "en-US,en;q=0.9")
+	headers.Set("dpr", DPR)
+	headers.Set("user-agent", UserAgent)
+	headers.Set("sec-ch-ua", SecCHUserAgent)
+	headers.Set("sec-ch-ua-platform", SecCHPlatform)
+	headers.Set("sec-ch-prefers-color-scheme", SecCHPrefersColorScheme)
+	headers.Set("sec-ch-ua-full-version-list", SecCHFullVersionList)
+	headers.Set("sec-ch-ua-mobile", SecCHMobile)
+	headers.Set("sec-ch-ua-model", SecCHModel)
+	headers.Set("sec-ch-ua-platform-version", SecCHPlatformVersion)
 
 	if c.platform == types.Facebook {
 		c.addFacebookHeaders(&headers)
@@ -135,11 +135,11 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 	if c.cookies != nil && withCookies {
 		cookieStr := cookies.CookiesToString(c.cookies)
 		if cookieStr != "" {
-			headers.Add("cookie", cookieStr)
+			headers.Set("cookie", cookieStr)
 		}
 		w, _ := c.cookies.GetViewports()
-		headers.Add("viewport-width", w)
-		headers.Add("x-asbd-id", "129477")
+		headers.Set("viewport-width", w)
+		headers.Set("x-asbd-id", "129477")
 	}
 	return headers
 }
@@ -147,7 +147,7 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 func (c *Client) addFacebookHeaders(h *http.Header) {
 	if c.configs != nil {
 		if c.configs.LsdToken != "" {
-			h.Add("x-fb-lsd", c.configs.LsdToken)
+			h.Set("x-fb-lsd", c.configs.LsdToken)
 		}
 	}
 }
@@ -157,26 +157,26 @@ func (c *Client) addInstagramHeaders(h *http.Header) {
 		csrfToken := c.cookies.GetValue("csrftoken")
 		mid := c.cookies.GetValue("mid")
 		if csrfToken != "" {
-			h.Add("x-csrftoken", csrfToken)
+			h.Set("x-csrftoken", csrfToken)
 		}
 
 		if mid != "" {
-			h.Add("x-mid", mid)
+			h.Set("x-mid", mid)
 		}
 
 		if c.configs.browserConfigTable != nil {
 			instaCookies, ok := c.cookies.(*cookies.InstagramCookies)
 			if ok {
 				if instaCookies.IgWWWClaim == "" {
-					h.Add("x-ig-www-claim", "0")
+					h.Set("x-ig-www-claim", "0")
 				} else {
-					h.Add("x-ig-www-claim", instaCookies.IgWWWClaim)
+					h.Set("x-ig-www-claim", instaCookies.IgWWWClaim)
 				}
 			} else {
-				h.Add("x-ig-www-claim", "0")
+				h.Set("x-ig-www-claim", "0")
 			}
 		}
-		h.Add("x-ig-app-id", c.configs.browserConfigTable.CurrentUserInitialData.AppID)
+		h.Set("x-ig-app-id", c.configs.browserConfigTable.CurrentUserInitialData.AppID)
 	}
 }
 
@@ -208,26 +208,26 @@ func (a *Account) buildLoginHeaders() http.Header {
 	} else {
 		h = a.addInstagramHeaders(h)
 	}
-	h.Add("origin", a.client.getEndpoint("base_url"))
-	h.Add("referer", a.client.getEndpoint("login_page"))
+	h.Set("origin", a.client.getEndpoint("base_url"))
+	h.Set("referer", a.client.getEndpoint("login_page"))
 
 	return h
 }
 
 func (a *Account) addFacebookHeaders(h http.Header) http.Header {
-	h.Add("sec-fetch-dest", "document")
-	h.Add("sec-fetch-mode", "navigate")
-	h.Add("sec-fetch-site", "same-origin") // header is required
-	h.Add("sec-fetch-user", "?1")
-	h.Add("upgrade-insecure-requests", "1")
+	h.Set("sec-fetch-dest", "document")
+	h.Set("sec-fetch-mode", "navigate")
+	h.Set("sec-fetch-site", "same-origin") // header is required
+	h.Set("sec-fetch-user", "?1")
+	h.Set("upgrade-insecure-requests", "1")
 	return h
 }
 
 func (a *Account) addInstagramHeaders(h http.Header) http.Header {
-	h.Add("x-instagram-ajax", strconv.Itoa(int(a.client.configs.browserConfigTable.SiteData.ServerRevision)))
-	h.Add("sec-fetch-dest", "empty")
-	h.Add("sec-fetch-mode", "cors")
-	h.Add("sec-fetch-site", "same-origin") // header is required
-	h.Add("x-requested-with", "XMLHttpRequest")
+	h.Set("x-instagram-ajax", strconv.Itoa(int(a.client.configs.browserConfigTable.SiteData.ServerRevision)))
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-site", "same-origin") // header is required
+	h.Set("x-requested-with", "XMLHttpRequest")
 	return h
 }
