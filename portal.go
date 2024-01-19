@@ -807,6 +807,8 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 		portal.handleMetaReadReceipt(typedEvt)
 	case *table.LSUpdateTypingIndicator:
 		portal.handleMetaTypingIndicator(typedEvt)
+	case *table.LSSyncUpdateThreadName:
+		portal.handleMetaNameChange(typedEvt)
 	default:
 		portal.log.Error().
 			Type("data_type", typedEvt).
@@ -1088,6 +1090,20 @@ func (portal *Portal) handleMetaTypingIndicator(typing *table.LSUpdateTypingIndi
 		portal.log.Err(err).
 			Int64("user_id", sender.ID).
 			Msg("Failed to handle Meta typing notification")
+	}
+}
+
+func (portal *Portal) handleMetaNameChange(typedEvt *table.LSSyncUpdateThreadName) {
+	log := portal.log.With().
+		Str("action", "meta name change").
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	if portal.updateName(ctx, typedEvt.ThreadName) {
+		err := portal.Update(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save portal in database after name change")
+		}
+		portal.UpdateBridgeInfo(ctx)
 	}
 }
 
