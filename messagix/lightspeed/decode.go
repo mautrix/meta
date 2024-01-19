@@ -1,6 +1,7 @@
 package lightspeed
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"strconv"
@@ -103,16 +104,27 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 		badGlobalLog.Warn().Any("step_data", stepData).Msg("Call native operation")
 		return nil
 	case NATIVE_OP_MAP_CREATE:
-		return make(map[interface{}]interface{}, 0)
+		return make(map[string]interface{}, 0)
 	case NATIVE_OP_MAP_SET:
-		mapToUpdate, ok := ls.Decode(stepData[0]).(map[interface{}]interface{})
+		mapToUpdate, ok := ls.Decode(stepData[0]).(map[string]interface{})
 		if !ok {
 			badGlobalLog.Warn().Msg("failed to type assert map from statement references...")
 			return nil
 		}
 		mapKey := ls.Decode(stepData[1])
 		mapVal := ls.Decode(stepData[2])
-		mapToUpdate[mapKey] = mapVal
+		mapKeyStr, ok := mapKey.(string)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Map set contains non-string key")
+			mapKeyStr = fmt.Sprintf("%v", mapKey)
+		}
+		mapToUpdate[mapKeyStr] = mapVal
+	case NATIVE_OP_ARRAY_CREATE:
+		return make([]any, 0)
+	case NATIVE_OP_ARRAY_APPEND:
+		return append(ls.Decode(stepData[0]).([]any), ls.Decode(stepData[1]))
+	case NATIVE_OP_ARRAY_GET_SIZE:
+		return len(ls.Decode(stepData[0]).([]any))
 	case LOGGER_LOG:
 		badGlobalLog.Debug().Msgf("Facebook server log: %v", stepData[0]) // zerolog-allow-msgf
 		return nil
@@ -121,8 +133,7 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 		second := ls.Decode(stepData[1]).(int64)
 		return first + second
 	default:
-		badGlobalLog.Warn().Int("step_type", int(stepType)).Any("step_data", stepData).Msg("Got unknown step type")
-		os.Exit(1)
+		badGlobalLog.Error().Int("step_type", int(stepType)).Any("step_data", stepData).Msg("Got unknown step type")
 	}
 
 	return nil
