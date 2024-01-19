@@ -15,6 +15,7 @@
     * [ ] Mentions
   * [x] Message redactions
   * [x] Message reactions
+  * [ ] Message edits
   * [ ] Presence
   * [ ] Typing notifications
   * [ ] Read receipts
@@ -48,6 +49,7 @@
     * [ ] Polls
   * [x] Message unsend
   * [x] Message reactions
+  * [x] Message edits
   * [ ] Message history
   * [ ] Presence
   * [x] Typing notifications

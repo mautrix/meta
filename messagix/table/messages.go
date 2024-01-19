@@ -330,6 +330,13 @@ type LSHandleRepliesOnUnsend struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSHandleRepliesOnMessageEdit struct {
+	ThreadKey int64  `index:"0" json:",omitempty"`
+	MessageId string `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
 type LSUpdateForRollCallMessageDeleted struct {
 	MessageId     string `index:"0" json:",omitempty"`
 	ContributorId int64  `index:"1" json:",omitempty"`
@@ -408,6 +415,15 @@ type LSDeleteThenInsertMessage struct {
 	SubthreadKey                    int64          `index:"62" json:",omitempty"`
 	BotResponseId                   int64          `index:"63" json:",omitempty"`
 	IsPaidPartnership               int64          `index:"64" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSEditMessage struct {
+	MessageID      string `index:"0" json:",omitempty"`
+	AuthorityLevel int64  `index:"1" json:",omitempty"`
+	Text           string `index:"2" json:",omitempty"`
+	EditCount      int64  `index:"3" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

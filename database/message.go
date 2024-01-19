@@ -18,6 +18,8 @@ package database
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"go.mau.fi/util/dbutil"
@@ -26,34 +28,41 @@ import (
 
 const (
 	getMessageByMXIDQuery = `
-		SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp FROM message
+		SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count FROM message
 		WHERE mxid=$1
 	`
 	getMessagePartByIDQuery = `
-        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp FROM message
+        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count FROM message
         WHERE id=$1 AND part_index=$2 AND thread_receiver=$3
 	`
 	getLastMessagePartByIDQuery = `
-        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp FROM message
+        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count FROM message
         WHERE id=$1 AND thread_receiver=$2
         ORDER BY part_index DESC LIMIT 1
 	`
 	getLastPartByTimestampQuery = `
-        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp FROM message
+        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count FROM message
         WHERE thread_id=$1 AND thread_receiver=$2 AND timestamp<=$3
         ORDER BY timestamp DESC, part_index DESC LIMIT 1
 	`
 	getAllMessagePartsByIDQuery = `
-        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp FROM message
+        SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count FROM message
         WHERE id=$1 AND thread_receiver=$2
 	`
+	findEditTargetPortalFromMessageQuery = `
+        SELECT thread_id, thread_receiver FROM message
+        WHERE id=$1 AND (thread_receiver=$2 OR thread_receiver=0) AND part_index=0
+	`
 	insertMessageQuery = `
-		INSERT INTO message (id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO message (id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	deleteMessageQuery = `
         DELETE FROM message
         WHERE id=$1 AND thread_receiver=$2 AND part_index=$3
+	`
+	updateMessageEditCountQuery = `
+		UPDATE message SET edit_count=$4 WHERE id=$1 AND thread_receiver=$2 AND part_index=$3
 	`
 )
 
@@ -75,6 +84,7 @@ type Message struct {
 	RoomID id.RoomID
 
 	Timestamp time.Time
+	EditCount int64
 }
 
 func newMessage(qh *dbutil.QueryHelper[*Message]) *Message {
@@ -101,10 +111,18 @@ func (mq *MessageQuery) GetAllPartsByID(ctx context.Context, id string, receiver
 	return mq.QueryMany(ctx, getAllMessagePartsByIDQuery, id, receiver)
 }
 
+func (mq *MessageQuery) FindEditTargetPortal(ctx context.Context, id string, receiver int64) (key PortalKey, err error) {
+	err = mq.GetDB().QueryRow(ctx, findEditTargetPortalFromMessageQuery, id, receiver).Scan(&key.ThreadID, &key.Receiver)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return
+}
+
 func (msg *Message) Scan(row dbutil.Scannable) (*Message, error) {
 	var timestamp int64
 	err := row.Scan(
-		&msg.ID, &msg.PartIndex, &msg.ThreadID, &msg.ThreadReceiver, &msg.Sender, &msg.OTID, &msg.MXID, &msg.RoomID, &timestamp,
+		&msg.ID, &msg.PartIndex, &msg.ThreadID, &msg.ThreadReceiver, &msg.Sender, &msg.OTID, &msg.MXID, &msg.RoomID, &timestamp, &msg.EditCount,
 	)
 	if err != nil {
 		return nil, err
@@ -114,7 +132,7 @@ func (msg *Message) Scan(row dbutil.Scannable) (*Message, error) {
 }
 
 func (msg *Message) sqlVariables() []any {
-	return []any{msg.ID, msg.PartIndex, msg.ThreadID, msg.ThreadReceiver, msg.Sender, msg.OTID, msg.MXID, msg.RoomID, msg.Timestamp.UnixMilli()}
+	return []any{msg.ID, msg.PartIndex, msg.ThreadID, msg.ThreadReceiver, msg.Sender, msg.OTID, msg.MXID, msg.RoomID, msg.Timestamp.UnixMilli(), msg.EditCount}
 }
 
 func (msg *Message) Insert(ctx context.Context) error {
@@ -123,4 +141,9 @@ func (msg *Message) Insert(ctx context.Context) error {
 
 func (msg *Message) Delete(ctx context.Context) error {
 	return msg.qh.Exec(ctx, deleteMessageQuery, msg.ID, msg.ThreadReceiver, msg.PartIndex)
+}
+
+func (msg *Message) UpdateEditCount(ctx context.Context, count int64) error {
+	msg.EditCount = count
+	return msg.qh.Exec(ctx, updateMessageEditCountQuery, msg.ID, msg.ThreadReceiver, msg.PartIndex, msg.EditCount)
 }

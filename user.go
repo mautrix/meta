@@ -504,6 +504,9 @@ func (user *User) handleTable(table *table.LSTable) {
 	for _, msg := range table.WrapMessages() {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
+	for _, msg := range table.LSEditMessage {
+		user.handleEditEvent(ctx, msg)
+	}
 	for _, msg := range table.LSSyncUpdateThreadName {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
@@ -525,6 +528,24 @@ func (user *User) handleTable(table *table.LSTable) {
 	for _, msg := range table.LSDeleteReaction {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
+}
+
+func (user *User) handleEditEvent(ctx context.Context, evt *table.LSEditMessage) {
+	log := zerolog.Ctx(ctx).With().Str("message_id", evt.MessageID).Logger()
+	portalKey, err := user.bridge.DB.Message.FindEditTargetPortal(ctx, evt.MessageID, user.MetaID)
+	if err != nil {
+		log.Err(err).Msg("Failed to get portal of edited message")
+		return
+	} else if portalKey.ThreadID == 0 {
+		log.Warn().Msg("Edit target message not found")
+		return
+	}
+	portal := user.bridge.GetExistingPortalByThreadID(portalKey)
+	if portal == nil {
+		log.Warn().Int64("thread_id", portalKey.ThreadID).Msg("Portal for edit target message not found")
+		return
+	}
+	portal.metaMessages <- portalMetaMessage{user: user, evt: evt}
 }
 
 func (user *User) handlePortalEvent(threadKey int64, evt any) {

@@ -270,6 +270,12 @@ type LSUpdateThreadSnippetFromLastMessage struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSUpdateThreadSnippetFromLastMessageV2 struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
 type LSDeleteBannersByIds struct {
 	ThreadKey int64 `index:"0" json:",omitempty"`
 

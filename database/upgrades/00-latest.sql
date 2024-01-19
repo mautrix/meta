@@ -1,4 +1,4 @@
--- v0 -> v1: Latest revision
+-- v0 -> v2: Latest revision
 
 CREATE TABLE portal (
     thread_id   BIGINT  NOT NULL,
@@ -71,7 +71,8 @@ CREATE TABLE message (
     mxid    TEXT NOT NULL,
     mx_room TEXT NOT NULL,
 
-    timestamp  BIGINT  NOT NULL,
+    timestamp  BIGINT NOT NULL,
+    edit_count BIGINT NOT NULL,
 
     PRIMARY KEY (id, part_index, thread_receiver),
     CONSTRAINT message_portal_fkey FOREIGN KEY (thread_id, thread_receiver)

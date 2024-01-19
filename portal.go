@@ -799,6 +799,8 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
 	case *table.WrappedMessage:
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
+	case *table.LSEditMessage:
+		portal.handleMetaEditMessage(typedEvt)
 	case *table.LSDeleteMessage:
 		portal.handleMetaDelete(typedEvt.MessageId)
 	case *table.LSDeleteThenInsertMessage:
@@ -891,6 +893,44 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 			continue
 		}
 		portal.storeMessageInDB(ctx, resp.EventID, message.MessageId, otidInt, sender.ID, messageTime, i)
+	}
+}
+
+func (portal *Portal) handleMetaEditMessage(edit *table.LSEditMessage) {
+	log := portal.log.With().
+		Str("action", "edit meta message").
+		Str("message_id", edit.MessageID).
+		Int64("edit_count", edit.EditCount).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, edit.MessageID, portal.Receiver)
+	if err != nil {
+		log.Err(err).Msg("Failed to get edit target message")
+		return
+	} else if len(targetMsg) == 0 {
+		log.Warn().Msg("Edit target message not found")
+		return
+	} else if len(targetMsg) > 1 {
+		log.Warn().Msg("Ignoring edit of multipart message")
+		return
+	} else if targetMsg[0].EditCount >= edit.EditCount {
+		log.Debug().Int64("existing_edit_count", targetMsg[0].EditCount).Msg("Ignoring duplicate edit")
+		return
+	}
+	sender := portal.bridge.GetPuppetByID(targetMsg[0].Sender)
+	content := &event.MessageEventContent{
+		MsgType:  event.MsgText,
+		Body:     edit.Text,
+		Mentions: &event.Mentions{},
+	}
+	content.SetEdit(targetMsg[0].MXID)
+	resp, err := portal.sendMatrixEvent(ctx, sender.IntentFor(portal), event.EventMessage, content, map[string]any{}, 0)
+	if err != nil {
+		log.Err(err).Msg("Failed to send edit to Matrix")
+	} else if err := targetMsg[0].UpdateEditCount(ctx, edit.EditCount); err != nil {
+		log.Err(err).Stringer("event_id", resp.EventID).Msg("Failed to save message edit count to database")
+	} else {
+		log.Debug().Stringer("event_id", resp.EventID).Msg("Handled Meta message edit")
 	}
 }
 

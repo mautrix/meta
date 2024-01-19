@@ -118,6 +118,9 @@ type LSTable struct {
 	LSUpsertLiveLocationSharer                    []*LSUpsertLiveLocationSharer                    `json:",omitempty"`
 	LSDeleteLiveLocationSharer                    []*LSDeleteLiveLocationSharer                    `json:",omitempty"`
 	LSUpdateSharedAlbumOnMessageRecall            []*LSUpdateSharedAlbumOnMessageRecall            `json:",omitempty"`
+	LSEditMessage                                 []*LSEditMessage                                 `json:",omitempty"`
+	LSHandleRepliesOnMessageEdit                  []*LSHandleRepliesOnMessageEdit                  `json:",omitempty"`
+	LSUpdateThreadSnippetFromLastMessageV2        []*LSUpdateThreadSnippetFromLastMessageV2        `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -227,6 +230,9 @@ var SPTable = map[string]string{
 	"upsertLiveLocationSharer":                    "LSUpsertLiveLocationSharer",
 	"deleteLiveLocationSharer":                    "LSDeleteLiveLocationSharer",
 	"updateSharedAlbumOnMessageRecall":            "LSUpdateSharedAlbumOnMessageRecall",
+	"editMessage":                                 "LSEditMessage",
+	"handleRepliesOnMessageEdit":                  "LSHandleRepliesOnMessageEdit",
+	"updateThreadSnippetFromLastMessageV2":        "LSUpdateThreadSnippetFromLastMessageV2",
 }
 
 func SPToDepMap(sp []string) map[string]string {
