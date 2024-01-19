@@ -4,7 +4,7 @@
   * [ ] Message content
     * [x] Text
     * [ ] Media
-      * [x] Files
+      * [x] Files (Messenger only)
       * [x] Voice messages
       * [x] Videos
       * [x] Images
@@ -17,8 +17,8 @@
   * [x] Message reactions
   * [x] Message edits
   * [ ] Presence
-  * [ ] Typing notifications
-  * [ ] Read receipts
+  * [ ] Typing notifications (may not be possible, not supported on IG/FB web clients)
+  * [x] Read receipts
   * [ ] Power level
   * [ ] Membership actions
     * [ ] Invite

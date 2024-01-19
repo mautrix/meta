@@ -201,9 +201,6 @@ type Portal struct {
 	relayUser *User
 }
 
-//var metaFormatParams *metafmt.FormatParams
-//var matrixFormatParams *matrixfmt.HTMLParser
-
 func (br *MetaBridge) NewPortal(dbPortal *database.Portal) *Portal {
 	logWith := br.ZLog.With().Int64("thread_id", dbPortal.ThreadID)
 	if dbPortal.Receiver != 0 {
@@ -224,9 +221,7 @@ func (br *MetaBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		pendingMessages: make(map[int64]id.EventID),
 	}
 	portal.MsgConv = &msgconv.MessageConverter{
-		PortalMethods: portal,
-		//MetaFmtParams:        metaFormatParams,
-		//MatrixFmtParams:      matrixFormatParams,
+		PortalMethods:        portal,
 		ConvertVoiceMessages: true,
 		MaxFileSize:          br.MediaConfig.UploadSize,
 	}
@@ -241,8 +236,8 @@ func init() {
 }
 
 var (
-	_ bridge.Portal = (*Portal)(nil)
-	//_ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
+	_ bridge.Portal                    = (*Portal)(nil)
+	_ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
 	//_ bridge.TypingPortal              = (*Portal)(nil)
 	//_ bridge.DisappearingPortal        = (*Portal)(nil)
 	//_ bridge.MembershipHandlingPortal  = (*Portal)(nil)
@@ -375,6 +370,33 @@ func (portal *Portal) handleMatrixMessages(msg portalMatrixMessage) {
 		portal.handleMatrixReaction(ctx, msg.user, msg.evt)
 	default:
 		log.Warn().Str("type", msg.evt.Type.Type).Msg("Unhandled matrix message type")
+	}
+}
+
+func (portal *Portal) HandleMatrixReadReceipt(brUser bridge.User, eventID id.EventID, receipt event.ReadReceipt) {
+	log := portal.log.With().
+		Str("action", "handle matrix receipt").
+		Stringer("event_id", eventID).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	user := brUser.(*User)
+	readWatermark := receipt.Timestamp
+	targetMsg, err := portal.bridge.DB.Message.GetByMXID(ctx, eventID)
+	if err != nil {
+		log.Err(err).Msg("Failed to get read receipt target message")
+	} else if targetMsg != nil {
+		readWatermark = targetMsg.Timestamp
+	}
+	resp, err := user.Client.ExecuteTasks([]socket.Task{&socket.ThreadMarkReadTask{
+		ThreadId:            portal.ThreadID,
+		LastReadWatermarkTs: receipt.Timestamp.UnixMilli(),
+		SyncGroup:           1,
+	}})
+	log.Trace().Any("response", resp).Msg("Read receipt send response")
+	if err != nil {
+		log.Err(err).Time("read_watermark", readWatermark).Msg("Failed to send read receipt")
+	} else {
+		log.Debug().Time("read_watermark", readWatermark).Msg("Read receipt sent")
 	}
 }
 
