@@ -117,6 +117,7 @@ type LSTable struct {
 	LSStoryContactSyncFromBucket                  []*LSStoryContactSyncFromBucket                  `json:",omitempty"`
 	LSUpsertLiveLocationSharer                    []*LSUpsertLiveLocationSharer                    `json:",omitempty"`
 	LSDeleteLiveLocationSharer                    []*LSDeleteLiveLocationSharer                    `json:",omitempty"`
+	LSUpdateSharedAlbumOnMessageRecall            []*LSUpdateSharedAlbumOnMessageRecall            `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -225,6 +226,7 @@ var SPTable = map[string]string{
 	"storyContactSyncFromBucket":                  "LSStoryContactSyncFromBucket",
 	"upsertLiveLocationSharer":                    "LSUpsertLiveLocationSharer",
 	"deleteLiveLocationSharer":                    "LSDeleteLiveLocationSharer",
+	"updateSharedAlbumOnMessageRecall":            "LSUpdateSharedAlbumOnMessageRecall",
 }
 
 func SPToDepMap(sp []string) map[string]string {

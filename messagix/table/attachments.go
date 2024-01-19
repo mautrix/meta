@@ -319,3 +319,10 @@ type LSDeleteLiveLocationSharer struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSUpdateSharedAlbumOnMessageRecall struct {
+	ThreadKey int64  `index:"0" json:",omitempty"`
+	MessageId string `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
