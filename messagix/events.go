@@ -25,6 +25,7 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		if err != nil {
 			return fmt.Errorf("failed to sync after reconnect: %w", err)
 		}
+		s.client.eventHandler(&Event_Reconnected{})
 		return nil
 	}
 	appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionId)
@@ -183,6 +184,10 @@ func (pr *Event_PingResp) SetIdentifier(identifier uint16) {}
 func (e *Event_PingResp) Finish() ResponseData             { return e }
 
 type Event_SocketError struct{ Err error }
+
+type Event_PermanentError struct{ Err error }
+
+type Event_Reconnected struct{}
 
 // Event_Ready represents the CONNACK packet's response.
 //

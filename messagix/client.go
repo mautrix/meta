@@ -199,6 +199,10 @@ func (c *Client) Connect() error {
 			if ctx.Err() != nil {
 				return
 			}
+			if errors.Is(err, CONNECTION_REFUSED_UNAUTHORIZED) || errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) {
+				c.eventHandler(&Event_PermanentError{Err: err})
+				return
+			}
 			c.eventHandler(&Event_SocketError{Err: err})
 			if errors.Is(err, ErrInReadLoop) {
 				reconnectIn = 2 * time.Second

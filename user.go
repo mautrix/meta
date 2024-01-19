@@ -583,6 +583,10 @@ func (user *User) eventHandler(rawEvt any) {
 		user.handleTable(evt.Table)
 	case *messagix.Event_SocketError:
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: evt.Err.Error()})
+	case *messagix.Event_Reconnected:
+		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+	case *messagix.Event_PermanentError:
+		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: evt.Err.Error()})
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
