@@ -37,6 +37,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/messagix/data/responses"
+	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
@@ -82,12 +83,15 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
 	}
 	if msg.Text != "" {
+		mentions := &socket.MentionData{
+			MentionIDs:     msg.MentionIds,
+			MentionOffsets: msg.MentionOffsets,
+			MentionLengths: msg.MentionLengths,
+			MentionTypes:   msg.MentionTypes,
+		}
 		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgText,
-				Body:    msg.Text,
-			},
+			Type:    event.EventMessage,
+			Content: mc.metaToMatrixText(ctx, msg.Text, mentions),
 		})
 	}
 	if len(cm.Parts) == 0 {

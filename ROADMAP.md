@@ -44,7 +44,7 @@
       * [ ] Product shares
     * [ ] Formatting (Messenger only)
     * [x] Replies
-    * [ ] Mentions
+    * [x] Mentions
     * [ ] Polls
   * [x] Message unsend
   * [x] Message reactions

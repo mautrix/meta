@@ -787,6 +787,14 @@ func (portal *Portal) GetMetaReply(ctx context.Context, content *event.MessageEv
 	return nil
 }
 
+func (portal *Portal) GetUserMXID(ctx context.Context, userID int64) id.UserID {
+	user := portal.bridge.GetUserByMetaID(userID)
+	if user != nil {
+		return user.MXID
+	}
+	return portal.bridge.FormatPuppetMXID(userID)
+}
+
 func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
 	case *table.WrappedMessage:

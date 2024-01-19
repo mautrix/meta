@@ -32,6 +32,7 @@ type PortalMethods interface {
 	DownloadMatrixMedia(ctx context.Context, uri id.ContentURIString) ([]byte, error)
 	GetMatrixReply(ctx context.Context, messageID string) (replyTo id.EventID, replyTargetSender id.UserID)
 	GetMetaReply(ctx context.Context, content *event.MessageEventContent) *socket.ReplyMetaData
+	GetUserMXID(ctx context.Context, userID int64) id.UserID
 
 	GetClient(ctx context.Context) *messagix.Client
 

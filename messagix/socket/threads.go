@@ -2,6 +2,7 @@ package socket
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -51,6 +52,9 @@ type MentionData struct {
 }
 
 func (md *MentionData) Parse() (Mentions, error) {
+	if len(md.MentionIDs) == 0 {
+		return nil, nil
+	}
 	mentionIDs := strings.Split(md.MentionIDs, ",")
 	mentionOffsets := strings.Split(md.MentionOffsets, ",")
 	mentionLengths := strings.Split(md.MentionLengths, ",")
@@ -73,12 +77,13 @@ func (md *MentionData) Parse() (Mentions, error) {
 			return nil, fmt.Errorf("failed to parse mention #%d length: %w", i+1, err)
 		}
 		mentions[i] = Mention{
-			UserID: userID,
+			ID:     userID,
 			Offset: offset,
 			Length: length,
 			Type:   MentionType(mentionTypes[i]),
 		}
 	}
+	sort.Sort(mentions)
 	return mentions, nil
 }
 
@@ -91,7 +96,7 @@ const (
 )
 
 type Mention struct {
-	UserID int64
+	ID     int64
 	Offset int
 	Length int
 	Type   MentionType
@@ -99,13 +104,25 @@ type Mention struct {
 
 type Mentions []Mention
 
+func (m Mentions) Len() int {
+	return len(m)
+}
+
+func (m Mentions) Less(i, j int) bool {
+	return m[i].Offset < m[j].Offset
+}
+
+func (m Mentions) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+
 func (m Mentions) ToData() MentionData {
 	mentionIDs := make([]string, len(m))
 	mentionOffsets := make([]string, len(m))
 	mentionLengths := make([]string, len(m))
 	mentionTypes := make([]string, len(m))
 	for i, mention := range m {
-		mentionIDs[i] = strconv.FormatInt(mention.UserID, 10)
+		mentionIDs[i] = strconv.FormatInt(mention.ID, 10)
 		mentionOffsets[i] = strconv.Itoa(mention.Offset)
 		mentionLengths[i] = strconv.Itoa(mention.Length)
 		mentionTypes[i] = string(mention.Type)
