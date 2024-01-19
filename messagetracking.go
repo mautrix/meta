@@ -39,6 +39,8 @@ var (
 	errMNoticeDisabled             = errors.New("bridging m.notice messages is disabled")
 	errUnexpectedParsedContentType = errors.New("unexpected parsed content type")
 
+	errServerRejected = errors.New("server rejected message")
+
 	errRedactionTargetNotFound          = errors.New("redaction target message was not found")
 	errRedactionTargetSentBySomeoneElse = errors.New("redaction target message was sent by someone else")
 	errUnreactTargetSentBySomeoneElse   = errors.New("redaction target reaction was sent by someone else")
@@ -64,7 +66,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 	case errors.Is(err, errEditDifferentSender),
 		errors.Is(err, errEditTooOld),
 		errors.Is(err, errEditCountExceeded),
-		errors.Is(err, errEditUnknownTarget):
+		errors.Is(err, errEditUnknownTarget),
+		errors.Is(err, errServerRejected):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errTimeoutBeforeHandling):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"

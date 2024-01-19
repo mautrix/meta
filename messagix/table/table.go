@@ -121,6 +121,8 @@ type LSTable struct {
 	LSEditMessage                                 []*LSEditMessage                                 `json:",omitempty"`
 	LSHandleRepliesOnMessageEdit                  []*LSHandleRepliesOnMessageEdit                  `json:",omitempty"`
 	LSUpdateThreadSnippetFromLastMessageV2        []*LSUpdateThreadSnippetFromLastMessageV2        `json:",omitempty"`
+	LSMarkOptimisticMessageFailed                 []*LSMarkOptimisticMessageFailed                 `json:",omitempty"`
+	LSUpdateSubscriptErrorMessage                 []*LSUpdateSubscriptErrorMessage                 `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -233,6 +235,8 @@ var SPTable = map[string]string{
 	"editMessage":                                 "LSEditMessage",
 	"handleRepliesOnMessageEdit":                  "LSHandleRepliesOnMessageEdit",
 	"updateThreadSnippetFromLastMessageV2":        "LSUpdateThreadSnippetFromLastMessageV2",
+	"markOptimisticMessageFailed":                 "LSMarkOptimisticMessageFailed",
+	"updateSubscriptErrorMessage":                 "LSUpdateSubscriptErrorMessage",
 }
 
 func SPToDepMap(sp []string) map[string]string {

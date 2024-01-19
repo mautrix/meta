@@ -489,6 +489,13 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 			}
 		}
 		if len(msgID) == 0 {
+			for _, failed := range resp.LSMarkOptimisticMessageFailed {
+				if failed.OTID == otidStr {
+					log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+					go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+					return
+				}
+			}
 			log.Warn().Msg("Message send response didn't include message ID")
 		}
 	}
