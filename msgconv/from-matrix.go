@@ -47,7 +47,7 @@ var (
 
 func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent, relaybotFormatted bool) ([]socket.Task, int64, error) {
 	if evt.Type == event.EventSticker {
-		content.MsgType = event.MessageType(event.EventSticker.Type)
+		content.MsgType = event.MsgImage
 	}
 
 	task := &socket.SendMessageTask{
@@ -85,10 +85,6 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 			// This might not actually be allowed
 			task.Text = content.Body
 		}
-	case event.MessageType(event.EventSticker.Type):
-		task.SendType = table.STICKER
-		// TODO implement
-		fallthrough
 	case event.MsgLocation:
 		// TODO implement
 		fallthrough

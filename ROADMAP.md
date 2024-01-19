@@ -4,12 +4,12 @@
   * [ ] Message content
     * [x] Text
     * [ ] Media
-      * [ ] Stickers
       * [x] Files
       * [x] Voice messages
       * [x] Videos
       * [x] Images
       * [ ] Locations
+      * [ ] Polls
     * [ ] Formatting (Messenger only)
     * [x] Replies
     * [ ] Mentions
