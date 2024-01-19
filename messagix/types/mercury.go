@@ -27,6 +27,7 @@ func (img *ImageMetadata) GetFbId() int64 {
 }
 
 type VideoMetadata struct {
+	FileID       int64  `json:"file_id,omitempty"`
 	AudioID      int64  `json:"audio_id,omitempty"`
 	VideoID      int64  `json:"video_id,omitempty"`
 	Filename     string `json:"filename,omitempty"`
@@ -39,6 +40,8 @@ func (vid *VideoMetadata) GetFbId() int64 {
 		return vid.VideoID
 	} else if vid.AudioID != 0 {
 		return vid.AudioID
+	} else if vid.FileID != 0 {
+		return vid.FileID
 	}
 	return 0
 }
