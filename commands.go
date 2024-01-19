@@ -19,15 +19,21 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/id"
 
+	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
+	"go.mau.fi/mautrix-meta/messagix/socket"
+	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
 var (
@@ -55,6 +61,7 @@ func (br *MetaBridge) RegisterCommands() {
 		cmdUnsetRelay,
 		cmdDeletePortal,
 		cmdDeleteAllPortals,
+		cmdSearch,
 	)
 }
 
@@ -272,6 +279,79 @@ func fnLoginEnterCookies(ce *WrappedCommandEvent) {
 	} else {
 		ce.Reply("Successfully logged in as %d", ce.User.MetaID)
 	}
+}
+
+var cmdSearch = &commands.FullHandler{
+	Func: wrapCommand(fnSearch),
+	Name: "search",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCreatingPortals,
+		Description: "Search for a user on Meta",
+		Args:        "<query>",
+	},
+	RequiresLogin: true,
+}
+
+func fnSearch(ce *WrappedCommandEvent) {
+	task := &socket.SearchUserTask{
+		Query: ce.RawArgs,
+		SupportedTypes: []table.SearchType{
+			table.SearchTypeContact, table.SearchTypeGroup, table.SearchTypePage, table.SearchTypeNonContact,
+			table.SearchTypeIGContactFollowing, table.SearchTypeIGContactNonFollowing,
+			table.SearchTypeIGNonContactFollowing, table.SearchTypeIGNonContactNonFollowing,
+		},
+		SurfaceType: 15,
+		Secondary:   false,
+	}
+	if ce.Bridge.Config.Meta.Mode == config.ModeFacebook {
+		task.SupportedTypes = append(task.SupportedTypes, table.SearchTypeCommunityMessagingThread)
+	}
+	taskCopy := *task
+	taskCopy.Secondary = true
+	secondaryTask := &taskCopy
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		resp, err := ce.User.Client.ExecuteTasks([]socket.Task{secondaryTask})
+		ce.ZLog.Trace().Any("response_data", resp).Err(err).Msg("Search secondary response")
+		// The secondary response doesn't seem to have anything important, so just ignore it
+	}()
+
+	resp, err := ce.User.Client.ExecuteTasks([]socket.Task{task})
+	ce.ZLog.Trace().Any("response_data", resp).Msg("Search primary response")
+	if err != nil {
+		ce.ZLog.Err(err).Msg("Failed to search users")
+		ce.Reply("Failed to search for users (see logs for more details)")
+		return
+	}
+	puppets := make([]*Puppet, 0, len(resp.LSInsertSearchResult))
+	subtitles := make([]string, 0, len(resp.LSInsertSearchResult))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	for _, result := range resp.LSInsertSearchResult {
+		if result.ThreadType == table.ONE_TO_ONE && result.CanViewerMessage && result.GetFBID() != 0 {
+			puppet := ce.Bridge.GetPuppetByID(result.GetFBID())
+			puppets = append(puppets, puppet)
+			subtitles = append(subtitles, result.ContextLine)
+			wg.Add(1)
+			go func(result *table.LSInsertSearchResult) {
+				defer wg.Done()
+				puppet.UpdateInfo(ce.Ctx, result)
+			}(result)
+		}
+	}
+	wg.Done()
+	wg.Wait()
+	if len(puppets) == 0 {
+		ce.Reply("No results")
+		return
+	}
+	var output strings.Builder
+	output.WriteString("Results:\n\n")
+	for i, puppet := range puppets {
+		_, _ = fmt.Fprintf(&output, "* [%s](%s) (`%d`)\n  %s\n", puppet.Name, puppet.MXID.URI().MatrixToURL(), puppet.ID, subtitles[i])
+	}
+	ce.Reply(output.String())
 }
 
 func canDeletePortal(ctx context.Context, portal *Portal, userID id.UserID) bool {

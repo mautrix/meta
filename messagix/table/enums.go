@@ -195,6 +195,41 @@ const (
 	BASIC_SUPER_REACT_ANIMATION ReactionStyle = 1
 )
 
+type RestrictionType int64
+
+const (
+	RestrictionTypeNone RestrictionType = iota
+	RestrictionTypeDataPrivacy
+	RestrictionTypeEncryptedThread
+)
+
+type SearchType int64
+
+const (
+	SearchTypeUnknown SearchType = iota
+	SearchTypeContact
+	SearchTypeNonContact
+	SearchTypeGroup
+	SearchTypePage
+	SearchTypeIntegratedMessageSearchThread
+	SearchTypeIGContactFollowing
+	SearchTypeIGContactNonFollowing
+	SearchTypeIGNonContactFollowing
+	SearchTypeIGNonContactNonFollowing
+	SearchTypeIGBusiness
+	SearchTypeTAMContact
+	SearchTypeTAMThread
+	SearchTypeCommunityMessagingThread
+	SearchTypePublicChannel
+	SearchTypeSectionHeader
+	SearchTypeAIBot
+	SearchTypeCommunity
+	SearchTypeMedia
+	SearchTypeAttachment
+	SearchTypeLink
+	SearchTypeLocation
+)
+
 type ThreadType int64
 
 func (tt ThreadType) IsOneToOne() bool {

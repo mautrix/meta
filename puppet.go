@@ -237,7 +237,7 @@ func (puppet *Puppet) UpdateInfo(ctx context.Context, info types.UserInfo) {
 	log.Trace().Msg("Updating puppet info")
 
 	update := false
-	if puppet.Username != info.GetUsername() {
+	if info.GetUsername() != "" && puppet.Username != info.GetUsername() {
 		puppet.Username = info.GetUsername()
 		update = true
 	}

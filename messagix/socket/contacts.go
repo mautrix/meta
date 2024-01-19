@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"go.mau.fi/mautrix-meta/messagix/methods"
+	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
 type GetContactsTask struct {
@@ -33,14 +34,14 @@ func (t *GetContactsFullTask) Create() (interface{}, interface{}, bool) {
 }
 
 type SearchUserTask struct {
-	Query                string  `json:"query"`
-	SupportedTypes       []int64 `json:"supported_types"`       // [1,3,4,2,6,7,8,9] on instagram, also 13 on messenger
-	SessionID            any     `json:"session_id"`            // null
-	SurfaceType          int64   `json:"surface_type"`          // 15
-	SelectedParticipants []int64 `json:"selected_participants"` // null
-	GroupID              *int64  `json:"group_id"`              // null
-	CommunityID          *int64  `json:"community_id"`          // null
-	QueryID              *int64  `json:"query_id"`              // null
+	Query                string             `json:"query"`
+	SupportedTypes       []table.SearchType `json:"supported_types"`       // [1,3,4,2,6,7,8,9] on instagram, also 13 on messenger
+	SessionID            any                `json:"session_id"`            // null
+	SurfaceType          int64              `json:"surface_type"`          // 15
+	SelectedParticipants []int64            `json:"selected_participants"` // null
+	GroupID              *int64             `json:"group_id"`              // null
+	CommunityID          *int64             `json:"community_id"`          // null
+	QueryID              *int64             `json:"query_id"`              // null
 
 	Secondary bool `json:"-"`
 }
