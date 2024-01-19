@@ -33,6 +33,7 @@ import (
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/config"
@@ -1506,6 +1507,7 @@ func (portal *Portal) addRelaybotFormat(ctx context.Context, userID id.UserID, e
 	if content.FileName == "" {
 		content.FileName = content.Body
 	}
+	content.Body = format.HTMLToText(content.FormattedBody)
 	return true
 }
 

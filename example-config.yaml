@@ -268,14 +268,14 @@ bridge:
         admin_only: true
         # The formats to use when sending messages to Meta via the relaybot.
         message_formats:
-            m.text: "<b>{{ .Sender.Displayname }}</b>: {{ .Message }}"
-            m.notice: "<b>{{ .Sender.Displayname }}</b>: {{ .Message }}"
-            m.emote: "* <b>{{ .Sender.Displayname }}</b> {{ .Message }}"
-            m.file: "<b>{{ .Sender.Displayname }}</b> sent a file"
-            m.image: "<b>{{ .Sender.Displayname }}</b> sent an image"
-            m.audio: "<b>{{ .Sender.Displayname }}</b> sent an audio file"
-            m.video: "<b>{{ .Sender.Displayname }}</b> sent a video"
-            m.location: "<b>{{ .Sender.Displayname }}</b> sent a location"
+            m.text: "{{ .Sender.Displayname }}: {{ .Message }}"
+            m.notice: "{{ .Sender.Displayname }}: {{ .Message }}"
+            m.emote: "* {{ .Sender.Displayname }} {{ .Message }}"
+            m.file: "{{ .Sender.Displayname }} sent a file"
+            m.image: "{{ .Sender.Displayname }} sent an image"
+            m.audio: "{{ .Sender.Displayname }} sent an audio file"
+            m.video: "{{ .Sender.Displayname }} sent a video"
+            m.location: "{{ .Sender.Displayname }} sent a location"
 
 # Logging config. See https://github.com/tulir/zeroconfig for details.
 logging:
