@@ -792,7 +792,13 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	case *table.WrappedMessage:
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
 	case *table.LSDeleteMessage:
-		portal.handleMetaDelete(typedEvt)
+		portal.handleMetaDelete(typedEvt.MessageId)
+	case *table.LSDeleteThenInsertMessage:
+		if typedEvt.IsUnsent {
+			portal.handleMetaDelete(typedEvt.MessageId)
+		} else {
+			portal.log.Warn().Str("message_id", typedEvt.MessageId).Msg("Got unexpected non-unsend DeleteThenInsertMessage command")
+		}
 	case *table.LSUpsertReaction:
 		portal.handleMetaReaction(typedEvt)
 	case *table.LSDeleteReaction:
@@ -976,13 +982,13 @@ func (portal *Portal) handleMetaReactionDelete(react *table.LSDeleteReaction) {
 	}
 }
 
-func (portal *Portal) handleMetaDelete(delete *table.LSDeleteMessage) {
+func (portal *Portal) handleMetaDelete(messageID string) {
 	log := portal.log.With().
 		Str("action", "delete meta message").
-		Str("message_id", delete.MessageId).
+		Str("message_id", messageID).
 		Logger()
 	ctx := log.WithContext(context.TODO())
-	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, delete.MessageId, portal.Receiver)
+	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, messageID, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to get target message from database")
 		return

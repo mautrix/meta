@@ -513,6 +513,9 @@ func (user *User) handleTable(table *table.LSTable) {
 	for _, msg := range table.LSDeleteMessage {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
+	for _, msg := range table.LSDeleteThenInsertMessage {
+		user.handlePortalEvent(msg.ThreadKey, msg)
+	}
 	for _, msg := range table.LSUpsertReaction {
 		user.handlePortalEvent(msg.ThreadKey, msg)
 	}
