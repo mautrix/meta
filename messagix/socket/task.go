@@ -5,18 +5,25 @@ package socket
 */
 
 var TaskLabels = map[string]string{
-	"GetContactsTask":         "452",
-	"SendMessageTask":         "46",
 	"ThreadMarkRead":          "21",
-	"GetContactsFullTask":     "207",
-	"ReportAppStateTask":      "123",
-	"FetchThreadsTask":        "145",
-	"FetchMessagesTask":       "228",
+	"AddParticipantsTask":     "23",
+	"UpdateAdminTask":         "25",
 	"SendReactionTask":        "29",
-	"DeleteMessageTask":       "33",
-	"DeleteMessageMeOnlyTask": "155",
-	"MuteThreadTask":          "144",
+	"SearchUserTask":          "30",
+	"SearchUserSecondaryTask": "31",
 	"UpdateThreadTask":        "32", // might be rename thread
+	"DeleteMessageTask":       "33",
+	"SendMessageTask":         "46",
+	"ReportAppStateTask":      "123",
+	"RemoveParticipantTask":   "140",
+	"MuteThreadTask":          "144",
+	"FetchThreadsTask":        "145",
+	"DeleteThreadTask":        "146",
+	"DeleteMessageMeOnlyTask": "155",
+	"GetContactsFullTask":     "207",
+	"CreateThreadTask":        "209",
+	"FetchMessagesTask":       "228",
+	"GetContactsTask":         "452",
 	"EditMessageTask":         "742",
 }
 

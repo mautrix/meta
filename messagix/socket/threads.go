@@ -190,8 +190,7 @@ func (t *MuteThreadTask) GetLabel() string {
 }
 
 func (t *MuteThreadTask) Create() (interface{}, interface{}, bool) {
-	// TODO label
-	return t, "", false
+	return t, strconv.FormatInt(t.ThreadKey, 10), false
 }
 
 type UpdateThreadTask struct {
@@ -205,8 +204,7 @@ func (t *UpdateThreadTask) GetLabel() string {
 }
 
 func (t *UpdateThreadTask) Create() (interface{}, interface{}, bool) {
-	// TODO label
-	return t, "", false
+	return t, strconv.FormatInt(t.ThreadKey, 10), false
 }
 
 type EditMessageTask struct {
@@ -220,4 +218,76 @@ func (t *EditMessageTask) GetLabel() string {
 
 func (t *EditMessageTask) Create() (interface{}, interface{}, bool) {
 	return t, "edit_message", false
+}
+
+type UpdateAdminTask struct {
+	ThreadKey int64 `json:"thread_key"`
+	ContactID int64 `json:"contact_id"`
+	IsAdmin   int   `json:"is_admin"`
+}
+
+func (t *UpdateAdminTask) GetLabel() string {
+	return TaskLabels["UpdateAdminTask"]
+}
+
+func (t *UpdateAdminTask) Create() (interface{}, interface{}, bool) {
+	return t, "admin_status", false
+}
+
+type RemoveParticipantTask struct {
+	ThreadID  int64 `json:"thread_id"`
+	ContactID int64 `json:"contact_id"`
+}
+
+func (t *RemoveParticipantTask) GetLabel() string {
+	return TaskLabels["RemoveParticipantTask"]
+}
+
+func (t *RemoveParticipantTask) Create() (interface{}, interface{}, bool) {
+	return t, "remove_participant_v2", false
+}
+
+type AddParticipantsTask struct {
+	ThreadKey  int64   `json:"thread_key"`
+	ContactIDs []int64 `json:"contact_ids"`
+	SyncGroup  int64   `json:"sync_group"`
+}
+
+func (t *AddParticipantsTask) GetLabel() string {
+	return TaskLabels["AddParticipantsTask"]
+}
+
+func (t *AddParticipantsTask) Create() (interface{}, interface{}, bool) {
+	return t, strconv.FormatInt(t.ThreadKey, 10), false
+}
+
+type CreateThreadTask struct {
+	ThreadFBID                int64 `json:"thread_fbid"`
+	ForceUpsert               int   `json:"force_upsert"`
+	UseOpenMessengerTransport int   `json:"use_open_messenger_transport"`
+	SyncGroup                 int   `json:"sync_group"`
+	MetadataOnly              int   `json:"metadata_only"`
+	PreviewOnly               int   `json:"preview_only"`
+}
+
+func (t *CreateThreadTask) GetLabel() string {
+	return TaskLabels["CreateThreadTask"]
+}
+
+func (t *CreateThreadTask) Create() (interface{}, interface{}, bool) {
+	return t, strconv.FormatInt(t.ThreadFBID, 10), false
+}
+
+type DeleteThreadTask struct {
+	ThreadKey  int64 `json:"thread_key"`
+	RemoveType int64 `json:"remove_type"`
+	SyncGroup  int64 `json:"sync_group"`
+}
+
+func (t *DeleteThreadTask) GetLabel() string {
+	return TaskLabels["DeleteThreadTask"]
+}
+
+func (t *DeleteThreadTask) Create() (interface{}, interface{}, bool) {
+	return t, strconv.FormatInt(t.ThreadKey, 10), false
 }
