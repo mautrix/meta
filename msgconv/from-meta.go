@@ -89,9 +89,13 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			MentionLengths: msg.MentionLengths,
 			MentionTypes:   msg.MentionTypes,
 		}
+		content := mc.metaToMatrixText(ctx, msg.Text, mentions)
+		if msg.IsAdminMessage {
+			content.MsgType = event.MsgNotice
+		}
 		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
 			Type:    event.EventMessage,
-			Content: mc.metaToMatrixText(ctx, msg.Text, mentions),
+			Content: content,
 		})
 	}
 	if len(cm.Parts) == 0 {
