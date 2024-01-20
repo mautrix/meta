@@ -506,6 +506,7 @@ func (user *User) handleTable(table *table.LSTable) {
 		user.handleEditEvent(ctx, msg)
 	}
 	handlePortalEvents(user, table.LSSyncUpdateThreadName)
+	handlePortalEvents(user, table.LSSetThreadImageURL)
 	handlePortalEvents(user, table.LSUpdateReadReceipt)
 	handlePortalEvents(user, table.LSMarkThreadRead)
 	handlePortalEvents(user, table.LSUpdateTypingIndicator)

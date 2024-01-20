@@ -193,18 +193,32 @@ func (t *MuteThreadTask) Create() (interface{}, interface{}, bool) {
 	return t, strconv.FormatInt(t.ThreadKey, 10), false
 }
 
-type UpdateThreadTask struct {
+type RenameThreadTask struct {
 	ThreadKey  int64  `json:"thread_key"`
 	ThreadName string `json:"thread_name"`
 	SyncGroup  int64  `json:"sync_group"` // 1
 }
 
-func (t *UpdateThreadTask) GetLabel() string {
-	return TaskLabels["UpdateThreadTask"]
+func (t *RenameThreadTask) GetLabel() string {
+	return TaskLabels["RenameThreadTask"]
 }
 
-func (t *UpdateThreadTask) Create() (interface{}, interface{}, bool) {
+func (t *RenameThreadTask) Create() (interface{}, interface{}, bool) {
 	return t, strconv.FormatInt(t.ThreadKey, 10), false
+}
+
+type SetThreadImageTask struct {
+	ThreadKey int64 `json:"thread_key"`
+	ImageID   int64 `json:"image_id"`
+	SyncGroup int64 `json:"sync_group"` // 1
+}
+
+func (t *SetThreadImageTask) GetLabel() string {
+	return TaskLabels["SetThreadImageTask"]
+}
+
+func (t *SetThreadImageTask) Create() (interface{}, interface{}, bool) {
+	return t, "thread_image", false
 }
 
 type EditMessageTask struct {

@@ -11,8 +11,9 @@ var TaskLabels = map[string]string{
 	"SendReactionTask":        "29",
 	"SearchUserTask":          "30",
 	"SearchUserSecondaryTask": "31",
-	"UpdateThreadTask":        "32", // might be rename thread
+	"RenameThreadTask":        "32",
 	"DeleteMessageTask":       "33",
+	"SetThreadImageTask":      "37",
 	"SendMessageTask":         "46",
 	"ReportAppStateTask":      "123",
 	"RemoveParticipantTask":   "140",

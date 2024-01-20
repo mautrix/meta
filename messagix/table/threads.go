@@ -397,6 +397,21 @@ func (utn *LSSyncUpdateThreadName) GetThreadKey() int64 {
 	return utn.ThreadKey
 }
 
+type LSSetThreadImageURL struct {
+	ThreadKey            int64  `index:"0" json:",omitempty"`
+	ImageURL             string `index:"1" json:",omitempty"`
+	ImageFallbackURL     string `index:"2" json:",omitempty"`
+	ImageURLExpiryTimeMS int64  `index:"3" json:",omitempty"`
+	UnknownBool4         bool   `index:"4" json:",omitempty"`
+	UnknownBool5         bool   `index:"5" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSSetThreadImageURL) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSWriteCTAIdToThreadsTable struct {
 	ThreadKey                 int64  `index:"0" json:",omitempty"`
 	LastMessageCtaType        string `index:"1" json:",omitempty"`

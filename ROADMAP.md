@@ -59,9 +59,9 @@
     * [ ] Add member
     * [ ] Remove member
     * [ ] Leave
-  * [ ] Chat metadata changes
+  * [x] Chat metadata changes
     * [x] Title
-    * [ ] Avatar
+    * [x] Avatar
   * [x] Initial chat metadata
   * [x] User metadata
     * [x] Name

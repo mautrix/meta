@@ -876,6 +876,8 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 		portal.handleMetaTypingIndicator(typedEvt)
 	case *table.LSSyncUpdateThreadName:
 		portal.handleMetaNameChange(typedEvt)
+	case *table.LSSetThreadImageURL:
+		portal.handleMetaAvatarChange(typedEvt)
 	default:
 		portal.log.Error().
 			Type("data_type", typedEvt).
@@ -1207,6 +1209,20 @@ func (portal *Portal) handleMetaNameChange(typedEvt *table.LSSyncUpdateThreadNam
 		err := portal.Update(ctx)
 		if err != nil {
 			log.Err(err).Msg("Failed to save portal in database after name change")
+		}
+		portal.UpdateBridgeInfo(ctx)
+	}
+}
+
+func (portal *Portal) handleMetaAvatarChange(evt *table.LSSetThreadImageURL) {
+	log := portal.log.With().
+		Str("action", "meta avatar change").
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	if portal.updateAvatar(ctx, evt.ImageURL) {
+		err := portal.Update(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save portal in database after avatar change")
 		}
 		portal.UpdateBridgeInfo(ctx)
 	}

@@ -78,6 +78,7 @@ type LSTable struct {
 	LSInsertSearchResult                          []*LSInsertSearchResult                          `json:",omitempty"`
 	LSInsertSearchSection                         []*LSInsertSearchSection                         `json:",omitempty"`
 	LSSyncUpdateThreadName                        []*LSSyncUpdateThreadName                        `json:",omitempty"`
+	LSSetThreadImageURL                           []*LSSetThreadImageURL                           `json:",omitempty"`
 	LSSetMessageTextHasLinks                      []*LSSetMessageTextHasLinks                      `json:",omitempty"`
 	LSUpdateMessagesOptimisticContext             []*LSUpdateMessagesOptimisticContext             `json:",omitempty"`
 	LSMailboxTaskCompletionApiOnTaskCompletion    []*LSMailboxTaskCompletionApiOnTaskCompletion    `json:",omitempty"`
@@ -163,6 +164,7 @@ var SPTable = map[string]string{
 	"updateMessagesOptimisticContext":             "LSUpdateMessagesOptimisticContext",
 	"setMessageTextHasLinks":                      "LSSetMessageTextHasLinks",
 	"syncUpdateThreadName":                        "LSSyncUpdateThreadName",
+	"setThreadImageURL":                           "LSSetThreadImageURL",
 	"insertSearchSection":                         "LSInsertSearchSection",
 	"insertSearchResult":                          "LSInsertSearchResult",
 	"updateSearchQueryStatus":                     "LSUpdateSearchQueryStatus",
