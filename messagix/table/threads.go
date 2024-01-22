@@ -638,3 +638,10 @@ type LSRemoveAllRequestsFromAdminApprovalQueue struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSDeleteThread struct {
+	ThreadKey    int64 `index:"0" json:",omitempty"`
+	UnknownBool1 bool  `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}

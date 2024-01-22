@@ -127,6 +127,7 @@ type LSTable struct {
 	LSDeleteThenInsertBotProfileInfoCategoryV2    []*LSDeleteThenInsertBotProfileInfoCategoryV2    `json:",omitempty"`
 	LSDeleteThenInsertBotProfileInfoV2            []*LSDeleteThenInsertBotProfileInfoV2            `json:",omitempty"`
 	LSHandleSyncFailure                           []*LSHandleSyncFailure                           `json:",omitempty"`
+	LSDeleteThread                                []*LSDeleteThread                                `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -245,6 +246,7 @@ var SPTable = map[string]string{
 	"deleteThenInsertBotProfileInfoCategoryV2":    "LSDeleteThenInsertBotProfileInfoCategoryV2",
 	"deleteThenInsertBotProfileInfoV2":            "LSDeleteThenInsertBotProfileInfoV2",
 	"handleSyncFailure":                           "LSHandleSyncFailure",
+	"deleteThread":                                "LSDeleteThread",
 }
 
 func SPToDepMap(sp []string) map[string]string {
