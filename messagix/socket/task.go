@@ -22,6 +22,8 @@ var TaskLabels = map[string]string{
 	"FetchThreadsTask":        "145",
 	"DeleteThreadTask":        "146",
 	"DeleteMessageMeOnlyTask": "155",
+	"CreatePollTask":          "163",
+	"UpdatePollTask":          "164",
 	"GetContactsFullTask":     "207",
 	"CreateThreadTask":        "209",
 	"FetchMessagesTask":       "228",

@@ -99,27 +99,27 @@ type LSInsertXmaAttachment struct {
 	ListItemsSecondaryDescriptionText          string         `index:"72" json:",omitempty"`
 	ListItemId1                                int64          `index:"73" json:",omitempty"`
 	ListItemTitleText1                         string         `index:"74" json:",omitempty"`
-	ListItemContactUrlList1                    int64          `index:"75" json:",omitempty"`
+	ListItemContactUrlList1                    string         `index:"75" json:",omitempty"`
 	ListItemProgressBarFilledPercentage1       int64          `index:"76" json:",omitempty"`
-	ListItemContactUrlExpirationTimestampList1 int64          `index:"77" json:",omitempty"`
-	ListItemContactUrlFallbackList1            int64          `index:"78" json:",omitempty"`
+	ListItemContactUrlExpirationTimestampList1 string         `index:"77" json:",omitempty"`
+	ListItemContactUrlFallbackList1            string         `index:"78" json:",omitempty"`
 	ListItemAccessibilityText1                 string         `index:"79" json:",omitempty"`
 	ListItemTotalCount1                        int64          `index:"80" json:",omitempty"`
 	ListItemId2                                int64          `index:"81" json:",omitempty"`
-	ListItemTitleText2                         int64          `index:"82" json:",omitempty"`
-	ListItemContactUrlList2                    int64          `index:"83" json:",omitempty"`
+	ListItemTitleText2                         string         `index:"82" json:",omitempty"`
+	ListItemContactUrlList2                    string         `index:"83" json:",omitempty"`
 	ListItemProgressBarFilledPercentage2       int64          `index:"84" json:",omitempty"`
-	ListItemContactUrlExpirationTimestampList2 int64          `index:"85" json:",omitempty"`
-	ListItemContactUrlFallbackList2            int64          `index:"86" json:",omitempty"`
-	ListItemAccessibilityText2                 int64          `index:"87" json:",omitempty"`
+	ListItemContactUrlExpirationTimestampList2 string         `index:"85" json:",omitempty"`
+	ListItemContactUrlFallbackList2            string         `index:"86" json:",omitempty"`
+	ListItemAccessibilityText2                 string         `index:"87" json:",omitempty"`
 	ListItemTotalCount2                        int64          `index:"88" json:",omitempty"`
 	ListItemId3                                int64          `index:"89" json:",omitempty"`
-	ListItemTitleText3                         int64          `index:"90" json:",omitempty"`
-	ListItemContactUrlList3                    int64          `index:"91" json:",omitempty"`
+	ListItemTitleText3                         string         `index:"90" json:",omitempty"`
+	ListItemContactUrlList3                    string         `index:"91" json:",omitempty"`
 	ListItemProgressBarFilledPercentage3       int64          `index:"92" json:",omitempty"`
-	ListItemContactUrlExpirationTimestampList3 int64          `index:"93" json:",omitempty"`
-	ListItemContactUrlFallbackList3            int64          `index:"94" json:",omitempty"`
-	ListItemAccessibilityText3                 int64          `index:"95" json:",omitempty"`
+	ListItemContactUrlExpirationTimestampList3 string         `index:"93" json:",omitempty"`
+	ListItemContactUrlFallbackList3            string         `index:"94" json:",omitempty"`
+	ListItemAccessibilityText3                 string         `index:"95" json:",omitempty"`
 	ListItemTotalCount3                        int64          `index:"96" json:",omitempty"`
 	IsBorderless                               bool           `index:"100" json:",omitempty"`
 	HeaderImageUrlMimeType                     string         `index:"101" json:",omitempty"`
@@ -147,6 +147,39 @@ type LSInsertXmaAttachment struct {
 	AuthorityLevel                             int64          `index:"124" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSAddPollForThread struct {
+	PollID                       int64  `index:"0" json:",omitempty"`
+	ThreadKey                    int64  `index:"1" json:",omitempty"`
+	LastUpdateMessageID          string `index:"2" json:",omitempty"`
+	LastUpdateMessageTimestampMS int64  `index:"3" json:",omitempty"`
+	LastUpdateMessageEventType   int64  `index:"4" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSAddPollOption struct {
+	OptionID                 int64  `index:"0" json:",omitempty"`
+	PollID                   int64  `index:"1" json:",omitempty"`
+	OptionText               string `index:"2" json:",omitempty"`
+	SortKeyVotingTimestamp   int64  `index:"3" json:",omitempty"`
+	SortKeyCreationTimestamp int64  `index:"4" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSAddPollVote struct {
+	OptionID    int64 `index:"0" json:",omitempty"`
+	PollID      int64 `index:"1" json:",omitempty"`
+	ContactID   int64 `index:"2" json:",omitempty"`
+	TimestampMS int64 `index:"3" json:",omitempty"`
+
+	// v2 fields
+	VoteCount  int64  `index:"4" json:",omitempty"`
+	ThreadKey  int64  `index:"5" json:",omitempty"`
+	MessageID  string `index:"6" json:",omitempty"`
+	UnknownInt int64  `index:"7" json:",omitempty"`
 }
 
 type LSInsertBlobAttachment struct {

@@ -144,6 +144,37 @@ func (t *SendMessageTask) Create() (interface{}, interface{}, bool) {
 	return t, queueName, false
 }
 
+type CreatePollTask struct {
+	QuestionText string   `json:"question_text"`
+	ThreadKey    int64    `json:"thread_key"`
+	Options      []string `json:"options"`
+	SyncGroup    int64    `json:"sync_group"`
+}
+
+func (t *CreatePollTask) GetLabel() string {
+	return TaskLabels["CreatePollTask"]
+}
+
+func (t *CreatePollTask) Create() (interface{}, interface{}, bool) {
+	return t, "poll_creation", false
+}
+
+type UpdatePollTask struct {
+	ThreadKey       int64            `json:"thread_key"`
+	PollID          int64            `json:"poll_id"`
+	AddedOptions    []map[string]int `json:"added_options"`
+	SelectedOptions []int64          `json:"selected_options"`
+	SyncGroup       int64            `json:"sync_group"`
+}
+
+func (t *UpdatePollTask) GetLabel() string {
+	return TaskLabels["UpdatePollTask"]
+}
+
+func (t *UpdatePollTask) Create() (interface{}, interface{}, bool) {
+	return t, "poll_update", false
+}
+
 type ThreadMarkReadTask struct {
 	ThreadId            int64 `json:"thread_id"`
 	LastReadWatermarkTs int64 `json:"last_read_watermark_ts"`

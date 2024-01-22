@@ -128,6 +128,11 @@ type LSTable struct {
 	LSDeleteThenInsertBotProfileInfoV2            []*LSDeleteThenInsertBotProfileInfoV2            `json:",omitempty"`
 	LSHandleSyncFailure                           []*LSHandleSyncFailure                           `json:",omitempty"`
 	LSDeleteThread                                []*LSDeleteThread                                `json:",omitempty"`
+	LSAddPollForThread                            []*LSAddPollForThread                            `json:",omitempty"`
+	LSAddPollOption                               []*LSAddPollOption                               `json:",omitempty"`
+	LSAddPollOptionV2                             []*LSAddPollOption                               `json:",omitempty"`
+	LSAddPollVote                                 []*LSAddPollVote                                 `json:",omitempty"`
+	LSAddPollVoteV2                               []*LSAddPollVote                                 `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -247,6 +252,11 @@ var SPTable = map[string]string{
 	"deleteThenInsertBotProfileInfoV2":            "LSDeleteThenInsertBotProfileInfoV2",
 	"handleSyncFailure":                           "LSHandleSyncFailure",
 	"deleteThread":                                "LSDeleteThread",
+	"addPollOption":                               "LSAddPollOption",
+	"addPollOptionV2":                             "LSAddPollOptionV2",
+	"addPollVote":                                 "LSAddPollVote",
+	"addPollVoteV2":                               "LSAddPollVoteV2",
+	"addPollForThread":                            "LSAddPollForThread",
 }
 
 func SPToDepMap(sp []string) map[string]string {
