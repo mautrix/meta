@@ -140,12 +140,15 @@ func (ig *InstagramMethods) FetchMedia(mediaID, nativeURL string) (*responses.Fe
 	return mediaInfo, nil
 }
 
-func (ig *InstagramMethods) FetchReel(reelIds []string) (*responses.ReelInfoResponse, error) {
+func (ig *InstagramMethods) FetchReel(reelIds []string, mediaID string) (*responses.ReelInfoResponse, error) {
 	h := ig.client.buildHeaders(true)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	h.Set("referer", ig.client.getEndpoint("base_url"))
 	h.Set("Accept", "*/*")
 	query := url.Values{}
+	if mediaID != "" {
+		query.Add("media_id", mediaID)
+	}
 	for _, id := range reelIds {
 		query.Add("reel_ids", id)
 	}
@@ -171,5 +174,5 @@ func (ig *InstagramMethods) FetchReel(reelIds []string) (*responses.ReelInfoResp
 //
 // Hightlight IDs are different, they come in the format: "highlight:17913397615055292"
 func (ig *InstagramMethods) FetchHighlights(highlightIds []string) (*responses.ReelInfoResponse, error) {
-	return ig.FetchReel(highlightIds)
+	return ig.FetchReel(highlightIds, "")
 }

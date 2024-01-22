@@ -25,6 +25,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -225,6 +226,77 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 	}
 }
 
+var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
+
+func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
+	ig := mc.GetClient(ctx).Instagram
+	if att.CTA == nil || ig == nil {
+		return nil
+	}
+	log := zerolog.Ctx(ctx)
+	switch {
+	case strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="):
+		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
+		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="))
+		minimalConverted.Extra["external_url"] = externalURL
+
+		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), att.CTA.NativeUrl)
+		if err != nil {
+			log.Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
+		} else if len(resp.Items) == 0 {
+			log.Warn().Int64("target_id", att.CTA.TargetId).Msg("Got empty XMA media response")
+		} else {
+			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
+			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, resp.Items[0])
+			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if externalURL != "" {
+				secondConverted.Extra["external_url"] = externalURL
+			}
+			return secondConverted
+		}
+	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
+		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
+		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
+		minimalConverted.Extra["external_url"] = externalURL
+		if match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
+			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
+		} else if resp, err := ig.FetchReel([]string{match[2]}, match[1]); err != nil {
+			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story")
+		} else if reel, ok := resp.Reels[match[2]]; !ok {
+			log.Trace().
+				Str("action_url", att.CTA.ActionUrl).
+				Any("response", resp).
+				Msg("XMA story fetch data")
+			log.Warn().
+				Str("action_url", att.CTA.ActionUrl).
+				Str("reel_id", match[2]).
+				Str("media_id", match[1]).
+				Str("response_status", resp.Status).
+				Msg("Got empty XMA story response")
+		} else {
+			log.Trace().
+				Str("action_url", att.CTA.ActionUrl).
+				Str("reel_id", match[2]).
+				Str("media_id", match[1]).
+				Any("response", resp).
+				Msg("Fetched XMA story")
+			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, &reel.Items[0].Items)
+			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if externalURL != "" {
+				secondConverted.Extra["external_url"] = externalURL
+			}
+			return secondConverted
+		}
+	default:
+		log.Debug().Any("cta_data", att.CTA).Msg("Unrecognized CTA data")
+	}
+	return minimalConverted
+}
+
 func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
 	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
 		return mc.xmaLocationToMatrix(ctx, att)
@@ -248,35 +320,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 			},
 		}
 	}
-	var externalURL string
-	if att.CTA != nil && att.CTA.NativeUrl != "" {
-		if strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode=") {
-			externalURL = fmt.Sprintf("https://www.instagram.com/p/%s/", strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="))
-		}
-	}
-	if ig := mc.GetClient(ctx).Instagram; ig != nil && att.CTA != nil && att.CTA.TargetId != 0 {
-		zerolog.Ctx(ctx).Debug().Int64("target_id", att.CTA.TargetId).Msg("Fetching XMA media")
-		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), att.CTA.NativeUrl)
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
-		} else if len(resp.Items) == 0 {
-			zerolog.Ctx(ctx).Warn().Int64("target_id", att.CTA.TargetId).Msg("Got empty XMA media response")
-		} else {
-			zerolog.Ctx(ctx).Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
-			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, &resp.Items[0])
-			secondConverted.Content.Info.ThumbnailInfo = converted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = converted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = converted.Content.File
-			if externalURL != "" {
-				secondConverted.Extra["external_url"] = externalURL
-			}
-			return secondConverted
-		}
-	}
-	if externalURL != "" {
-		converted.Extra["external_url"] = externalURL
-	}
-	return converted
+	return mc.fetchFullXMA(ctx, att, converted)
 }
 
 func (mc *MessageConverter) reuploadAttachment(
