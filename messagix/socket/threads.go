@@ -292,6 +292,26 @@ func (t *CreateThreadTask) Create() (interface{}, interface{}, bool) {
 	return t, strconv.FormatInt(t.ThreadFBID, 10), false
 }
 
+type CreateGroupPayload struct {
+	ThreadID int64  `json:"thread_id"`
+	OTID     string `json:"otid"`
+	Source   int    `json:"source"`    // 0
+	SendType int    `json:"send_type"` // 8
+}
+
+type CreateGroupTask struct {
+	Participants []int64            `json:"participants"`
+	SendPayload  CreateGroupPayload `json:"send_payload"`
+}
+
+func (t *CreateGroupTask) GetLabel() string {
+	return TaskLabels["CreateGroupTask"]
+}
+
+func (t *CreateGroupTask) Create() (interface{}, interface{}, bool) {
+	return t, strconv.FormatInt(t.SendPayload.ThreadID, 10), false
+}
+
 type DeleteThreadTask struct {
 	ThreadKey  int64 `json:"thread_key"`
 	RemoveType int64 `json:"remove_type"`

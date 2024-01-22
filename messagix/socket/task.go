@@ -16,6 +16,7 @@ var TaskLabels = map[string]string{
 	"SetThreadImageTask":      "37",
 	"SendMessageTask":         "46",
 	"ReportAppStateTask":      "123",
+	"CreateGroupTask":         "130",
 	"RemoveParticipantTask":   "140",
 	"MuteThreadTask":          "144",
 	"FetchThreadsTask":        "145",
