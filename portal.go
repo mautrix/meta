@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -197,6 +198,8 @@ type Portal struct {
 
 	pendingMessages     map[int64]id.EventID
 	pendingMessagesLock sync.Mutex
+
+	fetchAttempted atomic.Bool
 
 	relayUser *User
 }
