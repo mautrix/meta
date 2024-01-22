@@ -78,6 +78,10 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt))
 	}
 	for _, xmaAtt := range msg.XMAAttachments {
+		// Skip URL previews for now
+		if xmaAtt.CTA != nil && xmaAtt.CTA.Type_ == "xma_web_url" {
+			continue
+		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt))
 	}
 	for _, sticker := range msg.Stickers {
