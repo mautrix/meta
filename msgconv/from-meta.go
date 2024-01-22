@@ -70,6 +70,11 @@ type ConvertedMessagePart struct {
 	Extra   map[string]any
 }
 
+func isProbablyURLPreview(xma *table.WrappedXMA) bool {
+	return xma.CTA != nil && xma.CTA.Type_ == "xma_web_url" && xma.CTA.TargetId == 0 && xma.CTA.NativeUrl == "" &&
+		strings.HasPrefix(xma.CTA.ActionUrl, "https://l.facebook.com")
+}
+
 func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMessage) *ConvertedMessage {
 	cm := &ConvertedMessage{
 		Parts: make([]*ConvertedMessagePart, 0),
@@ -79,7 +84,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	}
 	for _, xmaAtt := range msg.XMAAttachments {
 		// Skip URL previews and polls for now
-		if xmaAtt.CTA != nil && (xmaAtt.CTA.Type_ == "xma_web_url" || strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_")) {
+		if xmaAtt.CTA != nil && (isProbablyURLPreview(xmaAtt) || strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_")) {
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt))
