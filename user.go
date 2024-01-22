@@ -451,7 +451,8 @@ func (br *MetaBridge) StartUsers() {
 }
 
 func (user *User) handleTable(tbl *table.LSTable) {
-	ctx := user.log.With().Str("action", "handle table").Logger().WithContext(context.TODO())
+	log := user.log.With().Str("action", "handle table").Logger()
+	ctx := log.WithContext(context.TODO())
 	for _, contact := range tbl.LSVerifyContactRowExists {
 		user.bridge.GetPuppetByID(contact.ContactId).UpdateInfo(ctx, contact)
 	}
@@ -461,7 +462,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 		if portal.MXID == "" {
 			err := portal.CreateMatrixRoom(ctx, user)
 			if err != nil {
-				user.log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to create matrix room")
+				log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to create matrix room")
 			}
 		} else {
 			portal.ensureUserInvited(ctx, user)
@@ -474,7 +475,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 			puppet := user.bridge.GetPuppetByID(participant.ContactId)
 			err := puppet.IntentFor(portal).EnsureJoined(ctx, portal.MXID)
 			if err != nil {
-				user.log.Err(err).
+				log.Err(err).
 					Int64("thread_id", participant.ThreadKey).
 					Int64("contact_id", participant.ContactId).
 					Msg("Failed to ensure user is joined to thread")
@@ -487,7 +488,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 			puppet := user.bridge.GetPuppetByID(participant.ParticipantId)
 			_, err := puppet.IntentFor(portal).LeaveRoom(ctx, portal.MXID)
 			if err != nil {
-				user.log.Err(err).
+				log.Err(err).
 					Int64("thread_id", participant.ThreadKey).
 					Int64("contact_id", participant.ParticipantId).
 					Msg("Failed to leave user from thread")
@@ -500,7 +501,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 			portal.ensureUserInvited(ctx, user)
 			go portal.addToPersonalSpace(ctx, user)
 		} else if !portal.fetchAttempted.Swap(true) {
-			user.log.Debug().Int64("thread_id", thread.ThreadKey).Msg("Sending create thread request for unknown thread in verifyThreadExists")
+			log.Debug().Int64("thread_id", thread.ThreadKey).Msg("Sending create thread request for unknown thread in verifyThreadExists")
 			go func(thread *table.LSVerifyThreadExists) {
 				resp, err := user.Client.ExecuteTasks([]socket.Task{
 					&socket.CreateThreadTask{
@@ -513,14 +514,14 @@ func (user *User) handleTable(tbl *table.LSTable) {
 					},
 				})
 				if err != nil {
-					user.log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to execute create thread task for verifyThreadExists of unknown thread")
+					log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to execute create thread task for verifyThreadExists of unknown thread")
 				} else {
-					user.log.Debug().Int64("thread_id", thread.ThreadKey).Msg("Sent create thread request for unknown thread in verifyThreadExists")
-					user.log.Trace().Any("resp_data", resp).Int64("thread_id", thread.ThreadKey).Msg("Create thread response")
+					log.Debug().Int64("thread_id", thread.ThreadKey).Msg("Sent create thread request for unknown thread in verifyThreadExists")
+					log.Trace().Any("resp_data", resp).Int64("thread_id", thread.ThreadKey).Msg("Create thread response")
 				}
 			}(thread)
 		} else {
-			user.log.Warn().Int64("thread_id", thread.ThreadKey).Msg("Portal doesn't exist in verifyThreadExists, but fetch was already attempted")
+			log.Warn().Int64("thread_id", thread.ThreadKey).Msg("Portal doesn't exist in verifyThreadExists, but fetch was already attempted")
 		}
 	}
 	handlePortalEvents(user, tbl.WrapMessages())
