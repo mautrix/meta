@@ -72,9 +72,9 @@
   * [x] Shared group chat portals
   * [ ] Messenger encryption
   * [x] Matrix encryption
-  * [ ] Automatic portal creation
+  * [x] Automatic portal creation
     * [x] At startup
-    * [ ] When added to chat
-    * [ ] When receiving message
+    * [x] When added to chat
+    * [x] When receiving message
   * [x] Private chat creation by inviting Matrix puppet of Messenger/Instagram user to new room
   * [x] Option to use own Matrix account for messages sent from other Messenger/Instagram clients

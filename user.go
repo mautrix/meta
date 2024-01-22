@@ -496,7 +496,6 @@ func (user *User) handleTable(tbl *table.LSTable) {
 	}
 	for _, thread := range tbl.LSVerifyThreadExists {
 		portal := user.GetPortalByThreadID(thread.ThreadKey, thread.ThreadType)
-		// TODO if there's some way to fetch thread info, the portal could be created here
 		if portal.MXID != "" {
 			portal.ensureUserInvited(ctx, user)
 			go portal.addToPersonalSpace(ctx, user)
