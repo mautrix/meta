@@ -15,10 +15,10 @@ require (
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/util v0.3.0
 	golang.org/x/crypto v0.18.0
-	golang.org/x/exp v0.0.0-20240112132812-db7319d0e0e3
+	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
 	golang.org/x/image v0.15.0
 	golang.org/x/net v0.20.0
-	maunium.net/go/mautrix v0.17.1-0.20240116192844-66cfa6389e72
+	maunium.net/go/mautrix v0.17.1-0.20240119201531-97d19484a396
 )
 
 require (
