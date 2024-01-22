@@ -70,6 +70,8 @@
 * Misc
   * [x] Multi-user support
   * [x] Shared group chat portals
+  * [ ] Messenger encryption
+  * [x] Matrix encryption
   * [ ] Automatic portal creation
     * [x] At startup
     * [ ] When added to chat
