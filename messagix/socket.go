@@ -187,7 +187,7 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 			s.handleACKEvent(evt.(AckEvent))
 		case *Event_Ready:
 			if evt.ConnectionCode != CONNECTION_ACCEPTED {
-				closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("connection refused: %w", evt.ConnectionCode)))
+				closeErr.Store(ptr(fmt.Errorf("connection refused: %w", evt.ConnectionCode)))
 				s.client.Logger.Err(evt.ConnectionCode).Msg("Connection refused")
 				closeDueToError("connection refused")
 				return
