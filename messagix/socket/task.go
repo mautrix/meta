@@ -37,7 +37,7 @@ type Task interface {
 }
 
 type TaskData struct {
-	FailureCount interface{} `json:"failure_count"`
+	FailureCount *int64      `json:"failure_count"`
 	Label        string      `json:"label,omitempty"`
 	Payload      interface{} `json:"payload,omitempty"`
 	QueueName    interface{} `json:"queue_name,omitempty"`
