@@ -79,7 +79,7 @@ type User struct {
 	ProfilePicURL                  string                 `json:"profile_pic_url,omitempty"`
 	TransparencyProductEnabled     bool                   `json:"transparency_product_enabled,omitempty"`
 	Username                       string                 `json:"username,omitempty"`
-	InteropMessagingUserFbid       string                 `json:"interop_messaging_user_fbid,omitempty"`
+	InteropMessagingUserFbid       any                    `json:"interop_messaging_user_fbid,omitempty"` // int or string
 }
 type Caption struct {
 	Pk                 string `json:"pk,omitempty"`
