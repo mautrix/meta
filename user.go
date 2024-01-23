@@ -638,7 +638,11 @@ func (user *User) eventHandler(rawEvt any) {
 	case *messagix.Event_Reconnected:
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	case *messagix.Event_PermanentError:
-		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: evt.Err.Error()})
+		stateEvt := status.StateUnknownError
+		if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNAUTHORIZED) {
+			stateEvt = status.StateBadCredentials
+		}
+		user.BridgeState.Send(status.BridgeState{StateEvent: stateEvt, Message: evt.Err.Error()})
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
