@@ -60,12 +60,12 @@ func (fb *FacebookMethods) Login(identifier, password string) (cookies.Cookies, 
 	}
 
 	loginUrl := fb.client.getEndpoint("base_url") + loginPath
-	loginResp, loginBody, err := fb.client.Account.sendLoginRequest(form, loginUrl)
+	loginResp, loginBody, err := fb.client.sendLoginRequest(form, loginUrl)
 	if err != nil {
 		return nil, err
 	}
 
-	loginResult := fb.client.Account.processLogin(loginResp, loginBody)
+	loginResult := fb.client.processLogin(loginResp, loginBody)
 	if loginResult != nil {
 		return nil, loginResult
 	}

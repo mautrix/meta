@@ -3,7 +3,6 @@ package messagix
 import (
 	"fmt"
 
-	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
@@ -34,12 +33,12 @@ func (t *Threads) FetchMessages(ThreadId int64, ReferenceTimestampMs int64, Refe
 	return resp.Table, nil
 }
 
-func (c *Client) ExecuteTasks(tasks []socket.Task) (*table.LSTable, error) {
+func (c *Client) ExecuteTasks(tasks ...socket.Task) (*table.LSTable, error) {
 	tskm := c.NewTaskManager()
 	for _, task := range tasks {
 		tskm.AddNewTask(task)
 	}
-	tskm.setTraceId(methods.GenerateTraceId())
+	//tskm.setTraceId(methods.GenerateTraceId())
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {

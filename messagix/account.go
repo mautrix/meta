@@ -5,24 +5,16 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/google/uuid"
-
 	"go.mau.fi/mautrix-meta/messagix/cookies"
-	"go.mau.fi/mautrix-meta/messagix/socket"
-	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
-type Account struct {
-	client *Client
-}
-
-func (a *Account) processLogin(resp *http.Response, respBody []byte) error {
+func (c *Client) processLogin(resp *http.Response, respBody []byte) error {
 	statusCode := resp.StatusCode
 	var err error
-	switch a.client.platform {
+	switch c.platform {
 	case types.Facebook:
-		if hasUserCookie := a.client.findCookie(resp.Cookies(), "c_user"); hasUserCookie == nil {
+		if hasUserCookie := c.findCookie(resp.Cookies(), "c_user"); hasUserCookie == nil {
 			err = fmt.Errorf("failed to login to facebook")
 		}
 	case types.Instagram:
@@ -36,83 +28,13 @@ func (a *Account) processLogin(resp *http.Response, respBody []byte) error {
 		} else if !loginResp.Authenticated {
 			err = fmt.Errorf("failed to login, invalid password (userExists=%t, statusText=%s, statusCode=%d)", loginResp.User, loginResp.Status, statusCode)
 		} else {
-			a.client.cookies.(*cookies.InstagramCookies).IgWWWClaim = resp.Header.Get("x-ig-set-www-claim")
+			c.cookies.(*cookies.InstagramCookies).IgWWWClaim = resp.Header.Get("x-ig-set-www-claim")
 		}
 	}
 
 	if err == nil {
-		cookies.UpdateFromResponse(a.client.cookies, resp.Header)
+		cookies.UpdateFromResponse(c.cookies, resp.Header)
 	}
 
 	return err
-}
-
-func (a *Account) GetContacts(limit int64) ([]*table.LSVerifyContactRowExists, error) {
-	tskm := a.client.NewTaskManager()
-	tskm.AddNewTask(&socket.GetContactsTask{Limit: limit})
-
-	payload, err := tskm.FinalizePayload()
-	if err != nil {
-		return nil, fmt.Errorf("failed to finalize payload for GetContactsTask: %w", err)
-	}
-
-	packetId, err := a.client.socket.makeLSRequest(payload, 3)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	resp := a.client.socket.responseHandler.waitForPubResponseDetails(packetId)
-	if resp == nil {
-		return nil, fmt.Errorf("failed to receive response from socket while trying to fetch contacts. packetId: %d", packetId)
-	}
-
-	return resp.Table.LSVerifyContactRowExists, nil
-}
-
-func (a *Account) GetContactsFull(contactIds []int64) ([]*table.LSDeleteThenInsertContact, error) {
-	tskm := a.client.NewTaskManager()
-	for _, id := range contactIds {
-		tskm.AddNewTask(&socket.GetContactsFullTask{
-			ContactId: id,
-		})
-	}
-
-	payload, err := tskm.FinalizePayload()
-	if err != nil {
-		return nil, fmt.Errorf("failed to finalize payload for GetContactsFullTask: %w", err)
-	}
-
-	packetId, err := a.client.socket.makeLSRequest(payload, 3)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	resp := a.client.socket.responseHandler.waitForPubResponseDetails(packetId)
-	if resp == nil {
-		return nil, fmt.Errorf("failed to receive response from socket while trying to fetch full contact information. packetId: %d", packetId)
-	}
-
-	return resp.Table.LSDeleteThenInsertContact, nil
-}
-
-func (a *Account) ReportAppState(state table.AppState) error {
-	tskm := a.client.NewTaskManager()
-	tskm.AddNewTask(&socket.ReportAppStateTask{AppState: state, RequestId: uuid.NewString()})
-
-	payload, err := tskm.FinalizePayload()
-	if err != nil {
-		return fmt.Errorf("failed to finalize payload for ReportAppStateTask: %w", err)
-	}
-
-	packetId, err := a.client.socket.makeLSRequest(payload, 3)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-
-	resp := a.client.socket.responseHandler.waitForPubResponseDetails(packetId)
-	if resp == nil {
-		return fmt.Errorf("failed to receive response from socket while trying to report app state. packetId: %d", packetId)
-	}
-
-	return nil
 }

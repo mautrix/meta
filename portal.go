@@ -390,11 +390,11 @@ func (portal *Portal) HandleMatrixReadReceipt(brUser bridge.User, eventID id.Eve
 	} else if targetMsg != nil {
 		readWatermark = targetMsg.Timestamp
 	}
-	resp, err := user.Client.ExecuteTasks([]socket.Task{&socket.ThreadMarkReadTask{
+	resp, err := user.Client.ExecuteTasks(&socket.ThreadMarkReadTask{
 		ThreadId:            portal.ThreadID,
 		LastReadWatermarkTs: receipt.Timestamp.UnixMilli(),
 		SyncGroup:           1,
-	}})
+	})
 	log.Trace().Any("response", resp).Msg("Read receipt send response")
 	if err != nil {
 		log.Err(err).Time("read_watermark", readWatermark).Msg("Failed to send read receipt")
@@ -504,7 +504,7 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	otidStr := strconv.FormatInt(otid, 10)
 	portal.pendingMessages[otid] = evt.ID
 	messageTS := time.Now()
-	resp, err := sender.Client.ExecuteTasks(tasks)
+	resp, err := sender.Client.ExecuteTasks(tasks...)
 	log.Trace().Any("response", resp).Msg("Meta send response")
 	var msgID string
 	if err == nil {
@@ -571,7 +571,7 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 		MessageID: editTargetMsg.ID,
 		Text:      content.Body,
 	}
-	resp, err := sender.Client.ExecuteTasks([]socket.Task{editTask})
+	resp, err := sender.Client.ExecuteTasks(editTask)
 	log.Trace().Any("response", resp).Msg("Meta edit response")
 	go ms.sendMessageMetrics(evt, err, "Error sending", true)
 	if err == nil {
@@ -610,7 +610,7 @@ func (portal *Portal) handleMatrixRedaction(ctx context.Context, sender *User, e
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, errRedactionTargetSentBySomeoneElse)
 			return
 		}
-		resp, err := sender.Client.Messages.DeleteMessage(dbMessage.ID, false)
+		resp, err := sender.Client.ExecuteTasks(&socket.DeleteMessageTask{MessageId: dbMessage.ID})
 		if err != nil {
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
 			log.Err(err).Msg("Failed to send message redaction to Meta")
@@ -651,7 +651,15 @@ func (portal *Portal) handleMatrixRedaction(ctx context.Context, sender *User, e
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, errUnreactTargetSentBySomeoneElse)
 			return
 		}
-		resp, err := sender.Client.Messages.SendReaction(portal.ThreadID, dbReaction.MessageID, "")
+		resp, err := sender.Client.ExecuteTasks(&socket.SendReactionTask{
+			ThreadKey:       portal.ThreadID,
+			TimestampMs:     evt.Timestamp,
+			MessageID:       dbReaction.MessageID,
+			ActorID:         dbReaction.Sender,
+			Reaction:        "",
+			SyncGroup:       1,
+			SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+		})
 		if err != nil {
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
 			log.Err(err).Msg("Failed to send reaction redaction to Meta")
@@ -689,7 +697,15 @@ func (portal *Portal) handleMatrixReaction(ctx context.Context, sender *User, ev
 	emoji := evt.Content.AsReaction().RelatesTo.Key
 	metaEmoji := variationselector.Remove(emoji)
 
-	resp, err := sender.Client.Messages.SendReaction(portal.ThreadID, targetMsg.ID, metaEmoji)
+	resp, err := sender.Client.ExecuteTasks(&socket.SendReactionTask{
+		ThreadKey:       portal.ThreadID,
+		TimestampMs:     evt.Timestamp,
+		MessageID:       targetMsg.ID,
+		ActorID:         sender.MetaID,
+		Reaction:        metaEmoji,
+		SyncGroup:       1,
+		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+	})
 	if err != nil {
 		portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
 		log.Error().Msg("Failed to send reaction")

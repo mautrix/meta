@@ -41,9 +41,6 @@ var ErrRedirectAttempted = errors.New("redirect attempted")
 
 type EventHandler func(evt interface{})
 type Client struct {
-	Account   *Account
-	Threads   *Threads
-	Messages  *Messages
 	Instagram *InstagramMethods
 	Facebook  *FacebookMethods
 	Logger    zerolog.Logger
@@ -82,9 +79,6 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 		taskMutex:       &sync.Mutex{},
 	}
 
-	cli.Account = &Account{client: cli}
-	cli.Messages = &Messages{client: cli}
-	cli.Threads = &Threads{client: cli}
 	cli.configurePlatformClient()
 	cli.configs = &Configs{
 		client:             cli,

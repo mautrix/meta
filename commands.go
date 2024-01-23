@@ -312,12 +312,12 @@ func fnSearch(ce *WrappedCommandEvent) {
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		resp, err := ce.User.Client.ExecuteTasks([]socket.Task{secondaryTask})
+		resp, err := ce.User.Client.ExecuteTasks(secondaryTask)
 		ce.ZLog.Trace().Any("response_data", resp).Err(err).Msg("Search secondary response")
 		// The secondary response doesn't seem to have anything important, so just ignore it
 	}()
 
-	resp, err := ce.User.Client.ExecuteTasks([]socket.Task{task})
+	resp, err := ce.User.Client.ExecuteTasks(task)
 	ce.ZLog.Trace().Any("response_data", resp).Msg("Search primary response")
 	if err != nil {
 		ce.ZLog.Err(err).Msg("Failed to search users")

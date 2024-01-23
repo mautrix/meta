@@ -78,12 +78,12 @@ func (ig *InstagramMethods) Login(identifier, password string) (cookies.Cookies,
 
 	form, err := query.Values(&loginForm)
 	web_login_ajax_v1 := ig.client.getEndpoint("web_login_ajax_v1")
-	loginResp, loginBody, err := ig.client.Account.sendLoginRequest(form, web_login_ajax_v1)
+	loginResp, loginBody, err := ig.client.sendLoginRequest(form, web_login_ajax_v1)
 	if err != nil {
 		return nil, err
 	}
 
-	loginResult := ig.client.Account.processLogin(loginResp, loginBody)
+	loginResult := ig.client.processLogin(loginResp, loginBody)
 	if loginResult != nil {
 		return nil, loginResult
 	}

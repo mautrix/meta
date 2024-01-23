@@ -199,7 +199,7 @@ func (br *MetaBridge) CreatePrivatePortal(roomID id.RoomID, brInviter bridge.Use
 		Receiver: inviter.MetaID,
 	}, table.ONE_TO_ONE)
 	if len(portal.MXID) == 0 {
-		resp, err := inviter.Client.ExecuteTasks([]socket.Task{
+		resp, err := inviter.Client.ExecuteTasks(
 			&socket.CreateThreadTask{
 				ThreadFBID:                portal.ThreadID,
 				ForceUpsert:               0,
@@ -208,7 +208,7 @@ func (br *MetaBridge) CreatePrivatePortal(roomID id.RoomID, brInviter bridge.Use
 				MetadataOnly:              0,
 				PreviewOnly:               0,
 			},
-		})
+		)
 		log.Trace().Any("response_data", resp).Msg("DM thread create response")
 		if err != nil {
 			log.Err(err).Msg("Failed to create DM thread")

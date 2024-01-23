@@ -503,7 +503,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 		} else if !portal.fetchAttempted.Swap(true) {
 			log.Debug().Int64("thread_id", thread.ThreadKey).Msg("Sending create thread request for unknown thread in verifyThreadExists")
 			go func(thread *table.LSVerifyThreadExists) {
-				resp, err := user.Client.ExecuteTasks([]socket.Task{
+				resp, err := user.Client.ExecuteTasks(
 					&socket.CreateThreadTask{
 						ThreadFBID:                thread.ThreadKey,
 						ForceUpsert:               0,
@@ -512,7 +512,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 						MetadataOnly:              0,
 						PreviewOnly:               0,
 					},
-				})
+				)
 				if err != nil {
 					log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to execute create thread task for verifyThreadExists of unknown thread")
 				} else {

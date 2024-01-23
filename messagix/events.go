@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	badGlobalLog "github.com/rs/zerolog/log"
 
 	"go.mau.fi/mautrix-meta/messagix/lightspeed"
@@ -110,7 +111,7 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		return fmt.Errorf("didn't receive response to sync task %d", packetId)
 	}
 
-	err = s.client.Account.ReportAppState(table.FOREGROUND)
+	_, err = s.client.ExecuteTasks(&socket.ReportAppStateTask{AppState: table.FOREGROUND, RequestId: uuid.NewString()})
 	if err != nil {
 		return fmt.Errorf("failed to report app state: %w", err)
 	}

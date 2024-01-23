@@ -189,11 +189,11 @@ func (c *Client) findCookie(cookies []*http.Cookie, name string) *http.Cookie {
 	return nil
 }
 
-func (a *Account) sendLoginRequest(form url.Values, loginUrl string) (*http.Response, []byte, error) {
-	h := a.buildLoginHeaders()
+func (c *Client) sendLoginRequest(form url.Values, loginUrl string) (*http.Response, []byte, error) {
+	h := c.buildLoginHeaders()
 	loginPayload := []byte(form.Encode())
 
-	resp, respBody, err := a.client.MakeRequest(loginUrl, "POST", h, loginPayload, types.FORM)
+	resp, respBody, err := c.MakeRequest(loginUrl, "POST", h, loginPayload, types.FORM)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to send login request: %v", err)
 	}
@@ -201,20 +201,20 @@ func (a *Account) sendLoginRequest(form url.Values, loginUrl string) (*http.Resp
 	return resp, respBody, nil
 }
 
-func (a *Account) buildLoginHeaders() http.Header {
-	h := a.client.buildHeaders(true)
-	if a.client.platform == types.Facebook {
-		h = a.addFacebookHeaders(h)
+func (c *Client) buildLoginHeaders() http.Header {
+	h := c.buildHeaders(true)
+	if c.platform == types.Facebook {
+		h = c.addLoginFacebookHeaders(h)
 	} else {
-		h = a.addInstagramHeaders(h)
+		h = c.addLoginInstagramHeaders(h)
 	}
-	h.Set("origin", a.client.getEndpoint("base_url"))
-	h.Set("referer", a.client.getEndpoint("login_page"))
+	h.Set("origin", c.getEndpoint("base_url"))
+	h.Set("referer", c.getEndpoint("login_page"))
 
 	return h
 }
 
-func (a *Account) addFacebookHeaders(h http.Header) http.Header {
+func (c *Client) addLoginFacebookHeaders(h http.Header) http.Header {
 	h.Set("sec-fetch-dest", "document")
 	h.Set("sec-fetch-mode", "navigate")
 	h.Set("sec-fetch-site", "same-origin") // header is required
@@ -223,8 +223,8 @@ func (a *Account) addFacebookHeaders(h http.Header) http.Header {
 	return h
 }
 
-func (a *Account) addInstagramHeaders(h http.Header) http.Header {
-	h.Set("x-instagram-ajax", strconv.Itoa(int(a.client.configs.browserConfigTable.SiteData.ServerRevision)))
+func (c *Client) addLoginInstagramHeaders(h http.Header) http.Header {
+	h.Set("x-instagram-ajax", strconv.Itoa(int(c.configs.browserConfigTable.SiteData.ServerRevision)))
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin") // header is required
