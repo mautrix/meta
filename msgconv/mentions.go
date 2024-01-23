@@ -18,11 +18,11 @@ package msgconv
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"unicode/utf16"
 
 	"github.com/rs/zerolog"
-	"golang.org/x/exp/slices"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/messagix/socket"

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
-	"golang.org/x/exp/slices"
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/crypto"

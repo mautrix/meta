@@ -2,9 +2,8 @@ package messagix
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
-
-	"golang.org/x/exp/slices"
 
 	"go.mau.fi/mautrix-meta/messagix/packets"
 )
