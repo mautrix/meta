@@ -257,6 +257,7 @@ var SPTable = map[string]string{
 	"addPollVote":                                 "LSAddPollVote",
 	"addPollVoteV2":                               "LSAddPollVoteV2",
 	"addPollForThread":                            "LSAddPollForThread",
+	"deleteReaction":                              "LSDeleteReaction",
 }
 
 func SPToDepMap(sp []string) map[string]string {
