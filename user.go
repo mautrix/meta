@@ -25,6 +25,7 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -457,6 +458,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 		user.bridge.GetPuppetByID(contact.ContactId).UpdateInfo(ctx, contact)
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
+		// TODO handle last read watermark in here?
 		portal := user.GetPortalByThreadID(thread.ThreadKey, thread.ThreadType)
 		portal.UpdateInfo(ctx, thread)
 		if portal.MXID == "" {
@@ -524,7 +526,9 @@ func (user *User) handleTable(tbl *table.LSTable) {
 			log.Warn().Int64("thread_id", thread.ThreadKey).Msg("Portal doesn't exist in verifyThreadExists, but fetch was already attempted")
 		}
 	}
-	handlePortalEvents(user, tbl.WrapMessages())
+	upsert, insert := tbl.WrapMessages()
+	handlePortalEvents(user, maps.Values(upsert))
+	handlePortalEvents(user, insert)
 	for _, msg := range tbl.LSEditMessage {
 		user.handleEditEvent(ctx, msg)
 	}

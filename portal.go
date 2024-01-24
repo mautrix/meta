@@ -179,6 +179,17 @@ type portalMatrixMessage struct {
 	user *User
 }
 
+type BackfillCollector struct {
+	*table.UpsertMessages
+	Source      id.UserID
+	TargetCount int
+	MaxPages    int
+	Forward     bool
+	LastMessage *database.Message
+	Task        *database.BackfillTask
+	Done        func()
+}
+
 type Portal struct {
 	*database.Portal
 
@@ -198,6 +209,9 @@ type Portal struct {
 
 	pendingMessages     map[int64]id.EventID
 	pendingMessagesLock sync.Mutex
+
+	backfillLock      sync.Mutex
+	backfillCollector *BackfillCollector
 
 	fetchAttempted atomic.Bool
 
@@ -770,7 +784,20 @@ type msgconvContextKey int
 const (
 	msgconvContextKeyIntent msgconvContextKey = iota
 	msgconvContextKeyClient
+	msgconvContextKeyBackfill
 )
+
+type backfillType int
+
+const (
+	backfillTypeForward backfillType = iota + 1
+	backfillTypeHistorical
+)
+
+func (portal *Portal) ShouldFetchXMA(ctx context.Context) bool {
+	xmaDisabled := ctx.Value(msgconvContextKeyBackfill) == backfillTypeHistorical && portal.bridge.Config.Bridge.Backfill.Queue.DontFetchXMA
+	return !xmaDisabled
+}
 
 func (portal *Portal) UploadMatrixMedia(ctx context.Context, data []byte, fileName, contentType string) (id.ContentURIString, error) {
 	intent := ctx.Value(msgconvContextKeyIntent).(*appservice.IntentAPI)
@@ -810,7 +837,7 @@ func (portal *Portal) GetClient(ctx context.Context) *messagix.Client {
 	return ctx.Value(msgconvContextKeyClient).(*messagix.Client)
 }
 
-func (portal *Portal) GetMatrixReply(ctx context.Context, replyToID string) (replyTo id.EventID, replyTargetSender id.UserID) {
+func (portal *Portal) GetMatrixReply(ctx context.Context, replyToID string, replyToUser int64) (replyTo id.EventID, replyTargetSender id.UserID) {
 	if replyToID == "" {
 		return
 	}
@@ -820,15 +847,27 @@ func (portal *Portal) GetMatrixReply(ctx context.Context, replyToID string) (rep
 	if message, err := portal.bridge.DB.Message.GetByID(ctx, replyToID, 0, portal.Receiver); err != nil {
 		log.Err(err).Msg("Failed to get reply target message from database")
 	} else if message == nil {
-		log.Warn().Msg("Reply target message not found")
+		if ctx.Value(msgconvContextKeyBackfill) != nil && portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+			replyTo = portal.deterministicEventID(replyToID, 0)
+		} else {
+			log.Warn().Msg("Reply target message not found")
+			return
+		}
 	} else {
 		replyTo = message.MXID
-		targetUser := portal.bridge.GetUserByMetaID(message.Sender)
-		if targetUser != nil {
-			replyTargetSender = targetUser.MXID
-		} else {
-			replyTargetSender = portal.bridge.FormatPuppetMXID(message.Sender)
+		if message.Sender != replyToUser {
+			log.Warn().
+				Int64("message_sender", message.Sender).
+				Int64("reply_to_user", replyToUser).
+				Msg("Mismatching reply to user and found message sender")
 		}
+		replyToUser = message.Sender
+	}
+	targetUser := portal.bridge.GetUserByMetaID(replyToUser)
+	if targetUser != nil {
+		replyTargetSender = targetUser.MXID
+	} else {
+		replyTargetSender = portal.bridge.FormatPuppetMXID(replyToUser)
 	}
 	return
 }
@@ -869,6 +908,8 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
 	case *table.WrappedMessage:
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
+	case *table.UpsertMessages:
+		portal.handleMetaUpsertMessages(portalMessage.user, typedEvt)
 	case *table.LSEditMessage:
 		portal.handleMetaEditMessage(typedEvt)
 	case *table.LSDeleteMessage:
@@ -1154,20 +1195,20 @@ type customReadMarkers struct {
 	FullyReadExtra customReadReceipt `json:"com.beeper.fully_read.extra"`
 }
 
-func (portal *Portal) SendReadReceipt(ctx context.Context, sender *Puppet, msg *database.Message) error {
+func (portal *Portal) SendReadReceipt(ctx context.Context, sender *Puppet, eventID id.EventID) error {
 	intent := sender.IntentFor(portal)
 	if intent.IsCustomPuppet {
 		extra := customReadReceipt{DoublePuppetSource: portal.bridge.Name}
 		return intent.SetReadMarkers(ctx, portal.MXID, &customReadMarkers{
 			ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
-				Read:      msg.MXID,
-				FullyRead: msg.MXID,
+				Read:      eventID,
+				FullyRead: eventID,
 			},
 			ReadExtra:      extra,
 			FullyReadExtra: extra,
 		})
 	} else {
-		return intent.MarkRead(ctx, portal.MXID, msg.MXID)
+		return intent.MarkRead(ctx, portal.MXID, eventID)
 	}
 }
 
@@ -1189,7 +1230,7 @@ func (portal *Portal) handleMetaReadReceipt(read *table.LSUpdateReadReceipt) {
 		log.Err(err).Msg("Failed to get message to mark as read")
 	} else if message == nil {
 		log.Warn().Msg("No message found to mark as read")
-	} else if err = portal.SendReadReceipt(ctx, sender, message); err != nil {
+	} else if err = portal.SendReadReceipt(ctx, sender, message.MXID); err != nil {
 		log.Err(err).Stringer("event_id", message.MXID).Msg("Failed to send read receipt")
 	} else {
 		log.Debug().Stringer("event_id", message.MXID).Msg("Sent read receipt to Matrix")

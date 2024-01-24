@@ -1,4 +1,4 @@
--- v0 -> v2: Latest revision
+-- v0 -> v3: Latest revision
 
 CREATE TABLE portal (
     thread_id   BIGINT  NOT NULL,
@@ -14,6 +14,10 @@ CREATE TABLE portal (
 
     encrypted     BOOLEAN NOT NULL DEFAULT false,
     relay_user_id TEXT    NOT NULL,
+
+    oldest_message_id TEXT    NOT NULL,
+    oldest_message_ts BIGINT  NOT NULL,
+    more_to_backfill  BOOLEAN NOT NULL,
 
     PRIMARY KEY (thread_id, receiver),
     CONSTRAINT portal_mxid_unique UNIQUE(mxid)
@@ -48,10 +52,15 @@ CREATE TABLE "user" (
 );
 
 CREATE TABLE user_portal (
-    user_mxid        TEXT,
-    portal_thread_id BIGINT,
-    portal_receiver  BIGINT,
-    in_space         BOOLEAN NOT NULL DEFAULT false,
+    user_mxid        TEXT NOT NULL,
+    portal_thread_id BIGINT NOT NULL,
+    portal_receiver  BIGINT NOT NULL,
+
+    in_space BOOLEAN NOT NULL DEFAULT false,
+
+    backfill_priority      INTEGER NOT NULL DEFAULT 0,
+    backfill_max_pages     INTEGER NOT NULL DEFAULT 0,
+    backfill_dispatched_at BIGINT  NOT NULL DEFAULT 0,
 
     PRIMARY KEY (user_mxid, portal_thread_id, portal_receiver),
     CONSTRAINT user_portal_user_fkey FOREIGN KEY (user_mxid)

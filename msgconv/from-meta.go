@@ -117,7 +117,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			},
 		})
 	}
-	replyTo, sender := mc.GetMatrixReply(ctx, msg.ReplySourceId)
+	replyTo, sender := mc.GetMatrixReply(ctx, msg.ReplySourceId, msg.ReplyToUserId)
 	for _, part := range cm.Parts {
 		if part.Content.Mentions == nil {
 			part.Content.Mentions = &event.Mentions{}
@@ -248,6 +248,9 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
 		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="))
 		minimalConverted.Extra["external_url"] = externalURL
+		if !mc.ShouldFetchXMA(ctx) {
+			return minimalConverted
+		}
 
 		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), att.CTA.NativeUrl)
 		if err != nil {
@@ -269,6 +272,10 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
 		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
 		minimalConverted.Extra["external_url"] = externalURL
+		if !mc.ShouldFetchXMA(ctx) {
+			return minimalConverted
+		}
+
 		if match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
 		} else if resp, err := ig.FetchReel([]string{match[2]}, match[1]); err != nil {

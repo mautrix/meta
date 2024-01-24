@@ -147,6 +147,26 @@ bridge:
     # If set to "default", will be determined based on meta -> mode, "!ig" for instagram and "!fb" for facebook
     command_prefix: default
 
+    backfill:
+        # If disabled, old messages will never be bridged.
+        enabled: true
+        # By default, Meta only sends one old message. If this is set to a higher value than 0,
+        # the bridge will delay handling the one automatically received message and request more messages to backfill.
+        history_fetch_count: 0
+        # Same as above, but for catchup backfills (i.e. when the bridge is restarted).
+        catchup_fetch_count: 0
+        # Backfill queue settings. Only relevant for Beeper, because standard Matrix servers
+        # don't support inserting messages into room history.
+        queue:
+            # How many pages of messages to request in one go (without sleeping between requests)?
+            pages_at_once: 5
+            # Maximum number of pages to fetch. -1 to fetch all pages until the start of the chat.
+            max_pages: -1
+            # How long to sleep after fetching a bunch of pages ("bunch" defined by pages_at_once).
+            sleep_between_tasks: 20s
+            # Disable fetching XMA media (reels, stories, etc) when backfilling.
+            dont_fetch_xma: true
+
     # Messages sent upon joining a management room.
     # Markdown is supported. The defaults are listed below.
     management_room_text:

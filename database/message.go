@@ -20,6 +20,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"go.mau.fi/util/dbutil"
@@ -57,7 +59,9 @@ const (
 		INSERT INTO message (id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
-	deleteMessageQuery = `
+	insertQueryValuePlaceholder   = `($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+	bulkInsertPlaceholderTemplate = `($%d, $%d, $1, $2, $%d, $%d, $%d, $3, $%d, $%d)`
+	deleteMessageQuery            = `
         DELETE FROM message
         WHERE id=$1 AND thread_receiver=$2 AND part_index=$3
 	`
@@ -65,6 +69,12 @@ const (
 		UPDATE message SET edit_count=$4 WHERE id=$1 AND thread_receiver=$2 AND part_index=$3
 	`
 )
+
+func init() {
+	if strings.ReplaceAll(insertMessageQuery, insertQueryValuePlaceholder, "meow") == insertMessageQuery {
+		panic("Bulk insert query placeholder not found")
+	}
+}
 
 type MessageQuery struct {
 	*dbutil.QueryHelper[*Message]
@@ -117,6 +127,60 @@ func (mq *MessageQuery) FindEditTargetPortal(ctx context.Context, id string, rec
 		err = nil
 	}
 	return
+}
+
+type bulkInserter[T any] interface {
+	GetDB() *dbutil.Database
+	BulkInsertChunk(context.Context, PortalKey, id.RoomID, []T) error
+}
+
+const BulkInsertChunkSize = 100
+
+func doBulkInsert[T any](q bulkInserter[T], ctx context.Context, thread PortalKey, roomID id.RoomID, entries []T) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	return q.GetDB().DoTxn(ctx, nil, func(ctx context.Context) error {
+		for i := 0; i < len(entries); i += BulkInsertChunkSize {
+			messageChunk := entries[i:]
+			if len(messageChunk) > BulkInsertChunkSize {
+				messageChunk = messageChunk[:BulkInsertChunkSize]
+			}
+			err := q.BulkInsertChunk(ctx, thread, roomID, messageChunk)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (mq *MessageQuery) BulkInsert(ctx context.Context, thread PortalKey, roomID id.RoomID, messages []*Message) error {
+	return doBulkInsert[*Message](mq, ctx, thread, roomID, messages)
+}
+
+func (mq *MessageQuery) BulkInsertChunk(ctx context.Context, thread PortalKey, roomID id.RoomID, messages []*Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(messages))
+	values := make([]any, 3+len(messages)*7)
+	values[0] = thread.ThreadID
+	values[1] = thread.Receiver
+	values[2] = roomID
+	for i, msg := range messages {
+		baseIndex := 3 + i*7
+		placeholders[i] = fmt.Sprintf(bulkInsertPlaceholderTemplate, baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4, baseIndex+5, baseIndex+6, baseIndex+7)
+		values[baseIndex] = msg.ID
+		values[baseIndex+1] = msg.PartIndex
+		values[baseIndex+2] = msg.Sender
+		values[baseIndex+3] = msg.OTID
+		values[baseIndex+4] = msg.MXID
+		values[baseIndex+5] = msg.Timestamp.UnixMilli()
+		values[baseIndex+6] = msg.EditCount
+	}
+	query := strings.ReplaceAll(insertMessageQuery, insertQueryValuePlaceholder, strings.Join(placeholders, ","))
+	return mq.Exec(ctx, query, values...)
 }
 
 func (msg *Message) Scan(row dbutil.Scannable) (*Message, error) {

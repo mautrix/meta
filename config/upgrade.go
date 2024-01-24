@@ -96,6 +96,13 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "double_puppet_allow_discovery")
 	helper.Copy(up.Map, "bridge", "login_shared_secret_map")
 	helper.Copy(up.Str, "bridge", "command_prefix")
+	helper.Copy(up.Bool, "bridge", "backfill", "enabled")
+	helper.Copy(up.Int, "bridge", "backfill", "history_fetch_count")
+	helper.Copy(up.Int, "bridge", "backfill", "catchup_fetch_count")
+	helper.Copy(up.Int, "bridge", "backfill", "queue", "pages_at_once")
+	helper.Copy(up.Int, "bridge", "backfill", "queue", "max_pages")
+	helper.Copy(up.Str, "bridge", "backfill", "queue", "sleep_between_tasks")
+	helper.Copy(up.Bool, "bridge", "backfill", "queue", "dont_fetch_xma")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_connected")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_unconnected")
@@ -153,6 +160,7 @@ var SpacedBlocks = [][]string{
 	{"bridge"},
 	{"bridge", "personal_filtering_spaces"},
 	{"bridge", "command_prefix"},
+	{"bridge", "backfill"},
 	{"bridge", "management_room_text"},
 	{"bridge", "encryption"},
 	{"bridge", "provisioning"},

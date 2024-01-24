@@ -206,8 +206,8 @@ type LSInsertNewMessageRange struct {
 	MaxTimestampMsTemplate int64       `index:"2" json:",omitempty"`
 	MinMessageId           string      `index:"3" json:",omitempty"`
 	MaxMessageId           string      `index:"4" json:",omitempty"`
-	MaxTimestampMs         int64       `index:"5" json:",omitempty"`
-	MinTimestampMs         int64       `index:"6" json:",omitempty"`
+	MinTimestampMs         int64       `index:"5" json:",omitempty"`
+	MaxTimestampMs         int64       `index:"6" json:",omitempty"`
 	HasMoreBefore          bool        `index:"7" json:",omitempty"`
 	HasMoreAfter           bool        `index:"8" json:",omitempty"`
 	Unknown                interface{} `index:"9" json:",omitempty"`
