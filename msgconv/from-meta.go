@@ -240,7 +240,7 @@ var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
 func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
-		return nil
+		return minimalConverted
 	}
 	log := zerolog.Ctx(ctx)
 	switch {

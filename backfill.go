@@ -40,14 +40,33 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
-func (user *User) BackfillLoop(ctx context.Context) {
+func (user *User) StopBackfillLoop() {
+	if fn := user.stopBackfillTask.Swap(nil); fn != nil {
+		(*fn)()
+	}
+}
+
+func (user *User) BackfillLoop() {
 	log := user.log.With().Str("action", "backfill loop").Logger()
 	defer func() {
 		log.Debug().Msg("Backfill loop stopped")
 	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	oldFn := user.stopBackfillTask.Swap(&cancel)
+	if oldFn != nil {
+		(*oldFn)()
+	}
 	ctx = log.WithContext(ctx)
 	var extraTime time.Duration
+	log.Debug().Msg("Backfill loop started")
 	for {
+		select {
+		case <-time.After(user.bridge.Config.Bridge.Backfill.Queue.SleepBetweenTasks + extraTime):
+		case <-ctx.Done():
+			return
+		}
+
 		task, err := user.GetNextBackfillTask(ctx)
 		if err != nil {
 			log.Err(err).Msg("Failed to get next backfill task")
@@ -55,6 +74,12 @@ func (user *User) BackfillLoop(ctx context.Context) {
 			log.Debug().Any("task", task).Msg("Got backfill task")
 			portal := user.bridge.GetExistingPortalByThreadID(task.Key)
 			task.DispatchedAt = time.Now()
+			if !portal.MoreToBackfill {
+				log.Debug().Int64("portal_id", task.Key.ThreadID).Msg("Nothing more to backfill in portal")
+				task.MaxPages = 0
+				user.PutBackfillTask(ctx, *task)
+				continue
+			}
 			user.PutBackfillTask(ctx, *task)
 			ok := portal.requestMoreHistory(ctx, user, portal.OldestMessageTS, portal.OldestMessageID)
 			if ok {
@@ -63,11 +88,23 @@ func (user *User) BackfillLoop(ctx context.Context) {
 					close(backfillDone)
 				})
 				portal.backfillCollector = &BackfillCollector{
-					UpsertMessages: nil,
-					Source:         user.MXID,
-					MaxPages:       user.bridge.Config.Bridge.Backfill.Queue.PagesAtOnce,
-					Task:           task,
-					Done:           doneCallback,
+					UpsertMessages: &table.UpsertMessages{
+						Range: &table.LSInsertNewMessageRange{
+							ThreadKey:              portal.ThreadID,
+							MinTimestampMsTemplate: portal.OldestMessageTS,
+							MaxTimestampMsTemplate: portal.OldestMessageTS,
+							MinMessageId:           portal.OldestMessageID,
+							MaxMessageId:           portal.OldestMessageID,
+							MinTimestampMs:         portal.OldestMessageTS,
+							MaxTimestampMs:         portal.OldestMessageTS,
+							HasMoreBefore:          true,
+							HasMoreAfter:           true,
+						},
+					},
+					Source:   user.MXID,
+					MaxPages: user.bridge.Config.Bridge.Backfill.Queue.PagesAtOnce,
+					Task:     task,
+					Done:     doneCallback,
 				}
 				select {
 				case <-backfillDone:
@@ -80,11 +117,6 @@ func (user *User) BackfillLoop(ctx context.Context) {
 			}
 		} else if extraTime < 1*time.Minute {
 			extraTime += 5 * time.Second
-		}
-		select {
-		case <-time.After(user.bridge.Config.Bridge.Backfill.Queue.SleepBetweenTasks + extraTime):
-		case <-ctx.Done():
-			return
 		}
 	}
 }
@@ -103,7 +135,10 @@ func (portal *Portal) requestMoreHistory(ctx context.Context, user *User, minTim
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to request more history")
 		return false
 	} else {
-		zerolog.Ctx(ctx).Debug().Msg("Requested more history")
+		zerolog.Ctx(ctx).Debug().
+			Int64("min_timestamp_ms", minTimestampMS).
+			Str("min_message_id", minMessageID).
+			Msg("Requested more history")
 		return true
 	}
 }
@@ -141,7 +176,7 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 		if user.MXID != portal.backfillCollector.Source {
 			log.Warn().Stringer("prev_mxid", portal.backfillCollector.Source).Msg("Ignoring upsert for another user")
 			return
-		} else if portal.backfillCollector.Range != nil && upsert.Range.MaxTimestampMs > portal.backfillCollector.Range.MinTimestampMs {
+		} else if upsert.Range.MaxTimestampMs > portal.backfillCollector.Range.MinTimestampMs {
 			log.Warn().
 				Int64("prev_min_timestamp_ms", portal.backfillCollector.Range.MinTimestampMs).
 				Msg("Ignoring unexpected upsert messages while collecting history")

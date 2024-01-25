@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/exp/maps"
@@ -172,6 +173,8 @@ type User struct {
 
 	spaceMembershipChecked bool
 	spaceCreateLock        sync.Mutex
+
+	stopBackfillTask atomic.Pointer[context.CancelFunc]
 }
 
 var (
@@ -390,8 +393,11 @@ func (user *User) Connect() {
 			Error:      "meta-connect-error",
 			Message:    err.Error(),
 		})
+	} else {
+		go user.BackfillLoop()
 	}
 }
+
 func (user *User) Login(ctx context.Context, cookies cookies.Cookies) error {
 	user.Lock()
 	defer user.Unlock()
@@ -405,6 +411,8 @@ func (user *User) Login(ctx context.Context, cookies cookies.Cookies) error {
 	if err != nil {
 		user.log.Err(err).Msg("Failed to update user")
 		return err
+	} else {
+		go user.BackfillLoop()
 	}
 	return nil
 }
@@ -663,22 +671,25 @@ func (user *User) GetPortalByThreadID(threadID int64, threadType table.ThreadTyp
 	}, threadType)
 }
 
-func (user *User) Disconnect() error {
-	user.Lock()
-	defer user.Unlock()
+func (user *User) unlockedDisconnect() {
 	if user.Client != nil {
 		user.Client.Disconnect()
 	}
+	user.StopBackfillLoop()
+	user.Client = nil
+}
+
+func (user *User) Disconnect() error {
+	user.Lock()
+	defer user.Unlock()
+	user.unlockedDisconnect()
 	return nil
 }
 
 func (user *User) DeleteSession() {
 	user.Lock()
 	defer user.Unlock()
-	if user.Client != nil {
-		user.Client.Disconnect()
-	}
-	user.Client = nil
+	user.unlockedDisconnect()
 	user.Cookies = nil
 	user.MetaID = 0
 	doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
