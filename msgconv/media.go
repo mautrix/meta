@@ -20,9 +20,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix"
@@ -31,7 +33,15 @@ import (
 	"go.mau.fi/mautrix-meta/messagix"
 )
 
-var avatarHTTPClient http.Client
+var mediaHTTPClient = http.Client{
+	Transport: &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		ForceAttemptHTTP2:     true,
+	},
+	Timeout: 60 * time.Second,
+}
 var MediaReferer string
 
 func DownloadMedia(ctx context.Context, url string) ([]byte, error) {
@@ -48,7 +58,7 @@ func DownloadMedia(ctx context.Context, url string) ([]byte, error) {
 	req.Header.Set("User-Agent", messagix.UserAgent)
 	req.Header.Add("sec-ch-ua", messagix.SecCHUserAgent)
 	req.Header.Add("sec-ch-ua-platform", messagix.SecCHPlatform)
-	resp, err := avatarHTTPClient.Do(req)
+	resp, err := mediaHTTPClient.Do(req)
 	defer func() {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
