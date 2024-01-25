@@ -156,9 +156,9 @@ type LSStoryContactSyncFromBucket struct {
 }
 
 type LSDeleteThenInsertBotProfileInfoCategoryV2 struct {
-	Category    string `index:"0" json:",omitempty"`
-	BotID       int64  `index:"1" json:",omitempty"`
-	UnknownInt2 int64  `index:"2" json:",omitempty"`
+	Category      string  `index:"0" json:",omitempty"`
+	BotID         int64   `index:"1" json:",omitempty"`
+	UnknownFloat2 float64 `index:"2" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

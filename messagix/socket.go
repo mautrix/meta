@@ -256,6 +256,8 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 }
 
 func (s *Socket) sendData(data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	conn := s.conn
 	if conn == nil {
 		return fmt.Errorf("not connected")
