@@ -30,12 +30,12 @@ import (
 type PortalMethods interface {
 	UploadMatrixMedia(ctx context.Context, data []byte, fileName, contentType string) (id.ContentURIString, error)
 	DownloadMatrixMedia(ctx context.Context, uri id.ContentURIString) ([]byte, error)
-	GetMatrixReply(ctx context.Context, messageID string) (replyTo id.EventID, replyTargetSender id.UserID)
+	GetMatrixReply(ctx context.Context, messageID string, replyToUser int64) (replyTo id.EventID, replyTargetSender id.UserID)
 	GetMetaReply(ctx context.Context, content *event.MessageEventContent) *socket.ReplyMetaData
 	GetUserMXID(ctx context.Context, userID int64) id.UserID
+	ShouldFetchXMA(ctx context.Context) bool
 
 	GetClient(ctx context.Context) *messagix.Client
-
 	GetData(ctx context.Context) *database.Portal
 }
 

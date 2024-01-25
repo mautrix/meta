@@ -50,7 +50,7 @@
   * [x] Message unsend
   * [x] Message reactions
   * [x] Message edits
-  * [ ] Message history
+  * [x] Message history
   * [ ] Presence
   * [x] Typing notifications
   * [x] Read receipts

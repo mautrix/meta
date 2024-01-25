@@ -23,8 +23,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -171,6 +173,10 @@ type User struct {
 
 	spaceMembershipChecked bool
 	spaceCreateLock        sync.Mutex
+
+	stopBackfillTask atomic.Pointer[context.CancelFunc]
+
+	InboxPagesFetched int
 }
 
 var (
@@ -391,6 +397,7 @@ func (user *User) Connect() {
 		})
 	}
 }
+
 func (user *User) Login(ctx context.Context, cookies cookies.Cookies) error {
 	user.Lock()
 	defer user.Unlock()
@@ -460,6 +467,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 		user.bridge.GetPuppetByID(contact.ContactId).UpdateInfo(ctx, contact)
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
+		// TODO handle last read watermark in here?
 		portal := user.GetPortalByThreadID(thread.ThreadKey, thread.ThreadType)
 		portal.UpdateInfo(ctx, thread)
 		if portal.MXID == "" {
@@ -527,7 +535,10 @@ func (user *User) handleTable(tbl *table.LSTable) {
 			log.Warn().Int64("thread_id", thread.ThreadKey).Msg("Portal doesn't exist in verifyThreadExists, but fetch was already attempted")
 		}
 	}
-	handlePortalEvents(user, tbl.WrapMessages())
+	upsert, insert := tbl.WrapMessages()
+	handlePortalEvents(user, maps.Values(upsert))
+	handlePortalEvents(user, tbl.LSUpdateExistingMessageRange)
+	handlePortalEvents(user, insert)
 	for _, msg := range tbl.LSEditMessage {
 		user.handleEditEvent(ctx, msg)
 	}
@@ -540,6 +551,46 @@ func (user *User) handleTable(tbl *table.LSTable) {
 	handlePortalEvents(user, tbl.LSDeleteThenInsertMessage)
 	handlePortalEvents(user, tbl.LSUpsertReaction)
 	handlePortalEvents(user, tbl.LSDeleteReaction)
+	user.requestMoreInbox(ctx, tbl.LSUpsertInboxThreadsRange)
+}
+
+func (user *User) requestMoreInbox(ctx context.Context, itrs []*table.LSUpsertInboxThreadsRange) {
+	maxInboxPages := user.bridge.Config.Bridge.Backfill.InboxFetchPages
+	if len(itrs) == 0 || user.InboxFetched || maxInboxPages == 0 {
+		return
+	}
+	log := zerolog.Ctx(ctx)
+	itr := itrs[0]
+	user.InboxPagesFetched++
+	reachedPageLimit := maxInboxPages > 0 && user.InboxPagesFetched > maxInboxPages
+	logEvt := log.Debug().
+		Int("fetched_pages", user.InboxPagesFetched).
+		Bool("has_more_before", itr.HasMoreBefore).
+		Bool("reached_page_limit", reachedPageLimit).
+		Int64("min_thread_key", itr.MinThreadKey).
+		Int64("min_last_activity_timestamp_ms", itr.MinLastActivityTimestampMs)
+	if !itr.HasMoreBefore || reachedPageLimit {
+		logEvt.Msg("Finished fetching threads")
+		user.InboxFetched = true
+		err := user.Update(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save user after marking inbox as fetched")
+		}
+	} else {
+		logEvt.Msg("Requesting more threads")
+		resp, err := user.Client.ExecuteTasks(&socket.FetchThreadsTask{
+			ReferenceThreadKey:         itr.MinThreadKey,
+			ReferenceActivityTimestamp: itr.MinLastActivityTimestampMs,
+			Cursor:                     user.Client.SyncManager.GetCursor(1),
+			SyncGroup:                  1,
+		})
+		log.Trace().Any("resp", resp).Msg("Fetch threads response data")
+		if err != nil {
+			log.Err(err).Msg("Failed to fetch more threads")
+		} else {
+			log.Debug().Msg("Sent more threads request")
+		}
+	}
 }
 
 type ThreadKeyable interface {
@@ -636,6 +687,7 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		user.tryAutomaticDoublePuppeting()
 		user.handleTable(evt.Table)
+		go user.BackfillLoop()
 	case *messagix.Event_SocketError:
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: evt.Err.Error()})
 	case *messagix.Event_Reconnected:
@@ -646,6 +698,7 @@ func (user *User) eventHandler(rawEvt any) {
 			stateEvt = status.StateBadCredentials
 		}
 		user.BridgeState.Send(status.BridgeState{StateEvent: stateEvt, Message: evt.Err.Error()})
+		user.StopBackfillLoop()
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
@@ -662,22 +715,25 @@ func (user *User) GetPortalByThreadID(threadID int64, threadType table.ThreadTyp
 	}, threadType)
 }
 
-func (user *User) Disconnect() error {
-	user.Lock()
-	defer user.Unlock()
+func (user *User) unlockedDisconnect() {
 	if user.Client != nil {
 		user.Client.Disconnect()
 	}
+	user.StopBackfillLoop()
+	user.Client = nil
+}
+
+func (user *User) Disconnect() error {
+	user.Lock()
+	defer user.Unlock()
+	user.unlockedDisconnect()
 	return nil
 }
 
 func (user *User) DeleteSession() {
 	user.Lock()
 	defer user.Unlock()
-	if user.Client != nil {
-		user.Client.Disconnect()
-	}
-	user.Client = nil
+	user.unlockedDisconnect()
 	user.Cookies = nil
 	user.MetaID = 0
 	doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)

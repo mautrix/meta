@@ -206,13 +206,27 @@ type LSInsertNewMessageRange struct {
 	MaxTimestampMsTemplate int64       `index:"2" json:",omitempty"`
 	MinMessageId           string      `index:"3" json:",omitempty"`
 	MaxMessageId           string      `index:"4" json:",omitempty"`
-	MaxTimestampMs         int64       `index:"5" json:",omitempty"`
-	MinTimestampMs         int64       `index:"6" json:",omitempty"`
+	MinTimestampMs         int64       `index:"5" json:",omitempty"`
+	MaxTimestampMs         int64       `index:"6" json:",omitempty"`
 	HasMoreBefore          bool        `index:"7" json:",omitempty"`
 	HasMoreAfter           bool        `index:"8" json:",omitempty"`
 	Unknown                interface{} `index:"9" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSUpdateExistingMessageRange struct {
+	ThreadKey   int64 `index:"0" json:",omitempty"`
+	TimestampMS int64 `index:"1" json:",omitempty"`
+
+	UnknownBool2 bool `index:"2" json:",omitempty"`
+	UnknownBool3 bool `index:"3" json:",omitempty"`
+
+	// if bool 2 && !3 then clear "has more after" else clear "has more before"
+}
+
+func (ls *LSUpdateExistingMessageRange) GetThreadKey() int64 {
+	return ls.ThreadKey
 }
 
 type LSDeleteExistingMessageRanges struct {

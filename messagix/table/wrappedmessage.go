@@ -1,21 +1,93 @@
 package table
 
 import (
+	"slices"
+
 	badGlobalLog "github.com/rs/zerolog/log"
 )
 
-func (table *LSTable) WrapMessages() []*WrappedMessage {
-	messages := make([]*WrappedMessage, len(table.LSInsertMessage)+len(table.LSUpsertMessage))
+type UpsertMessages struct {
+	Range    *LSInsertNewMessageRange
+	Messages []*WrappedMessage
+	MarkRead bool
+}
+
+func (um *UpsertMessages) Join(other *UpsertMessages) *UpsertMessages {
+	if um == nil {
+		return other
+	} else if other == nil {
+		return um
+	}
+	um.Messages = append(um.Messages, other.Messages...)
+	um.Range.HasMoreBefore = other.Range.HasMoreBefore
+	um.Range.MinTimestampMsTemplate = other.Range.MinTimestampMsTemplate
+	um.Range.MinTimestampMs = other.Range.MinTimestampMs
+	um.Range.MinMessageId = other.Range.MinMessageId
+	return um
+}
+
+func (um *UpsertMessages) GetThreadKey() int64 {
+	if um.Range != nil {
+		return um.Range.ThreadKey
+	} else if len(um.Messages) > 0 {
+		return um.Messages[0].ThreadKey
+	}
+	return 0
+}
+
+func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert []*WrappedMessage) {
 	messageMap := make(map[string]*WrappedMessage, len(table.LSInsertMessage)+len(table.LSUpsertMessage))
-	for i, msg := range table.LSUpsertMessage {
-		messages[i] = &WrappedMessage{LSInsertMessage: msg.ToInsert(), IsUpsert: true}
-		messageMap[msg.MessageId] = messages[i]
+
+	upsert = make(map[int64]*UpsertMessages, len(table.LSUpsertMessage))
+	for _, rng := range table.LSInsertNewMessageRange {
+		upsert[rng.ThreadKey] = &UpsertMessages{Range: rng}
 	}
-	iOffset := len(table.LSUpsertMessage)
+
+	// TODO are there other places that might have read receipts for upserts than these two?
+	for _, read := range table.LSMarkThreadRead {
+		upsertMsg, ok := upsert[read.ThreadKey]
+		if ok {
+			upsertMsg.MarkRead = upsertMsg.Range.MaxTimestampMs <= read.LastReadWatermarkTimestampMs
+		}
+	}
+	for _, thread := range table.LSDeleteThenInsertThread {
+		upsertMsg, ok := upsert[thread.ThreadKey]
+		if ok {
+			upsertMsg.MarkRead = upsertMsg.Range.MaxTimestampMs <= thread.LastReadWatermarkTimestampMs
+		}
+	}
+
+	for _, msg := range table.LSUpsertMessage {
+		wrapped := &WrappedMessage{LSInsertMessage: msg.ToInsert(), IsUpsert: true}
+		chatUpsert, ok := upsert[msg.ThreadKey]
+		if !ok {
+			badGlobalLog.Warn().
+				Int64("thread_id", msg.ThreadKey).
+				Msg("Got upsert message for thread without corresponding message range")
+			upsert[msg.ThreadKey] = &UpsertMessages{Messages: []*WrappedMessage{wrapped}}
+		} else {
+			chatUpsert.Messages = append(chatUpsert.Messages, wrapped)
+		}
+		messageMap[msg.MessageId] = wrapped
+	}
+	if len(table.LSUpsertMessage) > 0 {
+		// For upserted messages, add reactions to the upsert data, and delete them
+		// from the main list to avoid handling them as new reactions.
+		table.LSUpsertReaction = slices.DeleteFunc(table.LSUpsertReaction, func(reaction *LSUpsertReaction) bool {
+			wrapped, ok := messageMap[reaction.MessageId]
+			if ok && wrapped.IsUpsert {
+				wrapped.Reactions = append(wrapped.Reactions, reaction)
+				return true
+			}
+			return false
+		})
+	}
+	insert = make([]*WrappedMessage, len(table.LSInsertMessage))
 	for i, msg := range table.LSInsertMessage {
-		messages[iOffset+i] = &WrappedMessage{LSInsertMessage: msg}
-		messageMap[msg.MessageId] = messages[iOffset+i]
+		insert[i] = &WrappedMessage{LSInsertMessage: msg}
+		messageMap[msg.MessageId] = insert[i]
 	}
+
 	for _, blob := range table.LSInsertBlobAttachment {
 		msg, ok := messageMap[blob.MessageId]
 		if ok {
@@ -54,7 +126,7 @@ func (table *LSTable) WrapMessages() []*WrappedMessage {
 				Msg("Got sticker attachment in table without corresponding message")
 		}
 	}
-	return messages
+	return
 }
 
 type WrappedMessage struct {
@@ -63,6 +135,7 @@ type WrappedMessage struct {
 	BlobAttachments []*LSInsertBlobAttachment
 	XMAAttachments  []*WrappedXMA
 	Stickers        []*LSInsertStickerAttachment
+	Reactions       []*LSUpsertReaction
 }
 
 type WrappedXMA struct {

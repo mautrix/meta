@@ -55,7 +55,21 @@ type BridgeConfig struct {
 		Deadline   time.Duration `yaml:"-"`
 	} `yaml:"message_handling_timeout"`
 
-	CommandPrefix      string                           `yaml:"command_prefix"`
+	CommandPrefix string `yaml:"command_prefix"`
+
+	Backfill struct {
+		Enabled           bool `yaml:"enabled"`
+		InboxFetchPages   int  `yaml:"inbox_fetch_pages"`
+		HistoryFetchPages int  `yaml:"history_fetch_pages"`
+		CatchupFetchPages int  `yaml:"catchup_fetch_pages"`
+		Queue             struct {
+			PagesAtOnce       int           `yaml:"pages_at_once"`
+			MaxPages          int           `yaml:"max_pages"`
+			SleepBetweenTasks time.Duration `yaml:"sleep_between_tasks"`
+			DontFetchXMA      bool          `yaml:"dont_fetch_xma"`
+		} `yaml:"queue"`
+	} `yaml:"backfill"`
+
 	ManagementRoomText bridgeconfig.ManagementRoomTexts `yaml:"management_room_text"`
 
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`

@@ -18,6 +18,8 @@ package database
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/id"
@@ -35,7 +37,14 @@ const (
 		INSERT INTO reaction (message_id, thread_id, thread_receiver, reaction_sender, emoji, mxid, mx_room)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
-	updateReactionQuery = `
+	bulkInsertReactionQuery = `
+		INSERT INTO reaction (message_id, thread_id, thread_receiver, reaction_sender, emoji, mxid, mx_room)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (message_id, thread_receiver, reaction_sender) DO UPDATE SET mxid=excluded.mxid, emoji=excluded.emoji
+	`
+	bulkInsertReactionQueryValuePlaceholder = `($1, $2, $3, $4, $5, $6, $7)`
+	bulkInsertReactionPlaceholderTemplate   = `($%d, $1, $2, $%d, $%d, $%d, $3)`
+	updateReactionQuery                     = `
 		UPDATE reaction
 		SET mxid=$1, emoji=$2
 		WHERE message_id=$3 AND thread_receiver=$4 AND reaction_sender=$5
@@ -44,6 +53,12 @@ const (
 		DELETE FROM reaction WHERE message_id=$1 AND thread_receiver=$2 AND reaction_sender=$3
 	`
 )
+
+func init() {
+	if strings.ReplaceAll(bulkInsertReactionQuery, bulkInsertReactionQueryValuePlaceholder, "meow") == bulkInsertReactionQuery {
+		panic("Bulk insert query placeholder not found")
+	}
+}
 
 type ReactionQuery struct {
 	*dbutil.QueryHelper[*Reaction]
@@ -73,6 +88,31 @@ func (rq *ReactionQuery) GetByMXID(ctx context.Context, mxid id.EventID) (*React
 
 func (rq *ReactionQuery) GetByID(ctx context.Context, msgID string, threadReceiver, reactionSender int64) (*Reaction, error) {
 	return rq.QueryOne(ctx, getReactionByIDQuery, msgID, threadReceiver, reactionSender)
+}
+
+func (rq *ReactionQuery) BulkInsert(ctx context.Context, thread PortalKey, roomID id.RoomID, reactions []*Reaction) error {
+	return doBulkInsert[*Reaction](rq, ctx, thread, roomID, reactions)
+}
+
+func (rq *ReactionQuery) BulkInsertChunk(ctx context.Context, thread PortalKey, roomID id.RoomID, reactions []*Reaction) error {
+	if len(reactions) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(reactions))
+	values := make([]any, 3+len(reactions)*4)
+	values[0] = thread.ThreadID
+	values[1] = thread.Receiver
+	values[2] = roomID
+	for i, react := range reactions {
+		baseIndex := 3 + i*4
+		placeholders[i] = fmt.Sprintf(bulkInsertReactionPlaceholderTemplate, baseIndex+1, baseIndex+2, baseIndex+3, baseIndex+4)
+		values[baseIndex] = react.MessageID
+		values[baseIndex+1] = react.Sender
+		values[baseIndex+2] = react.Emoji
+		values[baseIndex+3] = react.MXID
+	}
+	query := strings.ReplaceAll(bulkInsertReactionQuery, bulkInsertReactionQueryValuePlaceholder, strings.Join(placeholders, ","))
+	return rq.Exec(ctx, query, values...)
 }
 
 func (r *Reaction) Scan(row dbutil.Scannable) (*Reaction, error) {

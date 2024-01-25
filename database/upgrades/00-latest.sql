@@ -1,4 +1,4 @@
--- v0 -> v2: Latest revision
+-- v0 -> v3: Latest revision
 
 CREATE TABLE portal (
     thread_id   BIGINT  NOT NULL,
@@ -14,6 +14,10 @@ CREATE TABLE portal (
 
     encrypted     BOOLEAN NOT NULL DEFAULT false,
     relay_user_id TEXT    NOT NULL,
+
+    oldest_message_id TEXT    NOT NULL,
+    oldest_message_ts BIGINT  NOT NULL,
+    more_to_backfill  BOOLEAN NOT NULL,
 
     PRIMARY KEY (thread_id, receiver),
     CONSTRAINT portal_mxid_unique UNIQUE(mxid)
@@ -41,6 +45,8 @@ CREATE TABLE "user" (
     meta_id BIGINT,
     cookies jsonb,
 
+    inbox_fetched BOOLEAN NOT NULL,
+
     management_room TEXT,
     space_room      TEXT,
 
@@ -48,16 +54,36 @@ CREATE TABLE "user" (
 );
 
 CREATE TABLE user_portal (
-    user_mxid        TEXT,
-    portal_thread_id BIGINT,
-    portal_receiver  BIGINT,
-    in_space         BOOLEAN NOT NULL DEFAULT false,
+    user_mxid        TEXT NOT NULL,
+    portal_thread_id BIGINT NOT NULL,
+    portal_receiver  BIGINT NOT NULL,
+
+    in_space BOOLEAN NOT NULL DEFAULT false,
 
     PRIMARY KEY (user_mxid, portal_thread_id, portal_receiver),
     CONSTRAINT user_portal_user_fkey FOREIGN KEY (user_mxid)
         REFERENCES "user"(mxid) ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT user_portal_portal_fkey FOREIGN KEY (portal_thread_id, portal_receiver)
         REFERENCES portal(thread_id, receiver) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE backfill_task (
+    portal_id       BIGINT NOT NULL,
+    portal_receiver BIGINT NOT NULL,
+    user_mxid       TEXT NOT NULL,
+
+    priority       INTEGER NOT NULL,
+    page_count     INTEGER NOT NULL,
+    finished       BOOLEAN NOT NULL,
+    dispatched_at  BIGINT  NOT NULL,
+    completed_at   BIGINT  NOT NULL,
+    cooldown_until BIGINT  NOT NULL,
+
+    PRIMARY KEY (portal_id, portal_receiver, user_mxid),
+    CONSTRAINT backfill_task_user_fkey FOREIGN KEY (user_mxid)
+        REFERENCES "user" (mxid) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT backfill_task_portal_fkey FOREIGN KEY (portal_id, portal_receiver)
+        REFERENCES portal (thread_id, receiver) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE message (
