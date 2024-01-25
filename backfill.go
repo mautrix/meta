@@ -61,9 +61,11 @@ func (user *User) handleBackfillTask(ctx context.Context, task *database.Backfil
 	log.Debug().Any("task", task).Msg("Got backfill task")
 	portal := user.bridge.GetExistingPortalByThreadID(task.Key)
 	task.DispatchedAt = time.Now()
+	task.CompletedAt = time.Time{}
 	if !portal.MoreToBackfill {
 		log.Debug().Int64("portal_id", task.Key.ThreadID).Msg("Nothing more to backfill in portal")
 		task.Finished = true
+		task.CompletedAt = time.Now()
 		if err := task.Upsert(ctx); err != nil {
 			log.Err(err).Msg("Failed to save backfill task")
 		}
@@ -100,6 +102,7 @@ func (user *User) handleBackfillTask(ctx context.Context, task *database.Backfil
 		},
 		Source:   user.MXID,
 		MaxPages: user.bridge.Config.Bridge.Backfill.Queue.PagesAtOnce,
+		Forward:  false,
 		Task:     task,
 		Done:     doneCallback,
 	}
@@ -111,6 +114,7 @@ func (user *User) handleBackfillTask(ctx context.Context, task *database.Backfil
 	if !portal.MoreToBackfill {
 		task.Finished = true
 	}
+	task.CompletedAt = time.Now()
 	if err := task.Upsert(ctx); err != nil {
 		log.Err(err).Msg("Failed to save backfill task")
 	}
@@ -425,6 +429,9 @@ func (portal *Portal) handleMessageBatch(ctx context.Context, source *User, upse
 			portal.convertAndSendBackfill(ctx, source, upsert.Messages, upsert.MarkRead, forward)
 		}()
 	} else {
+		if doneCallback != nil {
+			defer doneCallback()
+		}
 		portal.convertAndSendBackfill(ctx, source, upsert.Messages, upsert.MarkRead, forward)
 		queueConfig := portal.bridge.Config.Bridge.Backfill.Queue
 		if lastMessage == nil && queueConfig.MaxPages != 0 && portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending) {
@@ -462,7 +469,7 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 		}
 		if len(converted.Parts) == 0 {
 			log.Warn().Str("message_id", msg.MessageId).Msg("Message was empty after conversion")
-			return
+			continue
 		}
 		var reactionsToSendSeparately []*table.LSUpsertReaction
 		sendReactionsInBatch := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)

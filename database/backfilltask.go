@@ -82,7 +82,7 @@ func (btq *BackfillTaskQuery) NewWithValues(portalKey PortalKey, userID id.UserI
 }
 
 func (btq *BackfillTaskQuery) GetNext(ctx context.Context, userID id.UserID) (*BackfillTask, error) {
-	return btq.QueryOne(ctx, getNextBackfillTask, userID, time.Now().UnixMilli(), time.Now().Add(-15*time.Minute).UnixMilli())
+	return btq.QueryOne(ctx, getNextBackfillTask, userID, time.Now().UnixMilli(), time.Now().Add(-1*time.Hour).UnixMilli())
 }
 
 func (task *BackfillTask) Scan(row dbutil.Scannable) (*BackfillTask, error) {
