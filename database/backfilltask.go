@@ -34,6 +34,13 @@ const (
 			SET priority=excluded.priority, page_count=excluded.page_count, finished=excluded.finished,
 			    dispatched_at=excluded.dispatched_at, completed_at=excluded.completed_at, cooldown_until=excluded.cooldown_until
 	`
+	insertBackfillTaskIfNotExists = `
+		INSERT INTO backfill_task (
+			portal_id, portal_receiver, user_mxid, priority, page_count, finished,
+			dispatched_at, completed_at, cooldown_until
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (portal_id, portal_receiver, user_mxid) DO NOTHING
+	`
 	getNextBackfillTask = `
 		SELECT portal_id, portal_receiver, user_mxid, priority, page_count, finished, dispatched_at, completed_at, cooldown_until
 		FROM backfill_task
@@ -120,4 +127,8 @@ func (task *BackfillTask) sqlVariables() []any {
 
 func (task *BackfillTask) Upsert(ctx context.Context) error {
 	return task.qh.Exec(ctx, putBackfillTask, task.sqlVariables()...)
+}
+
+func (task *BackfillTask) InsertIfNotExists(ctx context.Context) error {
+	return task.qh.Exec(ctx, insertBackfillTaskIfNotExists, task.sqlVariables()...)
 }

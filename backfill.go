@@ -328,6 +328,14 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 			Int64("upsert_max_ts", upsert.Range.MaxTimestampMs).
 			Str("upsert_max_id", upsert.Range.MaxMessageId).
 			Msg("Ignoring unrequested upsert before last message")
+		queueConfig := portal.bridge.Config.Bridge.Backfill.Queue
+		if lastMessage == nil && queueConfig.MaxPages != 0 && portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending) {
+			task := portal.bridge.DB.BackfillTask.NewWithValues(portal.PortalKey, user.MXID)
+			err = task.InsertIfNotExists(ctx)
+			if err != nil {
+				log.Err(err).Msg("Failed to ensure backfill task exists")
+			}
+		}
 	}
 }
 
