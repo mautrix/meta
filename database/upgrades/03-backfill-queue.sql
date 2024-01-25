@@ -9,7 +9,7 @@ UPDATE portal SET (oldest_message_id, oldest_message_ts) = (
       AND thread_receiver = portal.receiver
     ORDER BY timestamp ASC
     LIMIT 1
-);
+) WHERE EXISTS(SELECT 1 FROM message WHERE thread_id = portal.thread_id AND thread_receiver = portal.receiver);
 -- only: postgres for next 3 lines
 ALTER TABLE portal ALTER COLUMN oldest_message_id DROP DEFAULT;
 ALTER TABLE portal ALTER COLUMN oldest_message_ts DROP DEFAULT;
