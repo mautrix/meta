@@ -89,6 +89,25 @@ type LSDeleteThenInsertContact struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (ls *LSDeleteThenInsertContact) GetUsername() string {
+	return ls.SecondaryName
+}
+
+func (ls *LSDeleteThenInsertContact) GetName() string {
+	return ls.Name
+}
+
+func (ls *LSDeleteThenInsertContact) GetAvatarURL() string {
+	if ls.ProfilePictureLargeUrl != "" {
+		return ls.ProfilePictureLargeUrl
+	}
+	return ls.ProfilePictureUrl
+}
+
+func (ls *LSDeleteThenInsertContact) GetFBID() int64 {
+	return ls.Id
+}
+
 type LSDeleteThenInsertContactPresence struct {
 	ContactId             int64  `index:"0" json:",omitempty"`
 	Status                int64  `index:"1" json:",omitempty"` // make enum ?
