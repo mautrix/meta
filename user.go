@@ -536,6 +536,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 	}
 	upsert, insert := tbl.WrapMessages()
 	handlePortalEvents(user, maps.Values(upsert))
+	handlePortalEvents(user, tbl.LSUpdateExistingMessageRange)
 	handlePortalEvents(user, insert)
 	for _, msg := range tbl.LSEditMessage {
 		user.handleEditEvent(ctx, msg)

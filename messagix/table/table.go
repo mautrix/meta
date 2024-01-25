@@ -29,6 +29,7 @@ type LSTable struct {
 	LSSetMessageDisplayedContentTypes             []*LSSetMessageDisplayedContentTypes             `json:",omitempty"`
 	LSUpdateReadReceipt                           []*LSUpdateReadReceipt                           `json:",omitempty"`
 	LSInsertNewMessageRange                       []*LSInsertNewMessageRange                       `json:",omitempty"`
+	LSUpdateExistingMessageRange                  []*LSUpdateExistingMessageRange                  `json:",omitempty"`
 	LSDeleteExistingMessageRanges                 []*LSDeleteExistingMessageRanges                 `json:",omitempty"`
 	LSUpsertSequenceId                            []*LSUpsertSequenceId                            `json:",omitempty"`
 	LSVerifyContactRowExists                      []*LSVerifyContactRowExists                      `json:",omitempty"`
@@ -193,6 +194,7 @@ var SPTable = map[string]string{
 	"truncateTablesForSyncGroup":                  "LSTruncateTablesForSyncGroup",
 	"insertXmaAttachment":                         "LSInsertXmaAttachment",
 	"insertNewMessageRange":                       "LSInsertNewMessageRange",
+	"updateExistingMessageRange":                  "LSUpdateExistingMessageRange",
 	"threadsRangesQuery":                          "LSThreadsRangesQuery",
 	"updateThreadSnippetFromLastMessage":          "LSUpdateThreadSnippetFromLastMessage",
 	"upsertInboxThreadsRange":                     "LSUpsertInboxThreadsRange",

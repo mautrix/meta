@@ -164,6 +164,49 @@ func (portal *Portal) requestMoreHistory(ctx context.Context, user *User, minTim
 
 var globalUpsertCounter atomic.Int64
 
+func (portal *Portal) handleMetaExistingRange(user *User, rng *table.LSUpdateExistingMessageRange) {
+	portal.backfillLock.Lock()
+	defer portal.backfillLock.Unlock()
+
+	log := portal.log.With().
+		Str("action", "handle meta existing range").
+		Stringer("source_mxid", user.MXID).
+		Int("global_upsert_counter", int(globalUpsertCounter.Add(1))).
+		Logger()
+	logEvt := log.Info().
+		Int64("timestamp_ms", rng.TimestampMS).
+		Bool("bool2", rng.UnknownBool2).
+		Bool("bool3", rng.UnknownBool3)
+	if portal.backfillCollector == nil {
+		logEvt.Msg("Ignoring update existing message range command with no backfill collector")
+	} else if portal.backfillCollector.Source != user.MXID {
+		logEvt.Stringer("prev_mxid", portal.backfillCollector.Source).
+			Msg("Ignoring update existing message range command for another user")
+	} else if portal.backfillCollector.Range.MinTimestampMs != rng.TimestampMS {
+		logEvt.Int64("prev_timestamp_ms", portal.backfillCollector.Range.MinTimestampMs).
+			Msg("Ignoring update existing message range command with different timestamp")
+	} else {
+		if portal.backfillCollector.Task != nil {
+			portal.backfillCollector.Task.Finished = true
+		}
+		if len(portal.backfillCollector.Messages) == 0 {
+			logEvt.Msg("Didn't get any history")
+			if portal.backfillCollector.Done != nil {
+				portal.backfillCollector.Done()
+			}
+		} else {
+			logEvt.Msg("Processing collected history now")
+			if rng.UnknownBool2 && !rng.UnknownBool3 {
+				portal.backfillCollector.Range.HasMoreBefore = false
+			} else {
+				portal.backfillCollector.Range.HasMoreAfter = false
+			}
+			portal.handleMessageBatch(log.WithContext(context.TODO()), user, portal.backfillCollector.UpsertMessages, portal.backfillCollector.Forward, portal.backfillCollector.LastMessage, portal.backfillCollector.Done)
+		}
+		portal.backfillCollector = nil
+	}
+}
+
 func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertMessages) {
 	portal.backfillLock.Lock()
 	defer portal.backfillLock.Unlock()

@@ -910,6 +910,8 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
 	case *table.UpsertMessages:
 		portal.handleMetaUpsertMessages(portalMessage.user, typedEvt)
+	case *table.LSUpdateExistingMessageRange:
+		portal.handleMetaExistingRange(portalMessage.user, typedEvt)
 	case *table.LSEditMessage:
 		portal.handleMetaEditMessage(typedEvt)
 	case *table.LSDeleteMessage:
