@@ -49,7 +49,6 @@ type InputTag struct {
 
 type ModuleParser struct {
 	client      *Client
-	testData    []byte
 	FormTags    []FormTag
 	LoginInputs []InputTag
 	JSDatr      string
@@ -57,10 +56,6 @@ type ModuleParser struct {
 
 func (m *ModuleParser) SetClientInstance(cli *Client) {
 	m.client = cli
-}
-
-func (m *ModuleParser) SetTestData(data []byte) {
-	m.testData = data
 }
 
 func (m *ModuleParser) fetchPageData(page string) ([]byte, error) { // just log.fatal if theres an error because the library should not be able to continue then
@@ -81,16 +76,9 @@ func (m *ModuleParser) fetchPageData(page string) ([]byte, error) { // just log.
 }
 
 func (m *ModuleParser) Load(page string) error {
-	var htmlData []byte
-	var err error
-	if m.testData == nil {
-		htmlData, err = m.fetchPageData(page)
-		//os.WriteFile("test_files/res.html", htmlData, os.ModePerm)
-		if err != nil {
-			return err
-		}
-	} else {
-		htmlData = m.testData
+	htmlData, err := m.fetchPageData(page)
+	if err != nil {
+		return err
 	}
 
 	doc, err := html.Parse(bytes.NewReader(htmlData))
