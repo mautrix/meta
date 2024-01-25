@@ -555,6 +555,9 @@ func (user *User) handleTable(tbl *table.LSTable) {
 }
 
 func (user *User) requestMoreInbox(ctx context.Context, itrs []*table.LSUpsertInboxThreadsRange) {
+	if !user.bridge.Config.Bridge.Backfill.Enabled {
+		return
+	}
 	maxInboxPages := user.bridge.Config.Bridge.Backfill.InboxFetchPages
 	if len(itrs) == 0 || user.InboxFetched || maxInboxPages == 0 {
 		return
