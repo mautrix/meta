@@ -33,3 +33,7 @@ CREATE TABLE backfill_task (
     CONSTRAINT backfill_task_portal_fkey FOREIGN KEY (portal_id, portal_receiver)
         REFERENCES portal (thread_id, receiver) ON UPDATE CASCADE ON DELETE CASCADE
 );
+
+ALTER TABLE "user" ADD COLUMN inbox_fetched BOOLEAN NOT NULL DEFAULT false;
+-- only: postgres
+ALTER TABLE "user" ALTER COLUMN inbox_fetched DROP DEFAULT;

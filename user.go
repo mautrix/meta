@@ -175,6 +175,8 @@ type User struct {
 	spaceCreateLock        sync.Mutex
 
 	stopBackfillTask atomic.Pointer[context.CancelFunc]
+
+	InboxPagesFetched int
 }
 
 var (
@@ -546,6 +548,46 @@ func (user *User) handleTable(tbl *table.LSTable) {
 	handlePortalEvents(user, tbl.LSDeleteThenInsertMessage)
 	handlePortalEvents(user, tbl.LSUpsertReaction)
 	handlePortalEvents(user, tbl.LSDeleteReaction)
+	user.requestMoreInbox(ctx, tbl.LSUpsertInboxThreadsRange)
+}
+
+func (user *User) requestMoreInbox(ctx context.Context, itrs []*table.LSUpsertInboxThreadsRange) {
+	maxInboxPages := user.bridge.Config.Bridge.Backfill.InboxFetchPages
+	if len(itrs) == 0 || user.InboxFetched || maxInboxPages == 0 {
+		return
+	}
+	log := zerolog.Ctx(ctx)
+	itr := itrs[0]
+	user.InboxPagesFetched++
+	reachedPageLimit := maxInboxPages > 0 && user.InboxPagesFetched > maxInboxPages
+	logEvt := log.Debug().
+		Int("fetched_pages", user.InboxPagesFetched).
+		Bool("has_more_before", itr.HasMoreBefore).
+		Bool("reached_page_limit", reachedPageLimit).
+		Int64("min_thread_key", itr.MinThreadKey).
+		Int64("min_last_activity_timestamp_ms", itr.MinLastActivityTimestampMs)
+	if !itr.HasMoreBefore || reachedPageLimit {
+		logEvt.Msg("Finished fetching threads")
+		user.InboxFetched = true
+		err := user.Update(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save user after marking inbox as fetched")
+		}
+	} else {
+		logEvt.Msg("Requesting more threads")
+		resp, err := user.Client.ExecuteTasks(&socket.FetchThreadsTask{
+			ReferenceThreadKey:         itr.MinThreadKey,
+			ReferenceActivityTimestamp: itr.MinLastActivityTimestampMs,
+			Cursor:                     user.Client.SyncManager.GetCursor(1),
+			SyncGroup:                  1,
+		})
+		log.Trace().Any("resp", resp).Msg("Fetch threads response data")
+		if err != nil {
+			log.Err(err).Msg("Failed to fetch more threads")
+		} else {
+			log.Debug().Msg("Sent more threads request")
+		}
+	}
 }
 
 type ThreadKeyable interface {

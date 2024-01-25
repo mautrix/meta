@@ -45,6 +45,8 @@ CREATE TABLE "user" (
     meta_id BIGINT,
     cookies jsonb,
 
+    inbox_fetched BOOLEAN NOT NULL,
+
     management_room TEXT,
     space_room      TEXT,
 

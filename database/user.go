@@ -28,11 +28,11 @@ import (
 )
 
 const (
-	getUserByMXIDQuery       = `SELECT mxid, meta_id, cookies, management_room, space_room FROM "user" WHERE mxid=$1`
-	getUserByMetaIDQuery     = `SELECT mxid, meta_id, cookies, management_room, space_room FROM "user" WHERE meta_id=$1`
-	getAllLoggedInUsersQuery = `SELECT mxid, meta_id, cookies, management_room, space_room FROM "user" WHERE cookies IS NOT NULL`
-	insertUserQuery          = `INSERT INTO "user" (mxid, meta_id, cookies, management_room, space_room) VALUES ($1, $2, $3, $4, $5)`
-	updateUserQuery          = `UPDATE "user" SET meta_id=$2, cookies=$3, management_room=$4, space_room=$5 WHERE mxid=$1`
+	getUserByMXIDQuery       = `SELECT mxid, meta_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE mxid=$1`
+	getUserByMetaIDQuery     = `SELECT mxid, meta_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE meta_id=$1`
+	getAllLoggedInUsersQuery = `SELECT mxid, meta_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE cookies IS NOT NULL`
+	insertUserQuery          = `INSERT INTO "user" (mxid, meta_id, cookies, inbox_fetched, management_room, space_room) VALUES ($1, $2, $3, $4, $5, $6)`
+	updateUserQuery          = `UPDATE "user" SET meta_id=$2, cookies=$3, inbox_fetched=$4, management_room=$5, space_room=$6 WHERE mxid=$1`
 )
 
 type UserQuery struct {
@@ -45,6 +45,7 @@ type User struct {
 	MXID           id.UserID
 	MetaID         int64
 	Cookies        cookies.Cookies
+	InboxFetched   bool
 	ManagementRoom id.RoomID
 	SpaceRoom      id.RoomID
 
@@ -73,7 +74,7 @@ func (uq *UserQuery) GetAllLoggedIn(ctx context.Context) ([]*User, error) {
 }
 
 func (u *User) sqlVariables() []any {
-	return []any{u.MXID, dbutil.NumPtr(u.MetaID), dbutil.JSON{Data: u.Cookies}, dbutil.StrPtr(u.ManagementRoom), dbutil.StrPtr(u.SpaceRoom)}
+	return []any{u.MXID, dbutil.NumPtr(u.MetaID), dbutil.JSON{Data: u.Cookies}, u.InboxFetched, dbutil.StrPtr(u.ManagementRoom), dbutil.StrPtr(u.SpaceRoom)}
 }
 
 func (u *User) Insert(ctx context.Context) error {
@@ -94,6 +95,7 @@ func (u *User) Scan(row dbutil.Scannable) (*User, error) {
 		&u.MXID,
 		&metaID,
 		&dbutil.JSON{Data: scannedCookies},
+		&u.InboxFetched,
 		&managementRoom,
 		&spaceRoom,
 	)

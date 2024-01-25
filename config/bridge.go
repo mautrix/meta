@@ -59,6 +59,7 @@ type BridgeConfig struct {
 
 	Backfill struct {
 		Enabled           bool `yaml:"enabled"`
+		InboxFetchPages   int  `yaml:"inbox_fetch_pages"`
 		HistoryFetchPages int  `yaml:"history_fetch_pages"`
 		CatchupFetchPages int  `yaml:"catchup_fetch_pages"`
 		Queue             struct {

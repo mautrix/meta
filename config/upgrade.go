@@ -97,6 +97,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Map, "bridge", "login_shared_secret_map")
 	helper.Copy(up.Str, "bridge", "command_prefix")
 	helper.Copy(up.Bool, "bridge", "backfill", "enabled")
+	helper.Copy(up.Int, "bridge", "backfill", "inbox_fetch_pages")
 	helper.Copy(up.Int, "bridge", "backfill", "history_fetch_pages")
 	helper.Copy(up.Int, "bridge", "backfill", "catchup_fetch_pages")
 	helper.Copy(up.Int, "bridge", "backfill", "queue", "pages_at_once")
