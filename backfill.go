@@ -98,6 +98,9 @@ func (user *User) handleBackfillTask(ctx context.Context, task *database.Backfil
 	case <-ctx.Done():
 		return
 	}
+	if !portal.MoreToBackfill {
+		task.Finished = true
+	}
 	if err := task.Upsert(ctx); err != nil {
 		log.Err(err).Msg("Failed to save backfill task")
 	}
@@ -186,16 +189,18 @@ func (portal *Portal) handleMetaExistingRange(user *User, rng *table.LSUpdateExi
 		logEvt.Int64("prev_timestamp_ms", portal.backfillCollector.Range.MinTimestampMs).
 			Msg("Ignoring update existing message range command with different timestamp")
 	} else {
-		if portal.backfillCollector.Task != nil {
-			portal.backfillCollector.Task.Finished = true
-		}
 		if len(portal.backfillCollector.Messages) == 0 {
-			logEvt.Msg("Didn't get any history")
+			logEvt.Msg("Update existing range marked backfill as done, no messages found")
 			if portal.backfillCollector.Done != nil {
 				portal.backfillCollector.Done()
 			}
+			portal.MoreToBackfill = false
+			err := portal.Update(log.WithContext(context.TODO()))
+			if err != nil {
+				log.Err(err).Msg("Failed to save portal in database")
+			}
 		} else {
-			logEvt.Msg("Processing collected history now")
+			logEvt.Msg("Update existing range marked backfill as done, processing collected history now")
 			if rng.UnknownBool2 && !rng.UnknownBool3 {
 				portal.backfillCollector.Range.HasMoreBefore = false
 			} else {
@@ -254,12 +259,9 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 		existingMessagesReached := portal.backfillCollector.LastMessage != nil && portal.backfillCollector.Range.MinTimestampMs <= portal.backfillCollector.LastMessage.Timestamp.UnixMilli()
 		if portal.backfillCollector.Task != nil {
 			portal.backfillCollector.Task.PageCount++
-			if portal.backfillCollector.Task.PageCount >= portal.bridge.Config.Bridge.Backfill.Queue.MaxPages {
+			if portal.bridge.Config.Bridge.Backfill.Queue.MaxPages >= 0 && portal.backfillCollector.Task.PageCount >= portal.bridge.Config.Bridge.Backfill.Queue.MaxPages {
+				log.Debug().Any("task", portal.backfillCollector.Task).Msg("Marking backfill task as finished (reached page limit)")
 				pageLimitReached = true
-				portal.backfillCollector.Task.Finished = true
-			}
-			if endOfChatReached {
-				portal.backfillCollector.Task.Finished = true
 			}
 		}
 		logEvt := log.Debug().
