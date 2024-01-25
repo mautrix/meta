@@ -41,6 +41,11 @@ func (fb *FacebookCookies) GetUserID() int64 {
 	return userID
 }
 
-func (fb *FacebookCookies) AllCookiesPresent() bool {
-	return fb.Datr != "" && fb.Sb != "" && fb.AccountId != "" && fb.Xs != ""
+func (fb *FacebookCookies) RequiredCookies() map[string]string {
+	return map[string]string{
+		"datr":   fb.Datr,
+		"sb":     fb.Sb,
+		"c_user": fb.AccountId,
+		"xs":     fb.Xs,
+	}
 }

@@ -38,6 +38,12 @@ func (ig *InstagramCookies) GetUserID() int64 {
 	return userID
 }
 
-func (ig *InstagramCookies) AllCookiesPresent() bool {
-	return ig.SessionId != "" && ig.CsrfToken != "" && ig.MachineId != "" && ig.IgDeviceId != "" && ig.UserId != ""
+func (ig *InstagramCookies) RequiredCookies() map[string]string {
+	return map[string]string{
+		"sessionid":  ig.SessionId,
+		"csrftoken":  ig.CsrfToken,
+		"mid":        ig.MachineId,
+		"ig_did":     ig.IgDeviceId,
+		"ds_user_id": ig.UserId,
+	}
 }

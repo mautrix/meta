@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/id"
@@ -269,8 +270,12 @@ func fnLoginEnterCookies(ce *WrappedCommandEvent) {
 			return
 		}
 	}
-	if !newCookies.AllCookiesPresent() {
-		ce.Reply("Missing some cookies")
+	missingRequiredCookies := newCookies.RequiredCookies()
+	maps.DeleteFunc(missingRequiredCookies, func(key, value string) bool {
+		return len(value) > 0
+	})
+	if len(missingRequiredCookies) > 0 {
+		ce.Reply("Missing some cookies: %v", maps.Keys(missingRequiredCookies))
 		return
 	}
 	err := ce.User.Login(ce.Ctx, newCookies)

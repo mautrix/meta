@@ -26,6 +26,7 @@ import (
 	"github.com/beeper/libserv/pkg/requestlog"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/hlog"
+	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"
 
@@ -106,7 +107,13 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		jsonResponse(w, http.StatusBadRequest, Error{ErrCode: mautrix.MBadJSON.ErrCode, Error: err.Error()})
 		return
-	} else if !cookies.AllCookiesPresent() {
+	}
+	missingRequiredCookies := cookies.RequiredCookies()
+	maps.DeleteFunc(missingRequiredCookies, func(key, value string) bool {
+		return len(value) > 0
+	})
+	if len(missingRequiredCookies) > 0 {
+		log.Debug().Strs("missing_cookies", maps.Keys(missingRequiredCookies)).Msg("Missing cookies in login request")
 		jsonResponse(w, http.StatusBadRequest, Error{ErrCode: mautrix.MBadJSON.ErrCode, Error: "Missing some cookies"})
 		return
 	}

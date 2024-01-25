@@ -22,7 +22,7 @@ type Cookies interface {
 	IsLoggedIn() bool
 	ToJSON() ([]byte, error)
 	GetUserID() int64
-	AllCookiesPresent() bool
+	RequiredCookies() map[string]string
 }
 
 func UpdateValue(cookieStruct Cookies, name, val string) {
