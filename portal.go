@@ -179,17 +179,6 @@ type portalMatrixMessage struct {
 	user *User
 }
 
-type BackfillCollector struct {
-	*table.UpsertMessages
-	Source      id.UserID
-	TargetCount int
-	MaxPages    int
-	Forward     bool
-	LastMessage *database.Message
-	Task        *database.BackfillTask
-	Done        func()
-}
-
 type Portal struct {
 	*database.Portal
 

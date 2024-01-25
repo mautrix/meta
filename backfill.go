@@ -46,6 +46,16 @@ func (user *User) StopBackfillLoop() {
 	}
 }
 
+type BackfillCollector struct {
+	*table.UpsertMessages
+	Source      id.UserID
+	MaxPages    int
+	Forward     bool
+	LastMessage *database.Message
+	Task        *database.BackfillTask
+	Done        func()
+}
+
 func (user *User) handleBackfillTask(ctx context.Context, task *database.BackfillTask) {
 	log := zerolog.Ctx(ctx)
 	log.Debug().Any("task", task).Msg("Got backfill task")
@@ -253,7 +263,6 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 			portal.backfillCollector.MaxPages--
 		}
 		portal.backfillCollector.UpsertMessages = portal.backfillCollector.Join(upsert)
-		messageLimitReached := portal.backfillCollector.TargetCount > 0 && len(portal.backfillCollector.Messages) >= portal.backfillCollector.TargetCount
 		pageLimitReached := portal.backfillCollector.MaxPages == 0
 		endOfChatReached := !upsert.Range.HasMoreBefore
 		existingMessagesReached := portal.backfillCollector.LastMessage != nil && portal.backfillCollector.Range.MinTimestampMs <= portal.backfillCollector.LastMessage.Timestamp.UnixMilli()
@@ -265,11 +274,10 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 			}
 		}
 		logEvt := log.Debug().
-			Bool("message_limit_reached", messageLimitReached).
 			Bool("page_limit_reached", pageLimitReached).
 			Bool("end_of_chat_reached", endOfChatReached).
 			Bool("existing_messages_reached", existingMessagesReached)
-		if !messageLimitReached && !pageLimitReached && !endOfChatReached && !existingMessagesReached {
+		if !pageLimitReached && !endOfChatReached && !existingMessagesReached {
 			logEvt.Msg("Requesting more history as collector still has room")
 			portal.requestMoreHistory(ctx, user, upsert.Range.MinTimestampMs, upsert.Range.MinMessageId)
 			return
@@ -288,13 +296,12 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 	}
 	if lastMessage == nil {
 		// Chat is empty, request more history or bridge the one received message immediately depending on history_fetch_count
-		if portal.bridge.Config.Bridge.Backfill.HistoryFetchCount > 0 {
+		if portal.bridge.Config.Bridge.Backfill.HistoryFetchPages > 0 {
 			log.Debug().Msg("Got first historical message in empty chat, requesting more")
 			portal.backfillCollector = &BackfillCollector{
 				UpsertMessages: upsert,
 				Source:         user.MXID,
-				MaxPages:       -1,
-				TargetCount:    portal.bridge.Config.Bridge.Backfill.HistoryFetchCount,
+				MaxPages:       portal.bridge.Config.Bridge.Backfill.HistoryFetchPages,
 				Forward:        true,
 			}
 			portal.requestMoreHistory(ctx, user, upsert.Range.MinTimestampMs, upsert.Range.MinMessageId)
@@ -305,13 +312,12 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 	} else if upsert.Range.MaxTimestampMs > lastMessage.Timestamp.UnixMilli() && upsert.Range.MaxMessageId != lastMessage.ID {
 		// Chat is not empty and the upsert contains a newer message than the last bridged one,
 		// request more history to fill the gap or bridge the received one immediately depending on catchup_fetch_count
-		if portal.bridge.Config.Bridge.Backfill.CatchupFetchCount > 0 {
+		if portal.bridge.Config.Bridge.Backfill.CatchupFetchPages > 0 {
 			log.Debug().Msg("Got upsert of new messages, requesting more")
 			portal.backfillCollector = &BackfillCollector{
 				UpsertMessages: upsert,
 				Source:         user.MXID,
-				TargetCount:    portal.bridge.Config.Bridge.Backfill.CatchupFetchCount,
-				MaxPages:       -1,
+				MaxPages:       portal.bridge.Config.Bridge.Backfill.CatchupFetchPages,
 				Forward:        true,
 				LastMessage:    lastMessage,
 			}

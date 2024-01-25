@@ -59,8 +59,8 @@ type BridgeConfig struct {
 
 	Backfill struct {
 		Enabled           bool `yaml:"enabled"`
-		HistoryFetchCount int  `yaml:"history_fetch_count"`
-		CatchupFetchCount int  `yaml:"catchup_fetch_count"`
+		HistoryFetchPages int  `yaml:"history_fetch_pages"`
+		CatchupFetchPages int  `yaml:"catchup_fetch_pages"`
 		Queue             struct {
 			PagesAtOnce       int           `yaml:"pages_at_once"`
 			MaxPages          int           `yaml:"max_pages"`

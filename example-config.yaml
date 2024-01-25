@@ -150,11 +150,13 @@ bridge:
     backfill:
         # If disabled, old messages will never be bridged.
         enabled: true
-        # By default, Meta only sends one old message. If this is set to a higher value than 0,
-        # the bridge will delay handling the one automatically received message and request more messages to backfill.
-        history_fetch_count: 0
+        # By default, Meta only sends one old message. If this is set to a something else than 0, the bridge
+        # will delay handling the one automatically received message and request more messages to backfill.
+        # One page usually contains 20 messages. This can technically be set to -1 to fetch all messages,
+        # but that will block bridging messages until the entire backfill is completed.
+        history_fetch_pages: 0
         # Same as above, but for catchup backfills (i.e. when the bridge is restarted).
-        catchup_fetch_count: 0
+        catchup_fetch_pages: 5
         # Backfill queue settings. Only relevant for Beeper, because standard Matrix servers
         # don't support inserting messages into room history.
         queue:
