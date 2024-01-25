@@ -58,15 +58,30 @@ CREATE TABLE user_portal (
 
     in_space BOOLEAN NOT NULL DEFAULT false,
 
-    backfill_priority      INTEGER NOT NULL DEFAULT 0,
-    backfill_max_pages     INTEGER NOT NULL DEFAULT 0,
-    backfill_dispatched_at BIGINT  NOT NULL DEFAULT 0,
-
     PRIMARY KEY (user_mxid, portal_thread_id, portal_receiver),
     CONSTRAINT user_portal_user_fkey FOREIGN KEY (user_mxid)
         REFERENCES "user"(mxid) ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT user_portal_portal_fkey FOREIGN KEY (portal_thread_id, portal_receiver)
         REFERENCES portal(thread_id, receiver) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE backfill_task (
+    portal_id       BIGINT NOT NULL,
+    portal_receiver BIGINT NOT NULL,
+    user_mxid       TEXT NOT NULL,
+
+    priority       INTEGER NOT NULL,
+    page_count     INTEGER NOT NULL,
+    finished       BOOLEAN NOT NULL,
+    dispatched_at  BIGINT  NOT NULL,
+    completed_at   BIGINT  NOT NULL,
+    cooldown_until BIGINT  NOT NULL,
+
+    PRIMARY KEY (portal_id, portal_receiver, user_mxid),
+    CONSTRAINT backfill_task_user_fkey FOREIGN KEY (user_mxid)
+        REFERENCES "user" (mxid) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT backfill_task_portal_fkey FOREIGN KEY (portal_id, portal_receiver)
+        REFERENCES portal (thread_id, receiver) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE message (

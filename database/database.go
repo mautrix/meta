@@ -29,21 +29,23 @@ import (
 type Database struct {
 	*dbutil.Database
 
-	User     *UserQuery
-	Portal   *PortalQuery
-	Puppet   *PuppetQuery
-	Message  *MessageQuery
-	Reaction *ReactionQuery
+	User         *UserQuery
+	Portal       *PortalQuery
+	Puppet       *PuppetQuery
+	Message      *MessageQuery
+	Reaction     *ReactionQuery
+	BackfillTask *BackfillTaskQuery
 }
 
 func New(db *dbutil.Database) *Database {
 	db.UpgradeTable = upgrades.Table
 	return &Database{
-		Database: db,
-		User:     &UserQuery{dbutil.MakeQueryHelper(db, newUser)},
-		Portal:   &PortalQuery{dbutil.MakeQueryHelper(db, newPortal)},
-		Puppet:   &PuppetQuery{dbutil.MakeQueryHelper(db, newPuppet)},
-		Message:  &MessageQuery{dbutil.MakeQueryHelper(db, newMessage)},
-		Reaction: &ReactionQuery{dbutil.MakeQueryHelper(db, newReaction)},
+		Database:     db,
+		User:         &UserQuery{dbutil.MakeQueryHelper(db, newUser)},
+		Portal:       &PortalQuery{dbutil.MakeQueryHelper(db, newPortal)},
+		Puppet:       &PuppetQuery{dbutil.MakeQueryHelper(db, newPuppet)},
+		Message:      &MessageQuery{dbutil.MakeQueryHelper(db, newMessage)},
+		Reaction:     &ReactionQuery{dbutil.MakeQueryHelper(db, newReaction)},
+		BackfillTask: &BackfillTaskQuery{dbutil.MakeQueryHelper(db, newBackfillTask)},
 	}
 }

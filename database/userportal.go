@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -30,17 +29,6 @@ const (
 	setIsInSpaceQuery = `
 		INSERT INTO user_portal (user_mxid, portal_thread_id, portal_receiver, in_space) VALUES ($1, $2, $3, true)
 		ON CONFLICT (user_mxid, portal_thread_id, portal_receiver) DO UPDATE SET in_space=true
-	`
-	putBackfillTask = `
-		INSERT INTO user_portal (user_mxid, portal_thread_id, portal_receiver, backfill_priority, backfill_max_pages, backfill_dispatched_at) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (user_mxid, portal_thread_id, portal_receiver) DO UPDATE
-			SET backfill_priority=excluded.backfill_priority, backfill_max_pages=excluded.backfill_max_pages, backfill_dispatched_at=excluded.backfill_dispatched_at
-	`
-	getNextBackfillTask = `
-		SELECT portal_thread_id, portal_receiver, backfill_priority, backfill_max_pages, backfill_dispatched_at
-		FROM user_portal
-		WHERE backfill_max_pages=-1 OR backfill_max_pages>0
-		ORDER BY backfill_priority DESC, backfill_dispatched_at LIMIT 1
 	`
 )
 
@@ -75,36 +63,6 @@ func (u *User) MarkInSpace(ctx context.Context, portal PortalKey) {
 	} else {
 		u.inSpaceCache[portal] = true
 	}
-}
-
-type BackfillTask struct {
-	Key          PortalKey
-	Priority     int
-	MaxPages     int
-	DispatchedAt time.Time
-}
-
-func (u *User) PutBackfillTask(ctx context.Context, task BackfillTask) {
-	err := u.qh.Exec(ctx, putBackfillTask, u.MXID, task.Key.ThreadID, task.Key.Receiver, task.Priority, task.MaxPages, task.DispatchedAt.UnixMilli())
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).
-			Str("user_id", u.MXID.String()).
-			Any("portal_key", task.Key).
-			Msg("Failed to save backfill task")
-	}
-}
-
-func (u *User) GetNextBackfillTask(ctx context.Context) (*BackfillTask, error) {
-	var task BackfillTask
-	var dispatchedAt int64
-	err := u.qh.GetDB().QueryRow(ctx, getNextBackfillTask).Scan(&task.Key.ThreadID, &task.Key.Receiver, &task.Priority, &task.MaxPages, &dispatchedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	} else if err != nil {
-		return nil, err
-	}
-	task.DispatchedAt = time.UnixMilli(dispatchedAt)
-	return &task, nil
 }
 
 func (u *User) RemoveInSpaceCache(key PortalKey) {

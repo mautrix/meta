@@ -15,6 +15,21 @@ ALTER TABLE portal ALTER COLUMN oldest_message_id DROP DEFAULT;
 ALTER TABLE portal ALTER COLUMN oldest_message_ts DROP DEFAULT;
 ALTER TABLE portal ALTER COLUMN more_to_backfill DROP DEFAULT;
 
-ALTER TABLE user_portal ADD COLUMN backfill_priority INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE user_portal ADD COLUMN backfill_max_pages INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE user_portal ADD COLUMN backfill_dispatched_at BIGINT NOT NULL DEFAULT 0;
+CREATE TABLE backfill_task (
+    portal_id       BIGINT NOT NULL,
+    portal_receiver BIGINT NOT NULL,
+    user_mxid       TEXT NOT NULL,
+
+    priority       INTEGER NOT NULL,
+    page_count     INTEGER NOT NULL,
+    finished       BOOLEAN NOT NULL,
+    dispatched_at  BIGINT  NOT NULL,
+    completed_at   BIGINT  NOT NULL,
+    cooldown_until BIGINT  NOT NULL,
+
+    PRIMARY KEY (portal_id, portal_receiver, user_mxid),
+    CONSTRAINT backfill_task_user_fkey FOREIGN KEY (user_mxid)
+        REFERENCES "user" (mxid) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT backfill_task_portal_fkey FOREIGN KEY (portal_id, portal_receiver)
+        REFERENCES portal (thread_id, receiver) ON UPDATE CASCADE ON DELETE CASCADE
+);
