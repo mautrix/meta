@@ -653,6 +653,7 @@ func (user *User) eventHandler(rawEvt any) {
 			stateEvt = status.StateBadCredentials
 		}
 		user.BridgeState.Send(status.BridgeState{StateEvent: stateEvt, Message: evt.Err.Error()})
+		user.StopBackfillLoop()
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
