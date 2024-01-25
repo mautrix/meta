@@ -393,8 +393,6 @@ func (user *User) Connect() {
 			Error:      "meta-connect-error",
 			Message:    err.Error(),
 		})
-	} else {
-		go user.BackfillLoop()
 	}
 }
 
@@ -411,8 +409,6 @@ func (user *User) Login(ctx context.Context, cookies cookies.Cookies) error {
 	if err != nil {
 		user.log.Err(err).Msg("Failed to update user")
 		return err
-	} else {
-		go user.BackfillLoop()
 	}
 	return nil
 }
@@ -646,6 +642,7 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		user.tryAutomaticDoublePuppeting()
 		user.handleTable(evt.Table)
+		go user.BackfillLoop()
 	case *messagix.Event_SocketError:
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: evt.Err.Error()})
 	case *messagix.Event_Reconnected:
