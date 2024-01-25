@@ -466,13 +466,14 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 	} else {
 		ctx = context.WithValue(ctx, msgconvContextKeyBackfill, backfillTypeHistorical)
 	}
+	sendReactionsInBatch := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
 	for _, msg := range messages {
 		intent := portal.bridge.GetPuppetByID(msg.SenderId).IntentFor(portal)
 		if intent == nil {
 			log.Warn().Int64("sender_id", msg.SenderId).Msg("Failed to get intent for sender")
 			continue
 		}
-		ctx = context.WithValue(ctx, msgconvContextKeyIntent, intent)
+		ctx := context.WithValue(ctx, msgconvContextKeyIntent, intent)
 		converted := portal.MsgConv.ToMatrix(ctx, msg)
 		if portal.bridge.Config.Bridge.CaptionInMessage {
 			converted.MergeCaption()
@@ -482,7 +483,6 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 			continue
 		}
 		var reactionsToSendSeparately []*table.LSUpsertReaction
-		sendReactionsInBatch := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
 		if !sendReactionsInBatch {
 			reactionsToSendSeparately = msg.Reactions
 		}
