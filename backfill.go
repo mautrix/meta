@@ -380,13 +380,23 @@ func (portal *Portal) handleMessageBatch(ctx context.Context, source *User, upse
 		}
 		return key
 	})
+	log := zerolog.Ctx(ctx)
+	upsert.Messages = slices.CompactFunc(upsert.Messages, func(a, b *table.WrappedMessage) bool {
+		if a.MessageId == b.MessageId {
+			log.Debug().
+				Str("message_id", a.MessageId).
+				Bool("attachment_counts_match", len(a.XMAAttachments) == len(b.XMAAttachments) && len(a.BlobAttachments) == len(b.BlobAttachments) && len(a.Stickers) == len(b.Stickers)).
+				Msg("Backfill batch contained duplicate message")
+			return true
+		}
+		return false
+	})
 	if lastMessage != nil {
 		// For catchup backfills, delete any messages that are older than the last bridged message.
 		upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
 			return message.TimestampMs <= lastMessage.Timestamp.UnixMilli()
 		})
 	}
-	log := zerolog.Ctx(ctx)
 	if portal.OldestMessageTS == 0 || portal.OldestMessageTS > upsert.Range.MinTimestampMs {
 		portal.OldestMessageTS = upsert.Range.MinTimestampMs
 		portal.OldestMessageID = upsert.Range.MinMessageId
