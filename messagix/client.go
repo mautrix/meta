@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -37,7 +38,7 @@ const SecCHMobile = "?0"
 const SecCHModel = ""
 const SecCHPrefersColorScheme = "light"
 
-var ErrRedirectAttempted = errors.New("redirect attempted")
+var ErrTokenInvalidated = errors.New("access token is no longer valid")
 
 type EventHandler func(evt interface{})
 type Client struct {
@@ -64,11 +65,28 @@ type Client struct {
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
 }
 
-// pass an empty zerolog.Logger{} for no logging
 func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.Logger, proxy string) (*Client, error) {
 	cli := &Client{
 		http: &http.Client{
-			Transport: &http.Transport{},
+			Transport: &http.Transport{
+				DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+				TLSHandshakeTimeout:   5 * time.Second,
+				ResponseHeaderTimeout: 10 * time.Second,
+				ForceAttemptHTTP2:     true,
+			},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if req.Response == nil {
+					return nil
+				}
+				respCookies := req.Response.Cookies()
+				for _, cookie := range respCookies {
+					if (cookie.Name == "xs" || cookie.Name == "sessionid") && cookie.MaxAge < 0 {
+						return fmt.Errorf("%w: %s cookie was deleted", ErrTokenInvalidated, cookie.Name)
+					}
+				}
+				return nil
+			},
+			Timeout: 60 * time.Second,
 		},
 		cookies:         cookies,
 		Logger:          logger,
@@ -307,16 +325,6 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		}
 	}
 	return nil
-}
-
-func (c *Client) enableRedirects() {
-	c.http.CheckRedirect = nil
-}
-
-func (c *Client) disableRedirects() {
-	c.http.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return ErrRedirectAttempted
-	}
 }
 
 func (c *Client) getEndpoint(name string) string {

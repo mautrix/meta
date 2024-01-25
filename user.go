@@ -390,8 +390,13 @@ func (user *User) Connect() {
 	user.Client, err = user.unlockedConnectWithCookies(user.Cookies)
 	if err != nil {
 		user.log.Error().Err(err).Msg("Failed to connect")
+		stateEvt := status.StateUnknownError
+		if errors.Is(err, messagix.ErrTokenInvalidated) {
+			stateEvt = status.StateBadCredentials
+			// TODO clear cookies?
+		}
 		user.BridgeState.Send(status.BridgeState{
-			StateEvent: status.StateUnknownError,
+			StateEvent: stateEvt,
 			Error:      "meta-connect-error",
 			Message:    err.Error(),
 		})

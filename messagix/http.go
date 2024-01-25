@@ -2,7 +2,6 @@ package messagix
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -88,13 +87,6 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 	newRequest.Header = headers
 
 	response, err := c.http.Do(newRequest)
-	if errors.Is(err, ErrRedirectAttempted) {
-		/*
-			can't read body on redirect
-			https://github.com/golang/go/issues/10069
-		*/
-		return response, nil, nil
-	}
 	defer func() {
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
