@@ -164,17 +164,17 @@ type LSDeleteThenInsertBotProfileInfoCategoryV2 struct {
 }
 
 type LSDeleteThenInsertBotProfileInfoV2 struct {
-	BotID        int64  `index:"0" json:",omitempty"`
-	UnknownBool1 bool   `index:"1" json:",omitempty"`
-	UnknownInt2  int64  `index:"2" json:",omitempty"`
-	Title        string `index:"3" json:",omitempty"`
-	Description  string `index:"4" json:",omitempty"`
+	BotID             int64  `index:"0" json:",omitempty"`
+	IsCreatedByViewer bool   `index:"1" json:",omitempty"`
+	TintColor         int64  `index:"2" json:",omitempty"`
+	ShortDescription  string `index:"3" json:",omitempty"`
+	Description       string `index:"4" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSHandleSyncFailure struct {
-	UnknownInt0  int64  `index:"0" json:",omitempty"`
+	DatabaseID   int64  `index:"0" json:",omitempty"`
 	ErrorMessage string `index:"1" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`

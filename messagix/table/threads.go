@@ -89,7 +89,7 @@ type LSDeleteThenInsertThread struct {
 	IsCustomThreadPicture                 bool       `index:"52" json:",omitempty"`
 	OtidOfFirstMessage                    int64      `index:"53" json:",omitempty"`
 	NormalizedSearchTerms                 string     `index:"54" json:",omitempty"`
-	AdditionalThreadContext               int64      `index:"55" json:",omitempty"`
+	AdditionalThreadContext               string     `index:"55" json:",omitempty"`
 	DisappearingThreadKey                 int64      `index:"56" json:",omitempty"`
 	IsDisappearingMode                    bool       `index:"57" json:",omitempty"`
 	DisappearingModeInitiator             int64      `index:"58" json:",omitempty"`
@@ -398,12 +398,12 @@ func (utn *LSSyncUpdateThreadName) GetThreadKey() int64 {
 }
 
 type LSSetThreadImageURL struct {
-	ThreadKey            int64  `index:"0" json:",omitempty"`
-	ImageURL             string `index:"1" json:",omitempty"`
-	ImageFallbackURL     string `index:"2" json:",omitempty"`
-	ImageURLExpiryTimeMS int64  `index:"3" json:",omitempty"`
-	UnknownBool4         bool   `index:"4" json:",omitempty"`
-	UnknownBool5         bool   `index:"5" json:",omitempty"`
+	ThreadKey                int64  `index:"0" json:",omitempty"`
+	ImageURL                 string `index:"1" json:",omitempty"`
+	ImageFallbackURL         string `index:"2" json:",omitempty"`
+	ImageURLExpiryTimeMS     int64  `index:"3" json:",omitempty"`
+	IsCustomThreadPicture    bool   `index:"4" json:",omitempty"`
+	ShouldRoundThreadPicture bool   `index:"5" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -507,7 +507,7 @@ type LSUpdateOrInsertThread struct {
 	IsCustomThreadPicture                  bool       `index:"55" json:",omitempty"`
 	OtidOfFirstMessage                     int64      `index:"56" json:",omitempty"`
 	NormalizedSearchTerms                  string     `index:"57" json:",omitempty"`
-	AdditionalThreadContext                int64      `index:"58" json:",omitempty"`
+	AdditionalThreadContext                string     `index:"58" json:",omitempty"`
 	DisappearingThreadKey                  int64      `index:"59" json:",omitempty"`
 	IsDisappearingMode                     bool       `index:"60" json:",omitempty"`
 	DisappearingModeInitiator              int64      `index:"61" json:",omitempty"`

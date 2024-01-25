@@ -453,6 +453,9 @@ func (br *MetaBridge) StartUsers() {
 func (user *User) handleTable(tbl *table.LSTable) {
 	log := user.log.With().Str("action", "handle table").Logger()
 	ctx := log.WithContext(context.TODO())
+	for _, contact := range tbl.LSDeleteThenInsertContact {
+		user.bridge.GetPuppetByID(contact.Id).UpdateInfo(ctx, contact)
+	}
 	for _, contact := range tbl.LSVerifyContactRowExists {
 		user.bridge.GetPuppetByID(contact.ContactId).UpdateInfo(ctx, contact)
 	}
