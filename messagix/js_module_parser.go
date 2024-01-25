@@ -68,11 +68,7 @@ func (m *ModuleParser) fetchPageData(page string) ([]byte, error) { // just log.
 	headers.Set("sec-fetch-user", "?1")
 	headers.Set("upgrade-insecure-requests", "1")
 	_, responseBody, err := m.client.MakeRequest(page, "GET", headers, nil, types.NONE)
-	if err != nil {
-		return nil, fmt.Errorf("messagix-moduleparser: failed to fetch page data for page %s (%v)", page, err)
-	}
-
-	return responseBody, nil
+	return responseBody, err
 }
 
 func (m *ModuleParser) Load(page string) error {
@@ -83,7 +79,7 @@ func (m *ModuleParser) Load(page string) error {
 
 	doc, err := html.Parse(bytes.NewReader(htmlData))
 	if err != nil {
-		return fmt.Errorf("messagix-moduleparser: failed to parse doc string (%v)", err)
+		return fmt.Errorf("messagix-moduleparser: failed to parse doc string (%w)", err)
 	}
 
 	scriptTags := m.findScriptTags(doc)
