@@ -280,7 +280,12 @@ func (pb *Event_PublishResponse) Finish() ResponseData {
 	var lsData *lightspeed.LightSpeedData
 	err := json.Unmarshal([]byte(pb.Data.Payload), &lsData)
 	if err != nil {
-		logEvt := badGlobalLog.Err(err).Int("payload_length", len(pb.Data.Payload))
+		logEvt := badGlobalLog.Err(err).
+			Int("payload_length", len(pb.Data.Payload)).
+			Str("topic", pb.Topic).
+			Int64("request_id", pb.Data.RequestID).
+			Strs("sp", pb.Data.Sp).
+			Int("target", pb.Data.Target)
 		if len(pb.Data.Payload) < 8192 {
 			logEvt.Str("payload", pb.Data.Payload)
 		}
