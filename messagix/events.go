@@ -199,23 +199,18 @@ type Event_Ready struct {
 	ConnectionCode ConnectionCode
 	CurrentUser    types.UserInfo `skip:"1"`
 	Table          *table.LSTable
-	//Threads []table.LSDeleteThenInsertThread `skip:"1"`
-	//Messages []table.LSUpsertMessage `skip:"1"`
-	//Contacts []table.LSVerifyContactRowExists `skip:"1"`
 }
 
 func (pb *Event_Ready) SetIdentifier(identifier uint16) {}
 
 func (e *Event_Ready) Finish() ResponseData {
+	// TODO this should not be in the ready event
 	if e.client.platform == types.Facebook {
 		e.CurrentUser = &e.client.configs.browserConfigTable.CurrentUserInitialData
 	} else {
 		e.CurrentUser = &e.client.configs.browserConfigTable.PolarisViewer
 	}
 	e.Table = e.client.configs.accountConfigTable
-	//e.Threads = e.client.configs.accountConfigTable.LSDeleteThenInsertThread
-	//e.Messages = e.client.configs.accountConfigTable.LSUpsertMessage
-	//e.Contacts = e.client.configs.accountConfigTable.LSVerifyContactRowExists
 	return e
 }
 
