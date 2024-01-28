@@ -280,7 +280,11 @@ func (pb *Event_PublishResponse) Finish() ResponseData {
 	var lsData *lightspeed.LightSpeedData
 	err := json.Unmarshal([]byte(pb.Data.Payload), &lsData)
 	if err != nil {
-		badGlobalLog.Err(err).Msg("failed to unmarshal PublishResponseData JSON payload into lightspeed.LightSpeedData struct")
+		logEvt := badGlobalLog.Err(err).Int("payload_length", len(pb.Data.Payload))
+		if len(pb.Data.Payload) < 8192 {
+			logEvt.Str("payload", pb.Data.Payload)
+		}
+		logEvt.Msg("failed to unmarshal PublishResponseData JSON payload into lightspeed.LightSpeedData struct")
 		return pb
 	}
 
