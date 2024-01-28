@@ -279,6 +279,7 @@ func (pb *Event_PublishResponse) Finish() ResponseData {
 			Int("payload_length", len(pb.Data.Payload)).
 			Str("topic", pb.Topic).
 			Int64("request_id", pb.Data.RequestID).
+			Uint16("mqtt_message_id", pb.MessageIdentifier).
 			Strs("sp", pb.Data.Sp).
 			Int("target", pb.Data.Target)
 		if len(pb.Data.Payload) < 8192 {

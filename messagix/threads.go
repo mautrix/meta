@@ -27,6 +27,8 @@ func (c *Client) ExecuteTasks(tasks ...socket.Task) (*table.LSTable, error) {
 	resp := c.socket.responseHandler.waitForPubResponseDetails(packetId)
 	if resp == nil {
 		return nil, fmt.Errorf("failed to receive response from socket after sending SendMessageTask. packetId: %d", packetId)
+	} else if resp.Topic == "" {
+		return nil, fmt.Errorf("request timed out")
 	}
 	resp.Finish()
 

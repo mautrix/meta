@@ -70,6 +70,7 @@ func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelTyp
 		return response
 	case <-time.After(packetTimeout):
 		p.deleteDetails(packetId, channelType)
+		// TODO this is completely wrong, it should be a proper error
 		return &Event_PublishResponse{}
 	}
 }

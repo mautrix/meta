@@ -125,7 +125,7 @@ func (s *Socket) BuildBrokerUrl() string {
 }
 
 const pongTimeout = 30 * time.Second
-const packetTimeout = 10 * time.Second
+const packetTimeout = 30 * time.Second
 const pingInterval = 10 * time.Second
 
 func ptr[T any](val T) *T {
@@ -323,6 +323,7 @@ func (s *Socket) sendPublishPacket(topic Topic, jsonData string, packet *packets
 	}
 
 	s.responseHandler.addPacketChannel(packetId)
+	// TODO this should probably wait for the puback packet
 	return packetId, s.sendData(publishRequestPayload)
 }
 
