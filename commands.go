@@ -140,12 +140,16 @@ var cmdDeleteSession = &commands.FullHandler{
 }
 
 func fnDeleteSession(ce *WrappedCommandEvent) {
-	if !ce.User.IsLoggedIn() {
-		ce.Reply("You're not logged in")
-		return
-	}
+	wasLoggedIn := ce.User.IsLoggedIn()
+	hadCookies := ce.User.Cookies != nil || ce.User.MetaID != 0
 	ce.User.DeleteSession()
-	ce.Reply("Disconnected and deleted session")
+	if wasLoggedIn {
+		ce.Reply("Disconnected and deleted session")
+	} else if hadCookies {
+		ce.Reply("Wasn't connected, but deleted session")
+	} else {
+		ce.Reply("You weren't logged in, but deleted session anyway")
+	}
 }
 
 var cmdPing = &commands.FullHandler{

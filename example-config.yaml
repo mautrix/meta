@@ -118,6 +118,9 @@ bridge:
     message_status_events: false
     # Whether the bridge should send error notices via m.notice events when a message fails to bridge.
     message_error_notices: true
+    # Should the bridge never send alerts to the bridge management room?
+    # These are mostly things like the user being logged out.
+    disable_bridge_alerts: false
     # Should the bridge update the m.direct account data event when double puppeting is enabled.
     # Note that updating the m.direct event is not atomic and is therefore prone to race conditions.
     sync_direct_chat_list: false

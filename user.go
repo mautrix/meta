@@ -34,6 +34,7 @@ import (
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/database"
@@ -173,6 +174,7 @@ type User struct {
 
 	spaceMembershipChecked bool
 	spaceCreateLock        sync.Mutex
+	mgmtCreateLock         sync.Mutex
 
 	stopBackfillTask atomic.Pointer[context.CancelFunc]
 
@@ -289,6 +291,43 @@ func (user *User) ensureInvited(ctx context.Context, intent *appservice.IntentAP
 	return
 }
 
+func (user *User) sendMarkdownBridgeAlert(ctx context.Context, formatString string, args ...interface{}) {
+	if user.bridge.Config.Bridge.DisableBridgeAlerts {
+		return
+	}
+	notice := fmt.Sprintf(formatString, args...)
+	content := format.RenderMarkdown(notice, true, false)
+	_, err := user.bridge.Bot.SendMessageEvent(ctx, user.GetManagementRoom(ctx), event.EventMessage, content)
+	if err != nil {
+		user.log.Err(err).Str("notice_text", notice).Msg("Failed to send bridge alert")
+	}
+}
+
+func (user *User) GetManagementRoom(ctx context.Context) id.RoomID {
+	if len(user.ManagementRoom) == 0 {
+		user.mgmtCreateLock.Lock()
+		defer user.mgmtCreateLock.Unlock()
+		if len(user.ManagementRoom) > 0 {
+			return user.ManagementRoom
+		}
+		creationContent := make(map[string]interface{})
+		if !user.bridge.Config.Bridge.FederateRooms {
+			creationContent["m.federate"] = false
+		}
+		resp, err := user.bridge.Bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{
+			Topic:           user.bridge.ProtocolName + " bridge notices",
+			IsDirect:        true,
+			CreationContent: creationContent,
+		})
+		if err != nil {
+			user.log.Err(err).Msg("Failed to auto-create management room")
+		} else {
+			user.SetManagementRoom(resp.RoomID)
+		}
+	}
+	return user.ManagementRoom
+}
+
 func (user *User) GetSpaceRoom(ctx context.Context) id.RoomID {
 	if !user.bridge.Config.Bridge.PersonalFilteringSpaces {
 		return ""
@@ -400,6 +439,7 @@ func (user *User) Connect() {
 			Error:      "meta-connect-error",
 			Message:    err.Error(),
 		})
+		go user.sendMarkdownBridgeAlert(context.TODO(), "Failed to connect to %s: %v", user.bridge.ProtocolName, err)
 	}
 }
 
@@ -706,6 +746,7 @@ func (user *User) eventHandler(rawEvt any) {
 			stateEvt = status.StateBadCredentials
 		}
 		user.BridgeState.Send(status.BridgeState{StateEvent: stateEvt, Message: evt.Err.Error()})
+		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
 		user.StopBackfillLoop()
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")

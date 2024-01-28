@@ -40,6 +40,7 @@ type BridgeConfig struct {
 	DeliveryReceipts        bool `yaml:"delivery_receipts"`
 	MessageStatusEvents     bool `yaml:"message_status_events"`
 	MessageErrorNotices     bool `yaml:"message_error_notices"`
+	DisableBridgeAlerts     bool `yaml:"disable_bridge_alerts"`
 	SyncDirectChatList      bool `yaml:"sync_direct_chat_list"`
 	ResendBridgeInfo        bool `yaml:"resend_bridge_info"`
 	CaptionInMessage        bool `yaml:"caption_in_message"`
