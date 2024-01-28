@@ -2,6 +2,7 @@ package byter
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -96,11 +97,15 @@ func (b *byter) ReadToStruct(s interface{}) error {
 			}
 		default:
 			// TODO figure out why this happens when reconnecting
-			badGlobalLog.Warn().
+			logEvt := badGlobalLog.Warn().
 				Str("field_type", field.Type().Name()).
 				Str("field_name", values.Type().Field(i).Name).
 				Str("struct_name", values.Type().Name()).
-				Msg("Byter.ReadToStruct: unsupported type")
+				Int("buff_len", b.Buff.Len())
+			if b.Buff.Len() < 1024 {
+				logEvt.Str("buff", base64.StdEncoding.EncodeToString(b.Buff.Next(b.Buff.Len())))
+			}
+			logEvt.Msg("Byter.ReadToStruct: unsupported type")
 			//return fmt.Errorf("unsupported type %s for field %s of %s", field.Type(), values.Type().Field(i).Name, values.Type().Name())
 		}
 	}
