@@ -59,11 +59,12 @@ type BridgeConfig struct {
 	CommandPrefix string `yaml:"command_prefix"`
 
 	Backfill struct {
-		Enabled           bool `yaml:"enabled"`
-		InboxFetchPages   int  `yaml:"inbox_fetch_pages"`
-		HistoryFetchPages int  `yaml:"history_fetch_pages"`
-		CatchupFetchPages int  `yaml:"catchup_fetch_pages"`
-		Queue             struct {
+		Enabled              bool `yaml:"enabled"`
+		InboxFetchPages      int  `yaml:"inbox_fetch_pages"`
+		HistoryFetchPages    int  `yaml:"history_fetch_pages"`
+		CatchupFetchPages    int  `yaml:"catchup_fetch_pages"`
+		UnreadHoursThreshold int  `yaml:"unread_hours_threshold"`
+		Queue                struct {
 			PagesAtOnce       int           `yaml:"pages_at_once"`
 			MaxPages          int           `yaml:"max_pages"`
 			SleepBetweenTasks time.Duration `yaml:"sleep_between_tasks"`

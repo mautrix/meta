@@ -164,6 +164,9 @@ bridge:
         history_fetch_pages: 0
         # Same as above, but for catchup backfills (i.e. when the bridge is restarted).
         catchup_fetch_pages: 5
+        # Maximum age of chats to leave as unread when backfilling. 0 means all chats can be left as unread.
+        # If non-zero, chats that are older than this will be marked as read, even if they're still unread on Meta.
+        unread_hours_threshold: 0
         # Backfill queue settings. Only relevant for Beeper, because standard Matrix servers
         # don't support inserting messages into room history.
         queue:

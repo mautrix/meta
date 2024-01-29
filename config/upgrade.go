@@ -101,6 +101,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Int, "bridge", "backfill", "inbox_fetch_pages")
 	helper.Copy(up.Int, "bridge", "backfill", "history_fetch_pages")
 	helper.Copy(up.Int, "bridge", "backfill", "catchup_fetch_pages")
+	helper.Copy(up.Int, "bridge", "backfill", "unread_hours_threshold")
 	helper.Copy(up.Int, "bridge", "backfill", "queue", "pages_at_once")
 	helper.Copy(up.Int, "bridge", "backfill", "queue", "max_pages")
 	helper.Copy(up.Str, "bridge", "backfill", "queue", "sleep_between_tasks")

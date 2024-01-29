@@ -546,6 +546,9 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 			}
 		}
 	}
+	if unreadHoursThreshold := portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold; unreadHoursThreshold > 0 && !markRead && len(messages) > 0 {
+		markRead = messages[len(messages)-1].TimestampMs < time.Now().Add(-time.Duration(unreadHoursThreshold)*time.Hour).UnixMilli()
+	}
 	if portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending) {
 		log.Info().Int("event_count", len(events)).Msg("Sending events to Matrix using Beeper batch sending")
 		portal.sendBackfillBeeper(ctx, source, events, metas, markRead, forward)
@@ -583,7 +586,7 @@ func (portal *Portal) sendBackfillLegacy(ctx context.Context, source *User, even
 
 func (portal *Portal) sendBackfillBeeper(ctx context.Context, source *User, events []*event.Event, metas []*BackfillPartMetadata, markRead, forward bool) {
 	var markReadBy id.UserID
-	if markRead {
+	if markRead && forward {
 		markReadBy = source.MXID
 	}
 	resp, err := portal.MainIntent().BeeperBatchSend(ctx, portal.MXID, &mautrix.ReqBeeperBatchSend{
