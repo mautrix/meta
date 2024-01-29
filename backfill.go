@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"math/rand"
 	"slices"
 	"strconv"
 	"sync"
@@ -137,14 +138,16 @@ func (user *User) BackfillLoop() {
 	}
 	ctx = log.WithContext(ctx)
 	var extraTime time.Duration
+	sleepBetweenTasks := user.bridge.Config.Bridge.Backfill.Queue.SleepBetweenTasks
+	initialSleep := time.Duration(rand.Int63n(sleepBetweenTasks.Nanoseconds())) + (sleepBetweenTasks / 2)
+	log.Debug().Stringer("sleep_duration", initialSleep).Msg("Starting backfill loop after initial delay")
+	select {
+	case <-time.After(initialSleep):
+	case <-ctx.Done():
+		return
+	}
 	log.Debug().Msg("Backfill loop started")
 	for {
-		select {
-		case <-time.After(user.bridge.Config.Bridge.Backfill.Queue.SleepBetweenTasks + extraTime):
-		case <-ctx.Done():
-			return
-		}
-
 		task, err := user.bridge.DB.BackfillTask.GetNext(ctx, user.MXID)
 		if err != nil {
 			log.Err(err).Msg("Failed to get next backfill task")
@@ -154,7 +157,9 @@ func (user *User) BackfillLoop() {
 		} else if extraTime < 1*time.Minute {
 			extraTime += 5 * time.Second
 		}
-		if ctx.Err() != nil {
+		select {
+		case <-time.After(sleepBetweenTasks + extraTime):
+		case <-ctx.Done():
 			return
 		}
 	}
