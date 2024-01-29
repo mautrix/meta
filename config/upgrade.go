@@ -70,6 +70,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "metrics", "listen")
 
 	helper.Copy(up.Str, "meta", "mode")
+	helper.Copy(up.Str|up.Null, "meta", "proxy")
 
 	if usernameTemplate, ok := helper.Get(up.Str, "bridge", "username_template"); ok && strings.Contains(usernameTemplate, "{userid}") {
 		helper.Set(up.Str, strings.ReplaceAll(usernameTemplate, "{userid}", "{{.}}"), "bridge", "username_template")

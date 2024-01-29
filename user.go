@@ -467,7 +467,8 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) (*messagix
 
 	user.log.Debug().Msg("Connecting to Meta")
 	log := user.log.With().Str("component", "messagix").Logger()
-	cli, err := messagix.NewClient(MessagixPlatform, cookies, log, "")
+	// TODO set proxy for media client
+	cli, err := messagix.NewClient(MessagixPlatform, cookies, log, user.bridge.Config.Meta.Proxy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare client: %w", err)
 	}

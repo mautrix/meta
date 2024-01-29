@@ -51,7 +51,8 @@ type Config struct {
 	} `yaml:"metrics"`
 
 	Meta struct {
-		Mode BridgeMode `yaml:"mode"`
+		Mode  BridgeMode `yaml:"mode"`
+		Proxy string     `yaml:"proxy"`
 	} `yaml:"meta"`
 
 	Bridge BridgeConfig `yaml:"bridge"`

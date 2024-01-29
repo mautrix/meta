@@ -93,6 +93,8 @@ meta:
     #
     # Remember to change the appservice id, bot profile info, bridge username_template and management_room_text too.
     mode: instagram
+    # Proxy address for connecting to Meta. If empty, no proxy will be used.
+    proxy:
 
 # Bridge config
 bridge:

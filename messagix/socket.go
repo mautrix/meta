@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/methods"
@@ -88,9 +89,16 @@ func (s *Socket) Connect() error {
 	headers := s.getConnHeaders()
 	brokerUrl := s.BuildBrokerUrl()
 
-	dialer := websocket.Dialer{}
-	if s.client.proxy != nil {
-		dialer.Proxy = s.client.proxy
+	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
+	if s.client.httpProxy != nil {
+		dialer.Proxy = s.client.httpProxy
+	} else if s.client.socksProxy != nil {
+		dialer.NetDial = s.client.socksProxy.Dial
+
+		contextDialer, ok := s.client.socksProxy.(proxy.ContextDialer)
+		if ok {
+			dialer.NetDialContext = contextDialer.DialContext
+		}
 	}
 
 	s.client.Logger.Debug().Str("broker", brokerUrl).Msg("Dialing socket")

@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
+	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/crypto"
@@ -52,8 +53,9 @@ type Client struct {
 	configs      *Configs
 	SyncManager  *SyncManager
 
-	cookies cookies.Cookies
-	proxy   func(*http.Request) (*url.URL, error)
+	cookies    cookies.Cookies
+	httpProxy  func(*http.Request) (*url.URL, error)
+	socksProxy proxy.Dialer
 
 	lsRequests      int
 	graphQLRequests int
@@ -181,16 +183,31 @@ func (c *Client) configurePlatformClient() {
 	}
 }
 
-func (c *Client) SetProxy(proxy string) error {
-	proxyParsed, err := url.Parse(proxy)
+func (c *Client) SetProxy(proxyAddr string) error {
+	proxyParsed, err := url.Parse(proxyAddr)
 	if err != nil {
 		return err
 	}
 
-	c.http.Transport = &http.Transport{
-		Proxy: http.ProxyURL(proxyParsed),
+	if proxyParsed.Scheme == "http" || proxyParsed.Scheme == "https" {
+		c.httpProxy = http.ProxyURL(proxyParsed)
+		c.http.Transport.(*http.Transport).Proxy = c.httpProxy
+	} else if proxyParsed.Scheme == "socks5" {
+		c.socksProxy, err = proxy.FromURL(proxyParsed, &net.Dialer{Timeout: 20 * time.Second})
+		if err != nil {
+			return err
+		}
+		c.http.Transport.(*http.Transport).Dial = c.socksProxy.Dial
+		contextDialer, ok := c.socksProxy.(proxy.ContextDialer)
+		if ok {
+			c.http.Transport.(*http.Transport).DialContext = contextDialer.DialContext
+		}
 	}
-	c.Logger.Debug().Any("addr", proxyParsed.Host).Msg("Proxy Updated")
+
+	c.Logger.Debug().
+		Str("scheme", proxyParsed.Scheme).
+		Str("host", proxyParsed.Host).
+		Msg("Using proxy")
 	return nil
 }
 
