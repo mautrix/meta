@@ -313,9 +313,35 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 	return minimalConverted
 }
 
+var instagramProfileURLRegex = regexp.MustCompile(`^https://www.instagram.com/([a-z0-9._]{1,30})$`)
+
+func (mc *MessageConverter) xmaProfileShareToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
+	if att.CTA == nil || att.HeaderSubtitleText == "" || att.HeaderImageUrl == "" || att.PlayableUrl != "" {
+		return nil
+	}
+	match := instagramProfileURLRegex.FindStringSubmatch(att.CTA.NativeUrl)
+	if len(match) != 2 || match[1] != att.HeaderTitle {
+		return nil
+	}
+	return &ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType:       event.MsgText,
+			Format:        event.FormatHTML,
+			Body:          fmt.Sprintf("Shared %s's profile: %s", att.HeaderSubtitleText, att.CTA.NativeUrl),
+			FormattedBody: fmt.Sprintf(`Shared %s's profile: <a href="%s">@%s</a>`, att.HeaderSubtitleText, att.CTA.NativeUrl, match[1]),
+		},
+		Extra: map[string]any{
+			"external_url": att.CTA.NativeUrl,
+		},
+	}
+}
+
 func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
 	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
 		return mc.xmaLocationToMatrix(ctx, att)
+	} else if profileShare := mc.xmaProfileShareToMatrix(ctx, att); profileShare != nil {
+		return profileShare
 	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType

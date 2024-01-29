@@ -41,7 +41,7 @@
       * [x] Locations
       * [ ] Live location sharing
       * [x] Story/reel/clip shares
-      * [ ] Profile shares
+      * [x] Profile shares
       * [ ] Product shares
     * [ ] Formatting (Messenger only)
     * [x] Replies
