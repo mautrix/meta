@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -43,8 +44,12 @@ var mediaHTTPClient = http.Client{
 	Timeout: 60 * time.Second,
 }
 var MediaReferer string
+var BypassOnionForMedia bool
 
 func DownloadMedia(ctx context.Context, url string) ([]byte, error) {
+	if BypassOnionForMedia {
+		url = strings.ReplaceAll(url, "facebookcooa4ldbat4g7iacswl3p2zrf5nuylvnhxn6kqolvojixwid.onion", "fbcdn.net")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare request: %w", err)

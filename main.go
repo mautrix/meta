@@ -118,7 +118,11 @@ func (br *MetaBridge) Init() {
 			msgconv.MediaReferer = "https://www.messenger.com/"
 			MessagixPlatform = types.Messenger
 		case config.ModeFacebookTor:
-			msgconv.MediaReferer = "https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion/"
+			//msgconv.MediaReferer = "https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion/"
+			// Media is currently not proxied for efficiency
+			// TODO make it configurable (requires passing the proxy to mediaHTTPClient)
+			msgconv.BypassOnionForMedia = true
+			msgconv.MediaReferer = "https://www.facebook.com/"
 			MessagixPlatform = types.FacebookTor
 		}
 		br.ProtocolName = "Facebook Messenger"

@@ -88,6 +88,7 @@ meta:
     # Which service is this bridge for? Available options:
     # * facebook - connect to FB Messenger via facebook.com
     # * facebook-tor - connect to FB Messenger via facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion
+    #                  (note: does not currently proxy media downloads)
     # * messenger - connect to FB Messenger via messenger.com (can be used with the facebook side deactivated)
     # * instagram - connect to Instagram DMs via instagram.com
     #
