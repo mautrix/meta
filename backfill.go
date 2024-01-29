@@ -548,6 +548,11 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 	}
 	if unreadHoursThreshold := portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold; unreadHoursThreshold > 0 && !markRead && len(messages) > 0 {
 		markRead = messages[len(messages)-1].TimestampMs < time.Now().Add(-time.Duration(unreadHoursThreshold)*time.Hour).UnixMilli()
+		if markRead {
+			log.Debug().
+				Int64("newest_timestamp_ms", messages[len(messages)-1].TimestampMs).
+				Msg("Marking chat as read in backfill as it's older than the unread hours threshold")
+		}
 	}
 	if portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending) {
 		log.Info().Int("event_count", len(events)).Msg("Sending events to Matrix using Beeper batch sending")
