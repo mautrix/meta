@@ -72,7 +72,7 @@ type ConvertedMessagePart struct {
 
 func isProbablyURLPreview(xma *table.WrappedXMA) bool {
 	return xma.CTA != nil && xma.CTA.Type_ == "xma_web_url" && xma.CTA.TargetId == 0 && xma.CTA.NativeUrl == "" &&
-		strings.HasPrefix(xma.CTA.ActionUrl, "https://l.facebook.com")
+		(strings.HasPrefix(xma.CTA.ActionUrl, "https://l.facebook.com") || strings.HasPrefix(xma.CTA.ActionUrl, "https://l.messenger.com"))
 }
 
 func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMessage) *ConvertedMessage {

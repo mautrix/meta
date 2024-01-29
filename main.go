@@ -90,10 +90,7 @@ func (br *MetaBridge) GetConfigPtr() interface{} {
 }
 
 func (br *MetaBridge) ValidateConfig() error {
-	switch br.Config.Meta.Mode {
-	case config.ModeInstagram, config.ModeFacebook:
-		// ok
-	default:
+	if !br.Config.Meta.Mode.IsValid() {
 		return fmt.Errorf("invalid meta bridge mode %q", br.Config.Meta.Mode)
 	}
 	return nil
@@ -112,13 +109,22 @@ func (br *MetaBridge) Init() {
 		database.NewCookies = func() cookies.Cookies {
 			return &cookies.InstagramCookies{}
 		}
-	case config.ModeFacebook:
-		msgconv.MediaReferer = "https://www.facebook.com/"
+	case config.ModeFacebook, config.ModeMessenger, config.ModeFacebookTor:
+		switch br.Config.Meta.Mode {
+		case config.ModeFacebook:
+			msgconv.MediaReferer = "https://www.facebook.com/"
+			MessagixPlatform = types.Facebook
+		case config.ModeMessenger:
+			msgconv.MediaReferer = "https://www.messenger.com/"
+			MessagixPlatform = types.Messenger
+		case config.ModeFacebookTor:
+			msgconv.MediaReferer = "https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion/"
+			MessagixPlatform = types.FacebookTor
+		}
 		br.ProtocolName = "Facebook Messenger"
 		br.BeeperServiceName = "facebookgo"
 		br.BeeperNetworkName = "facebook"
 		defaultCommandPrefix = "!fb"
-		MessagixPlatform = types.Facebook
 		database.NewCookies = func() cookies.Cookies {
 			return &cookies.FacebookCookies{}
 		}

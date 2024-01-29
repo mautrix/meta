@@ -31,7 +31,6 @@ import (
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/id"
 
-	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
@@ -312,7 +311,7 @@ func fnSearch(ce *WrappedCommandEvent) {
 		SurfaceType: 15,
 		Secondary:   false,
 	}
-	if ce.Bridge.Config.Meta.Mode == config.ModeFacebook {
+	if ce.Bridge.Config.Meta.Mode.IsMessenger() {
 		task.SupportedTypes = append(task.SupportedTypes, table.SearchTypeCommunityMessagingThread)
 	}
 	taskCopy := *task

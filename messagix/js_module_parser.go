@@ -167,7 +167,7 @@ func (m *ModuleParser) Load(page string) error {
 
 	formTags := m.findFormTags(doc)
 	m.FormTags = formTags
-	if !authenticated && m.client.platform == types.Facebook {
+	if !authenticated && m.client.platform.IsMessenger() {
 		loginNode := m.findNodeByID(doc, "loginform")
 		loginInputs := m.findInputTags(loginNode)
 		m.LoginInputs = loginInputs

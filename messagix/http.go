@@ -118,7 +118,7 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 	headers.Set("sec-ch-ua-model", SecCHModel)
 	headers.Set("sec-ch-ua-platform-version", SecCHPlatformVersion)
 
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		c.addFacebookHeaders(&headers)
 	} else {
 		c.addInstagramHeaders(&headers)
@@ -195,7 +195,7 @@ func (c *Client) sendLoginRequest(form url.Values, loginUrl string) (*http.Respo
 
 func (c *Client) buildLoginHeaders() http.Header {
 	h := c.buildHeaders(true)
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		h = c.addLoginFacebookHeaders(h)
 	} else {
 		h = c.addLoginInstagramHeaders(h)

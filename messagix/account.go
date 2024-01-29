@@ -13,7 +13,7 @@ func (c *Client) processLogin(resp *http.Response, respBody []byte) error {
 	statusCode := resp.StatusCode
 	var err error
 	switch c.platform {
-	case types.Facebook:
+	case types.Facebook, types.Messenger, types.FacebookTor:
 		if hasUserCookie := c.findCookie(resp.Cookies(), "c_user"); hasUserCookie == nil {
 			err = fmt.Errorf("failed to login to facebook")
 		}

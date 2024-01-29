@@ -24,9 +24,23 @@ import (
 type BridgeMode string
 
 const (
-	ModeInstagram BridgeMode = "instagram"
-	ModeFacebook  BridgeMode = "facebook"
+	ModeInstagram   BridgeMode = "instagram"
+	ModeFacebook    BridgeMode = "facebook"
+	ModeFacebookTor BridgeMode = "facebook-tor"
+	ModeMessenger   BridgeMode = "messenger"
 )
+
+func (bm BridgeMode) IsValid() bool {
+	return bm == ModeInstagram || bm == ModeFacebook || bm == ModeFacebookTor || bm == ModeMessenger
+}
+
+func (bm BridgeMode) IsMessenger() bool {
+	return bm == ModeFacebook || bm == ModeFacebookTor || bm == ModeMessenger
+}
+
+func (bm BridgeMode) IsInstagram() bool {
+	return bm == ModeInstagram
+}
 
 type Config struct {
 	*bridgeconfig.BaseConfig `yaml:",inline"`

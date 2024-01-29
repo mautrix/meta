@@ -161,6 +161,14 @@ func (c *Client) configurePlatformClient() {
 		selectedEndpoints = endpoints.FacebookEndpoints
 		cookieStruct = &cookies.FacebookCookies{}
 		c.Facebook = &FacebookMethods{client: c}
+	case types.FacebookTor:
+		selectedEndpoints = endpoints.FacebookTorEndpoints
+		cookieStruct = &cookies.FacebookCookies{}
+		c.Facebook = &FacebookMethods{client: c}
+	case types.Messenger:
+		selectedEndpoints = endpoints.MessengerEndpoints
+		cookieStruct = &cookies.FacebookCookies{}
+		c.Facebook = &FacebookMethods{client: c}
 	case types.Instagram:
 		selectedEndpoints = endpoints.InstagramEndpoints
 		cookieStruct = &cookies.InstagramCookies{}
@@ -266,7 +274,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		h.Set("sec-fetch-site", "same-origin") // header is required
 		h.Set("sec-fetch-user", "?1")
 		h.Set("host", c.getEndpoint("host"))
@@ -313,7 +321,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		return err
 	}
 
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		datr := c.findCookie(req.Cookies(), "datr")
 		if datr == nil {
 			return fmt.Errorf("consenting to facebook cookies failed, could not find datr cookie in set-cookie header")
@@ -336,7 +344,7 @@ func (c *Client) getEndpoint(name string) string {
 
 func (c *Client) IsAuthenticated() bool {
 	var isAuthenticated bool
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		isAuthenticated = c.configs.browserConfigTable.CurrentUserInitialData.AccountID != "0"
 	} else {
 		isAuthenticated = c.configs.browserConfigTable.PolarisViewer.ID != ""
@@ -344,22 +352,12 @@ func (c *Client) IsAuthenticated() bool {
 	return isAuthenticated
 }
 
-func (c *Client) CurrentPlatform() string {
-	var s string
-	if c.platform == types.Facebook {
-		s = "Facebook"
-	} else {
-		s = "Instagram"
-	}
-	return s
-}
-
 func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
 	if !c.IsAuthenticated() {
 		return nil, fmt.Errorf("messagix-client: not yet authenticated")
 	}
 
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		return &c.configs.browserConfigTable.CurrentUserInitialData, nil
 	} else {
 		return &c.configs.browserConfigTable.PolarisViewer, nil

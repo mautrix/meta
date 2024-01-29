@@ -205,7 +205,7 @@ func (pb *Event_Ready) SetIdentifier(identifier uint16) {}
 
 func (e *Event_Ready) Finish() ResponseData {
 	// TODO this should not be in the ready event
-	if e.client.platform == types.Facebook {
+	if e.client.platform.IsMessenger() {
 		e.CurrentUser = &e.client.configs.browserConfigTable.CurrentUserInitialData
 	} else {
 		e.CurrentUser = &e.client.configs.browserConfigTable.PolarisViewer

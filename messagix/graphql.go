@@ -67,7 +67,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	c.lsRequests++
 
 	var lsRequestQueryName string
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		lsRequestQueryName = "LSGraphQLRequest"
 	} else {
 		lsRequestQueryName = "LSGraphQLRequestIG"
@@ -79,7 +79,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 
 	var lightSpeedRes []byte
 	var deps interface{}
-	if c.platform == types.Facebook {
+	if c.platform.IsMessenger() {
 		var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestQuery
 		err = json.Unmarshal(respBody, &graphQLData)
 		if err != nil {

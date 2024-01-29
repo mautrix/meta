@@ -27,8 +27,10 @@ var (
 	protocolLevel    = 3
 	keepAliveTimeout = 15
 	connectionTypes  = map[types.Platform]string{
-		types.Instagram: "cookie_auth",
-		types.Facebook:  "websocket",
+		types.Instagram:   "cookie_auth",
+		types.Facebook:    "websocket",
+		types.Messenger:   "websocket",
+		types.FacebookTor: "websocket",
 	}
 	ErrSocketClosed      = errors.New("messagix-socket: socket is closed")
 	ErrSocketAlreadyOpen = errors.New("messagix-socket: socket is already open")

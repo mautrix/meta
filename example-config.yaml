@@ -85,7 +85,12 @@ metrics:
     listen: 127.0.0.1:8000
 
 meta:
-    # Which service is this bridge for? Either "facebook" or "instagram".
+    # Which service is this bridge for? Available options:
+    # * facebook - connect to FB Messenger via facebook.com
+    # * facebook-tor - connect to FB Messenger via facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion
+    # * messenger - connect to FB Messenger via messenger.com (can be used with the facebook side deactivated)
+    # * instagram - connect to Instagram DMs via instagram.com
+    #
     # Remember to change the appservice id, bot profile info, bridge username_template and management_room_text too.
     mode: instagram
 

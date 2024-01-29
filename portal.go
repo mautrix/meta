@@ -319,9 +319,12 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	case config.ModeInstagram:
 		bridgeInfo.Protocol.ExternalURL = "https://www.instagram.com/"
 		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.instagram.com/direct/t/%d/", portal.ThreadID)
-	case config.ModeFacebook:
+	case config.ModeFacebook, config.ModeFacebookTor:
 		bridgeInfo.Protocol.ExternalURL = "https://www.facebook.com/"
 		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.facebook.com/messages/t/%d", portal.ThreadID)
+	case config.ModeMessenger:
+		bridgeInfo.Protocol.ExternalURL = "https://www.messenger.com/"
+		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.messenger.com/t/%d", portal.ThreadID)
 	}
 	var roomType string
 	if portal.IsPrivateChat() {

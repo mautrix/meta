@@ -2,15 +2,23 @@ package endpoints
 
 const (
 	facebookHost    = "www.facebook.com"
-	facebookBaseUrl = "https://" + facebookHost
+	messengerHost   = "www.messenger.com"
+	facebookTorHost = "www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion"
 )
 
-var FacebookEndpoints = map[string]string{
-	"host":           facebookHost,
-	"base_url":       facebookBaseUrl,
-	"login_page":     facebookBaseUrl + "/login",
-	"messages":       facebookBaseUrl + "/messages",
-	"cookie_consent": facebookBaseUrl + "/cookie/consent/",
-	"graphql":        facebookBaseUrl + "/api/graphql/",
-	"media_upload":   facebookBaseUrl + "/ajax/mercury/upload.php?",
+var FacebookEndpoints = makeFacebookEndpoints(facebookHost)
+var MessengerEndpoints = makeFacebookEndpoints(messengerHost)
+var FacebookTorEndpoints = makeFacebookEndpoints(facebookTorHost)
+
+func makeFacebookEndpoints(host string) map[string]string {
+	baseURL := "https://" + host
+	return map[string]string{
+		"host":           host,
+		"base_url":       baseURL,
+		"login_page":     baseURL + "/login",
+		"messages":       baseURL + "/messages",
+		"cookie_consent": baseURL + "/cookie/consent/",
+		"graphql":        baseURL + "/api/graphql/",
+		"media_upload":   baseURL + "/ajax/mercury/upload.php?",
+	}
 }
