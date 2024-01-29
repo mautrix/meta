@@ -608,6 +608,9 @@ func (user *User) requestMoreInbox(ctx context.Context, itrs []*table.LSUpsertIn
 		return
 	}
 	log := zerolog.Ctx(ctx)
+	if len(itrs) > 1 {
+		log.Warn().Any("thread_ranges", itrs).Msg("Got multiple thread ranges in upsertInboxThreadsRange")
+	}
 	itr := itrs[0]
 	user.InboxPagesFetched++
 	reachedPageLimit := maxInboxPages > 0 && user.InboxPagesFetched > maxInboxPages
