@@ -728,7 +728,11 @@ func (user *User) eventHandler(rawEvt any) {
 			user.log.Warn().Int64("fbid", newFBID).Msg("Own contact entry not found, falling back to fbid in current user object")
 		}
 		if user.MetaID != newFBID {
+			user.bridge.usersLock.Lock()
 			user.MetaID = newFBID
+			// TODO check if there's another user?
+			user.bridge.usersByMetaID[user.MetaID] = user
+			user.bridge.usersLock.Unlock()
 			err := user.Update(context.TODO())
 			if err != nil {
 				user.log.Err(err).Msg("Failed to save user after getting meta ID")
