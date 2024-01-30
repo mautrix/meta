@@ -12,7 +12,7 @@ var FacebookTorEndpoints = makeFacebookEndpoints(facebookTorHost)
 
 func makeFacebookEndpoints(host string) map[string]string {
 	baseURL := "https://" + host
-	return map[string]string{
+	urls := map[string]string{
 		"host":           host,
 		"base_url":       baseURL,
 		"login_page":     baseURL + "/login",
@@ -21,4 +21,8 @@ func makeFacebookEndpoints(host string) map[string]string {
 		"graphql":        baseURL + "/api/graphql/",
 		"media_upload":   baseURL + "/ajax/mercury/upload.php?",
 	}
+	if host == messengerHost {
+		urls["messages"] = baseURL + "/"
+	}
+	return urls
 }
