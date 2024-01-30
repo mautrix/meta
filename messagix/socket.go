@@ -248,6 +248,8 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 				s.client.Logger.Err(err).Msg("Error reading message from socket")
 				closeDueToError("reading message failed")
 			}
+			// Hacky sleep to give the ready handler time to run and set the best available error
+			time.Sleep(100 * time.Millisecond)
 			return *closeErr.Load()
 		}
 
