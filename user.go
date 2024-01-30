@@ -429,16 +429,20 @@ func (user *User) Connect() {
 	user.Client, err = user.unlockedConnectWithCookies(user.Cookies)
 	if err != nil {
 		user.log.Error().Err(err).Msg("Failed to connect")
-		stateEvt := status.StateUnknownError
 		if errors.Is(err, messagix.ErrTokenInvalidated) {
-			stateEvt = status.StateBadCredentials
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      "meta-cookie-removed",
+				Message:    "Logged out, please relogin to continue",
+			})
 			// TODO clear cookies?
+		} else {
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      "meta-connect-error",
+				Message:    err.Error(),
+			})
 		}
-		user.BridgeState.Send(status.BridgeState{
-			StateEvent: stateEvt,
-			Error:      "meta-connect-error",
-			Message:    err.Error(),
-		})
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Failed to connect to %s: %v", user.bridge.ProtocolName, err)
 	}
 }
@@ -745,15 +749,27 @@ func (user *User) eventHandler(rawEvt any) {
 		user.handleTable(evt.Table)
 		go user.BackfillLoop()
 	case *messagix.Event_SocketError:
-		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: evt.Err.Error()})
+		user.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      "meta-transient-disconnect",
+			Message:    evt.Err.Error(),
+		})
 	case *messagix.Event_Reconnected:
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	case *messagix.Event_PermanentError:
-		stateEvt := status.StateUnknownError
 		if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNAUTHORIZED) {
-			stateEvt = status.StateBadCredentials
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      "meta-connection-unauthorized",
+				Message:    "Logged out, please relogin to continue",
+			})
+		} else {
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      "meta-unknown-permanent-error",
+				Message:    evt.Err.Error(),
+			})
 		}
-		user.BridgeState.Send(status.BridgeState{StateEvent: stateEvt, Message: evt.Err.Error()})
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
 		user.StopBackfillLoop()
 	default:
