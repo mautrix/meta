@@ -38,6 +38,8 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/msgconv"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 //go:embed example-config.yaml
@@ -56,6 +58,8 @@ type MetaBridge struct {
 
 	Config *config.Config
 	DB     *database.Database
+
+	DeviceStore *sqlstore.Container
 
 	provisioning *ProvisioningAPI
 
@@ -140,6 +144,7 @@ func (br *MetaBridge) Init() {
 	br.RegisterCommands()
 
 	br.DB = database.New(br.Bridge.DB)
+	br.DeviceStore = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), waLog.Stdout("DATABASE", "DEBUG", true))
 
 	ss := br.Config.Bridge.Provisioning.SharedSecret
 	if len(ss) > 0 && ss != "disable" {
@@ -148,6 +153,10 @@ func (br *MetaBridge) Init() {
 }
 
 func (br *MetaBridge) Start() {
+	err := br.DeviceStore.Upgrade()
+	if err != nil {
+		br.ZLog.Fatal().Err(err).Msg("Failed to upgrade whatsmeow device store")
+	}
 	if br.provisioning != nil {
 		br.ZLog.Debug().Msg("Initializing provisioning API")
 		br.provisioning.Init()

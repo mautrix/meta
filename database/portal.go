@@ -19,8 +19,10 @@ package database
 import (
 	"context"
 	"database/sql"
+	"strconv"
 
 	"go.mau.fi/util/dbutil"
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/messagix/table"
@@ -30,7 +32,8 @@ const (
 	portalBaseSelect = `
 		SELECT thread_id, receiver, thread_type, mxid,
 		       name, avatar_id, avatar_url, name_set, avatar_set,
-		       encrypted, relay_user_id, oldest_message_id, oldest_message_ts, more_to_backfill
+		       whatsapp_server, encrypted, relay_user_id,
+		       oldest_message_id, oldest_message_ts, more_to_backfill
 		FROM portal
 	`
 	getPortalByMXIDQuery       = portalBaseSelect + `WHERE mxid=$1`
@@ -47,14 +50,16 @@ const (
 		INSERT INTO portal (
 			thread_id, receiver, thread_type, mxid,
 			name, avatar_id, avatar_url, name_set, avatar_set,
-			encrypted, relay_user_id, oldest_message_id, oldest_message_ts, more_to_backfill
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			whatsapp_server, encrypted, relay_user_id,
+			oldest_message_id, oldest_message_ts, more_to_backfill
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	updatePortalQuery = `
 		UPDATE portal SET
 			thread_type=$3, mxid=$4,
 			name=$5, avatar_id=$6, avatar_url=$7, name_set=$8, avatar_set=$9,
-			encrypted=$10, relay_user_id=$11, oldest_message_id=$12, oldest_message_ts=$13, more_to_backfill=$14
+			whatsapp_server=$10, encrypted=$11, relay_user_id=$12,
+			oldest_message_id=$13, oldest_message_ts=$14, more_to_backfill=$15
 		WHERE thread_id=$1 AND receiver=$2
 	`
 	deletePortalQuery = `DELETE FROM portal WHERE thread_id=$1 AND receiver=$2`
@@ -73,15 +78,17 @@ type Portal struct {
 	qh *dbutil.QueryHelper[*Portal]
 
 	PortalKey
-	ThreadType  table.ThreadType
-	MXID        id.RoomID
-	Name        string
-	AvatarID    string
-	AvatarURL   id.ContentURI
-	NameSet     bool
-	AvatarSet   bool
-	Encrypted   bool
-	RelayUserID id.UserID
+	ThreadType table.ThreadType
+	MXID       id.RoomID
+	Name       string
+	AvatarID   string
+	AvatarURL  id.ContentURI
+	NameSet    bool
+	AvatarSet  bool
+
+	WhatsAppServer string
+	Encrypted      bool
+	RelayUserID    id.UserID
 
 	OldestMessageID string
 	OldestMessageTS int64
@@ -128,6 +135,24 @@ func (p *Portal) IsPrivateChat() bool {
 	return p.ThreadType.IsOneToOne()
 }
 
+func (p *Portal) JID() types.JID {
+	jid := types.JID{
+		User:   strconv.FormatInt(p.ThreadID, 10),
+		Server: p.WhatsAppServer,
+	}
+	if jid.Server == "" {
+		switch p.ThreadType {
+		case table.ENCRYPTED_OVER_WA_GROUP:
+			jid.Server = types.GroupServer
+		//case table.ENCRYPTED_OVER_WA_ONE_TO_ONE:
+		//	jid.Server = types.DefaultUserServer
+		default:
+			jid.Server = types.MessengerServer
+		}
+	}
+	return jid
+}
+
 func (p *Portal) Scan(row dbutil.Scannable) (*Portal, error) {
 	var mxid sql.NullString
 	err := row.Scan(
@@ -140,6 +165,7 @@ func (p *Portal) Scan(row dbutil.Scannable) (*Portal, error) {
 		&p.AvatarURL,
 		&p.NameSet,
 		&p.AvatarSet,
+		&p.WhatsAppServer,
 		&p.Encrypted,
 		&p.RelayUserID,
 		&p.OldestMessageID,
@@ -164,6 +190,7 @@ func (p *Portal) sqlVariables() []any {
 		&p.AvatarURL,
 		p.NameSet,
 		p.AvatarSet,
+		p.WhatsAppServer,
 		p.Encrypted,
 		p.RelayUserID,
 		p.OldestMessageID,

@@ -40,7 +40,9 @@ type CurrentBusinessAccount struct {
 }
 
 type MessengerWebInitData struct {
-	AccountKey      string          `json:"accountKey,omitempty"`
+	AccountKey string `json:"accountKey,omitempty"`
+	//ActiveThreadKeys
+	//AllActiveThreadKeys
 	AppID           int64           `json:"appId,omitempty"`
 	CryptoAuthToken CryptoAuthToken `json:"cryptoAuthToken,omitempty"`
 	LogoutToken     string          `json:"logoutToken,omitempty"`

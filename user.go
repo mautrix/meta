@@ -29,6 +29,10 @@ import (
 	"sync/atomic"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
+	waTypes "go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -171,6 +175,10 @@ type User struct {
 	commandState *commands.CommandState
 
 	Client *messagix.Client
+
+	WADevice        *store.Device
+	E2EEClient      *whatsmeow.Client
+	e2eeConnectLock sync.Mutex
 
 	BridgeState     *bridge.BridgeStateQueue
 	bridgeStateLock sync.Mutex
@@ -758,6 +766,103 @@ func (user *User) FillBridgeState(state status.BridgeState) status.BridgeState {
 	return state
 }
 
+func (user *User) connectE2EE() error {
+	user.e2eeConnectLock.Lock()
+	defer user.e2eeConnectLock.Unlock()
+	if user.E2EEClient != nil {
+		return fmt.Errorf("already connected to e2ee")
+	}
+	var err error
+	if user.WADevice == nil && user.WADeviceID != 0 {
+		user.WADevice, err = user.bridge.DeviceStore.GetDevice(waTypes.JID{User: strconv.FormatInt(user.MetaID, 10), Device: user.WADeviceID, Server: waTypes.MessengerServer})
+		if err != nil {
+			return fmt.Errorf("failed to get whatsmeow device: %w", err)
+		} else if user.WADevice == nil {
+			user.log.Warn().Uint16("device_id", user.WADeviceID).Msg("Existing device not found in store")
+		}
+	}
+	isNew := false
+	if user.WADevice == nil {
+		isNew = true
+		user.WADevice = user.bridge.DeviceStore.NewDevice()
+	}
+	user.Client.SetDevice(user.WADevice)
+
+	ctx := user.log.With().Str("component", "e2ee").Logger().WithContext(context.TODO())
+	if isNew {
+		user.log.Info().Msg("Registering new e2ee device")
+		err = user.Client.RegisterE2EE(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to register e2ee device: %w", err)
+		}
+		user.WADeviceID = user.WADevice.ID.Device
+		err = user.WADevice.Save()
+		if err != nil {
+			return fmt.Errorf("failed to save whatsmeow device store: %w", err)
+		}
+		err = user.Update(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to save device ID to user: %w", err)
+		}
+	}
+	user.E2EEClient = user.Client.PrepareE2EEClient()
+	user.E2EEClient.AddEventHandler(user.e2eeEventHandler)
+	err = user.E2EEClient.Connect()
+	if err != nil {
+		return fmt.Errorf("failed to connect to e2ee socket: %w", err)
+	}
+	return nil
+}
+
+func (user *User) e2eeEventHandler(rawEvt any) {
+	switch evt := rawEvt.(type) {
+	case *events.FBConsumerMessage:
+		log := user.log.With().
+			Str("action", "handle whatsapp message").
+			Stringer("chat_jid", evt.Info.Chat).
+			Stringer("sender_jid", evt.Info.Sender).
+			Str("message_id", evt.Info.ID).
+			Logger()
+		ctx := log.WithContext(context.TODO())
+		threadID := int64(evt.Info.Chat.UserInt())
+		if threadID == 0 {
+			log.Warn().Msg("Ignoring encrypted message with unsupported jid")
+			return
+		}
+		var expectedType table.ThreadType
+		switch evt.Info.Chat.Server {
+		case waTypes.GroupServer:
+			expectedType = table.ENCRYPTED_OVER_WA_GROUP
+		case waTypes.MessengerServer, waTypes.DefaultUserServer:
+			expectedType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
+		}
+		portal := user.GetPortalByThreadID(threadID, expectedType)
+		changed := false
+		if portal.ThreadType != expectedType {
+			log.Info().
+				Int64("old_thread_type", int64(portal.ThreadType)).
+				Int64("new_thread_type", int64(expectedType)).
+				Msg("Updating thread type")
+			portal.ThreadType = expectedType
+			changed = true
+		}
+		if portal.WhatsAppServer != evt.Info.Chat.Server {
+			log.Info().
+				Str("old_server", portal.WhatsAppServer).
+				Str("new_server", evt.Info.Chat.Server).
+				Msg("Updating WhatsApp server")
+			portal.WhatsAppServer = evt.Info.Chat.Server
+			changed = true
+		}
+		if changed {
+			err := portal.Update(ctx)
+			if err != nil {
+				log.Err(err).Msg("Failed to update portal")
+			}
+		}
+	}
+}
+
 func (user *User) eventHandler(rawEvt any) {
 	switch evt := rawEvt.(type) {
 	case *messagix.Event_PublishResponse:
@@ -797,6 +902,14 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		user.tryAutomaticDoublePuppeting()
 		user.handleTable(evt.Table)
+		if user.bridge.Config.Meta.Mode.IsMessenger() {
+			go func() {
+				err := user.connectE2EE()
+				if err != nil {
+					user.log.Err(err).Msg("Error connecting to e2ee")
+				}
+			}()
+		}
 		go user.BackfillLoop()
 	case *messagix.Event_SocketError:
 		user.BridgeState.Send(status.BridgeState{
@@ -842,8 +955,12 @@ func (user *User) unlockedDisconnect() {
 	if user.Client != nil {
 		user.Client.Disconnect()
 	}
+	if user.E2EEClient != nil {
+		user.E2EEClient.Disconnect()
+	}
 	user.StopBackfillLoop()
 	user.Client = nil
+	user.E2EEClient = nil
 }
 
 func (user *User) Disconnect() error {
@@ -857,6 +974,12 @@ func (user *User) DeleteSession() {
 	user.Lock()
 	defer user.Unlock()
 	user.unlockedDisconnect()
+	if user.WADevice != nil {
+		err := user.WADevice.Delete()
+		if err != nil {
+			user.log.Err(err).Msg("Failed to delete whatsmeow device")
+		}
+	}
 	user.Cookies = nil
 	user.MetaID = 0
 	doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
