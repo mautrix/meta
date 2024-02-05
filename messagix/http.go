@@ -93,6 +93,7 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 		}
 	}()
 	if err != nil {
+		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
 		return nil, nil, err
 	}
 

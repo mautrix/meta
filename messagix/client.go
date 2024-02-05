@@ -53,9 +53,10 @@ type Client struct {
 	configs      *Configs
 	SyncManager  *SyncManager
 
-	cookies    cookies.Cookies
-	httpProxy  func(*http.Request) (*url.URL, error)
-	socksProxy proxy.Dialer
+	cookies     cookies.Cookies
+	httpProxy   func(*http.Request) (*url.URL, error)
+	socksProxy  proxy.Dialer
+	GetNewProxy func(reason string) (string, error)
 
 	lsRequests      int
 	graphQLRequests int
@@ -215,6 +216,17 @@ func (c *Client) SetEventHandler(handler EventHandler) {
 	c.eventHandler = handler
 }
 
+func (c *Client) UpdateProxy(reason string) {
+	if c.GetNewProxy == nil {
+		return
+	}
+	if proxyAddr, err := c.GetNewProxy(reason); err != nil {
+		c.Logger.Err(err).Str("reason", reason).Msg("Failed to get new proxy")
+	} else if err = c.SetProxy(proxyAddr); err != nil {
+		c.Logger.Err(err).Str("reason", reason).Msg("Failed to set new proxy")
+	}
+}
+
 func (c *Client) Connect() error {
 	if c.socket == nil {
 		err := c.configureAfterLogin()
@@ -259,6 +271,7 @@ func (c *Client) Connect() error {
 			case <-ctx.Done():
 				return
 			}
+			c.UpdateProxy("reconnect")
 		}
 	}()
 	return nil

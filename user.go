@@ -517,6 +517,9 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) (*messagix
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare client: %w", err)
 	}
+	if user.bridge.Config.Meta.GetProxyFrom != "" {
+		cli.GetNewProxy = user.getProxy
+	}
 	cli.SetEventHandler(user.eventHandler)
 	err = cli.Connect()
 	if err != nil {
