@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -83,6 +84,11 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestQuery
 		err = json.Unmarshal(respBody, &graphQLData)
 		if err != nil {
+			if len(respBody) < 4096 {
+				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored LS response bytes")
+			} else {
+				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
+			}
 			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %v", err)
 		}
 		lightSpeedRes = []byte(graphQLData.Data.Viewer.LightspeedWebRequest.Payload)
