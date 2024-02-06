@@ -47,15 +47,22 @@ func (p *ResponseHandler) updateRequestChannel(packetId uint16, packetData inter
 }
 
 func (p *ResponseHandler) waitForPubACKDetails(packetId uint16) *Event_PublishACK {
-	return p.waitForDetails(packetId, PacketChannel).(*Event_PublishACK)
+	return castIfNotNil[Event_PublishACK](p.waitForDetails(packetId, PacketChannel))
 }
 
 func (p *ResponseHandler) waitForSubACKDetails(packetId uint16) *Event_SubscribeACK {
-	return p.waitForDetails(packetId, PacketChannel).(*Event_SubscribeACK)
+	return castIfNotNil[Event_SubscribeACK](p.waitForDetails(packetId, PacketChannel))
 }
 
 func (p *ResponseHandler) waitForPubResponseDetails(packetId uint16) *Event_PublishResponse {
-	return p.waitForDetails(packetId, RequestChannel).(*Event_PublishResponse)
+	return castIfNotNil[Event_PublishResponse](p.waitForDetails(packetId, RequestChannel))
+}
+
+func castIfNotNil[T any](i interface{}) *T {
+	if i != nil {
+		return i.(*T)
+	}
+	return nil
 }
 
 func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelType) interface{} {
