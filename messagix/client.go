@@ -144,7 +144,7 @@ func (c *Client) configureAfterLogin() error {
 	c.SyncManager = c.NewSyncManager()
 	err = c.configs.SetupConfigs()
 	if err != nil {
-		return fmt.Errorf("messagix-configs: failed to setup configs (%v)", err)
+		return fmt.Errorf("messagix-configs: failed to setup configs (%w)", err)
 	}
 
 	return nil
