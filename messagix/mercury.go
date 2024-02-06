@@ -30,44 +30,39 @@ type WaveformData struct {
 	SamplingFrequency int       `json:"sampling_frequency"`
 }
 
-func (c *Client) SendMercuryUploadRequest(ctx context.Context, medias []*MercuryUploadMedia) ([]*types.MercuryUploadResponse, error) {
-	responses := make([]*types.MercuryUploadResponse, 0)
-	for _, media := range medias {
-		urlQueries := c.NewHttpQuery()
-		queryValues, err := query.Values(urlQueries)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %v", err)
-		}
-
-		payloadQuery := queryValues.Encode()
-		url := c.getEndpoint("media_upload") + payloadQuery
-		payload, contentType, err := c.NewMercuryMediaPayload(media)
-		if err != nil {
-			return nil, err
-		}
-		h := c.buildHeaders(true)
-		h.Set("accept", "*/*")
-		h.Set("content-type", contentType)
-		h.Set("origin", c.getEndpoint("base_url"))
-		h.Set("referer", c.getEndpoint("messages"))
-		h.Set("sec-fetch-dest", "empty")
-		h.Set("sec-fetch-mode", "cors")
-		h.Set("sec-fetch-site", "same-origin") // header is required
-
-		_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
-		if err != nil {
-			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %v", err)
-		}
-
-		resp, err := c.parseMercuryResponse(ctx, respBody)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse mercury response: %v", err)
-		}
-
-		responses = append(responses, resp)
+func (c *Client) SendMercuryUploadRequest(ctx context.Context, media *MercuryUploadMedia) (*types.MercuryUploadResponse, error) {
+	urlQueries := c.NewHttpQuery()
+	queryValues, err := query.Values(urlQueries)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %v", err)
 	}
 
-	return responses, nil
+	payloadQuery := queryValues.Encode()
+	url := c.getEndpoint("media_upload") + payloadQuery
+	payload, contentType, err := c.NewMercuryMediaPayload(media)
+	if err != nil {
+		return nil, err
+	}
+	h := c.buildHeaders(true)
+	h.Set("accept", "*/*")
+	h.Set("content-type", contentType)
+	h.Set("origin", c.getEndpoint("base_url"))
+	h.Set("referer", c.getEndpoint("messages"))
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-site", "same-origin") // header is required
+
+	_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send MercuryUploadRequest: %v", err)
+	}
+
+	resp, err := c.parseMercuryResponse(ctx, respBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse mercury response: %v", err)
+	}
+
+	return resp, nil
 }
 
 var antiJSPrefix = []byte("for (;;);")
@@ -86,6 +81,7 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 	if err := json.Unmarshal(jsonData, &mercuryResponse); err != nil {
 		return nil, err
 	}
+	mercuryResponse.Raw = jsonData
 
 	err := c.parseMetadata(mercuryResponse)
 	if err != nil {

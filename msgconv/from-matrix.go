@@ -76,7 +76,7 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 		}
 		attachmentID := resp.Payload.Metadata.(types.MediaMetadata).GetFbId()
 		if attachmentID == 0 {
-			zerolog.Ctx(ctx).Warn().Any("response", resp).Msg("No fbid received for upload")
+			zerolog.Ctx(ctx).Warn().RawJSON("response", resp.Raw).Msg("No fbid received for upload")
 			return nil, 0, fmt.Errorf("failed to upload attachment: fbid not received")
 		}
 		task.SendType = table.MEDIA
@@ -135,15 +135,14 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.E
 		mimeType = "audio/wav"
 		fileName = "audio_clip.wav"
 	}
-	resp, err := mc.GetClient(ctx).SendMercuryUploadRequest(ctx, []*messagix.MercuryUploadMedia{{
+	resp, err := mc.GetClient(ctx).SendMercuryUploadRequest(ctx, &messagix.MercuryUploadMedia{
 		Filename:    fileName,
 		MimeType:    mimeType,
 		MediaData:   data,
 		IsVoiceClip: isVoice,
-	}})
+	})
 	if err != nil {
 		return nil, err
 	}
-	zerolog.Ctx(ctx).Trace().Any("upload_response", resp).Msg("Upload response")
-	return resp[0], nil
+	return resp, nil
 }

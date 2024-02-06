@@ -1,6 +1,12 @@
 package types
 
+import (
+	"encoding/json"
+)
+
 type MercuryUploadResponse struct {
+	Raw json.RawMessage `json:"-"`
+
 	Ar               int           `json:"__ar,omitempty"`
 	Error            int           `json:"error,omitempty"`
 	ErrorSummary     string        `json:"errorSummary,omitempty"`
@@ -20,9 +26,13 @@ type ImageMetadata struct {
 	Filetype string `json:"filetype,omitempty"`
 	Src      string `json:"src,omitempty"`
 	Fbid     int64  `json:"fbid,omitempty"`
+	GifID    int64  `json:"gif_id,omitempty"`
 }
 
 func (img *ImageMetadata) GetFbId() int64 {
+	if img.GifID != 0 {
+		return img.GifID
+	}
 	return img.Fbid
 }
 
