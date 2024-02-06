@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,9 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/variationselector"
+	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -325,6 +329,10 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	case config.ModeMessenger:
 		bridgeInfo.Protocol.ExternalURL = "https://www.messenger.com/"
 		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.messenger.com/t/%d", portal.ThreadID)
+	}
+	if portal.ThreadType.IsWhatsApp() {
+		// TODO store fb-side thread ID? (the whatsapp chat id is not the same as the fb-side thread id used in urls)
+		bridgeInfo.Channel.ExternalURL = ""
 	}
 	var roomType string
 	if portal.IsPrivateChat() {
@@ -847,7 +855,7 @@ func (portal *Portal) GetMatrixReply(ctx context.Context, replyToID string, repl
 		}
 	} else {
 		replyTo = message.MXID
-		if message.Sender != replyToUser {
+		if replyToUser != 0 && message.Sender != replyToUser {
 			log.Warn().
 				Int64("message_sender", message.Sender).
 				Int64("reply_to_user", replyToUser).
@@ -898,6 +906,8 @@ func (portal *Portal) GetUserMXID(ctx context.Context, userID int64) id.UserID {
 
 func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
+	case *events.FBConsumerMessage:
+		portal.handleEncryptedMessage(portalMessage.user, typedEvt)
 	case *table.WrappedMessage:
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
 	case *table.UpsertMessages:
@@ -955,6 +965,41 @@ func (portal *Portal) checkPendingMessage(ctx context.Context, messageID string,
 	return true
 }
 
+func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsumerMessage) {
+	sender := portal.bridge.GetPuppetByID(int64(evt.Info.Sender.UserInt()))
+	log := portal.log.With().
+		Str("action", "handle whatsapp message").
+		Stringer("chat_jid", evt.Info.Chat).
+		Stringer("sender_jid", evt.Info.Sender).
+		Str("message_id", evt.Info.ID).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+
+	switch payload := evt.Message.GetPayload().GetPayload().(type) {
+	case *waConsumerApplication.ConsumerApplication_Payload_Content:
+		switch payload.Content.GetContent().(type) {
+		case *waConsumerApplication.ConsumerApplication_Content_EditMessage:
+			log.Warn().Msg("Unsupported edit message payload message")
+		case *waConsumerApplication.ConsumerApplication_Content_ReactionMessage:
+			log.Warn().Msg("Unsupported reaction message payload message")
+		default:
+			portal.handleMetaOrWhatsAppMessage(ctx, source, sender, evt, nil)
+		}
+	case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
+		switch applicationContent := payload.ApplicationData.GetApplicationContent().(type) {
+		case *waConsumerApplication.ConsumerApplication_ApplicationData_Revoke:
+		default:
+			log.Warn().Type("content_type", applicationContent).Msg("Unrecognized application content type")
+		}
+	case *waConsumerApplication.ConsumerApplication_Payload_Signal:
+		log.Warn().Msg("Unsupported signal payload message")
+	case *waConsumerApplication.ConsumerApplication_Payload_SubProtocol:
+		log.Warn().Msg("Unsupported subprotocol payload message")
+	default:
+		log.Warn().Type("payload_type", payload).Msg("Unrecognized payload type")
+	}
+}
+
 func (portal *Portal) handleMetaInsertMessage(source *User, message *table.WrappedMessage) {
 	sender := portal.bridge.GetPuppetByID(message.SenderId)
 	log := portal.log.With().
@@ -964,6 +1009,11 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 		Str("otid", message.OfflineThreadingId).
 		Logger()
 	ctx := log.WithContext(context.TODO())
+	portal.handleMetaOrWhatsAppMessage(ctx, source, sender, nil, message)
+}
+
+func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *User, sender *Puppet, waMsg *events.FBConsumerMessage, metaMsg *table.WrappedMessage) {
+	log := zerolog.Ctx(ctx)
 
 	if portal.MXID == "" {
 		log.Debug().Msg("Creating Matrix room from incoming message")
@@ -973,13 +1023,22 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 		}
 	}
 
-	otidInt, _ := strconv.ParseInt(message.OfflineThreadingId, 10, 64)
-	messageTime := time.UnixMilli(message.TimestampMs)
-	if portal.checkPendingMessage(ctx, message.MessageId, otidInt, sender.ID, messageTime) {
-		return
+	var messageID string
+	var messageTime time.Time
+	var otidInt int64
+	if waMsg != nil {
+		messageID = waMsg.Info.ID
+		messageTime = waMsg.Info.Timestamp
+	} else {
+		messageID = metaMsg.MessageId
+		otidInt, _ = strconv.ParseInt(metaMsg.OfflineThreadingId, 10, 64)
+		messageTime = time.UnixMilli(metaMsg.TimestampMs)
+		if portal.checkPendingMessage(ctx, metaMsg.MessageId, otidInt, sender.ID, messageTime) {
+			return
+		}
 	}
 
-	existingMessage, err := portal.bridge.DB.Message.GetByID(ctx, message.MessageId, 0, portal.Receiver)
+	existingMessage, err := portal.bridge.DB.Message.GetByID(ctx, messageID, 0, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to check if message was already bridged")
 		return
@@ -991,7 +1050,12 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 	intent := sender.IntentFor(portal)
 	ctx = context.WithValue(ctx, msgconvContextKeyIntent, intent)
 	ctx = context.WithValue(ctx, msgconvContextKeyClient, source.Client)
-	converted := portal.MsgConv.ToMatrix(ctx, message)
+	var converted *msgconv.ConvertedMessage
+	if waMsg != nil {
+		converted = portal.MsgConv.WhatsAppToMatrix(ctx, waMsg)
+	} else {
+		converted = portal.MsgConv.ToMatrix(ctx, metaMsg)
+	}
 	if portal.bridge.Config.Bridge.CaptionInMessage {
 		converted.MergeCaption()
 	}
@@ -1005,7 +1069,7 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 			log.Err(err).Int("part_index", i).Msg("Failed to send message to Matrix")
 			continue
 		}
-		portal.storeMessageInDB(ctx, resp.EventID, message.MessageId, otidInt, sender.ID, messageTime, i)
+		portal.storeMessageInDB(ctx, resp.EventID, messageID, otidInt, sender.ID, messageTime, i)
 	}
 }
 
@@ -1389,6 +1453,14 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 	if autoJoinInvites {
 		invite = append(invite, user.MXID)
 	}
+	var waGroupInfo *types.GroupInfo
+	var participants []id.UserID
+	if portal.ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
+		waGroupInfo, participants = portal.UpdateWAGroupInfo(ctx, user, nil)
+		invite = append(invite, participants...)
+		slices.Sort(invite)
+		invite = slices.Compact(invite)
+	}
 
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
@@ -1461,6 +1533,9 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 	if portal.IsPrivateChat() {
 		user.AddDirectChat(ctx, portal.MXID, portal.GetDMPuppet().MXID)
 	}
+	if waGroupInfo != nil && !autoJoinInvites {
+		portal.SyncWAParticipants(ctx, waGroupInfo.Participants)
+	}
 
 	return nil
 }
@@ -1481,6 +1556,46 @@ func (portal *Portal) UpdateInfoFromPuppet(ctx context.Context, puppet *Puppet) 
 		}
 		portal.UpdateBridgeInfo(ctx)
 	}
+}
+
+func (portal *Portal) UpdateWAGroupInfo(ctx context.Context, source *User, groupInfo *types.GroupInfo) (*types.GroupInfo, []id.UserID) {
+	log := zerolog.Ctx(ctx)
+	if groupInfo == nil {
+		var err error
+		groupInfo, err = source.E2EEClient.GetGroupInfo(portal.JID())
+		if err != nil {
+			log.Err(err).Msg("Failed to fetch WhatsApp group info")
+			return nil, nil
+		}
+	}
+	update := false
+	update = portal.updateName(ctx, groupInfo.Name) || update
+	//update = portal.updateTopic(ctx, groupInfo.Topic) || update
+	//update = portal.updateWAAvatar(ctx)
+	participants := portal.SyncWAParticipants(ctx, groupInfo.Participants)
+	if update {
+		err := portal.Update(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save portal in database after updating group info")
+		}
+		portal.UpdateBridgeInfo(ctx)
+	}
+	return groupInfo, participants
+}
+
+func (portal *Portal) SyncWAParticipants(ctx context.Context, participants []types.GroupParticipant) []id.UserID {
+	var userIDs []id.UserID
+	for _, pcp := range participants {
+		puppet := portal.bridge.GetPuppetByID(int64(pcp.JID.UserInt()))
+		userIDs = append(userIDs, puppet.IntentFor(portal).UserID)
+		if portal.MXID != "" {
+			err := puppet.IntentFor(portal).EnsureJoined(ctx, portal.MXID)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to ensure participant is joined to group")
+			}
+		}
+	}
+	return userIDs
 }
 
 func (portal *Portal) UpdateInfo(ctx context.Context, info table.ThreadInfo) {

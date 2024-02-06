@@ -860,6 +860,7 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 				log.Err(err).Msg("Failed to update portal")
 			}
 		}
+		portal.metaMessages <- portalMetaMessage{user: user, evt: evt}
 	}
 }
 
