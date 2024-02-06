@@ -1,8 +1,10 @@
 package messagix
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -52,6 +54,22 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 	return c.MakeRequest(reqUrl, "POST", headers, payloadBytes, types.FORM)
 }
 
+type LSErrorResponse struct {
+	ErrorCode        int    `json:"error"`
+	ErrorSummary     string `json:"errorSummary"`
+	ErrorDescription string `json:"errorDescription"`
+	RedirectTo       string `json:"redirectTo"`
+}
+
+func (lser *LSErrorResponse) Is(other error) bool {
+	var otherLS *LSErrorResponse
+	return errors.As(other, &otherLS) && lser.ErrorCode == otherLS.ErrorCode
+}
+
+func (lser *LSErrorResponse) Error() string {
+	return fmt.Sprintf("%d: %s", lser.ErrorCode, lser.ErrorDescription)
+}
+
 func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVariables, reqType int) (*table.LSTable, error) {
 	strPayload, err := json.Marshal(&variables)
 	if err != nil {
@@ -77,6 +95,15 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	if err != nil {
 		return nil, err
 	}
+	respBody = bytes.TrimPrefix(respBody, antiJSPrefix)
+
+	if bytes.HasPrefix(respBody, []byte(`{"error"`)) {
+		var lsErr LSErrorResponse
+		err = json.Unmarshal(respBody, &lsErr)
+		if err == nil && lsErr.ErrorCode != 0 {
+			return nil, &lsErr
+		}
+	}
 
 	var lightSpeedRes []byte
 	var deps interface{}
@@ -97,6 +124,11 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestForIGDQuery
 		err = json.Unmarshal(respBody, &graphQLData)
 		if err != nil {
+			if len(respBody) < 4096 {
+				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored LS response bytes")
+			} else {
+				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
+			}
 			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestForIGDQuery struct: %v", err)
 		}
 		lightSpeedRes = []byte(graphQLData.Data.LightspeedWebRequestForIgd.Payload)

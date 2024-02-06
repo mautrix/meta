@@ -439,6 +439,12 @@ func (user *User) Connect() {
 				Message:    "Logged out, please relogin to continue",
 			})
 			// TODO clear cookies?
+		} else if lsErr := (&messagix.LSErrorResponse{}); errors.As(err, &lsErr) {
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
+				Message:    lsErr.Error(),
+			})
 		} else {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
