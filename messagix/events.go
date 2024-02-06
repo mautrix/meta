@@ -164,6 +164,8 @@ func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse, qos pac
 			if err != nil {
 				s.client.Logger.Err(err).Uint16("message_id", resp.MessageIdentifier).Msg("Failed to send puback")
 			}
+		} else if qos == packets.QOS_LEVEL_2 {
+			s.client.Logger.Error().Msg("Got packet with QoS level 2")
 		}
 	}()
 }
