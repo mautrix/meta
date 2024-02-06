@@ -85,15 +85,11 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 		return nil, fmt.Errorf("failed to marshal DatabaseQuery struct into json bytes (databaseId=%d): %v", databaseId, err)
 	}
 
-	packetId, err := sm.client.socket.makeLSRequest(jsonPayload, t)
+	resp, err := sm.client.socket.makeLSRequest(jsonPayload, t)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseId=%d): %v", databaseId, err)
 	}
 
-	resp := sm.client.socket.responseHandler.waitForPubResponseDetails(packetId)
-	if resp == nil {
-		return nil, fmt.Errorf("timed out while waiting for sync response from socket (databaseId=%d)", databaseId)
-	}
 	resp.Finish()
 
 	if len(resp.Table.LSHandleSyncFailure) > 0 {

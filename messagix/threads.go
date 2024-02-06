@@ -16,20 +16,14 @@ func (c *Client) ExecuteTasks(tasks ...socket.Task) (*table.LSTable, error) {
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		return nil, fmt.Errorf("failed to finalize payload for SendMessageTask: %v", err)
+		return nil, fmt.Errorf("failed to finalize payload: %v", err)
 	}
 
-	packetId, err := c.socket.makeLSRequest(payload, 3)
+	resp, err := c.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make LS request for SendMessageTask: %v", err)
+		return nil, fmt.Errorf("failed to send LS request: %v", err)
 	}
 
-	resp := c.socket.responseHandler.waitForPubResponseDetails(packetId)
-	if resp == nil {
-		return nil, fmt.Errorf("failed to receive response from socket after sending SendMessageTask. packetId: %d", packetId)
-	} else if resp.Topic == "" {
-		return nil, fmt.Errorf("request timed out")
-	}
 	resp.Finish()
 
 	return resp.Table, nil

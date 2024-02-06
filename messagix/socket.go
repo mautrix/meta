@@ -334,9 +334,18 @@ func (s *Socket) sendPublishPacket(topic Topic, jsonData string, packet *packets
 		return packetId, err
 	}
 
-	s.responseHandler.addPacketChannel(packetId)
-	// TODO this should probably wait for the puback packet
-	return packetId, s.sendData(publishRequestPayload)
+	err = s.sendData(publishRequestPayload)
+	if err != nil {
+		s.responseHandler.deleteDetails(packetId, PacketChannel)
+		s.responseHandler.deleteDetails(packetId, RequestChannel)
+		return packetId, err
+	}
+	ack := s.responseHandler.waitForPubACKDetails(packetId)
+	if ack == nil {
+		s.responseHandler.deleteDetails(packetId, RequestChannel)
+		return packetId, fmt.Errorf("puback timeout")
+	}
+	return packetId, nil
 }
 
 type SocketLSRequestPayload struct {
@@ -346,7 +355,7 @@ type SocketLSRequestPayload struct {
 	Type      int    `json:"type"`
 }
 
-func (s *Socket) makeLSRequest(payload []byte, t int) (uint16, error) {
+func (s *Socket) makeLSRequest(payload []byte, t int) (*Event_PublishResponse, error) {
 	packetId := s.SafePacketId()
 	lsPayload := &SocketLSRequestPayload{
 		AppId:     s.client.configs.browserConfigTable.CurrentUserInitialData.AppID,
@@ -357,15 +366,19 @@ func (s *Socket) makeLSRequest(payload []byte, t int) (uint16, error) {
 
 	jsonPayload, err := json.Marshal(lsPayload)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	_, err = s.sendPublishPacket(LS_REQ, string(jsonPayload), &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, packetId)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return packetId, nil
+	resp := s.responseHandler.waitForPubResponseDetails(packetId)
+	if resp == nil {
+		return nil, fmt.Errorf("publish response timeout")
+	}
+	return resp, nil
 }
 
 func (s *Socket) getConnHeaders() http.Header {

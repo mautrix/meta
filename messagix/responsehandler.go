@@ -18,7 +18,7 @@ type ResponseHandler struct {
 }
 
 func (p *ResponseHandler) hasPacket(packetId uint16) bool {
-	_, ok := p.packetChannels[packetId]
+	_, ok := p.requestChannels[packetId]
 	return ok
 }
 
@@ -70,8 +70,8 @@ func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelTyp
 		return response
 	case <-time.After(packetTimeout):
 		p.deleteDetails(packetId, channelType)
-		// TODO this is completely wrong, it should be a proper error
-		return &Event_PublishResponse{}
+		// TODO this should probably be an error
+		return nil
 	}
 }
 

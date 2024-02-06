@@ -34,14 +34,9 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		return fmt.Errorf("failed to get app settings JSON: %w", err)
 	}
 
-	packetId, err := s.sendPublishPacket(LS_APP_SETTINGS, appSettingPublishJSON, &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, s.SafePacketId())
+	_, err = s.sendPublishPacket(LS_APP_SETTINGS, appSettingPublishJSON, &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, s.SafePacketId())
 	if err != nil {
 		return fmt.Errorf("failed to send app settings packet: %w", err)
-	}
-
-	appSettingAck := s.responseHandler.waitForPubACKDetails(packetId)
-	if appSettingAck == nil {
-		return fmt.Errorf("didn't get ack for app settings packet %d", packetId)
 	}
 
 	_, err = s.sendSubscribePacket(LS_FOREGROUND_STATE, packets.QOS_LEVEL_0, true)
@@ -101,14 +96,9 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	}
 
 	s.client.Logger.Trace().Any("data", string(payload)).Msg("Sync groups tasks")
-	packetId, err = s.makeLSRequest(payload, 3)
+	_, err = s.makeLSRequest(payload, 3)
 	if err != nil {
 		return fmt.Errorf("failed to send sync tasks: %w", err)
-	}
-
-	resp := s.responseHandler.waitForPubResponseDetails(packetId)
-	if resp == nil {
-		return fmt.Errorf("didn't receive response to sync task %d", packetId)
 	}
 
 	_, err = s.client.ExecuteTasks(&socket.ReportAppStateTask{AppState: table.FOREGROUND, RequestId: uuid.NewString()})
@@ -139,7 +129,6 @@ func (s *Socket) handleACKEvent(ackData AckEvent) {
 func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse, qos packets.QoS) {
 	packetId := resp.Data.RequestID
 	hasPacket := s.responseHandler.hasPacket(uint16(packetId))
-	// s.client.Logger.Debug().Any("packetId", packetId).Any("resp", resp).Msg("got response!")
 	switch resp.Topic {
 	case string(LS_RESP):
 		resp.Finish()
