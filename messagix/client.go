@@ -72,9 +72,9 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 	cli := &Client{
 		http: &http.Client{
 			Transport: &http.Transport{
-				DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-				TLSHandshakeTimeout:   5 * time.Second,
-				ResponseHeaderTimeout: 10 * time.Second,
+				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
 				ForceAttemptHTTP2:     true,
 			},
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -89,7 +89,7 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 				}
 				return nil
 			},
-			Timeout: 60 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 		cookies:         cookies,
 		Logger:          logger,
