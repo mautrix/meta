@@ -864,6 +864,10 @@ func (portal *Portal) GetClient(ctx context.Context) *messagix.Client {
 	return ctx.Value(msgconvContextKeyClient).(*messagix.Client)
 }
 
+func (portal *Portal) GetE2EEClient(ctx context.Context) *whatsmeow.Client {
+	return ctx.Value(msgconvContextKeyE2EEClient).(*whatsmeow.Client)
+}
+
 func (portal *Portal) GetMatrixReply(ctx context.Context, replyToID string, replyToUser int64) (replyTo id.EventID, replyTargetSender id.UserID) {
 	if replyToID == "" {
 		return
