@@ -29,6 +29,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/variationselector"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -499,13 +500,27 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	}
 
 	if editTarget := content.RelatesTo.GetReplaceID(); editTarget != "" {
+		if portal.ThreadType.IsWhatsApp() {
+			// TODO implement
+			go ms.sendMessageMetrics(evt, fmt.Errorf("whatsapp edits aren't supported yet"), "Ignoring", true)
+			return
+		}
 		portal.handleMatrixEdit(ctx, sender, isRelay, realSenderMXID, &ms, evt, content)
 		return
 	}
 
 	relaybotFormatted := isRelay && portal.addRelaybotFormat(ctx, realSenderMXID, evt, content)
-	ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
-	tasks, otid, err := portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
+	var otid int64
+	var tasks []socket.Task
+	var waMsg *waConsumerApplication.ConsumerApplication
+	var err error
+	if portal.ThreadType.IsWhatsApp() {
+		ctx = context.WithValue(ctx, msgconvContextKeyE2EEClient, sender.E2EEClient)
+		waMsg, err = portal.MsgConv.ToWhatsApp(ctx, evt, content, relaybotFormatted)
+	} else {
+		ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
+		tasks, otid, err = portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
+	}
 	if err != nil {
 		log.Err(err).Msg("Failed to convert message")
 		go ms.sendMessageMetrics(evt, err, "Error converting", true)
@@ -515,43 +530,54 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	timings.convert = time.Since(start)
 	start = time.Now()
 
-	otidStr := strconv.FormatInt(otid, 10)
-	portal.pendingMessages[otid] = evt.ID
-	messageTS := time.Now()
-	resp, err := sender.Client.ExecuteTasks(tasks...)
-	log.Trace().Any("response", resp).Msg("Meta send response")
-	var msgID string
-	if err == nil {
-		for _, replace := range resp.LSReplaceOptimsiticMessage {
-			if replace.OfflineThreadingId == otidStr {
-				msgID = replace.MessageId
-			}
-		}
-		if len(msgID) == 0 {
-			for _, failed := range resp.LSMarkOptimisticMessageFailed {
-				if failed.OTID == otidStr {
-					log.Warn().Str("message", failed.Message).Msg("Sending message failed")
-					go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
-					return
+	if waMsg != nil {
+		messageID := sender.E2EEClient.GenerateMessageID()
+		var resp whatsmeow.SendResponse
+		resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), waMsg, nil, whatsmeow.SendRequestExtra{
+			ID: messageID,
+		})
+		// TODO save message in db before sending and only update timestamp later
+		portal.storeMessageInDB(ctx, evt.ID, messageID, 0, sender.MetaID, resp.Timestamp, 0)
+	} else {
+		otidStr := strconv.FormatInt(otid, 10)
+		portal.pendingMessages[otid] = evt.ID
+		messageTS := time.Now()
+		var resp *table.LSTable
+		resp, err = sender.Client.ExecuteTasks(tasks...)
+		log.Trace().Any("response", resp).Msg("Meta send response")
+		var msgID string
+		if err == nil {
+			for _, replace := range resp.LSReplaceOptimsiticMessage {
+				if replace.OfflineThreadingId == otidStr {
+					msgID = replace.MessageId
 				}
 			}
-			log.Warn().Msg("Message send response didn't include message ID")
+			if len(msgID) == 0 {
+				for _, failed := range resp.LSMarkOptimisticMessageFailed {
+					if failed.OTID == otidStr {
+						log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+						go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+						return
+					}
+				}
+				log.Warn().Msg("Message send response didn't include message ID")
+			}
+		}
+		if msgID != "" {
+			portal.pendingMessagesLock.Lock()
+			_, ok = portal.pendingMessages[otid]
+			if ok {
+				portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, messageTS, 0)
+				delete(portal.pendingMessages, otid)
+			} else {
+				log.Debug().Msg("Not storing message send response: pending message was already removed from map")
+			}
+			portal.pendingMessagesLock.Unlock()
 		}
 	}
 
 	timings.totalSend = time.Since(start)
 	go ms.sendMessageMetrics(evt, err, "Error sending", true)
-	if msgID != "" {
-		portal.pendingMessagesLock.Lock()
-		_, ok = portal.pendingMessages[otid]
-		if ok {
-			portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, messageTS, 0)
-			delete(portal.pendingMessages, otid)
-		} else {
-			log.Debug().Msg("Not storing message send response: pending message was already removed from map")
-		}
-		portal.pendingMessagesLock.Unlock()
-	}
 }
 
 func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRelay bool, realSenderMXID id.UserID, ms *metricSender, evt *event.Event, content *event.MessageEventContent) {
@@ -784,6 +810,7 @@ type msgconvContextKey int
 const (
 	msgconvContextKeyIntent msgconvContextKey = iota
 	msgconvContextKeyClient
+	msgconvContextKeyE2EEClient
 	msgconvContextKeyBackfill
 )
 
@@ -1049,11 +1076,12 @@ func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *U
 
 	intent := sender.IntentFor(portal)
 	ctx = context.WithValue(ctx, msgconvContextKeyIntent, intent)
-	ctx = context.WithValue(ctx, msgconvContextKeyClient, source.Client)
 	var converted *msgconv.ConvertedMessage
 	if waMsg != nil {
+		ctx = context.WithValue(ctx, msgconvContextKeyE2EEClient, source.E2EEClient)
 		converted = portal.MsgConv.WhatsAppToMatrix(ctx, waMsg)
 	} else {
+		ctx = context.WithValue(ctx, msgconvContextKeyClient, source.Client)
 		converted = portal.MsgConv.ToMatrix(ctx, metaMsg)
 	}
 	if portal.bridge.Config.Bridge.CaptionInMessage {
@@ -1604,7 +1632,7 @@ func (portal *Portal) UpdateInfo(ctx context.Context, info table.ThreadInfo) {
 		Logger()
 	ctx = log.WithContext(ctx)
 	update := false
-	if portal.ThreadType != info.GetThreadType() {
+	if portal.ThreadType != info.GetThreadType() && !portal.ThreadType.IsWhatsApp() {
 		portal.ThreadType = info.GetThreadType()
 		update = true
 	}

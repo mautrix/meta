@@ -835,6 +835,9 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 			expectedType = table.ENCRYPTED_OVER_WA_GROUP
 		case waTypes.MessengerServer, waTypes.DefaultUserServer:
 			expectedType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
+		default:
+			log.Warn().Msg("Unexpected chat server in encrypted message")
+			return
 		}
 		portal := user.GetPortalByThreadID(threadID, expectedType)
 		changed := false
