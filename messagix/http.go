@@ -217,7 +217,7 @@ func (c *Client) addLoginFacebookHeaders(h http.Header) http.Header {
 }
 
 func (c *Client) addLoginInstagramHeaders(h http.Header) http.Header {
-	h.Set("x-instagram-ajax", strconv.Itoa(int(c.configs.browserConfigTable.SiteData.ServerRevision)))
+	h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.browserConfigTable.SiteData.ServerRevision, 10))
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin") // header is required

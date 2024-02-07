@@ -124,7 +124,7 @@ func (s *Socket) Connect() error {
 func (s *Socket) BuildBrokerUrl() string {
 	query := &url.Values{}
 	query.Add("cid", s.client.configs.browserConfigTable.MqttWebDeviceID.ClientID)
-	query.Add("sid", strconv.Itoa(int(s.sessionId)))
+	query.Add("sid", strconv.FormatInt(s.sessionId, 10))
 
 	encodedQuery := query.Encode()
 	if !strings.HasSuffix(s.broker, "=") {

@@ -48,7 +48,7 @@ func RandomInt(min, max int) int64 {
 }
 
 func GenerateTimestampString() string {
-	return strconv.Itoa(int(time.Now().UnixMilli()))
+	return strconv.FormatInt(time.Now().UnixMilli(), 10)
 }
 
 func GenerateSessionId() int64 {

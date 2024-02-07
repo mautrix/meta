@@ -26,7 +26,7 @@ func EncryptPassword(platform int, pubKeyId int, pubKey, password string) (strin
 	}
 
 	buf := bytes.NewBuffer(nil)
-	ts := []byte(strconv.Itoa(int(time.Now().Unix())))
+	ts := []byte(strconv.FormatInt(time.Now().Unix(), 10))
 	pwBytes := []byte(password)
 	buf.WriteByte(1)
 	buf.WriteByte(byte(pubKeyId))

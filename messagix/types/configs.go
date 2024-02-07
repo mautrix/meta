@@ -45,7 +45,7 @@ type MQTTConfig struct {
 func (m *MQTTConfig) BuildBrokerUrl() string {
 	query := &url.Values{}
 	query.Add("cid", m.Cid)
-	query.Add("sid", strconv.Itoa(int(m.SessionId)))
+	query.Add("sid", strconv.FormatInt(m.SessionId, 10))
 
 	encodedQuery := query.Encode()
 	if !strings.HasSuffix(m.Broker, "=") {

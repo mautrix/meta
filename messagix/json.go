@@ -94,7 +94,7 @@ type AppSettingsPublish struct {
 func (s *Socket) newAppSettingsPublishJSON(versionId int64) (string, error) {
 	payload := &AppSettingsPublish{
 		LsFdid:        "",
-		SchemaVersion: strconv.Itoa(int(versionId)),
+		SchemaVersion: strconv.FormatInt(versionId, 10),
 	}
 
 	jsonData, err := json.Marshal(payload)

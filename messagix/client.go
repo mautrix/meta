@@ -320,7 +320,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		h.Set("host", c.getEndpoint("host"))
 		h.Set("origin", c.getEndpoint("base_url"))
 		h.Set("referer", c.getEndpoint("base_url")+"/")
-		h.Set("x-instagram-ajax", strconv.Itoa(int(c.configs.browserConfigTable.SiteData.ServerRevision)))
+		h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.browserConfigTable.SiteData.ServerRevision, 10))
 		variables, err := json.Marshal(&types.InstagramCookiesVariables{
 			FirstPartyTrackingOptIn: true,
 			IgDid:                   c.cookies.GetValue("ig_did"),

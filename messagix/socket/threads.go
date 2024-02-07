@@ -140,7 +140,7 @@ func (t *SendMessageTask) GetLabel() string {
 }
 
 func (t *SendMessageTask) Create() (interface{}, interface{}, bool) {
-	queueName := strconv.Itoa(int(t.ThreadId))
+	queueName := strconv.FormatInt(t.ThreadId, 10)
 	return t, queueName, false
 }
 
@@ -186,7 +186,7 @@ func (t *ThreadMarkReadTask) GetLabel() string {
 }
 
 func (t *ThreadMarkReadTask) Create() (interface{}, interface{}, bool) {
-	queueName := strconv.Itoa(int(t.ThreadId))
+	queueName := strconv.FormatInt(t.ThreadId, 10)
 	return t, queueName, false
 }
 
@@ -204,7 +204,7 @@ func (t *FetchMessagesTask) GetLabel() string {
 }
 
 func (t *FetchMessagesTask) Create() (interface{}, interface{}, bool) {
-	threadStr := strconv.Itoa(int(t.ThreadKey))
+	threadStr := strconv.FormatInt(t.ThreadKey, 10)
 	queueName := "mrq." + threadStr
 	return t, queueName, false
 }
