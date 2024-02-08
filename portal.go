@@ -1088,7 +1088,7 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 			EventID: targetMsg.MXID,
 		},
 	}
-	resp, err := portal.sendMatrixEvent(ctx, intent, event.EventReaction, content, nil, int64(react.TimestampMs))
+	resp, err := portal.sendMatrixEvent(ctx, intent, event.EventReaction, content, nil, 0)
 	if err != nil {
 		log.Err(err).Msg("Failed to send reaction")
 		return
