@@ -31,6 +31,7 @@ import (
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
+	"go.mau.fi/whatsmeow/binary/armadillo/waMsgApplication"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix"
@@ -513,10 +514,11 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	var otid int64
 	var tasks []socket.Task
 	var waMsg *waConsumerApplication.ConsumerApplication
+	var waMeta *waMsgApplication.MessageApplication_Metadata
 	var err error
 	if portal.ThreadType.IsWhatsApp() {
 		ctx = context.WithValue(ctx, msgconvContextKeyE2EEClient, sender.E2EEClient)
-		waMsg, err = portal.MsgConv.ToWhatsApp(ctx, evt, content, relaybotFormatted)
+		waMsg, waMeta, err = portal.MsgConv.ToWhatsApp(ctx, evt, content, relaybotFormatted)
 	} else {
 		ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
 		tasks, otid, err = portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
@@ -533,7 +535,7 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	if waMsg != nil {
 		messageID := sender.E2EEClient.GenerateMessageID()
 		var resp whatsmeow.SendResponse
-		resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), waMsg, nil, whatsmeow.SendRequestExtra{
+		resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), waMsg, waMeta, whatsmeow.SendRequestExtra{
 			ID: messageID,
 		})
 		// TODO save message in db before sending and only update timestamp later
@@ -922,6 +924,7 @@ func (portal *Portal) GetMetaReply(ctx context.Context, content *event.MessageEv
 			ReplyMessageId:  replyToMsg.ID,
 			ReplySourceType: 1,
 			ReplyType:       0,
+			ReplySender:     replyToMsg.Sender,
 		}
 	}
 	return nil

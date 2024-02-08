@@ -144,7 +144,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	var fileName string
 	mimeType := transport.GetAncillary().GetMimetype()
 	if convert != nil {
-		data, fileName, mimeType, err = convert(ctx, data, mimeType)
+		data, mimeType, fileName, err = convert(ctx, data, mimeType)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert: %w", err)
 		}
