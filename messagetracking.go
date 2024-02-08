@@ -28,6 +28,8 @@ import (
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/mautrix-meta/msgconv"
 )
 
 var (
@@ -57,22 +59,23 @@ var (
 
 func errorToStatusReason(err error) (reason event.MessageStatusReason, status event.MessageStatus, isCertain, sendNotice bool, humanMessage string) {
 	switch {
-	case errors.Is(err, errUnexpectedParsedContentType):
-		//errors.Is(err, msgconv.ErrUnsupportedMsgType),
-		//errors.Is(err, msgconv.ErrInvalidGeoURI):
-		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, ""
+	case errors.Is(err, errUnexpectedParsedContentType),
+		errors.Is(err, msgconv.ErrUnsupportedMsgType),
+		errors.Is(err, msgconv.ErrInvalidGeoURI):
+		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errMNoticeDisabled):
-		return event.MessageStatusUnsupported, event.MessageStatusFail, true, false, ""
+		return event.MessageStatusUnsupported, event.MessageStatusFail, true, false, err.Error()
 	case errors.Is(err, errEditDifferentSender),
 		errors.Is(err, errEditTooOld),
 		errors.Is(err, errEditCountExceeded),
-		errors.Is(err, errEditUnknownTarget),
-		errors.Is(err, errServerRejected):
+		errors.Is(err, errEditUnknownTarget):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errTimeoutBeforeHandling):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"
 	case errors.Is(err, context.DeadlineExceeded):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, false, true, "handling the message took too long and was cancelled"
+	case errors.Is(err, errServerRejected):
+		return event.MessageStatusGenericError, event.MessageStatusRetriable, false, true, err.Error()
 	case errors.Is(err, errMessageTakingLong):
 		return event.MessageStatusTooOld, event.MessageStatusPending, false, true, err.Error()
 	case errors.Is(err, errRedactionTargetNotFound),
