@@ -19,6 +19,7 @@ package msgconv
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -132,6 +133,20 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	return cm
 }
 
+func errorToNotice(err error, attachmentContainerType string) *ConvertedMessagePart {
+	errMsg := "Failed to transfer attachment"
+	if errors.Is(err, ErrURLNotFound) {
+		errMsg = fmt.Sprintf("Unrecognized %s attachment type", attachmentContainerType)
+	}
+	return &ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    errMsg,
+		},
+	}
+}
+
 func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *table.LSInsertBlobAttachment) *ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.AttachmentMimeType
@@ -144,14 +159,8 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 	}
 	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), int(duration))
 	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
-		return &ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    "Failed to transfer attachment",
-			},
-		}
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer blob media")
+		return errorToNotice(err, "blob")
 	}
 	return converted
 }
@@ -167,14 +176,8 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 	}
 	converted, err := mc.reuploadAttachment(ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, int(width), int(height), 0)
 	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
-		return &ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    "Failed to transfer attachment",
-			},
-		}
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")
+		return errorToNotice(err, "sticker")
 	}
 	return converted
 }
@@ -201,14 +204,8 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 	}
 	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, width, height, int(resp.VideoDuration*1000))
 	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
-		return &ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    "Failed to transfer attachment",
-			},
-		}
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+		return errorToNotice(err, "fetched")
 	}
 	return converted
 }
@@ -353,14 +350,8 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	}
 	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), 0)
 	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
-		return &ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    "Failed to transfer attachment",
-			},
-		}
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
+		return errorToNotice(err, "XMA")
 	}
 	return mc.fetchFullXMA(ctx, att, converted)
 }
@@ -371,7 +362,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	width, height, duration int,
 ) (*ConvertedMessagePart, error) {
 	if url == "" {
-		return nil, fmt.Errorf("url not found")
+		return nil, ErrURLNotFound
 	}
 	data, err := DownloadMedia(ctx, url)
 	if err != nil {

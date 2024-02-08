@@ -43,6 +43,7 @@ var (
 	ErrMediaConvertFailed  = errors.New("failed to convert")
 	ErrMediaUploadFailed   = errors.New("failed to upload media")
 	ErrInvalidGeoURI       = errors.New("invalid `geo:` URI in message")
+	ErrURLNotFound         = errors.New("url not found")
 )
 
 func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent, relaybotFormatted bool) ([]socket.Task, int64, error) {
