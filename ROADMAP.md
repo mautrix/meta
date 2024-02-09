@@ -125,7 +125,7 @@
   * [ ] Message history/Reading chat backup
   * [ ] Presence
   * [ ] Typing notifications
-  * [ ] Read receipts
+  * [x] Read receipts
   * [ ] Admin status
   * [ ] Membership actions
     * [ ] Add member

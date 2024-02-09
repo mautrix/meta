@@ -1115,6 +1115,8 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
 	case *events.FBConsumerMessage:
 		portal.handleEncryptedMessage(portalMessage.user, typedEvt)
+	case *events.Receipt:
+		portal.handleWhatsAppReceipt(portalMessage.user, typedEvt)
 	case *table.WrappedMessage:
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
 	case *table.UpsertMessages:
@@ -1170,6 +1172,58 @@ func (portal *Portal) checkPendingMessage(ctx context.Context, messageID string,
 	delete(portal.pendingMessages, otid)
 	zerolog.Ctx(ctx).Debug().Stringer("pending_event_id", pendingEventID).Msg("Saved pending message ID")
 	return true
+}
+
+func (portal *Portal) handleWhatsAppReceipt(source *User, receipt *events.Receipt) {
+	if receipt.Type != types.ReceiptTypeRead && receipt.Type != types.ReceiptTypeReadSelf {
+		return
+	}
+	senderID := int64(receipt.Sender.UserInt())
+	if senderID == 0 {
+		return
+	}
+	log := portal.log.With().
+		Str("action", "handle whatsapp receipt").
+		Stringer("chat_jid", receipt.Chat).
+		Stringer("receipt_sender_jid", receipt.Sender).
+		Strs("message_ids", receipt.MessageIDs).
+		Time("receipt_timestamp", receipt.Timestamp).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	markAsRead := make([]*database.Message, 0, 1)
+	var bestTimestamp time.Time
+	for _, msgID := range receipt.MessageIDs {
+		msg, err := portal.bridge.DB.Message.GetLastPartByID(ctx, msgID, portal.Receiver)
+		if err != nil {
+			log.Err(err).Msg("Failed to get message from database")
+		}
+		if msg == nil {
+			continue
+		}
+		if msg.Timestamp.After(bestTimestamp) {
+			bestTimestamp = msg.Timestamp
+			markAsRead = append(markAsRead[:0], msg)
+		} else if msg != nil && msg.Timestamp.Equal(bestTimestamp) {
+			markAsRead = append(markAsRead, msg)
+		}
+	}
+	if senderID == source.MetaID {
+		if len(markAsRead) > 0 {
+			source.SetLastReadTS(ctx, portal.PortalKey, markAsRead[0].Timestamp)
+		} else {
+			source.SetLastReadTS(ctx, portal.PortalKey, receipt.Timestamp)
+		}
+	}
+	sender := portal.bridge.GetPuppetByID(senderID)
+	for _, msg := range markAsRead {
+		// TODO bridge read-self as m.read.private?
+		err := portal.SendReadReceipt(ctx, sender, msg.MXID)
+		if err != nil {
+			log.Err(err).Stringer("event_id", msg.MXID).Msg("Failed to mark event as read")
+		} else {
+			log.Debug().Stringer("event_id", msg.MXID).Msg("Marked event as read")
+		}
+	}
 }
 
 func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsumerMessage) {

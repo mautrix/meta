@@ -868,6 +868,11 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 			}
 		}
 		portal.metaMessages <- portalMetaMessage{user: user, evt: evt}
+	case *events.Receipt:
+		portal := user.GetExistingPortalByThreadID(int64(evt.Chat.UserInt()))
+		if portal != nil {
+			portal.metaMessages <- portalMetaMessage{user: user, evt: evt}
+		}
 	}
 }
 
