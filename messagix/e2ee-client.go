@@ -53,7 +53,7 @@ func (c *Client) getClientPayload() *waProto.ClientPayload {
 		Passive:       proto.Bool(false),
 		Pull:          proto.Bool(true),
 		UserAgent: &waProto.ClientPayload_UserAgent{
-			Device: proto.String("Firefox"),
+			Device: proto.String(BrowserName),
 			AppVersion: &waProto.ClientPayload_UserAgent_AppVersion{
 				Primary:   proto.Uint32(301),
 				Secondary: proto.Uint32(0),
@@ -62,15 +62,15 @@ func (c *Client) getClientPayload() *waProto.ClientPayload {
 			LocaleCountryIso31661Alpha2: proto.String("en"),
 			LocaleLanguageIso6391:       proto.String("en"),
 			//Hardware:                    proto.String("Linux"),
-			Manufacturer:  proto.String("Linux"),
+			Manufacturer:  proto.String(OSName),
 			Mcc:           proto.String("000"),
 			Mnc:           proto.String("000"),
-			OsBuildNumber: proto.String("6.0.0"),
-			OsVersion:     proto.String("6.0.0"),
+			OsBuildNumber: proto.String(""),
+			OsVersion:     proto.String(""),
 			//SimMcc: proto.String("000"),
 			//SimMnc: proto.String("000"),
 
-			Platform:       waProto.ClientPayload_UserAgent_WEB.Enum(), // or BLUE_WEB?
+			Platform:       waProto.ClientPayload_UserAgent_BLUE_WEB.Enum(),
 			ReleaseChannel: waProto.ClientPayload_UserAgent_DEBUG.Enum(),
 		},
 	}
