@@ -484,8 +484,8 @@ func (portal *Portal) handleMatrixReadReceiptForWhatsApp(ctx context.Context, se
 	groupedMessages := make(map[types.JID][]types.MessageID)
 	for _, msg := range messages {
 		var key types.JID
-		if msg.Sender == sender.MetaID {
-			// Don't send read receipts for own messages or fake messages
+		if msg.Sender == sender.MetaID || msg.IsUnencrypted() {
+			// Don't send read receipts for own messages or unencrypted messages
 			continue
 		} else if !portal.IsPrivateChat() {
 			// TODO: this is hacky since it hardcodes the server
@@ -743,7 +743,7 @@ func (portal *Portal) handleMatrixRedaction(ctx context.Context, sender *User, e
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, errRedactionTargetSentBySomeoneElse)
 			return
 		}
-		if portal.ThreadType.IsWhatsApp() {
+		if !dbMessage.IsUnencrypted() {
 			consumerMsg := wrapRevoke(&waConsumerApplication.ConsumerApplication_RevokeMessage{
 				Key: portal.buildMessageKey(sender, dbMessage),
 			})
@@ -877,7 +877,7 @@ func (portal *Portal) buildMessageKey(user *User, targetMsg *database.Message) *
 }
 
 func (portal *Portal) sendReaction(ctx context.Context, sender *User, targetMsg *database.Message, metaEmoji string, timestamp int64) error {
-	if portal.ThreadType.IsWhatsApp() {
+	if !targetMsg.IsUnencrypted() {
 		consumerMsg := wrapReaction(&waConsumerApplication.ConsumerApplication_ReactionMessage{
 			Key:               portal.buildMessageKey(sender, targetMsg),
 			Text:              metaEmoji,

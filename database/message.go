@@ -228,3 +228,7 @@ func (msg *Message) EditTimestamp() int64 {
 func (msg *Message) UpdateEditTimestamp(ctx context.Context, ts int64) error {
 	return msg.UpdateEditCount(ctx, ts)
 }
+
+func (msg *Message) IsUnencrypted() bool {
+	return strings.HasPrefix(msg.ID, "mid.$")
+}
