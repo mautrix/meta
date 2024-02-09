@@ -1236,6 +1236,7 @@ func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsume
 		Time("message_ts", evt.Info.Timestamp).
 		Logger()
 	ctx := log.WithContext(context.TODO())
+	sender.FetchAndUpdateInfoIfNecessary(ctx, source)
 
 	switch payload := evt.Message.GetPayload().GetPayload().(type) {
 	case *waConsumerApplication.ConsumerApplication_Payload_Content:
@@ -1778,8 +1779,10 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 			invite = append(invite, portal.bridge.Bot.UserID)
 		}
 	}
-	if portal.IsPrivateChat() {
-		portal.UpdateInfoFromPuppet(ctx, portal.GetDMPuppet())
+	dmPuppet := portal.GetDMPuppet()
+	if dmPuppet != nil {
+		dmPuppet.FetchAndUpdateInfoIfNecessary(ctx, user)
+		portal.UpdateInfoFromPuppet(ctx, dmPuppet)
 	}
 	if !portal.AvatarURL.IsEmpty() {
 		initialState = append(initialState, &event.Event{
@@ -1834,10 +1837,10 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 	go portal.addToPersonalSpace(portal.log.WithContext(context.TODO()), user)
 
 	if portal.IsPrivateChat() {
-		user.AddDirectChat(ctx, portal.MXID, portal.GetDMPuppet().MXID)
+		user.AddDirectChat(ctx, portal.MXID, dmPuppet.MXID)
 	}
 	if waGroupInfo != nil && !autoJoinInvites {
-		portal.SyncWAParticipants(ctx, waGroupInfo.Participants)
+		portal.SyncWAParticipants(ctx, user, waGroupInfo.Participants)
 	}
 
 	return nil
@@ -1875,7 +1878,7 @@ func (portal *Portal) UpdateWAGroupInfo(ctx context.Context, source *User, group
 	update = portal.updateName(ctx, groupInfo.Name) || update
 	//update = portal.updateTopic(ctx, groupInfo.Topic) || update
 	//update = portal.updateWAAvatar(ctx)
-	participants := portal.SyncWAParticipants(ctx, groupInfo.Participants)
+	participants := portal.SyncWAParticipants(ctx, source, groupInfo.Participants)
 	if update {
 		err := portal.Update(ctx)
 		if err != nil {
@@ -1886,10 +1889,11 @@ func (portal *Portal) UpdateWAGroupInfo(ctx context.Context, source *User, group
 	return groupInfo, participants
 }
 
-func (portal *Portal) SyncWAParticipants(ctx context.Context, participants []types.GroupParticipant) []id.UserID {
+func (portal *Portal) SyncWAParticipants(ctx context.Context, source *User, participants []types.GroupParticipant) []id.UserID {
 	var userIDs []id.UserID
 	for _, pcp := range participants {
 		puppet := portal.bridge.GetPuppetByID(int64(pcp.JID.UserInt()))
+		puppet.FetchAndUpdateInfoIfNecessary(ctx, source)
 		userIDs = append(userIDs, puppet.IntentFor(portal).UserID)
 		if portal.MXID != "" {
 			err := puppet.IntentFor(portal).EnsureJoined(ctx, portal.MXID)

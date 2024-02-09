@@ -21,7 +21,7 @@ func (t *GetContactsTask) Create() (interface{}, interface{}, bool) {
 }
 
 type GetContactsFullTask struct {
-	ContactId int64 `json:"contact_id"`
+	ContactID int64 `json:"contact_id"`
 }
 
 func (t *GetContactsFullTask) GetLabel() string {
