@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"sync"
+	"time"
 
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/id"
@@ -28,11 +29,11 @@ import (
 )
 
 const (
-	getUserByMXIDQuery       = `SELECT mxid, meta_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE mxid=$1`
-	getUserByMetaIDQuery     = `SELECT mxid, meta_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE meta_id=$1`
-	getAllLoggedInUsersQuery = `SELECT mxid, meta_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE cookies IS NOT NULL`
-	insertUserQuery          = `INSERT INTO "user" (mxid, meta_id, cookies, inbox_fetched, management_room, space_room) VALUES ($1, $2, $3, $4, $5, $6)`
-	updateUserQuery          = `UPDATE "user" SET meta_id=$2, cookies=$3, inbox_fetched=$4, management_room=$5, space_room=$6 WHERE mxid=$1`
+	getUserByMXIDQuery       = `SELECT mxid, meta_id, wa_device_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE mxid=$1`
+	getUserByMetaIDQuery     = `SELECT mxid, meta_id, wa_device_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE meta_id=$1`
+	getAllLoggedInUsersQuery = `SELECT mxid, meta_id, wa_device_id, cookies, inbox_fetched, management_room, space_room FROM "user" WHERE cookies IS NOT NULL`
+	insertUserQuery          = `INSERT INTO "user" (mxid, meta_id, wa_device_id, cookies, inbox_fetched, management_room, space_room) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	updateUserQuery          = `UPDATE "user" SET meta_id=$2, wa_device_id=$3, cookies=$4, inbox_fetched=$5, management_room=$6, space_room=$7 WHERE mxid=$1`
 )
 
 type UserQuery struct {
@@ -44,20 +45,24 @@ type User struct {
 
 	MXID           id.UserID
 	MetaID         int64
+	WADeviceID     uint16
 	Cookies        cookies.Cookies
 	InboxFetched   bool
 	ManagementRoom id.RoomID
 	SpaceRoom      id.RoomID
 
-	inSpaceCache     map[PortalKey]bool
-	inSpaceCacheLock sync.Mutex
+	lastReadCache     map[PortalKey]time.Time
+	lastReadCacheLock sync.Mutex
+	inSpaceCache      map[PortalKey]bool
+	inSpaceCacheLock  sync.Mutex
 }
 
 func newUser(qh *dbutil.QueryHelper[*User]) *User {
 	return &User{
 		qh: qh,
 
-		inSpaceCache: make(map[PortalKey]bool),
+		lastReadCache: make(map[PortalKey]time.Time),
+		inSpaceCache:  make(map[PortalKey]bool),
 	}
 }
 
@@ -74,7 +79,7 @@ func (uq *UserQuery) GetAllLoggedIn(ctx context.Context) ([]*User, error) {
 }
 
 func (u *User) sqlVariables() []any {
-	return []any{u.MXID, dbutil.NumPtr(u.MetaID), dbutil.JSON{Data: u.Cookies}, u.InboxFetched, dbutil.StrPtr(u.ManagementRoom), dbutil.StrPtr(u.SpaceRoom)}
+	return []any{u.MXID, dbutil.NumPtr(u.MetaID), u.WADeviceID, dbutil.JSON{Data: u.Cookies}, u.InboxFetched, dbutil.StrPtr(u.ManagementRoom), dbutil.StrPtr(u.SpaceRoom)}
 }
 
 func (u *User) Insert(ctx context.Context) error {
@@ -90,10 +95,12 @@ var NewCookies func() cookies.Cookies
 func (u *User) Scan(row dbutil.Scannable) (*User, error) {
 	var managementRoom, spaceRoom sql.NullString
 	var metaID sql.NullInt64
+	var waDeviceID sql.NullInt32
 	scannedCookies := NewCookies()
 	err := row.Scan(
 		&u.MXID,
 		&metaID,
+		&waDeviceID,
 		&dbutil.JSON{Data: scannedCookies},
 		&u.InboxFetched,
 		&managementRoom,
@@ -106,6 +113,7 @@ func (u *User) Scan(row dbutil.Scannable) (*User, error) {
 		u.Cookies = scannedCookies
 	}
 	u.MetaID = metaID.Int64
+	u.WADeviceID = uint16(waDeviceID.Int32)
 	u.ManagementRoom = id.RoomID(managementRoom.String)
 	u.SpaceRoom = id.RoomID(spaceRoom.String)
 	return u, nil

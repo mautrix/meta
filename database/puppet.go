@@ -21,13 +21,14 @@ import (
 	"database/sql"
 
 	"go.mau.fi/util/dbutil"
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/id"
 )
 
 const (
 	puppetBaseSelect = `
         SELECT id, name, username, avatar_id, avatar_url, name_set, avatar_set,
-               contact_info_set, custom_mxid, access_token
+               contact_info_set, whatsapp_server, custom_mxid, access_token
         FROM puppet
 	`
 	getPuppetByMetaIDQuery     = puppetBaseSelect + `WHERE id=$1`
@@ -36,15 +37,15 @@ const (
 	updatePuppetQuery          = `
 		UPDATE puppet SET
 			name=$2, username=$3, avatar_id=$4, avatar_url=$5, name_set=$6, avatar_set=$7,
-			contact_info_set=$8, custom_mxid=$9, access_token=$10
+			contact_info_set=$8, whatsapp_server=$9, custom_mxid=$10, access_token=$11
 		WHERE id=$1
 	`
 	insertPuppetQuery = `
 		INSERT INTO puppet (
 			id, name, username, avatar_id, avatar_url, name_set, avatar_set,
-			contact_info_set, custom_mxid, access_token
+			contact_info_set, whatsapp_server, custom_mxid, access_token
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 )
 
@@ -64,6 +65,7 @@ type Puppet struct {
 	AvatarSet bool
 
 	ContactInfoSet bool
+	WhatsAppServer string
 
 	CustomMXID  id.UserID
 	AccessToken string
@@ -96,6 +98,7 @@ func (p *Puppet) Scan(row dbutil.Scannable) (*Puppet, error) {
 		&p.NameSet,
 		&p.AvatarSet,
 		&p.ContactInfoSet,
+		&p.WhatsAppServer,
 		&customMXID,
 		&p.AccessToken,
 	)
@@ -104,6 +107,17 @@ func (p *Puppet) Scan(row dbutil.Scannable) (*Puppet, error) {
 	}
 	p.CustomMXID = id.UserID(customMXID.String)
 	return p, nil
+}
+
+func (p *Puppet) JID() types.JID {
+	jid := types.JID{
+		User:   p.Username,
+		Server: p.WhatsAppServer,
+	}
+	if jid.Server == "" {
+		jid.Server = types.MessengerServer
+	}
+	return jid
 }
 
 func (p *Puppet) sqlVariables() []any {
@@ -116,6 +130,7 @@ func (p *Puppet) sqlVariables() []any {
 		p.NameSet,
 		p.AvatarSet,
 		p.ContactInfoSet,
+		p.WhatsAppServer,
 		dbutil.StrPtr(p.CustomMXID),
 		p.AccessToken,
 	}

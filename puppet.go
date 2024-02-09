@@ -31,6 +31,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
+	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/msgconv"
 )
@@ -179,6 +180,8 @@ type Puppet struct {
 	customUser   *User
 
 	syncLock sync.Mutex
+
+	triedFetchingInfo bool
 }
 
 var userIDRegex *regexp.Regexp
@@ -221,6 +224,35 @@ func (puppet *Puppet) GetAvatarURL() id.ContentURI {
 	return puppet.AvatarURL
 }
 
+func (puppet *Puppet) FetchAndUpdateInfoIfNecessary(ctx context.Context, via *User) {
+	if puppet.triedFetchingInfo || puppet.Name != "" {
+		return
+	}
+	puppet.triedFetchingInfo = true
+	zerolog.Ctx(ctx).Debug().Int64("via_user_meta_id", via.MetaID).Msg("Fetching and updating info for user")
+	resp, err := via.Client.ExecuteTasks(&socket.GetContactsFullTask{
+		ContactID: puppet.ID,
+	})
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Int64("via_user_meta_id", via.MetaID).Msg("Failed to fetch info")
+	} else {
+		var gotInfo bool
+		for _, info := range resp.LSDeleteThenInsertContact {
+			if info.Id == puppet.ID {
+				puppet.UpdateInfo(ctx, info)
+				gotInfo = true
+			} else {
+				zerolog.Ctx(ctx).Warn().Int64("other_meta_id", info.Id).Msg("Got info for wrong user")
+			}
+		}
+		if !gotInfo {
+			zerolog.Ctx(ctx).Warn().Int64("via_user_meta_id", via.MetaID).Msg("Didn't get info for user")
+		} else {
+			zerolog.Ctx(ctx).Debug().Int64("via_user_meta_id", via.MetaID).Msg("Fetched and updated info for user")
+		}
+	}
+}
+
 func (puppet *Puppet) UpdateInfo(ctx context.Context, info types.UserInfo) {
 	log := zerolog.Ctx(ctx).With().
 		Str("function", "Puppet.UpdateInfo").
@@ -228,11 +260,6 @@ func (puppet *Puppet) UpdateInfo(ctx context.Context, info types.UserInfo) {
 		Logger()
 	ctx = log.WithContext(ctx)
 	var err error
-	if info == nil {
-		log.Debug().Msg("Not Fetching info to update puppet")
-		// TODO implement?
-		return
-	}
 
 	log.Trace().Msg("Updating puppet info")
 

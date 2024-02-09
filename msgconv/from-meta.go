@@ -62,6 +62,7 @@ func (cm *ConvertedMessage) MergeCaption() {
 	mediaContent.Body = textContent.Body
 	mediaContent.Format = textContent.Format
 	mediaContent.FormattedBody = textContent.FormattedBody
+	mediaContent.Mentions = textContent.Mentions
 	cm.Parts = cm.Parts[:1]
 }
 
@@ -356,6 +357,39 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	return mc.fetchFullXMA(ctx, att, converted)
 }
 
+func (mc *MessageConverter) uploadAttachment(ctx context.Context, data []byte, fileName, mimeType string) (*event.MessageEventContent, error) {
+	var file *event.EncryptedFileInfo
+	uploadMime := mimeType
+	uploadFileName := fileName
+	if mc.GetData(ctx).Encrypted {
+		file = &event.EncryptedFileInfo{
+			EncryptedFile: *attachment.NewEncryptedFile(),
+			URL:           "",
+		}
+		file.EncryptInPlace(data)
+		uploadMime = "application/octet-stream"
+		uploadFileName = ""
+	}
+	mxc, err := mc.UploadMatrixMedia(ctx, data, uploadFileName, uploadMime)
+	if err != nil {
+		return nil, err
+	}
+	content := &event.MessageEventContent{
+		Body: fileName,
+		Info: &event.FileInfo{
+			MimeType: mimeType,
+			Size:     len(data),
+		},
+	}
+	if file != nil {
+		file.URL = mxc
+		content.File = file
+	} else {
+		content.URL = mxc
+	}
+	return content, nil
+}
+
 func (mc *MessageConverter) reuploadAttachment(
 	ctx context.Context, attachmentType table.AttachmentType,
 	url, fileName, mimeType string,
@@ -388,32 +422,14 @@ func (mc *MessageConverter) reuploadAttachment(
 			width, height = config.Width, config.Height
 		}
 	}
-	var file *event.EncryptedFileInfo
-	uploadMime := mimeType
-	uploadFileName := fileName
-	if mc.GetData(ctx).Encrypted {
-		file = &event.EncryptedFileInfo{
-			EncryptedFile: *attachment.NewEncryptedFile(),
-			URL:           "",
-		}
-		file.EncryptInPlace(data)
-		uploadMime = "application/octet-stream"
-		uploadFileName = ""
-	}
-	mxc, err := mc.UploadMatrixMedia(ctx, data, uploadFileName, uploadMime)
+	content, err := mc.uploadAttachment(ctx, data, fileName, mimeType)
 	if err != nil {
 		return nil, err
 	}
-	content := &event.MessageEventContent{
-		Body: fileName,
-		Info: &event.FileInfo{
-			MimeType: mimeType,
-			Duration: duration,
-			Width:    width,
-			Height:   height,
-			Size:     len(data),
-		},
-	}
+	content.Info.Duration = duration
+	content.Info.Width = width
+	content.Info.Height = height
+
 	if attachmentType == table.AttachmentTypeAnimatedImage && mimeType == "video/mp4" {
 		extra["info"] = map[string]any{
 			"fi.mau.gif":           true,
@@ -449,12 +465,6 @@ func (mc *MessageConverter) reuploadAttachment(
 	}
 	if content.Body == "" {
 		content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
-	}
-	if file != nil {
-		file.URL = mxc
-		content.File = file
-	} else {
-		content.URL = mxc
 	}
 	return &ConvertedMessagePart{
 		Type:    eventType,

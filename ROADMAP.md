@@ -39,6 +39,7 @@
       * [x] Files
       * [x] Voice messages
       * [x] Locations
+      * [ ] Polls
       * [ ] Live location sharing
       * [x] Story/reel/clip shares
       * [x] Profile shares
@@ -67,10 +68,81 @@
     * [x] Name
     * [ ] Per-chat nickname
     * [x] Avatar
+* Matrix → WhatsApp
+  * [ ] Message content
+    * [x] Text
+    * [ ] Media
+      * [x] Files
+      * [x] Voice messages
+      * [x] Videos
+      * [x] Images
+      * [x] Stickers
+      * [x] Gifs
+      * [ ] Locations
+      * [ ] Polls
+    * [ ] Formatting (Messenger only)
+    * [x] Replies
+    * [ ] Mentions
+  * [x] Message redactions
+  * [x] Message reactions
+  * [x] Message edits
+  * [ ] Writing to chat backup
+  * [ ] Presence
+  * [ ] Typing notifications
+  * [x] Read receipts
+  * [ ] Power level
+  * [ ] Membership actions
+    * [ ] Invite
+    * [ ] Kick
+    * [ ] Leave
+  * [ ] Room metadata changes
+    * [ ] Name
+    * [ ] Avatar
+    * [ ] Per-room user nick
+* WhatsApp → Matrix
+  * [ ] Message content
+    * [x] Text
+    * [ ] Media
+      * [x] Images
+      * [x] Videos
+      * [x] Gifs
+      * [x] Stickers
+      * [x] Files
+      * [x] Voice messages
+      * [x] Locations
+      * [ ] Polls
+      * [ ] Live location sharing
+      * [ ] Story/reel/clip shares
+      * [ ] Profile shares
+      * [ ] Product shares
+    * [ ] Formatting (Messenger only)
+    * [x] Replies
+    * [x] Mentions
+    * [ ] Polls
+  * [x] Message unsend
+  * [x] Message reactions
+  * [x] Message edits
+  * [ ] Message history/Reading chat backup
+  * [ ] Presence
+  * [ ] Typing notifications
+  * [x] Read receipts
+  * [ ] Admin status
+  * [ ] Membership actions
+    * [ ] Add member
+    * [ ] Remove member
+    * [ ] Leave
+  * [ ] Chat metadata changes
+    * [ ] Title
+    * [ ] Avatar
+  * [ ] Initial chat metadata
+  * [ ] User metadata
+    * [ ] Name
+    * [ ] Per-chat nickname
+    * [ ] Avatar
 * Misc
   * [x] Multi-user support
   * [x] Shared group chat portals
-  * [ ] Messenger encryption
+  * [x] Messenger encryption
   * [x] Matrix encryption
   * [x] Automatic portal creation
     * [x] At startup

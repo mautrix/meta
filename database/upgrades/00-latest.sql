@@ -1,4 +1,4 @@
--- v0 -> v3: Latest revision
+-- v0 -> v6 (compatible with v3+): Latest revision
 
 CREATE TABLE portal (
     thread_id   BIGINT  NOT NULL,
@@ -11,6 +11,8 @@ CREATE TABLE portal (
     avatar_url  TEXT    NOT NULL,
     name_set    BOOLEAN NOT NULL DEFAULT false,
     avatar_set  BOOLEAN NOT NULL DEFAULT false,
+
+    whatsapp_server TEXT NOT NULL DEFAULT '',
 
     encrypted     BOOLEAN NOT NULL DEFAULT false,
     relay_user_id TEXT    NOT NULL,
@@ -33,6 +35,7 @@ CREATE TABLE puppet (
     avatar_set BOOLEAN NOT NULL DEFAULT false,
 
     contact_info_set BOOLEAN NOT NULL DEFAULT false,
+    whatsapp_server  TEXT NOT NULL DEFAULT '',
 
     custom_mxid  TEXT,
     access_token TEXT NOT NULL,
@@ -41,9 +44,10 @@ CREATE TABLE puppet (
 );
 
 CREATE TABLE "user" (
-    mxid    TEXT   NOT NULL PRIMARY KEY,
-    meta_id BIGINT,
-    cookies jsonb,
+    mxid         TEXT   NOT NULL PRIMARY KEY,
+    meta_id      BIGINT,
+    wa_device_id INTEGER,
+    cookies      jsonb,
 
     inbox_fetched BOOLEAN NOT NULL,
 
@@ -58,6 +62,7 @@ CREATE TABLE user_portal (
     portal_thread_id BIGINT NOT NULL,
     portal_receiver  BIGINT NOT NULL,
 
+    last_read_ts BIGINT NOT NULL DEFAULT 0,
     in_space BOOLEAN NOT NULL DEFAULT false,
 
     PRIMARY KEY (user_mxid, portal_thread_id, portal_receiver),

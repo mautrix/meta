@@ -41,6 +41,7 @@ type ReplyMetaData struct {
 	ReplyMessageId  string `json:"reply_source_id"`
 	ReplySourceType int64  `json:"reply_source_type"` // 1 ?
 	ReplyType       int64  `json:"reply_type"`        // ?
+	ReplySender     int64  `json:"-"`
 }
 
 type MentionData struct {

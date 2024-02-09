@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,12 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/variationselector"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/binary/armadillo/waCommon"
+	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
+	"go.mau.fi/whatsmeow/binary/armadillo/waMsgApplication"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -326,6 +333,10 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 		bridgeInfo.Protocol.ExternalURL = "https://www.messenger.com/"
 		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.messenger.com/t/%d", portal.ThreadID)
 	}
+	if portal.ThreadType.IsWhatsApp() {
+		// TODO store fb-side thread ID? (the whatsapp chat id is not the same as the fb-side thread id used in urls)
+		bridgeInfo.Channel.ExternalURL = ""
+	}
 	var roomType string
 	if portal.IsPrivateChat() {
 		roomType = "dm"
@@ -370,9 +381,21 @@ func (portal *Portal) handleMatrixMessages(msg portalMatrixMessage) {
 		Logger()
 	ctx := log.WithContext(context.TODO())
 
+	evtTS := time.UnixMilli(msg.evt.Timestamp)
+	timings := messageTimings{
+		initReceive:  msg.evt.Mautrix.ReceivedAt.Sub(evtTS),
+		decrypt:      msg.evt.Mautrix.DecryptionDuration,
+		totalReceive: time.Since(evtTS),
+	}
+	implicitRRStart := time.Now()
+	if portal.ThreadType.IsWhatsApp() {
+		portal.handleMatrixReadReceiptForWhatsApp(ctx, msg.user, "", evtTS, false)
+	}
+	timings.implicitRR = time.Since(implicitRRStart)
+
 	switch msg.evt.Type {
 	case event.EventMessage, event.EventSticker:
-		portal.handleMatrixMessage(ctx, msg.user, msg.evt)
+		portal.handleMatrixMessage(ctx, msg.user, msg.evt, timings)
 	case event.EventRedaction:
 		portal.handleMatrixRedaction(ctx, msg.user, msg.evt)
 	case event.EventReaction:
@@ -383,22 +406,37 @@ func (portal *Portal) handleMatrixMessages(msg portalMatrixMessage) {
 }
 
 func (portal *Portal) HandleMatrixReadReceipt(brUser bridge.User, eventID id.EventID, receipt event.ReadReceipt) {
+	user := brUser.(*User)
 	log := portal.log.With().
 		Str("action", "handle matrix receipt").
 		Stringer("event_id", eventID).
+		Stringer("user_mxid", user.MXID).
+		Int64("user_meta_id", user.MetaID).
 		Logger()
 	ctx := log.WithContext(context.TODO())
-	user := brUser.(*User)
-	readWatermark := receipt.Timestamp
+	if portal.ThreadType.IsWhatsApp() {
+		portal.handleMatrixReadReceiptForWhatsApp(ctx, user, eventID, receipt.Timestamp, true)
+	} else {
+		portal.handleMatrixReadReceiptForMessenger(ctx, user, eventID, receipt.Timestamp)
+	}
+}
+
+func (portal *Portal) handleMatrixReadReceiptForMessenger(ctx context.Context, sender *User, eventID id.EventID, receiptTimestamp time.Time) {
+	log := zerolog.Ctx(ctx)
+	if !sender.IsLoggedIn() {
+		log.Debug().Msg("Ignoring read receipt: user is not connected to Meta")
+		return
+	}
+	readWatermark := receiptTimestamp
 	targetMsg, err := portal.bridge.DB.Message.GetByMXID(ctx, eventID)
 	if err != nil {
 		log.Err(err).Msg("Failed to get read receipt target message")
 	} else if targetMsg != nil {
 		readWatermark = targetMsg.Timestamp
 	}
-	resp, err := user.Client.ExecuteTasks(&socket.ThreadMarkReadTask{
+	resp, err := sender.Client.ExecuteTasks(&socket.ThreadMarkReadTask{
 		ThreadId:            portal.ThreadID,
-		LastReadWatermarkTs: receipt.Timestamp.UnixMilli(),
+		LastReadWatermarkTs: receiptTimestamp.UnixMilli(),
 		SyncGroup:           1,
 	})
 	log.Trace().Any("response", resp).Msg("Read receipt send response")
@@ -409,18 +447,73 @@ func (portal *Portal) HandleMatrixReadReceipt(brUser bridge.User, eventID id.Eve
 	}
 }
 
+func (portal *Portal) handleMatrixReadReceiptForWhatsApp(ctx context.Context, sender *User, eventID id.EventID, receiptTimestamp time.Time, isExplicit bool) {
+	log := zerolog.Ctx(ctx)
+	if !sender.IsE2EEConnected() {
+		if isExplicit {
+			log.Debug().Msg("Ignoring read receipt: user is not connected to WhatsApp")
+		}
+		return
+	}
+
+	maxTimestamp := receiptTimestamp
+	// Implicit read receipts don't have an event ID that's already bridged
+	if isExplicit {
+		if message, err := portal.bridge.DB.Message.GetByMXID(ctx, eventID); err != nil {
+			log.Err(err).Msg("Failed to get read receipt target message")
+		} else if message != nil {
+			maxTimestamp = message.Timestamp
+		}
+	}
+
+	prevTimestamp := sender.GetLastReadTS(ctx, portal.PortalKey)
+	lastReadIsZero := false
+	if prevTimestamp.IsZero() {
+		prevTimestamp = maxTimestamp.Add(-2 * time.Second)
+		lastReadIsZero = true
+	}
+
+	messages, err := portal.bridge.DB.Message.GetAllBetweenTimestamps(ctx, portal.PortalKey, prevTimestamp, maxTimestamp)
+	if err != nil {
+		log.Err(err).Msg("Failed to get messages for read receipt")
+		return
+	}
+	if len(messages) > 0 {
+		sender.SetLastReadTS(ctx, portal.PortalKey, messages[len(messages)-1].Timestamp)
+	}
+	groupedMessages := make(map[types.JID][]types.MessageID)
+	for _, msg := range messages {
+		var key types.JID
+		if msg.Sender == sender.MetaID || msg.IsUnencrypted() {
+			// Don't send read receipts for own messages or unencrypted messages
+			continue
+		} else if !portal.IsPrivateChat() {
+			// TODO: this is hacky since it hardcodes the server
+			key = types.JID{User: strconv.FormatInt(msg.Sender, 10), Server: types.MessengerServer}
+		} // else: blank key (participant field isn't needed in direct chat read receipts)
+		groupedMessages[key] = append(groupedMessages[key], msg.ID)
+	}
+	// For explicit read receipts, log even if there are no targets. For implicit ones only log when there are targets
+	if len(groupedMessages) > 0 || isExplicit {
+		log.Debug().
+			Time("last_read", prevTimestamp).
+			Bool("last_read_was_zero", lastReadIsZero).
+			Bool("explicit", isExplicit).
+			Any("receipts", groupedMessages).
+			Msg("Sending read receipts")
+	}
+	for messageSender, ids := range groupedMessages {
+		err = sender.E2EEClient.MarkRead(ids, receiptTimestamp, portal.JID(), messageSender)
+		if err != nil {
+			log.Err(err).Strs("ids", ids).Msg("Failed to mark messages as read")
+		}
+	}
+}
+
 const MaxEditCount = 5
 
-func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt *event.Event) {
+func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt *event.Event, timings messageTimings) {
 	log := zerolog.Ctx(ctx)
-	evtTS := time.UnixMilli(evt.Timestamp)
-	timings := messageTimings{
-		initReceive:  evt.Mautrix.ReceivedAt.Sub(evtTS),
-		decrypt:      evt.Mautrix.DecryptionDuration,
-		totalReceive: time.Since(evtTS),
-	}
-	implicitRRStart := time.Now()
-	timings.implicitRR = time.Since(implicitRRStart)
 	start := time.Now()
 
 	messageAge := timings.totalReceive
@@ -478,6 +571,7 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 
 	realSenderMXID := sender.MXID
 	isRelay := false
+	// TODO check login for correct client (e2ee vs not e2ee)
 	if !sender.IsLoggedIn() {
 		sender = portal.GetRelayUser()
 		if sender == nil {
@@ -496,8 +590,18 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	}
 
 	relaybotFormatted := isRelay && portal.addRelaybotFormat(ctx, realSenderMXID, evt, content)
-	ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
-	tasks, otid, err := portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
+	var otid int64
+	var tasks []socket.Task
+	var waMsg *waConsumerApplication.ConsumerApplication
+	var waMeta *waMsgApplication.MessageApplication_Metadata
+	var err error
+	if portal.ThreadType.IsWhatsApp() {
+		ctx = context.WithValue(ctx, msgconvContextKeyE2EEClient, sender.E2EEClient)
+		waMsg, waMeta, err = portal.MsgConv.ToWhatsApp(ctx, evt, content, relaybotFormatted)
+	} else {
+		ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
+		tasks, otid, err = portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
+	}
 	if err != nil {
 		log.Err(err).Msg("Failed to convert message")
 		go ms.sendMessageMetrics(evt, err, "Error converting", true)
@@ -507,43 +611,54 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	timings.convert = time.Since(start)
 	start = time.Now()
 
-	otidStr := strconv.FormatInt(otid, 10)
-	portal.pendingMessages[otid] = evt.ID
-	messageTS := time.Now()
-	resp, err := sender.Client.ExecuteTasks(tasks...)
-	log.Trace().Any("response", resp).Msg("Meta send response")
-	var msgID string
-	if err == nil {
-		for _, replace := range resp.LSReplaceOptimsiticMessage {
-			if replace.OfflineThreadingId == otidStr {
-				msgID = replace.MessageId
-			}
-		}
-		if len(msgID) == 0 {
-			for _, failed := range resp.LSMarkOptimisticMessageFailed {
-				if failed.OTID == otidStr {
-					log.Warn().Str("message", failed.Message).Msg("Sending message failed")
-					go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
-					return
+	if waMsg != nil {
+		messageID := sender.E2EEClient.GenerateMessageID()
+		var resp whatsmeow.SendResponse
+		resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), waMsg, waMeta, whatsmeow.SendRequestExtra{
+			ID: messageID,
+		})
+		// TODO save message in db before sending and only update timestamp later
+		portal.storeMessageInDB(ctx, evt.ID, messageID, 0, sender.MetaID, resp.Timestamp, 0)
+	} else {
+		otidStr := strconv.FormatInt(otid, 10)
+		portal.pendingMessages[otid] = evt.ID
+		messageTS := time.Now()
+		var resp *table.LSTable
+		resp, err = sender.Client.ExecuteTasks(tasks...)
+		log.Trace().Any("response", resp).Msg("Meta send response")
+		var msgID string
+		if err == nil {
+			for _, replace := range resp.LSReplaceOptimsiticMessage {
+				if replace.OfflineThreadingId == otidStr {
+					msgID = replace.MessageId
 				}
 			}
-			log.Warn().Msg("Message send response didn't include message ID")
+			if len(msgID) == 0 {
+				for _, failed := range resp.LSMarkOptimisticMessageFailed {
+					if failed.OTID == otidStr {
+						log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+						go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+						return
+					}
+				}
+				log.Warn().Msg("Message send response didn't include message ID")
+			}
+		}
+		if msgID != "" {
+			portal.pendingMessagesLock.Lock()
+			_, ok = portal.pendingMessages[otid]
+			if ok {
+				portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, messageTS, 0)
+				delete(portal.pendingMessages, otid)
+			} else {
+				log.Debug().Msg("Not storing message send response: pending message was already removed from map")
+			}
+			portal.pendingMessagesLock.Unlock()
 		}
 	}
 
 	timings.totalSend = time.Since(start)
 	go ms.sendMessageMetrics(evt, err, "Error sending", true)
-	if msgID != "" {
-		portal.pendingMessagesLock.Lock()
-		_, ok = portal.pendingMessages[otid]
-		if ok {
-			portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, messageTS, 0)
-			delete(portal.pendingMessages, otid)
-		} else {
-			log.Debug().Msg("Not storing message send response: pending message was already removed from map")
-		}
-		portal.pendingMessagesLock.Unlock()
-	}
 }
 
 func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRelay bool, realSenderMXID id.UserID, ms *metricSender, evt *event.Event, content *event.MessageEventContent) {
@@ -561,7 +676,7 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 	} else if editTargetMsg.Sender != sender.MetaID {
 		go ms.sendMessageMetrics(evt, errEditDifferentSender, "Error converting", true)
 		return
-	} else if editTargetMsg.EditCount >= MaxEditCount {
+	} else if !portal.ThreadType.IsWhatsApp() && editTargetMsg.EditCount >= MaxEditCount {
 		go ms.sendMessageMetrics(evt, errEditCountExceeded, "Error converting", true)
 		return
 	}
@@ -573,12 +688,24 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 	if isRelay {
 		portal.addRelaybotFormat(ctx, realSenderMXID, evt, content)
 	}
-	editTask := &socket.EditMessageTask{
-		MessageID: editTargetMsg.ID,
-		Text:      content.Body,
+	if portal.ThreadType.IsWhatsApp() {
+		consumerMsg := wrapEdit(&waConsumerApplication.ConsumerApplication_EditMessage{
+			Key:         portal.buildMessageKey(sender, editTargetMsg),
+			Message:     portal.MsgConv.TextToWhatsApp(content),
+			TimestampMS: evt.Timestamp,
+		})
+		var resp whatsmeow.SendResponse
+		resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), consumerMsg, nil)
+		log.Trace().Any("response", resp).Msg("WhatsApp delete response")
+	} else {
+		editTask := &socket.EditMessageTask{
+			MessageID: editTargetMsg.ID,
+			Text:      content.Body,
+		}
+		var resp *table.LSTable
+		resp, err = sender.Client.ExecuteTasks(editTask)
+		log.Trace().Any("response", resp).Msg("Meta edit response")
 	}
-	resp, err := sender.Client.ExecuteTasks(editTask)
-	log.Trace().Any("response", resp).Msg("Meta edit response")
 	go ms.sendMessageMetrics(evt, err, "Error sending", true)
 	if err == nil {
 		// TODO does the response contain the edit count?
@@ -616,14 +743,24 @@ func (portal *Portal) handleMatrixRedaction(ctx context.Context, sender *User, e
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, errRedactionTargetSentBySomeoneElse)
 			return
 		}
-		resp, err := sender.Client.ExecuteTasks(&socket.DeleteMessageTask{MessageId: dbMessage.ID})
+		if !dbMessage.IsUnencrypted() {
+			consumerMsg := wrapRevoke(&waConsumerApplication.ConsumerApplication_RevokeMessage{
+				Key: portal.buildMessageKey(sender, dbMessage),
+			})
+			var resp whatsmeow.SendResponse
+			resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), consumerMsg, nil)
+			log.Trace().Any("response", resp).Msg("WhatsApp delete response")
+		} else {
+			var resp *table.LSTable
+			resp, err = sender.Client.ExecuteTasks(&socket.DeleteMessageTask{MessageId: dbMessage.ID})
+			// TODO does the response data need to be checked?
+			log.Trace().Any("response", resp).Msg("Instagram delete response")
+		}
 		if err != nil {
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
 			log.Err(err).Msg("Failed to send message redaction to Meta")
 			return
 		}
-		// TODO does the response data need to be checked?
-		log.Trace().Any("response", resp).Msg("Instagram delete response")
 		err = dbMessage.Delete(ctx)
 		if err != nil {
 			log.Err(err).Msg("Failed to delete redacted message from database")
@@ -657,22 +794,22 @@ func (portal *Portal) handleMatrixRedaction(ctx context.Context, sender *User, e
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, errUnreactTargetSentBySomeoneElse)
 			return
 		}
-		resp, err := sender.Client.ExecuteTasks(&socket.SendReactionTask{
-			ThreadKey:       portal.ThreadID,
-			TimestampMs:     evt.Timestamp,
-			MessageID:       dbReaction.MessageID,
-			ActorID:         dbReaction.Sender,
-			Reaction:        "",
-			SyncGroup:       1,
-			SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
-		})
+		targetMsg, err := portal.bridge.DB.Message.GetByID(ctx, dbReaction.MessageID, 0, portal.Receiver)
+		if err != nil {
+			portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
+			log.Err(err).Msg("Failed to get removed reaction target message")
+			return
+		} else if targetMsg == nil {
+			portal.sendMessageStatusCheckpointFailed(ctx, evt, errReactionTargetNotFound)
+			log.Warn().Msg("Reaction target message not found")
+			return
+		}
+		err = portal.sendReaction(ctx, sender, targetMsg, "", evt.Timestamp)
 		if err != nil {
 			portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
 			log.Err(err).Msg("Failed to send reaction redaction to Meta")
 			return
 		}
-		// TODO does the response data need to be checked?
-		log.Trace().Any("response", resp).Msg("Instagram reaction delete response")
 		err = dbReaction.Delete(ctx)
 		if err != nil {
 			log.Err(err).Msg("Failed to delete redacted reaction from database")
@@ -680,6 +817,88 @@ func (portal *Portal) handleMatrixRedaction(ctx context.Context, sender *User, e
 		portal.sendMessageStatusCheckpointSuccess(ctx, evt)
 	} else {
 		portal.sendMessageStatusCheckpointFailed(ctx, evt, errRedactionTargetNotFound)
+	}
+}
+
+func wrapEdit(message *waConsumerApplication.ConsumerApplication_EditMessage) *waConsumerApplication.ConsumerApplication {
+	return &waConsumerApplication.ConsumerApplication{
+		Payload: &waConsumerApplication.ConsumerApplication_Payload{
+			Payload: &waConsumerApplication.ConsumerApplication_Payload_Content{
+				Content: &waConsumerApplication.ConsumerApplication_Content{
+					Content: &waConsumerApplication.ConsumerApplication_Content_EditMessage{
+						EditMessage: message,
+					},
+				},
+			},
+		},
+	}
+}
+
+func wrapRevoke(message *waConsumerApplication.ConsumerApplication_RevokeMessage) *waConsumerApplication.ConsumerApplication {
+	return &waConsumerApplication.ConsumerApplication{
+		Payload: &waConsumerApplication.ConsumerApplication_Payload{
+			Payload: &waConsumerApplication.ConsumerApplication_Payload_ApplicationData{
+				ApplicationData: &waConsumerApplication.ConsumerApplication_ApplicationData{
+					ApplicationContent: &waConsumerApplication.ConsumerApplication_ApplicationData_Revoke{
+						Revoke: message,
+					},
+				},
+			},
+		},
+	}
+}
+
+func wrapReaction(message *waConsumerApplication.ConsumerApplication_ReactionMessage) *waConsumerApplication.ConsumerApplication {
+	return &waConsumerApplication.ConsumerApplication{
+		Payload: &waConsumerApplication.ConsumerApplication_Payload{
+			Payload: &waConsumerApplication.ConsumerApplication_Payload_Content{
+				Content: &waConsumerApplication.ConsumerApplication_Content{
+					Content: &waConsumerApplication.ConsumerApplication_Content_ReactionMessage{
+						ReactionMessage: message,
+					},
+				},
+			},
+		},
+	}
+}
+
+func (portal *Portal) buildMessageKey(user *User, targetMsg *database.Message) *waCommon.MessageKey {
+	var messageKeyParticipant string
+	if !portal.IsPrivateChat() {
+		// TODO: this is hacky since it hardcodes the server
+		messageKeyParticipant = types.JID{User: strconv.FormatInt(targetMsg.Sender, 10), Server: types.MessengerServer}.String()
+	}
+	return &waCommon.MessageKey{
+		RemoteJID:   portal.JID().String(),
+		FromMe:      targetMsg.Sender == user.MetaID,
+		ID:          targetMsg.ID,
+		Participant: messageKeyParticipant,
+	}
+}
+
+func (portal *Portal) sendReaction(ctx context.Context, sender *User, targetMsg *database.Message, metaEmoji string, timestamp int64) error {
+	if !targetMsg.IsUnencrypted() {
+		consumerMsg := wrapReaction(&waConsumerApplication.ConsumerApplication_ReactionMessage{
+			Key:               portal.buildMessageKey(sender, targetMsg),
+			Text:              metaEmoji,
+			SenderTimestampMS: timestamp,
+		})
+		resp, err := sender.E2EEClient.SendFBMessage(ctx, portal.JID(), consumerMsg, nil)
+		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
+		return err
+	} else {
+		resp, err := sender.Client.ExecuteTasks(&socket.SendReactionTask{
+			ThreadKey:       portal.ThreadID,
+			TimestampMs:     timestamp,
+			MessageID:       targetMsg.ID,
+			ActorID:         sender.MetaID,
+			Reaction:        metaEmoji,
+			SyncGroup:       1,
+			SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+		})
+		// TODO save the hidden thread message from the response too?
+		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Instagram reaction response")
+		return err
 	}
 }
 
@@ -703,22 +922,12 @@ func (portal *Portal) handleMatrixReaction(ctx context.Context, sender *User, ev
 	emoji := evt.Content.AsReaction().RelatesTo.Key
 	metaEmoji := variationselector.Remove(emoji)
 
-	resp, err := sender.Client.ExecuteTasks(&socket.SendReactionTask{
-		ThreadKey:       portal.ThreadID,
-		TimestampMs:     evt.Timestamp,
-		MessageID:       targetMsg.ID,
-		ActorID:         sender.MetaID,
-		Reaction:        metaEmoji,
-		SyncGroup:       1,
-		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
-	})
+	err = portal.sendReaction(ctx, sender, targetMsg, metaEmoji, evt.Timestamp)
 	if err != nil {
 		portal.sendMessageStatusCheckpointFailed(ctx, evt, err)
-		log.Error().Msg("Failed to send reaction")
+		log.Err(err).Msg("Failed to send reaction")
 		return
 	}
-	// TODO save the hidden thread message from the response too?
-	log.Trace().Any("response", resp).Msg("Instagram reaction response")
 	dbReaction, err := portal.bridge.DB.Reaction.GetByID(
 		ctx,
 		targetMsg.ID,
@@ -776,6 +985,7 @@ type msgconvContextKey int
 const (
 	msgconvContextKeyIntent msgconvContextKey = iota
 	msgconvContextKeyClient
+	msgconvContextKeyE2EEClient
 	msgconvContextKeyBackfill
 )
 
@@ -829,6 +1039,10 @@ func (portal *Portal) GetClient(ctx context.Context) *messagix.Client {
 	return ctx.Value(msgconvContextKeyClient).(*messagix.Client)
 }
 
+func (portal *Portal) GetE2EEClient(ctx context.Context) *whatsmeow.Client {
+	return ctx.Value(msgconvContextKeyE2EEClient).(*whatsmeow.Client)
+}
+
 func (portal *Portal) GetMatrixReply(ctx context.Context, replyToID string, replyToUser int64) (replyTo id.EventID, replyTargetSender id.UserID) {
 	if replyToID == "" {
 		return
@@ -847,7 +1061,7 @@ func (portal *Portal) GetMatrixReply(ctx context.Context, replyToID string, repl
 		}
 	} else {
 		replyTo = message.MXID
-		if message.Sender != replyToUser {
+		if replyToUser != 0 && message.Sender != replyToUser {
 			log.Warn().
 				Int64("message_sender", message.Sender).
 				Int64("reply_to_user", replyToUser).
@@ -883,6 +1097,7 @@ func (portal *Portal) GetMetaReply(ctx context.Context, content *event.MessageEv
 			ReplyMessageId:  replyToMsg.ID,
 			ReplySourceType: 1,
 			ReplyType:       0,
+			ReplySender:     replyToMsg.Sender,
 		}
 	}
 	return nil
@@ -898,6 +1113,10 @@ func (portal *Portal) GetUserMXID(ctx context.Context, userID int64) id.UserID {
 
 func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
+	case *events.FBConsumerMessage:
+		portal.handleEncryptedMessage(portalMessage.user, typedEvt)
+	case *events.Receipt:
+		portal.handleWhatsAppReceipt(portalMessage.user, typedEvt)
 	case *table.WrappedMessage:
 		portal.handleMetaInsertMessage(portalMessage.user, typedEvt)
 	case *table.UpsertMessages:
@@ -955,6 +1174,96 @@ func (portal *Portal) checkPendingMessage(ctx context.Context, messageID string,
 	return true
 }
 
+func (portal *Portal) handleWhatsAppReceipt(source *User, receipt *events.Receipt) {
+	if receipt.Type != types.ReceiptTypeRead && receipt.Type != types.ReceiptTypeReadSelf {
+		return
+	}
+	senderID := int64(receipt.Sender.UserInt())
+	if senderID == 0 {
+		return
+	}
+	log := portal.log.With().
+		Str("action", "handle whatsapp receipt").
+		Stringer("chat_jid", receipt.Chat).
+		Stringer("receipt_sender_jid", receipt.Sender).
+		Strs("message_ids", receipt.MessageIDs).
+		Time("receipt_timestamp", receipt.Timestamp).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	markAsRead := make([]*database.Message, 0, 1)
+	var bestTimestamp time.Time
+	for _, msgID := range receipt.MessageIDs {
+		msg, err := portal.bridge.DB.Message.GetLastPartByID(ctx, msgID, portal.Receiver)
+		if err != nil {
+			log.Err(err).Msg("Failed to get message from database")
+		}
+		if msg == nil {
+			continue
+		}
+		if msg.Timestamp.After(bestTimestamp) {
+			bestTimestamp = msg.Timestamp
+			markAsRead = append(markAsRead[:0], msg)
+		} else if msg != nil && msg.Timestamp.Equal(bestTimestamp) {
+			markAsRead = append(markAsRead, msg)
+		}
+	}
+	if senderID == source.MetaID {
+		if len(markAsRead) > 0 {
+			source.SetLastReadTS(ctx, portal.PortalKey, markAsRead[0].Timestamp)
+		} else {
+			source.SetLastReadTS(ctx, portal.PortalKey, receipt.Timestamp)
+		}
+	}
+	sender := portal.bridge.GetPuppetByID(senderID)
+	for _, msg := range markAsRead {
+		// TODO bridge read-self as m.read.private?
+		err := portal.SendReadReceipt(ctx, sender, msg.MXID)
+		if err != nil {
+			log.Err(err).Stringer("event_id", msg.MXID).Msg("Failed to mark event as read")
+		} else {
+			log.Debug().Stringer("event_id", msg.MXID).Msg("Marked event as read")
+		}
+	}
+}
+
+func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsumerMessage) {
+	sender := portal.bridge.GetPuppetByID(int64(evt.Info.Sender.UserInt()))
+	log := portal.log.With().
+		Str("action", "handle whatsapp message").
+		Stringer("chat_jid", evt.Info.Chat).
+		Stringer("sender_jid", evt.Info.Sender).
+		Str("message_id", evt.Info.ID).
+		Time("message_ts", evt.Info.Timestamp).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	sender.FetchAndUpdateInfoIfNecessary(ctx, source)
+
+	switch payload := evt.Message.GetPayload().GetPayload().(type) {
+	case *waConsumerApplication.ConsumerApplication_Payload_Content:
+		switch content := payload.Content.GetContent().(type) {
+		case *waConsumerApplication.ConsumerApplication_Content_EditMessage:
+			portal.handleWhatsAppEditMessage(ctx, sender, content.EditMessage)
+		case *waConsumerApplication.ConsumerApplication_Content_ReactionMessage:
+			portal.handleMetaOrWhatsAppReaction(ctx, sender, content.ReactionMessage.GetKey().GetID(), content.ReactionMessage.GetText(), content.ReactionMessage.GetSenderTimestampMS())
+		default:
+			portal.handleMetaOrWhatsAppMessage(ctx, source, sender, evt, nil)
+		}
+	case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
+		switch applicationContent := payload.ApplicationData.GetApplicationContent().(type) {
+		case *waConsumerApplication.ConsumerApplication_ApplicationData_Revoke:
+			portal.handleMetaOrWhatsAppDelete(ctx, sender, applicationContent.Revoke.GetKey().GetID())
+		default:
+			log.Warn().Type("content_type", applicationContent).Msg("Unrecognized application content type")
+		}
+	case *waConsumerApplication.ConsumerApplication_Payload_Signal:
+		log.Warn().Msg("Unsupported signal payload message")
+	case *waConsumerApplication.ConsumerApplication_Payload_SubProtocol:
+		log.Warn().Msg("Unsupported subprotocol payload message")
+	default:
+		log.Warn().Type("payload_type", payload).Msg("Unrecognized payload type")
+	}
+}
+
 func (portal *Portal) handleMetaInsertMessage(source *User, message *table.WrappedMessage) {
 	sender := portal.bridge.GetPuppetByID(message.SenderId)
 	log := portal.log.With().
@@ -964,6 +1273,11 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 		Str("otid", message.OfflineThreadingId).
 		Logger()
 	ctx := log.WithContext(context.TODO())
+	portal.handleMetaOrWhatsAppMessage(ctx, source, sender, nil, message)
+}
+
+func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *User, sender *Puppet, waMsg *events.FBConsumerMessage, metaMsg *table.WrappedMessage) {
+	log := zerolog.Ctx(ctx)
 
 	if portal.MXID == "" {
 		log.Debug().Msg("Creating Matrix room from incoming message")
@@ -973,13 +1287,22 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 		}
 	}
 
-	otidInt, _ := strconv.ParseInt(message.OfflineThreadingId, 10, 64)
-	messageTime := time.UnixMilli(message.TimestampMs)
-	if portal.checkPendingMessage(ctx, message.MessageId, otidInt, sender.ID, messageTime) {
-		return
+	var messageID string
+	var messageTime time.Time
+	var otidInt int64
+	if waMsg != nil {
+		messageID = waMsg.Info.ID
+		messageTime = waMsg.Info.Timestamp
+	} else {
+		messageID = metaMsg.MessageId
+		otidInt, _ = strconv.ParseInt(metaMsg.OfflineThreadingId, 10, 64)
+		messageTime = time.UnixMilli(metaMsg.TimestampMs)
+		if portal.checkPendingMessage(ctx, metaMsg.MessageId, otidInt, sender.ID, messageTime) {
+			return
+		}
 	}
 
-	existingMessage, err := portal.bridge.DB.Message.GetByID(ctx, message.MessageId, 0, portal.Receiver)
+	existingMessage, err := portal.bridge.DB.Message.GetByID(ctx, messageID, 0, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to check if message was already bridged")
 		return
@@ -990,8 +1313,14 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 
 	intent := sender.IntentFor(portal)
 	ctx = context.WithValue(ctx, msgconvContextKeyIntent, intent)
-	ctx = context.WithValue(ctx, msgconvContextKeyClient, source.Client)
-	converted := portal.MsgConv.ToMatrix(ctx, message)
+	var converted *msgconv.ConvertedMessage
+	if waMsg != nil {
+		ctx = context.WithValue(ctx, msgconvContextKeyE2EEClient, source.E2EEClient)
+		converted = portal.MsgConv.WhatsAppToMatrix(ctx, waMsg)
+	} else {
+		ctx = context.WithValue(ctx, msgconvContextKeyClient, source.Client)
+		converted = portal.MsgConv.ToMatrix(ctx, metaMsg)
+	}
 	if portal.bridge.Config.Bridge.CaptionInMessage {
 		converted.MergeCaption()
 	}
@@ -1005,7 +1334,38 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 			log.Err(err).Int("part_index", i).Msg("Failed to send message to Matrix")
 			continue
 		}
-		portal.storeMessageInDB(ctx, resp.EventID, message.MessageId, otidInt, sender.ID, messageTime, i)
+		portal.storeMessageInDB(ctx, resp.EventID, messageID, otidInt, sender.ID, messageTime, i)
+	}
+}
+
+func (portal *Portal) handleWhatsAppEditMessage(ctx context.Context, sender *Puppet, edit *waConsumerApplication.ConsumerApplication_EditMessage) {
+	log := zerolog.Ctx(ctx).With().
+		Int64("edit_ts", edit.TimestampMS).
+		Logger()
+	ctx = log.WithContext(context.TODO())
+	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, edit.GetKey().GetID(), portal.Receiver)
+	if err != nil {
+		log.Err(err).Msg("Failed to get edit target message")
+		return
+	} else if len(targetMsg) == 0 {
+		log.Warn().Msg("Edit target message not found")
+		return
+	} else if len(targetMsg) > 1 {
+		log.Warn().Msg("Ignoring edit of multipart message")
+		return
+	} else if targetMsg[0].EditTimestamp() <= edit.TimestampMS {
+		log.Debug().Int64("existing_edit_ts", targetMsg[0].EditTimestamp()).Msg("Ignoring duplicate edit")
+		return
+	}
+	converted := portal.MsgConv.WhatsAppTextToMatrix(ctx, edit.GetMessage())
+	converted.Content.SetEdit(targetMsg[0].MXID)
+	resp, err := portal.sendMatrixEvent(ctx, sender.IntentFor(portal), converted.Type, converted.Content, converted.Extra, edit.TimestampMS)
+	if err != nil {
+		log.Err(err).Msg("Failed to send edit to Matrix")
+	} else if err := targetMsg[0].UpdateEditTimestamp(ctx, edit.TimestampMS); err != nil {
+		log.Err(err).Stringer("event_id", resp.EventID).Msg("Failed to save message edit count to database")
+	} else {
+		log.Debug().Stringer("event_id", resp.EventID).Msg("Handled Meta message edit")
 	}
 }
 
@@ -1049,13 +1409,29 @@ func (portal *Portal) handleMetaEditMessage(edit *table.LSEditMessage) {
 
 func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 	sender := portal.bridge.GetPuppetByID(react.ActorId)
-	log := portal.log.With().
+	ctx := portal.log.With().
 		Str("action", "upsert meta reaction").
+		Int64("sender_id", sender.ID).
+		Str("target_msg_id", react.MessageId).
+		Logger().
+		WithContext(context.TODO())
+	portal.handleMetaOrWhatsAppReaction(ctx, sender, react.MessageId, react.Reaction, 0)
+}
+
+func (portal *Portal) handleMetaReactionDelete(react *table.LSDeleteReaction) {
+	sender := portal.bridge.GetPuppetByID(react.ActorId)
+	log := portal.log.With().
+		Str("action", "delete meta reaction").
 		Int64("sender_id", sender.ID).
 		Str("target_msg_id", react.MessageId).
 		Logger()
 	ctx := log.WithContext(context.TODO())
-	targetMsg, err := portal.bridge.DB.Message.GetByID(ctx, react.MessageId, 0, portal.Receiver)
+	portal.handleMetaOrWhatsAppReaction(ctx, sender, react.MessageId, "", 0)
+}
+
+func (portal *Portal) handleMetaOrWhatsAppReaction(ctx context.Context, sender *Puppet, messageID, reaction string, timestamp int64) {
+	log := zerolog.Ctx(ctx)
+	targetMsg, err := portal.bridge.DB.Message.GetByID(ctx, messageID, 0, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to get target message from database")
 		return
@@ -1067,7 +1443,7 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 	if err != nil {
 		log.Err(err).Msg("Failed to get existing reaction from database")
 		return
-	} else if existingReaction != nil && existingReaction.Emoji == react.Reaction {
+	} else if existingReaction != nil && existingReaction.Emoji == reaction {
 		// TODO should reactions be deduplicated by some ID instead of the emoji?
 		log.Debug().Msg("Ignoring duplicate reaction")
 		return
@@ -1081,14 +1457,25 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 			log.Err(err).Msg("Failed to redact reaction")
 		}
 	}
+	if reaction == "" {
+		if existingReaction == nil {
+			log.Warn().Msg("Existing reaction to delete not found")
+			return
+		}
+		err = existingReaction.Delete(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to delete reaction from database")
+		}
+		return
+	}
 	content := &event.ReactionEventContent{
 		RelatesTo: event.RelatesTo{
 			Type:    event.RelAnnotation,
-			Key:     variationselector.Add(react.Reaction),
+			Key:     variationselector.Add(reaction),
 			EventID: targetMsg.MXID,
 		},
 	}
-	resp, err := portal.sendMatrixEvent(ctx, intent, event.EventReaction, content, nil, 0)
+	resp, err := portal.sendMatrixEvent(ctx, intent, event.EventReaction, content, nil, timestamp)
 	if err != nil {
 		log.Err(err).Msg("Failed to send reaction")
 		return
@@ -1101,47 +1488,19 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 		dbReaction.ThreadID = portal.ThreadID
 		dbReaction.ThreadReceiver = portal.Receiver
 		dbReaction.Sender = sender.ID
-		dbReaction.Emoji = react.Reaction
+		dbReaction.Emoji = reaction
 		// TODO save timestamp?
 		err = dbReaction.Insert(ctx)
 		if err != nil {
 			log.Err(err).Msg("Failed to insert reaction to database")
 		}
 	} else {
-		existingReaction.Emoji = react.Reaction
+		existingReaction.Emoji = reaction
 		existingReaction.MXID = resp.EventID
 		err = existingReaction.Update(ctx)
 		if err != nil {
 			log.Err(err).Msg("Failed to update reaction in database")
 		}
-	}
-}
-
-func (portal *Portal) handleMetaReactionDelete(react *table.LSDeleteReaction) {
-	sender := portal.bridge.GetPuppetByID(react.ActorId)
-	log := portal.log.With().
-		Str("action", "delete meta reaction").
-		Int64("sender_id", sender.ID).
-		Str("target_msg_id", react.MessageId).
-		Logger()
-	ctx := log.WithContext(context.TODO())
-	existingReaction, err := portal.bridge.DB.Reaction.GetByID(ctx, react.MessageId, portal.Receiver, sender.ID)
-	if err != nil {
-		log.Err(err).Msg("Failed to get existing reaction from database")
-		return
-	} else if existingReaction == nil {
-		log.Warn().Msg("Existing reaction to delete not found")
-		return
-	}
-	_, err = sender.IntentFor(portal).RedactEvent(ctx, portal.MXID, existingReaction.MXID, mautrix.ReqRedact{
-		TxnID: "mxmeta_unreact_" + existingReaction.MXID.String(),
-	})
-	if err != nil {
-		log.Err(err).Msg("Failed to redact reaction")
-	}
-	err = existingReaction.Delete(ctx)
-	if err != nil {
-		log.Err(err).Msg("Failed to delete reaction from database")
 	}
 }
 
@@ -1151,6 +1510,11 @@ func (portal *Portal) handleMetaDelete(messageID string) {
 		Str("message_id", messageID).
 		Logger()
 	ctx := log.WithContext(context.TODO())
+	portal.handleMetaOrWhatsAppDelete(ctx, nil, messageID)
+}
+
+func (portal *Portal) handleMetaOrWhatsAppDelete(ctx context.Context, sender *Puppet, messageID string) {
+	log := zerolog.Ctx(ctx)
 	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, messageID, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to get target message from database")
@@ -1159,8 +1523,12 @@ func (portal *Portal) handleMetaDelete(messageID string) {
 		log.Warn().Msg("Target message not found")
 		return
 	}
+	intent := portal.MainIntent()
+	if sender != nil {
+		intent = sender.IntentFor(portal)
+	}
 	for _, part := range targetMsg {
-		_, err = portal.MainIntent().RedactEvent(ctx, portal.MXID, part.MXID, mautrix.ReqRedact{
+		_, err = intent.RedactEvent(ctx, portal.MXID, part.MXID, mautrix.ReqRedact{
 			TxnID: "mxmeta_delete_" + part.MXID.String(),
 		})
 		if err != nil {
@@ -1389,6 +1757,14 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 	if autoJoinInvites {
 		invite = append(invite, user.MXID)
 	}
+	var waGroupInfo *types.GroupInfo
+	var participants []id.UserID
+	if portal.ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
+		waGroupInfo, participants = portal.UpdateWAGroupInfo(ctx, user, nil)
+		invite = append(invite, participants...)
+		slices.Sort(invite)
+		invite = slices.Compact(invite)
+	}
 
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
@@ -1403,8 +1779,10 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 			invite = append(invite, portal.bridge.Bot.UserID)
 		}
 	}
-	if portal.IsPrivateChat() {
-		portal.UpdateInfoFromPuppet(ctx, portal.GetDMPuppet())
+	dmPuppet := portal.GetDMPuppet()
+	if dmPuppet != nil {
+		dmPuppet.FetchAndUpdateInfoIfNecessary(ctx, user)
+		portal.UpdateInfoFromPuppet(ctx, dmPuppet)
 	}
 	if !portal.AvatarURL.IsEmpty() {
 		initialState = append(initialState, &event.Event{
@@ -1459,7 +1837,10 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 	go portal.addToPersonalSpace(portal.log.WithContext(context.TODO()), user)
 
 	if portal.IsPrivateChat() {
-		user.AddDirectChat(ctx, portal.MXID, portal.GetDMPuppet().MXID)
+		user.AddDirectChat(ctx, portal.MXID, dmPuppet.MXID)
+	}
+	if waGroupInfo != nil && !autoJoinInvites {
+		portal.SyncWAParticipants(ctx, user, waGroupInfo.Participants)
 	}
 
 	return nil
@@ -1483,13 +1864,54 @@ func (portal *Portal) UpdateInfoFromPuppet(ctx context.Context, puppet *Puppet) 
 	}
 }
 
+func (portal *Portal) UpdateWAGroupInfo(ctx context.Context, source *User, groupInfo *types.GroupInfo) (*types.GroupInfo, []id.UserID) {
+	log := zerolog.Ctx(ctx)
+	if groupInfo == nil {
+		var err error
+		groupInfo, err = source.E2EEClient.GetGroupInfo(portal.JID())
+		if err != nil {
+			log.Err(err).Msg("Failed to fetch WhatsApp group info")
+			return nil, nil
+		}
+	}
+	update := false
+	update = portal.updateName(ctx, groupInfo.Name) || update
+	//update = portal.updateTopic(ctx, groupInfo.Topic) || update
+	//update = portal.updateWAAvatar(ctx)
+	participants := portal.SyncWAParticipants(ctx, source, groupInfo.Participants)
+	if update {
+		err := portal.Update(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save portal in database after updating group info")
+		}
+		portal.UpdateBridgeInfo(ctx)
+	}
+	return groupInfo, participants
+}
+
+func (portal *Portal) SyncWAParticipants(ctx context.Context, source *User, participants []types.GroupParticipant) []id.UserID {
+	var userIDs []id.UserID
+	for _, pcp := range participants {
+		puppet := portal.bridge.GetPuppetByID(int64(pcp.JID.UserInt()))
+		puppet.FetchAndUpdateInfoIfNecessary(ctx, source)
+		userIDs = append(userIDs, puppet.IntentFor(portal).UserID)
+		if portal.MXID != "" {
+			err := puppet.IntentFor(portal).EnsureJoined(ctx, portal.MXID)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to ensure participant is joined to group")
+			}
+		}
+	}
+	return userIDs
+}
+
 func (portal *Portal) UpdateInfo(ctx context.Context, info table.ThreadInfo) {
 	log := zerolog.Ctx(ctx).With().
 		Str("function", "UpdateInfo").
 		Logger()
 	ctx = log.WithContext(ctx)
 	update := false
-	if portal.ThreadType != info.GetThreadType() {
+	if portal.ThreadType != info.GetThreadType() && !portal.ThreadType.IsWhatsApp() {
 		portal.ThreadType = info.GetThreadType()
 		update = true
 	}

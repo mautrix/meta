@@ -101,31 +101,41 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 	return []socket.Task{task, readTask}, task.Otid, nil
 }
 
-func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*types.MercuryUploadResponse, error) {
+func (mc *MessageConverter) downloadMatrixMedia(ctx context.Context, content *event.MessageEventContent) (data []byte, mimeType, fileName string, err error) {
 	mxc := content.URL
 	if content.File != nil {
 		mxc = content.File.URL
 	}
-	data, err := mc.DownloadMatrixMedia(ctx, mxc)
+	data, err = mc.DownloadMatrixMedia(ctx, mxc)
 	if err != nil {
-		return nil, exerrors.NewDualError(ErrMediaDownloadFailed, err)
+		err = exerrors.NewDualError(ErrMediaDownloadFailed, err)
+		return
 	}
 	if content.File != nil {
 		err = content.File.DecryptInPlace(data)
 		if err != nil {
-			return nil, exerrors.NewDualError(ErrMediaDecryptFailed, err)
+			err = exerrors.NewDualError(ErrMediaDecryptFailed, err)
+			return
 		}
 	}
-	mimeType := content.GetInfo().MimeType
+	mimeType = content.GetInfo().MimeType
 	if mimeType == "" {
 		mimeType = http.DetectContentType(data)
 	}
-	fileName := content.FileName
+	fileName = content.FileName
 	if fileName == "" {
 		fileName = content.Body
 		if fileName == "" {
 			fileName = string(content.MsgType)[2:] + exmime.ExtensionFromMimetype(mimeType)
 		}
+	}
+	return
+}
+
+func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*types.MercuryUploadResponse, error) {
+	data, mimeType, fileName, err := mc.downloadMatrixMedia(ctx, content)
+	if err != nil {
+		return nil, err
 	}
 	_, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]
 	if isVoice {

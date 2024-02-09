@@ -241,6 +241,15 @@ func (tt ThreadType) IsOneToOne() bool {
 	}
 }
 
+func (tt ThreadType) IsWhatsApp() bool {
+	switch tt {
+	case ENCRYPTED_OVER_WA_GROUP, ENCRYPTED_OVER_WA_ONE_TO_ONE:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	UNKNOWN_THREAD_TYPE               ThreadType = 0
 	ONE_TO_ONE                        ThreadType = 1

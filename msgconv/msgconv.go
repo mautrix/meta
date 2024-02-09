@@ -19,6 +19,7 @@ package msgconv
 import (
 	"context"
 
+	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -36,6 +37,7 @@ type PortalMethods interface {
 	ShouldFetchXMA(ctx context.Context) bool
 
 	GetClient(ctx context.Context) *messagix.Client
+	GetE2EEClient(ctx context.Context) *whatsmeow.Client
 	GetData(ctx context.Context) *database.Portal
 }
 
