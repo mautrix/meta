@@ -31,6 +31,9 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	waLog "go.mau.fi/whatsmeow/util/log"
+
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
@@ -38,8 +41,6 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/msgconv"
-	"go.mau.fi/whatsmeow/store/sqlstore"
-	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 //go:embed example-config.yaml
@@ -144,7 +145,7 @@ func (br *MetaBridge) Init() {
 	br.RegisterCommands()
 
 	br.DB = database.New(br.Bridge.DB)
-	br.DeviceStore = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), waLog.Stdout("DATABASE", "DEBUG", true))
+	br.DeviceStore = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), waLog.Zerolog(br.ZLog.With().Str("db_section", "whatsmeow").Logger()))
 
 	ss := br.Config.Bridge.Provisioning.SharedSecret
 	if len(ss) > 0 && ss != "disable" {
