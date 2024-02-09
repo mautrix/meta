@@ -57,6 +57,7 @@ func (br *MetaBridge) RegisterCommands() {
 		cmdLogin,
 		cmdSyncSpace,
 		cmdDeleteSession,
+		cmdToggleEncryption,
 		cmdSetRelay,
 		cmdUnsetRelay,
 		cmdDeletePortal,
@@ -74,6 +75,38 @@ func wrapCommand(handler func(*WrappedCommandEvent)) func(*commands.Event) {
 		}
 		br := ce.Bridge.Child.(*MetaBridge)
 		handler(&WrappedCommandEvent{ce, br, user, portal})
+	}
+}
+
+var cmdToggleEncryption = &commands.FullHandler{
+	Func: wrapCommand(fnToggleEncryption),
+	Name: "toggle-encryption",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Toggle Messenger-side encryption for the current room",
+	},
+	RequiresPortal: true,
+	RequiresLogin:  true,
+}
+
+func fnToggleEncryption(ce *WrappedCommandEvent) {
+	if !ce.Bridge.Config.Meta.Mode.IsMessenger() {
+		ce.Reply("Encryption support is not yet enabled in Instagram mode")
+		return
+	} else if !ce.Portal.IsPrivateChat() {
+		ce.Reply("Only private chats can be toggled between encrypted and unencrypted")
+		return
+	}
+	if ce.Portal.ThreadType.IsWhatsApp() {
+		ce.Portal.ThreadType = table.ONE_TO_ONE
+		ce.Reply("Messages in this room will now be sent unencrypted over Messenger")
+	} else {
+		ce.Portal.ThreadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
+		ce.Reply("Messages in this room will now be sent encrypted over WhatsApp")
+	}
+	err := ce.Portal.Update(ce.Ctx)
+	if err != nil {
+		ce.ZLog.Err(err).Msg("Failed to update portal in database")
 	}
 }
 
