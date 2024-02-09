@@ -873,6 +873,8 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		if portal != nil {
 			portal.metaMessages <- portalMetaMessage{user: user, evt: evt}
 		}
+	default:
+		user.log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
 }
 
