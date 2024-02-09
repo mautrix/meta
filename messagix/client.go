@@ -18,7 +18,6 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	"golang.org/x/net/proxy"
 
@@ -63,8 +62,7 @@ type Client struct {
 	socksProxy  proxy.Dialer
 	GetNewProxy func(reason string) (string, error)
 
-	device     *store.Device
-	e2eeClient *whatsmeow.Client
+	device *store.Device
 
 	lsRequests      int
 	graphQLRequests int
