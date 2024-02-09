@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"sync"
+	"time"
 
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/id"
@@ -50,15 +51,18 @@ type User struct {
 	ManagementRoom id.RoomID
 	SpaceRoom      id.RoomID
 
-	inSpaceCache     map[PortalKey]bool
-	inSpaceCacheLock sync.Mutex
+	lastReadCache     map[PortalKey]time.Time
+	lastReadCacheLock sync.Mutex
+	inSpaceCache      map[PortalKey]bool
+	inSpaceCacheLock  sync.Mutex
 }
 
 func newUser(qh *dbutil.QueryHelper[*User]) *User {
 	return &User{
 		qh: qh,
 
-		inSpaceCache: make(map[PortalKey]bool),
+		lastReadCache: make(map[PortalKey]time.Time),
+		inSpaceCache:  make(map[PortalKey]bool),
 	}
 }
 

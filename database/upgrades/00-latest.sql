@@ -1,4 +1,4 @@
--- v0 -> v5 (compatible with v3+): Latest revision
+-- v0 -> v6 (compatible with v3+): Latest revision
 
 CREATE TABLE portal (
     thread_id   BIGINT  NOT NULL,
@@ -62,6 +62,7 @@ CREATE TABLE user_portal (
     portal_thread_id BIGINT NOT NULL,
     portal_receiver  BIGINT NOT NULL,
 
+    last_read_ts BIGINT NOT NULL DEFAULT 0,
     in_space BOOLEAN NOT NULL DEFAULT false,
 
     PRIMARY KEY (user_mxid, portal_thread_id, portal_receiver),

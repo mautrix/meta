@@ -208,6 +208,10 @@ func (user *User) IsLoggedIn() bool {
 	return user.Client != nil
 }
 
+func (user *User) IsE2EEConnected() bool {
+	return user.E2EEClient != nil && user.E2EEClient.IsConnected()
+}
+
 func (user *User) GetManagementRoomID() id.RoomID {
 	return user.ManagementRoom
 }

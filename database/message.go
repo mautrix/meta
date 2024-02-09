@@ -51,6 +51,11 @@ const (
         SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count FROM message
         WHERE id=$1 AND thread_receiver=$2
 	`
+	getMessagesBetweenTimeQuery = `
+		SELECT id, part_index, thread_id, thread_receiver, msg_sender, otid, mxid, mx_room, timestamp, edit_count FROM message
+		WHERE thread_id=$1 AND thread_receiver=$2 AND timestamp>$3 AND timestamp<=$4 AND part_index=0
+		ORDER BY timestamp ASC
+	`
 	findEditTargetPortalFromMessageQuery = `
         SELECT thread_id, thread_receiver FROM message
         WHERE id=$1 AND (thread_receiver=$2 OR thread_receiver=0) AND part_index=0
@@ -119,6 +124,10 @@ func (mq *MessageQuery) GetLastPartByID(ctx context.Context, id string, receiver
 
 func (mq *MessageQuery) GetAllPartsByID(ctx context.Context, id string, receiver int64) ([]*Message, error) {
 	return mq.QueryMany(ctx, getAllMessagePartsByIDQuery, id, receiver)
+}
+
+func (mq *MessageQuery) GetAllBetweenTimestamps(ctx context.Context, key PortalKey, min, max time.Time) ([]*Message, error) {
+	return mq.QueryMany(ctx, getMessagesBetweenTimeQuery, key.ThreadID, key.Receiver, min.UnixMilli(), max.UnixMilli())
 }
 
 func (mq *MessageQuery) FindEditTargetPortal(ctx context.Context, id string, receiver int64) (key PortalKey, err error) {

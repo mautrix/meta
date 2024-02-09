@@ -36,6 +36,13 @@ import (
 	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
 )
 
+func (mc *MessageConverter) TextToWhatsApp(content *event.MessageEventContent) *waCommon.MessageText {
+	// TODO mentions
+	return &waCommon.MessageText{
+		Text: content.Body,
+	}
+}
+
 func (mc *MessageConverter) ToWhatsApp(
 	ctx context.Context,
 	evt *event.Event,
@@ -54,23 +61,21 @@ func (mc *MessageConverter) ToWhatsApp(
 	var waContent waConsumerApplication.ConsumerApplication_Content
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
-		// TODO mentions
 		waContent.Content = &waConsumerApplication.ConsumerApplication_Content_MessageText{
-			MessageText: &waCommon.MessageText{
-				Text: content.Body,
-			},
+			MessageText: mc.TextToWhatsApp(content),
 		}
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile, event.MessageType(event.EventSticker.Type):
 		reuploaded, fileName, err := mc.reuploadMediaToWhatsApp(ctx, evt, content)
 		if err != nil {
 			return nil, nil, err
 		}
-		var caption waCommon.MessageText
+		var caption *waCommon.MessageText
 		if content.FileName != "" && content.Body != content.FileName {
-			// TODO also mentions here
-			caption.Text = content.Body
+			caption = mc.TextToWhatsApp(content)
+		} else {
+			caption = &waCommon.MessageText{}
 		}
-		waContent.Content, err = mc.wrapWhatsAppMedia(evt, content, reuploaded, &caption, fileName)
+		waContent.Content, err = mc.wrapWhatsAppMedia(evt, content, reuploaded, caption, fileName)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -83,13 +83,13 @@
     * [ ] Formatting (Messenger only)
     * [x] Replies
     * [ ] Mentions
-  * [ ] Message redactions
-  * [ ] Message reactions
-  * [ ] Message edits
+  * [x] Message redactions
+  * [x] Message reactions
+  * [x] Message edits
   * [ ] Writing to chat backup
   * [ ] Presence
   * [ ] Typing notifications
-  * [ ] Read receipts
+  * [x] Read receipts
   * [ ] Power level
   * [ ] Membership actions
     * [ ] Invite
