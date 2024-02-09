@@ -1250,6 +1250,7 @@ func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsume
 	case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
 		switch applicationContent := payload.ApplicationData.GetApplicationContent().(type) {
 		case *waConsumerApplication.ConsumerApplication_ApplicationData_Revoke:
+			portal.handleMetaOrWhatsAppDelete(ctx, sender, applicationContent.Revoke.GetKey().GetID())
 		default:
 			log.Warn().Type("content_type", applicationContent).Msg("Unrecognized application content type")
 		}
@@ -1413,7 +1414,18 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 		Str("target_msg_id", react.MessageId).
 		Logger().
 		WithContext(context.TODO())
-	portal.handleMetaOrWhatsAppReaction(ctx, sender, react.MessageId, react.Reaction, react.TimestampMs)
+	portal.handleMetaOrWhatsAppReaction(ctx, sender, react.MessageId, react.Reaction, 0)
+}
+
+func (portal *Portal) handleMetaReactionDelete(react *table.LSDeleteReaction) {
+	sender := portal.bridge.GetPuppetByID(react.ActorId)
+	log := portal.log.With().
+		Str("action", "delete meta reaction").
+		Int64("sender_id", sender.ID).
+		Str("target_msg_id", react.MessageId).
+		Logger()
+	ctx := log.WithContext(context.TODO())
+	portal.handleMetaOrWhatsAppReaction(ctx, sender, react.MessageId, "", 0)
 }
 
 func (portal *Portal) handleMetaOrWhatsAppReaction(ctx context.Context, sender *Puppet, messageID, reaction string, timestamp int64) {
@@ -1443,6 +1455,17 @@ func (portal *Portal) handleMetaOrWhatsAppReaction(ctx context.Context, sender *
 		if err != nil {
 			log.Err(err).Msg("Failed to redact reaction")
 		}
+	}
+	if reaction == "" {
+		if existingReaction == nil {
+			log.Warn().Msg("Existing reaction to delete not found")
+			return
+		}
+		err = existingReaction.Delete(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to delete reaction from database")
+		}
+		return
 	}
 	content := &event.ReactionEventContent{
 		RelatesTo: event.RelatesTo{
@@ -1480,40 +1503,17 @@ func (portal *Portal) handleMetaOrWhatsAppReaction(ctx context.Context, sender *
 	}
 }
 
-func (portal *Portal) handleMetaReactionDelete(react *table.LSDeleteReaction) {
-	sender := portal.bridge.GetPuppetByID(react.ActorId)
-	log := portal.log.With().
-		Str("action", "delete meta reaction").
-		Int64("sender_id", sender.ID).
-		Str("target_msg_id", react.MessageId).
-		Logger()
-	ctx := log.WithContext(context.TODO())
-	existingReaction, err := portal.bridge.DB.Reaction.GetByID(ctx, react.MessageId, portal.Receiver, sender.ID)
-	if err != nil {
-		log.Err(err).Msg("Failed to get existing reaction from database")
-		return
-	} else if existingReaction == nil {
-		log.Warn().Msg("Existing reaction to delete not found")
-		return
-	}
-	_, err = sender.IntentFor(portal).RedactEvent(ctx, portal.MXID, existingReaction.MXID, mautrix.ReqRedact{
-		TxnID: "mxmeta_unreact_" + existingReaction.MXID.String(),
-	})
-	if err != nil {
-		log.Err(err).Msg("Failed to redact reaction")
-	}
-	err = existingReaction.Delete(ctx)
-	if err != nil {
-		log.Err(err).Msg("Failed to delete reaction from database")
-	}
-}
-
 func (portal *Portal) handleMetaDelete(messageID string) {
 	log := portal.log.With().
 		Str("action", "delete meta message").
 		Str("message_id", messageID).
 		Logger()
 	ctx := log.WithContext(context.TODO())
+	portal.handleMetaOrWhatsAppDelete(ctx, nil, messageID)
+}
+
+func (portal *Portal) handleMetaOrWhatsAppDelete(ctx context.Context, sender *Puppet, messageID string) {
+	log := zerolog.Ctx(ctx)
 	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, messageID, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to get target message from database")
@@ -1522,8 +1522,12 @@ func (portal *Portal) handleMetaDelete(messageID string) {
 		log.Warn().Msg("Target message not found")
 		return
 	}
+	intent := portal.MainIntent()
+	if sender != nil {
+		intent = sender.IntentFor(portal)
+	}
 	for _, part := range targetMsg {
-		_, err = portal.MainIntent().RedactEvent(ctx, portal.MXID, part.MXID, mautrix.ReqRedact{
+		_, err = intent.RedactEvent(ctx, portal.MXID, part.MXID, mautrix.ReqRedact{
 			TxnID: "mxmeta_delete_" + part.MXID.String(),
 		})
 		if err != nil {

@@ -119,7 +119,7 @@
     * [x] Replies
     * [x] Mentions
     * [ ] Polls
-  * [ ] Message unsend
+  * [x] Message unsend
   * [x] Message reactions
   * [x] Message edits
   * [ ] Message history/Reading chat backup
