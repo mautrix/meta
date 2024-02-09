@@ -1243,7 +1243,7 @@ func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsume
 		case *waConsumerApplication.ConsumerApplication_Content_EditMessage:
 			portal.handleWhatsAppEditMessage(ctx, sender, content.EditMessage)
 		case *waConsumerApplication.ConsumerApplication_Content_ReactionMessage:
-			log.Warn().Msg("Unsupported reaction message payload message")
+			portal.handleMetaOrWhatsAppReaction(ctx, sender, content.ReactionMessage.GetKey().GetID(), content.ReactionMessage.GetText(), content.ReactionMessage.GetSenderTimestampMS())
 		default:
 			portal.handleMetaOrWhatsAppMessage(ctx, source, sender, evt, nil)
 		}
@@ -1407,13 +1407,18 @@ func (portal *Portal) handleMetaEditMessage(edit *table.LSEditMessage) {
 
 func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 	sender := portal.bridge.GetPuppetByID(react.ActorId)
-	log := portal.log.With().
+	ctx := portal.log.With().
 		Str("action", "upsert meta reaction").
 		Int64("sender_id", sender.ID).
 		Str("target_msg_id", react.MessageId).
-		Logger()
-	ctx := log.WithContext(context.TODO())
-	targetMsg, err := portal.bridge.DB.Message.GetByID(ctx, react.MessageId, 0, portal.Receiver)
+		Logger().
+		WithContext(context.TODO())
+	portal.handleMetaOrWhatsAppReaction(ctx, sender, react.MessageId, react.Reaction, react.TimestampMs)
+}
+
+func (portal *Portal) handleMetaOrWhatsAppReaction(ctx context.Context, sender *Puppet, messageID, reaction string, timestamp int64) {
+	log := zerolog.Ctx(ctx)
+	targetMsg, err := portal.bridge.DB.Message.GetByID(ctx, messageID, 0, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to get target message from database")
 		return
@@ -1425,7 +1430,7 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 	if err != nil {
 		log.Err(err).Msg("Failed to get existing reaction from database")
 		return
-	} else if existingReaction != nil && existingReaction.Emoji == react.Reaction {
+	} else if existingReaction != nil && existingReaction.Emoji == reaction {
 		// TODO should reactions be deduplicated by some ID instead of the emoji?
 		log.Debug().Msg("Ignoring duplicate reaction")
 		return
@@ -1442,11 +1447,11 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 	content := &event.ReactionEventContent{
 		RelatesTo: event.RelatesTo{
 			Type:    event.RelAnnotation,
-			Key:     variationselector.Add(react.Reaction),
+			Key:     variationselector.Add(reaction),
 			EventID: targetMsg.MXID,
 		},
 	}
-	resp, err := portal.sendMatrixEvent(ctx, intent, event.EventReaction, content, nil, 0)
+	resp, err := portal.sendMatrixEvent(ctx, intent, event.EventReaction, content, nil, timestamp)
 	if err != nil {
 		log.Err(err).Msg("Failed to send reaction")
 		return
@@ -1459,14 +1464,14 @@ func (portal *Portal) handleMetaReaction(react *table.LSUpsertReaction) {
 		dbReaction.ThreadID = portal.ThreadID
 		dbReaction.ThreadReceiver = portal.Receiver
 		dbReaction.Sender = sender.ID
-		dbReaction.Emoji = react.Reaction
+		dbReaction.Emoji = reaction
 		// TODO save timestamp?
 		err = dbReaction.Insert(ctx)
 		if err != nil {
 			log.Err(err).Msg("Failed to insert reaction to database")
 		}
 	} else {
-		existingReaction.Emoji = react.Reaction
+		existingReaction.Emoji = reaction
 		existingReaction.MXID = resp.EventID
 		err = existingReaction.Update(ctx)
 		if err != nil {

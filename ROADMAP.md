@@ -120,7 +120,7 @@
     * [x] Mentions
     * [ ] Polls
   * [ ] Message unsend
-  * [ ] Message reactions
+  * [x] Message reactions
   * [x] Message edits
   * [ ] Message history/Reading chat backup
   * [ ] Presence
