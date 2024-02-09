@@ -121,7 +121,7 @@
     * [ ] Polls
   * [ ] Message unsend
   * [ ] Message reactions
-  * [ ] Message edits
+  * [x] Message edits
   * [ ] Message history/Reading chat backup
   * [ ] Presence
   * [ ] Typing notifications

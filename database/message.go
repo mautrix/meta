@@ -220,3 +220,11 @@ func (msg *Message) UpdateEditCount(ctx context.Context, count int64) error {
 	msg.EditCount = count
 	return msg.qh.Exec(ctx, updateMessageEditCountQuery, msg.ID, msg.ThreadReceiver, msg.PartIndex, msg.EditCount)
 }
+
+func (msg *Message) EditTimestamp() int64 {
+	return msg.EditCount
+}
+
+func (msg *Message) UpdateEditTimestamp(ctx context.Context, ts int64) error {
+	return msg.UpdateEditCount(ctx, ts)
+}

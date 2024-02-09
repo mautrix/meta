@@ -39,7 +39,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func (mc *MessageConverter) whatsappTextToMatrix(ctx context.Context, text *waCommon.MessageText) *ConvertedMessagePart {
+func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCommon.MessageText) *ConvertedMessagePart {
 	content := &event.MessageEventContent{
 		MsgType:  event.MsgText,
 		Body:     text.GetText(),
@@ -122,7 +122,7 @@ func convertWhatsAppAttachment[
 	}
 	msgWithCaption, ok := msg.(AttachmentMessageWithCaption[Integral, Ancillary, Transport])
 	if ok && len(msgWithCaption.GetCaption().GetText()) > 0 {
-		caption = mc.whatsappTextToMatrix(ctx, msgWithCaption.GetCaption())
+		caption = mc.WhatsAppTextToMatrix(ctx, msgWithCaption.GetCaption())
 		caption.Content.MsgType = event.MsgNotice
 	}
 	metadata = typedTransport.GetAncillary()
@@ -279,9 +279,9 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 	}
 	switch content := evt.Message.GetPayload().GetContent().GetContent().(type) {
 	case *waConsumerApplication.ConsumerApplication_Content_MessageText:
-		cm.Parts = append(cm.Parts, mc.whatsappTextToMatrix(ctx, content.MessageText))
+		cm.Parts = append(cm.Parts, mc.WhatsAppTextToMatrix(ctx, content.MessageText))
 	case *waConsumerApplication.ConsumerApplication_Content_ExtendedTextMessage:
-		part := mc.whatsappTextToMatrix(ctx, content.ExtendedTextMessage.GetText())
+		part := mc.WhatsAppTextToMatrix(ctx, content.ExtendedTextMessage.GetText())
 		// TODO convert url previews
 		cm.Parts = append(cm.Parts, part)
 	case *waConsumerApplication.ConsumerApplication_Content_ImageMessage,

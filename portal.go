@@ -676,7 +676,7 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 	} else if editTargetMsg.Sender != sender.MetaID {
 		go ms.sendMessageMetrics(evt, errEditDifferentSender, "Error converting", true)
 		return
-	} else if editTargetMsg.EditCount >= MaxEditCount {
+	} else if !portal.ThreadType.IsWhatsApp() && editTargetMsg.EditCount >= MaxEditCount {
 		go ms.sendMessageMetrics(evt, errEditCountExceeded, "Error converting", true)
 		return
 	}
@@ -1233,14 +1233,15 @@ func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsume
 		Stringer("chat_jid", evt.Info.Chat).
 		Stringer("sender_jid", evt.Info.Sender).
 		Str("message_id", evt.Info.ID).
+		Time("message_ts", evt.Info.Timestamp).
 		Logger()
 	ctx := log.WithContext(context.TODO())
 
 	switch payload := evt.Message.GetPayload().GetPayload().(type) {
 	case *waConsumerApplication.ConsumerApplication_Payload_Content:
-		switch payload.Content.GetContent().(type) {
+		switch content := payload.Content.GetContent().(type) {
 		case *waConsumerApplication.ConsumerApplication_Content_EditMessage:
-			log.Warn().Msg("Unsupported edit message payload message")
+			portal.handleWhatsAppEditMessage(ctx, sender, content.EditMessage)
 		case *waConsumerApplication.ConsumerApplication_Content_ReactionMessage:
 			log.Warn().Msg("Unsupported reaction message payload message")
 		default:
@@ -1332,6 +1333,37 @@ func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *U
 			continue
 		}
 		portal.storeMessageInDB(ctx, resp.EventID, messageID, otidInt, sender.ID, messageTime, i)
+	}
+}
+
+func (portal *Portal) handleWhatsAppEditMessage(ctx context.Context, sender *Puppet, edit *waConsumerApplication.ConsumerApplication_EditMessage) {
+	log := zerolog.Ctx(ctx).With().
+		Int64("edit_ts", edit.TimestampMS).
+		Logger()
+	ctx = log.WithContext(context.TODO())
+	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, edit.GetKey().GetID(), portal.Receiver)
+	if err != nil {
+		log.Err(err).Msg("Failed to get edit target message")
+		return
+	} else if len(targetMsg) == 0 {
+		log.Warn().Msg("Edit target message not found")
+		return
+	} else if len(targetMsg) > 1 {
+		log.Warn().Msg("Ignoring edit of multipart message")
+		return
+	} else if targetMsg[0].EditTimestamp() <= edit.TimestampMS {
+		log.Debug().Int64("existing_edit_ts", targetMsg[0].EditTimestamp()).Msg("Ignoring duplicate edit")
+		return
+	}
+	converted := portal.MsgConv.WhatsAppTextToMatrix(ctx, edit.GetMessage())
+	converted.Content.SetEdit(targetMsg[0].MXID)
+	resp, err := portal.sendMatrixEvent(ctx, sender.IntentFor(portal), converted.Type, converted.Content, converted.Extra, edit.TimestampMS)
+	if err != nil {
+		log.Err(err).Msg("Failed to send edit to Matrix")
+	} else if err := targetMsg[0].UpdateEditTimestamp(ctx, edit.TimestampMS); err != nil {
+		log.Err(err).Stringer("event_id", resp.EventID).Msg("Failed to save message edit count to database")
+	} else {
+		log.Debug().Stringer("event_id", resp.EventID).Msg("Handled Meta message edit")
 	}
 }
 
