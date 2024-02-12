@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -35,6 +36,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
+	"golang.org/x/exp/maps"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
@@ -64,6 +66,7 @@ func (cm *ConvertedMessage) MergeCaption() {
 	mediaContent.Format = textContent.Format
 	mediaContent.FormattedBody = textContent.FormattedBody
 	mediaContent.Mentions = textContent.Mentions
+	maps.Copy(cm.Parts[0].Extra, cm.Parts[1].Extra)
 	cm.Parts = cm.Parts[:1]
 }
 
@@ -95,7 +98,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	for _, sticker := range msg.Stickers {
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
 	}
-	if msg.Text != "" {
+	if msg.Text != "" || msg.ReplySnippet != "" {
 		mentions := &socket.MentionData{
 			MentionIDs:     msg.MentionIds,
 			MentionOffsets: msg.MentionOffsets,
@@ -106,9 +109,36 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 		if msg.IsAdminMessage {
 			content.MsgType = event.MsgNotice
 		}
+		extra := make(map[string]any)
+		if msg.ReplySnippet != "" {
+			extra["com.beeper.relation_snippet"] = msg.ReplySnippet
+			// This is extremely hacky
+			isReaction := strings.Contains(msg.ReplySnippet, "Reacted")
+			if isReaction {
+				extra["com.beeper.raw_reaction_text"] = content.Body
+			} else if msg.Text != "" {
+				extra["com.beeper.raw_reply_text"] = content.Body
+			}
+			content.Body = strings.TrimSpace(fmt.Sprintf("%s\n\n%s", msg.ReplySnippet, content.Body))
+			if content.FormattedBody != "" {
+				content.FormattedBody = strings.TrimSpace(fmt.Sprintf("%s\n\n%s", html.EscapeString(msg.ReplySnippet), content.FormattedBody))
+			}
+			switch msg.ReplySourceTypeV2 {
+			case table.ReplySourceTypeIGStoryShare:
+				if isReaction {
+					extra["com.beeper.relation_preview_type"] = "story_reaction"
+				} else if msg.Text != "" {
+					extra["com.beeper.relation_preview_type"] = "story_reply"
+				} else {
+					extra["com.beeper.relation_preview_type"] = "story"
+				}
+			default:
+			}
+		}
 		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: content,
+			Extra:   extra,
 		})
 	}
 	if len(cm.Parts) == 0 {
@@ -270,6 +300,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
 			log.Debug().Msg("Fetched XMA media")
 			targetItem := resp.Items[0]
+			minimalConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
 			if targetItem.CarouselMedia != nil && carouselChildMediaID != "" {
 				for _, subitem := range targetItem.CarouselMedia {
 					if subitem.ID == carouselChildMediaID {
@@ -318,6 +349,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				Str("media_id", match[1]).
 				Any("response", resp).
 				Msg("Fetched XMA story")
+			minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
 			var relevantItem *responses.Items
 			foundIDs := make([]string, len(reel.Items))
 			for i, item := range reel.Items {

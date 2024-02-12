@@ -287,3 +287,26 @@ const (
 	ACTIVITY            ThreadBumpStatus = 2
 	ACTIVITY_AND_READ_2 ThreadBumpStatus = 3
 )
+
+type ReplySourceTypeV2 int64
+
+const (
+	ReplySourceTypeNone ReplySourceTypeV2 = iota
+	ReplySourceTypeMessage
+	ReplySourceTypeStory
+	ReplySourceTypeForward
+	ReplySourceTypeFBStoryShare
+	ReplySourceTypeIGStoryShare
+	ReplySourceTypeStoryBase64Encoded
+	ReplySourceTypeLightweightStatus
+	ReplySourceTypeCloseFriends
+	ReplySourceTypeXMA
+	ReplySourceTypeIGNote
+	ReplySourceTypeCloseFriendsNoteReply
+	ReplySourceTypeLightweightStatusReaction
+	ReplySourceTypeFBFeedPost
+	ReplySourceTypeHighlightsTabPostReply
+	ReplySourceTypeHighlightsTabLocalEventReply
+	ReplySourceTypeSharedAlbum
+	ReplySourceTypeAvatarDetail
+)
