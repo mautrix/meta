@@ -139,12 +139,12 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.E
 	}
 	_, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]
 	if isVoice {
-		data, err = ffmpeg.ConvertBytes(ctx, data, ".wav", []string{}, []string{"-c:a", "pcm_u8", "-ar", "48000"}, mimeType)
+		data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mimeType)
 		if err != nil {
 			return nil, err
 		}
-		mimeType = "audio/wav"
-		fileName = "audio_clip.wav"
+		mimeType = "audio/mp4"
+		fileName += ".m4a"
 	}
 	resp, err := mc.GetClient(ctx).SendMercuryUploadRequest(ctx, &messagix.MercuryUploadMedia{
 		Filename:    fileName,
