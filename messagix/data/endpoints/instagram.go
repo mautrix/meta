@@ -16,6 +16,9 @@ var InstagramEndpoints = map[string]string{
 	"cookie_consent":  "https://graphql.instagram.com/graphql/",
 	"default_graphql": "https://graphql.instagram.com/graphql/",
 
+	"icdc_fetch":    "https:/reg-e2ee.instagram.com/v2/fb_icdc_fetch",
+	"icdc_register": "https:/reg-e2ee.instagram.com/v2/fb_register_v2",
+
 	"media_upload": instaBaseUrl + "/ajax/mercury/upload.php?",
 
 	"web_login_page_v1":  instaWebApiV1Url + "/login_page/",

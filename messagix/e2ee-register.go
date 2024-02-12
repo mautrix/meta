@@ -73,9 +73,9 @@ type ICDCRegisterResponse struct {
 	WADeviceID  int    `json:"wa_device_id"`
 }
 
-func (c *Client) doE2EERequest(ctx context.Context, path string, body url.Values, into any) error {
-	url := "https://reg-e2ee.facebook.com" + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body.Encode()))
+func (c *Client) doE2EERequest(ctx context.Context, endpoint string, body url.Values, into any) error {
+	addr := c.getEndpoint(endpoint)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, addr, strings.NewReader(body.Encode()))
 	if err != nil {
 		return fmt.Errorf("failed to prepare request: %w", err)
 	}
@@ -88,7 +88,7 @@ func (c *Client) doE2EERequest(ctx context.Context, path string, body url.Values
 	req.Header.Set("origin", c.getEndpoint("base_url"))
 	req.Header.Set("referer", c.getEndpoint("messages")+"/")
 	zerolog.Ctx(ctx).Trace().
-		Str("url", url).
+		Str("url", addr).
 		Any("body", body).
 		Msg("ICDC request")
 	resp, err := c.http.Do(req)
@@ -98,7 +98,7 @@ func (c *Client) doE2EERequest(ctx context.Context, path string, body url.Values
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	logEvt := zerolog.Ctx(ctx).Trace().
-		Str("url", url).
+		Str("url", addr).
 		Int("status_code", resp.StatusCode)
 	if json.Valid(respBody) {
 		logEvt.RawJSON("response_body", respBody)
@@ -124,7 +124,7 @@ func (c *Client) fetchICDC(ctx context.Context, fbid int64, deviceUUID uuid.UUID
 		"device_id": {deviceUUID.String()},
 	}
 	var icdcResp ICDCFetchResponse
-	err := c.doE2EERequest(ctx, "/v2/fb_icdc_fetch", formBody, &icdcResp)
+	err := c.doE2EERequest(ctx, "icdc_fetch", formBody, &icdcResp)
 	return &icdcResp, err
 }
 
@@ -207,7 +207,7 @@ func (c *Client) RegisterE2EE(ctx context.Context) error {
 		"ihash":      {base64.StdEncoding.EncodeToString(calculateIdentitiesHash(deviceIdentities))},
 	}
 	var icdcResp ICDCRegisterResponse
-	err = c.doE2EERequest(ctx, "/v2/fb_register_v2", formBody, &icdcResp)
+	err = c.doE2EERequest(ctx, "icdc_register", formBody, &icdcResp)
 	if err != nil {
 		return err
 	} else if icdcResp.Status != 200 {
