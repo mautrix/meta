@@ -85,6 +85,7 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 
 	err := c.parseMetadata(mercuryResponse)
 	if err != nil {
+		zerolog.Ctx(ctx).Debug().RawJSON("response_body", jsonData).Msg("Mercury upload response with unrecognized data")
 		return nil, err
 	}
 
