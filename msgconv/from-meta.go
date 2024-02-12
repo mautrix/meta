@@ -93,7 +93,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 		if xmaAtt.CTA != nil && (isProbablyURLPreview(xmaAtt) || strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_")) {
 			continue
 		}
-		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt))
+		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
 	}
 	for _, sticker := range msg.Stickers {
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
@@ -266,10 +266,31 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 
 var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
 
-func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
+func trimPostTitle(title string, maxLines int) string {
+	// For some reason Instagram gives maxLines 1 less than what they mean (i.e. what the official clients render)
+	maxLines++
+	lines := strings.SplitN(title, "\n", maxLines+1)
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+		lines[maxLines-1] += "…"
+	}
+	maxCharacters := maxLines * 50
+	for i, line := range lines {
+		lineRunes := []rune(line)
+		if len(lineRunes) > maxCharacters {
+			lines[i] = string(lineRunes[:maxCharacters]) + "…"
+			lines = lines[:i+1]
+			break
+		}
+		maxCharacters -= len(lineRunes)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) []*ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
-		return minimalConverted
+		return []*ConvertedMessagePart{minimalConverted}
 	}
 	log := zerolog.Ctx(ctx)
 	switch {
@@ -287,7 +308,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
-			return minimalConverted
+			return []*ConvertedMessagePart{minimalConverted}
 		}
 
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
@@ -316,7 +337,20 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
-			return secondConverted
+			parts := []*ConvertedMessagePart{secondConverted}
+			if att.TitleText != "" {
+				parts = append(parts, &ConvertedMessagePart{
+					Type: event.EventMessage,
+					Content: &event.MessageEventContent{
+						MsgType: event.MsgText,
+						Body:    trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines)),
+					},
+					Extra: map[string]any{
+						"com.beeper.instagram_full_post_caption": att.TitleText,
+					},
+				})
+			}
+			return parts
 		}
 	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
@@ -324,7 +358,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
-			return minimalConverted
+			return []*ConvertedMessagePart{minimalConverted}
 		}
 
 		if match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
@@ -365,7 +399,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 					Str("media_id", match[1]).
 					Strs("found_ids", foundIDs).
 					Msg("Failed to find exact item in fetched XMA story")
-				return minimalConverted
+				return []*ConvertedMessagePart{minimalConverted}
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
 			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
@@ -375,12 +409,12 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
-			return secondConverted
+			return []*ConvertedMessagePart{secondConverted}
 		}
 	default:
 		log.Debug().Any("cta_data", att.CTA).Msg("Unrecognized CTA data")
 	}
-	return minimalConverted
+	return []*ConvertedMessagePart{minimalConverted}
 }
 
 var instagramProfileURLRegex = regexp.MustCompile(`^https://www.instagram.com/([a-z0-9._]{1,30})$`)
@@ -407,11 +441,11 @@ func (mc *MessageConverter) xmaProfileShareToMatrix(ctx context.Context, att *ta
 	}
 }
 
-func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
+func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) []*ConvertedMessagePart {
 	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
-		return mc.xmaLocationToMatrix(ctx, att)
+		return []*ConvertedMessagePart{mc.xmaLocationToMatrix(ctx, att)}
 	} else if profileShare := mc.xmaProfileShareToMatrix(ctx, att); profileShare != nil {
-		return profileShare
+		return []*ConvertedMessagePart{profileShare}
 	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
@@ -429,7 +463,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), 0)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
-		return errorToNotice(err, "XMA")
+		return []*ConvertedMessagePart{errorToNotice(err, "XMA")}
 	}
 	return mc.fetchFullXMA(ctx, att, converted)
 }
