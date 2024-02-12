@@ -296,7 +296,24 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				Str("media_id", match[1]).
 				Any("response", resp).
 				Msg("Fetched XMA story")
-			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, &reel.Items[0].Items)
+			var relevantItem *responses.Items
+			foundIDs := make([]string, len(reel.Items))
+			for i, item := range reel.Items {
+				foundIDs[i] = item.Pk
+				if item.Pk == match[1] {
+					relevantItem = &item.Items
+				}
+			}
+			if relevantItem == nil {
+				log.Warn().
+					Str("action_url", att.CTA.ActionUrl).
+					Str("reel_id", match[2]).
+					Str("media_id", match[1]).
+					Strs("found_ids", foundIDs).
+					Msg("Failed to find exact item in fetched XMA story")
+				return minimalConverted
+			}
+			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
