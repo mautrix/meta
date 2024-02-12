@@ -350,6 +350,8 @@ type Items struct {
 	CommerceIntegrityReviewDecision     string                    `json:"commerce_integrity_review_decision,omitempty"`
 	IgMediaSharingDisabled              bool                      `json:"ig_media_sharing_disabled,omitempty"`
 	IsOpenToPublicSubmission            bool                      `json:"is_open_to_public_submission,omitempty"`
+	CarouselMediaIDs                    []string                  `json:"carousel_media_ids,omitempty"`
+	CarouselMedia                       []*Items                  `json:"carousel_media,omitempty"`
 	CommentingDisabledForViewer         bool                      `json:"commenting_disabled_for_viewer,omitempty"`
 	CommentThreadingEnabled             bool                      `json:"comment_threading_enabled,omitempty"`
 	MaxNumVisiblePreviewComments        int                       `json:"max_num_visible_preview_comments,omitempty"`

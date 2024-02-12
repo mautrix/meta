@@ -26,6 +26,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -243,6 +244,15 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 	log := zerolog.Ctx(ctx)
 	switch {
 	case strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="):
+		actionURL, _ := url.Parse(att.CTA.ActionUrl)
+		if actionURL != nil && actionURL.Path == "/l.php" {
+			actionURL, _ = url.Parse(actionURL.Query().Get("u"))
+		}
+		var carouselChildMediaID string
+		if actionURL != nil {
+			carouselChildMediaID = actionURL.Query().Get("carousel_share_child_media_id")
+		}
+
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
 		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="))
 		minimalConverted.Extra["external_url"] = externalURL
@@ -257,7 +267,16 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			log.Warn().Int64("target_id", att.CTA.TargetId).Msg("Got empty XMA media response")
 		} else {
 			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
-			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, resp.Items[0])
+			targetItem := resp.Items[0]
+			if targetItem.CarouselMedia != nil && carouselChildMediaID != "" {
+				for _, subitem := range targetItem.CarouselMedia {
+					if subitem.ID == carouselChildMediaID {
+						targetItem = subitem
+						break
+					}
+				}
+			}
+			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, targetItem)
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
