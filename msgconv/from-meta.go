@@ -115,7 +115,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			// This is extremely hacky
 			isReaction := strings.Contains(msg.ReplySnippet, "Reacted")
 			if isReaction {
-				extra["com.beeper.raw_reaction_text"] = content.Body
+				extra["com.beeper.raw_reaction"] = content.Body
 			} else if msg.Text != "" {
 				extra["com.beeper.raw_reply_text"] = content.Body
 			}
