@@ -4,6 +4,8 @@ type GraphQLDoc struct {
 	DocId        string
 	CallerClass  string
 	FriendlyName string
+
+	Jsessw string
 }
 
 var GraphQLDocs = map[string]GraphQLDoc{
@@ -16,6 +18,12 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocId:        "6195354443842040",
 		CallerClass:  "RelayModern",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestForIGDQuery",
+	},
+	"MAWCatQuery": {
+		DocId:        "23999698219677129",
+		CallerClass:  "RelayModern",
+		FriendlyName: "MAWCatQuery",
+		Jsessw:       "1",
 	},
 }
 

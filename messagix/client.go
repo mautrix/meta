@@ -71,6 +71,9 @@ type Client struct {
 	taskMutex       *sync.Mutex
 	activeTasks     []int
 
+	catRefreshLock         sync.Mutex
+	unnecessaryCATRequests int
+
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
 }
 

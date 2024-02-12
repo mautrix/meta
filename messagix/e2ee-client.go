@@ -17,13 +17,19 @@
 package messagix
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"strconv"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	waLog "go.mau.fi/whatsmeow/util/log"
+
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 func (c *Client) PrepareE2EEClient() *whatsmeow.Client {
@@ -36,7 +42,59 @@ func (c *Client) PrepareE2EEClient() *whatsmeow.Client {
 		UserAgent: UserAgent,
 		BaseURL:   c.getEndpoint("base_url"),
 	}
+	e2eeClient.RefreshCAT = c.refreshCAT
 	return e2eeClient
+}
+
+type refreshCATResponseGraphQL struct {
+	Data struct {
+		SecureMessageOverWACATQuery types.CryptoAuthToken `json:"secure_message_over_wa_cat_query"`
+	} `json:"data"`
+	Extensions struct {
+		IsFinal bool `json:"is_final"`
+	} `json:"extensions"`
+}
+
+func (c *Client) refreshCAT() error {
+	c.catRefreshLock.Lock()
+	defer c.catRefreshLock.Unlock()
+	currentExpiration := time.Unix(c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken.ExpirationTimeInSeconds, 0)
+	if time.Until(currentExpiration) > 23*time.Hour {
+		c.unnecessaryCATRequests++
+		logEvt := c.Logger.Warn().Time("expiration", currentExpiration).Int("unnecessary_requests", c.unnecessaryCATRequests)
+		switch c.unnecessaryCATRequests {
+		case 1, 3:
+			// Don't throw an error if it's just called again times accidentally
+			logEvt.Msg("Not refreshing CAT")
+			return nil
+		case 2:
+			// If it's called twice for no reason, there might actually be a reason, so refresh it again to be safe
+			logEvt.Msg("Refreshing CAT unnecessarily")
+		default:
+			logEvt.Msg("Failing CAT refresh call due to repeated requests")
+			// If it's called more than 4 times in total, fail
+			return fmt.Errorf("repeated unnecessary CAT refreshes")
+		}
+	} else {
+		c.unnecessaryCATRequests = 0
+	}
+	c.Logger.Info().Time("prev_expiration", currentExpiration).Msg("Refreshing crypto auth token")
+	_, respData, err := c.makeGraphQLRequest("MAWCatQuery", struct{}{})
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	var parsedResp refreshCATResponseGraphQL
+	err = json.Unmarshal(respData, &parsedResp)
+	if err != nil {
+		c.Logger.Debug().Str("resp_data", base64.StdEncoding.EncodeToString(respData)).Msg("Response data for failed CAT query")
+		return fmt.Errorf("failed to parse response: %w", err)
+	} else if len(parsedResp.Data.SecureMessageOverWACATQuery.EncryptedSerializedCat) == 0 {
+		c.Logger.Debug().RawJSON("resp_data", respData).Msg("Response data for failed CAT query")
+		return fmt.Errorf("didn't get CAT in response")
+	}
+	c.Logger.Info().Msg("Successfully refreshed crypto auth token")
+	c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken = parsedResp.Data.SecureMessageOverWACATQuery
+	return nil
 }
 
 func (c *Client) getClientPayload() *waProto.ClientPayload {

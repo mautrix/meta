@@ -51,7 +51,7 @@ type MessengerWebInitData struct {
 
 type CryptoAuthToken struct {
 	EncryptedSerializedCat  string `json:"encrypted_serialized_cat,omitempty"`
-	ExpirationTimeInSeconds int    `json:"expiration_time_in_seconds,omitempty"`
+	ExpirationTimeInSeconds int64  `json:"expiration_time_in_seconds,omitempty"`
 }
 
 type LSD struct {

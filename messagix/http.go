@@ -33,6 +33,7 @@ type HttpQuery struct {
 	SpinR                string `url:"__spin_r,omitempty"`                 // not required
 	SpinB                string `url:"__spin_b,omitempty"`                 // not required
 	SpinT                string `url:"__spin_t,omitempty"`                 // not required
+	Jssesw               string `url:"__jssesw,omitempty"`                 // not required
 	FbAPICallerClass     string `url:"fb_api_caller_class,omitempty"`      // not required
 	FbAPIReqFriendlyName string `url:"fb_api_req_friendly_name,omitempty"` // not required
 	Variables            string `url:"variables,omitempty"`

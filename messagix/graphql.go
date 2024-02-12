@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-querystring/query"
 
+	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/graphql"
 	"go.mau.fi/mautrix-meta/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/messagix/table"
@@ -33,6 +34,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 	payload.Variables = string(vBytes)
 	payload.ServerTimestamps = "true"
 	payload.DocID = graphQLDoc.DocId
+	payload.Jssesw = graphQLDoc.Jsessw
 
 	form, err := query.Values(payload)
 	if err != nil {
@@ -51,7 +53,11 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 
 	reqUrl := c.getEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
-	return c.MakeRequest(reqUrl, "POST", headers, payloadBytes, types.FORM)
+	resp, respData, err := c.MakeRequest(reqUrl, "POST", headers, payloadBytes, types.FORM)
+	if err == nil && resp != nil {
+		cookies.UpdateFromResponse(c.cookies, resp.Header)
+	}
+	return resp, respData, err
 }
 
 type LSErrorResponse struct {
