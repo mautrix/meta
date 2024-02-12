@@ -253,13 +253,14 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			carouselChildMediaID = actionURL.Query().Get("carousel_share_child_media_id")
 		}
 
-		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
 		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="))
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
+			log.Debug().Msg("Not fetching XMA media")
 			return minimalConverted
 		}
 
+		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
 		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), att.CTA.NativeUrl)
 		if err != nil {
 			log.Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
@@ -267,6 +268,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			log.Warn().Int64("target_id", att.CTA.TargetId).Msg("Got empty XMA media response")
 		} else {
 			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
+			log.Debug().Msg("Fetched XMA media")
 			targetItem := resp.Items[0]
 			if targetItem.CarouselMedia != nil && carouselChildMediaID != "" {
 				for _, subitem := range targetItem.CarouselMedia {
@@ -290,6 +292,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
+			log.Debug().Msg("Not fetching XMA media")
 			return minimalConverted
 		}
 
@@ -332,6 +335,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 					Msg("Failed to find exact item in fetched XMA story")
 				return minimalConverted
 			}
+			log.Debug().Msg("Fetched XMA story and found exact item")
 			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL

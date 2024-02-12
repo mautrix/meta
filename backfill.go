@@ -482,6 +482,11 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 			continue
 		}
 		ctx := context.WithValue(ctx, msgconvContextKeyIntent, intent)
+		ctx = log.With().
+			Str("message_id", msg.MessageId).
+			Str("otid", msg.OfflineThreadingId).
+			Int64("sender_id", msg.SenderId).
+			Logger().WithContext(ctx)
 		converted := portal.MsgConv.ToMatrix(ctx, msg)
 		if portal.bridge.Config.Bridge.CaptionInMessage {
 			converted.MergeCaption()
