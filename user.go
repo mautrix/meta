@@ -163,6 +163,25 @@ func (br *MetaBridge) NewUser(dbUser *database.User) *User {
 	return user
 }
 
+const (
+	WADisconnected             status.BridgeStateErrorCode = "wa-transient-disconnect"
+	WAPermanentError           status.BridgeStateErrorCode = "wa-unknown-permanent-error"
+	MetaConnectionUnauthorized status.BridgeStateErrorCode = "meta-connection-unauthorized"
+	MetaPermanentError         status.BridgeStateErrorCode = "meta-unknown-permanent-error"
+	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"
+	MetaConnectError           status.BridgeStateErrorCode = "meta-connect-error"
+	IGChallengeRequired        status.BridgeStateErrorCode = "ig-challenge-required"
+)
+
+func init() {
+	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
+		WADisconnected:             "Disconnected from encrypted chat server. Trying to reconnect.",
+		MetaConnectionUnauthorized: "Logged out, please relogin to continue",
+		MetaCookieRemoved:          "Logged out, please relogin to continue",
+		IGChallengeRequired:        "Challenge required, please check the Instagram website to continue",
+	})
+}
+
 type User struct {
 	*database.User
 
@@ -184,6 +203,9 @@ type User struct {
 
 	BridgeState     *bridge.BridgeStateQueue
 	bridgeStateLock sync.Mutex
+
+	waState   status.BridgeState
+	metaState status.BridgeState
 
 	spaceMembershipChecked bool
 	spaceCreateLock        sync.Mutex
@@ -453,15 +475,13 @@ func (user *User) Connect() {
 		if errors.Is(err, messagix.ErrTokenInvalidated) {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
-				Error:      "meta-cookie-removed",
-				Message:    "Logged out, please relogin to continue",
+				Error:      MetaCookieRemoved,
 			})
 			// TODO clear cookies?
 		} else if errors.Is(err, messagix.ErrChallengeRequired) {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
-				Error:      "ig-challenge-required",
-				Message:    "Challenge required, please check the Instagram website to continue",
+				Error:      IGChallengeRequired,
 			})
 		} else if lsErr := (&messagix.LSErrorResponse{}); errors.As(err, &lsErr) {
 			user.BridgeState.Send(status.BridgeState{
@@ -472,7 +492,7 @@ func (user *User) Connect() {
 		} else {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
-				Error:      "meta-connect-error",
+				Error:      MetaConnectError,
 				Message:    err.Error(),
 			})
 		}
@@ -785,6 +805,14 @@ func (user *User) GetRemoteName() string {
 }
 
 func (user *User) FillBridgeState(state status.BridgeState) status.BridgeState {
+	if state.StateEvent == status.StateConnected {
+		if user.waState.StateEvent != "" && user.waState.StateEvent != status.StateConnected {
+			state = user.waState
+		}
+		if user.metaState.StateEvent != "" && user.metaState.StateEvent != status.StateConnected {
+			state = user.metaState
+		}
+	}
 	return state
 }
 
@@ -891,6 +919,23 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		if portal != nil {
 			portal.metaMessages <- portalMetaMessage{user: user, evt: evt}
 		}
+	case *events.Connected:
+		user.waState = status.BridgeState{StateEvent: status.StateConnected}
+		user.BridgeState.Send(user.waState)
+	case *events.Disconnected:
+		user.waState = status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      WADisconnected,
+		}
+		user.BridgeState.Send(user.waState)
+	case events.PermanentDisconnect:
+		user.waState = status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      WAPermanentError,
+			Message:    evt.PermanentDisconnectDescription(),
+		}
+		user.BridgeState.Send(user.waState)
+		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	default:
 		user.log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
@@ -932,7 +977,8 @@ func (user *User) eventHandler(rawEvt any) {
 		}
 		puppet := user.bridge.GetPuppetByID(user.MetaID)
 		puppet.UpdateInfo(context.TODO(), evt.CurrentUser)
-		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		user.metaState = status.BridgeState{StateEvent: status.StateConnected}
+		user.BridgeState.Send(user.metaState)
 		user.tryAutomaticDoublePuppeting()
 		user.handleTable(evt.Table)
 		if user.bridge.Config.Meta.Mode.IsMessenger() || user.bridge.Config.Meta.IGE2EE {
@@ -945,27 +991,29 @@ func (user *User) eventHandler(rawEvt any) {
 		}
 		go user.BackfillLoop()
 	case *messagix.Event_SocketError:
-		user.BridgeState.Send(status.BridgeState{
+		user.metaState = status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      "meta-transient-disconnect",
 			Message:    evt.Err.Error(),
-		})
+		}
+		user.BridgeState.Send(user.metaState)
 	case *messagix.Event_Reconnected:
-		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		user.metaState = status.BridgeState{StateEvent: status.StateConnected}
+		user.BridgeState.Send(user.metaState)
 	case *messagix.Event_PermanentError:
 		if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNAUTHORIZED) {
-			user.BridgeState.Send(status.BridgeState{
+			user.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
-				Error:      "meta-connection-unauthorized",
-				Message:    "Logged out, please relogin to continue",
-			})
+				Error:      MetaConnectionUnauthorized,
+			}
 		} else {
-			user.BridgeState.Send(status.BridgeState{
+			user.metaState = status.BridgeState{
 				StateEvent: status.StateUnknownError,
-				Error:      "meta-unknown-permanent-error",
+				Error:      MetaPermanentError,
 				Message:    evt.Err.Error(),
-			})
+			}
 		}
+		user.BridgeState.Send(user.metaState)
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
 		user.StopBackfillLoop()
 	default:
@@ -994,6 +1042,8 @@ func (user *User) unlockedDisconnect() {
 	user.StopBackfillLoop()
 	user.Client = nil
 	user.E2EEClient = nil
+	user.waState = status.BridgeState{}
+	user.metaState = status.BridgeState{}
 }
 
 func (user *User) Disconnect() error {
