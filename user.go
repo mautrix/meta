@@ -457,6 +457,12 @@ func (user *User) Connect() {
 				Message:    "Logged out, please relogin to continue",
 			})
 			// TODO clear cookies?
+		} else if errors.Is(err, messagix.ErrChallengeRequired) {
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      "ig-challenge-required",
+				Message:    "Challenge required, please check the Instagram website to continue",
+			})
 		} else if lsErr := (&messagix.LSErrorResponse{}); errors.As(err, &lsErr) {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,

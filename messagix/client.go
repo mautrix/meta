@@ -43,7 +43,10 @@ const SecCHMobile = "?0"
 const SecCHModel = ""
 const SecCHPrefersColorScheme = "light"
 
-var ErrTokenInvalidated = errors.New("access token is no longer valid")
+var (
+	ErrTokenInvalidated  = errors.New("access token is no longer valid")
+	ErrChallengeRequired = errors.New("challenge required")
+)
 
 type EventHandler func(evt interface{})
 type Client struct {
@@ -89,6 +92,9 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if req.Response == nil {
 					return nil
+				}
+				if req.URL.Path == "/challenge/" {
+					return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
 				}
 				respCookies := req.Response.Cookies()
 				for _, cookie := range respCookies {
