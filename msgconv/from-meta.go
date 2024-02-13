@@ -90,7 +90,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	}
 	for _, xmaAtt := range msg.XMAAttachments {
 		// Skip URL previews and polls for now
-		if xmaAtt.CTA != nil && (isProbablyURLPreview(xmaAtt) || strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_")) {
+		if xmaAtt.CTA != nil && ((msg.Text != "" && isProbablyURLPreview(xmaAtt)) || strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_")) {
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
