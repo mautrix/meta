@@ -287,6 +287,14 @@ func trimPostTitle(title string, maxLines int) string {
 	return strings.Join(lines, "\n")
 }
 
+func removeLPHP(addr string) string {
+	parsed, _ := url.Parse(addr)
+	if parsed != nil && parsed.Path == "/l.php" {
+		return parsed.Query().Get("u")
+	}
+	return addr
+}
+
 func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) []*ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
@@ -301,7 +309,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 					Body:    trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines)),
 				},
 				Extra: map[string]any{
-					"external_url": att.CTA.ActionUrl,
+					"external_url": removeLPHP(att.CTA.ActionUrl),
 				},
 			})
 		}
@@ -310,10 +318,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 	log := zerolog.Ctx(ctx)
 	switch {
 	case strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="):
-		actionURL, _ := url.Parse(att.CTA.ActionUrl)
-		if actionURL != nil && actionURL.Path == "/l.php" {
-			actionURL, _ = url.Parse(actionURL.Query().Get("u"))
-		}
+		actionURL, _ := url.Parse(removeLPHP(att.CTA.ActionUrl))
 		var carouselChildMediaID string
 		if actionURL != nil {
 			carouselChildMediaID = actionURL.Query().Get("carousel_share_child_media_id")
