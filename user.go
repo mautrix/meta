@@ -813,7 +813,7 @@ func (user *User) connectE2EE() error {
 	ctx := user.log.With().Str("component", "e2ee").Logger().WithContext(context.TODO())
 	if isNew {
 		user.log.Info().Msg("Registering new e2ee device")
-		err = user.Client.RegisterE2EE(ctx)
+		err = user.Client.RegisterE2EE(ctx, user.MetaID)
 		if err != nil {
 			return fmt.Errorf("failed to register e2ee device: %w", err)
 		}

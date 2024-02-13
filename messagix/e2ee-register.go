@@ -147,15 +147,9 @@ func (c *Client) SetDevice(dev *store.Device) {
 	c.device = dev
 }
 
-func (c *Client) RegisterE2EE(ctx context.Context) error {
+func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 	if c.device == nil {
 		return fmt.Errorf("cannot register for E2EE without a device")
-	}
-	var fbid int64
-	if c.platform.IsMessenger() {
-		fbid = c.configs.browserConfigTable.CurrentUserInitialData.GetFBID()
-	} else {
-		fbid = c.configs.browserConfigTable.PolarisViewer.GetFBID()
 	}
 	if c.device.FacebookUUID == uuid.Nil {
 		c.device.FacebookUUID = uuid.New()
