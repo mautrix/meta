@@ -144,6 +144,8 @@ bridge:
     # Whether or not created rooms should have federation enabled.
     # If false, created portal rooms will never be federated.
     federate_rooms: true
+    # Should mute status be bridged? Allowed options: always, on-create, never
+    mute_bridging: on-create
     # Servers to always allow double puppeting from
     double_puppet_server_map:
         example.com: https://example.com

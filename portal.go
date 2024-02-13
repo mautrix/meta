@@ -1833,7 +1833,6 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 		}
 		user.ensureInvited(ctx, portal.MainIntent(), portal.MXID, portal.IsPrivateChat())
 	}
-	user.syncChatDoublePuppetDetails(portal, true)
 	go portal.addToPersonalSpace(portal.log.WithContext(context.TODO()), user)
 
 	if portal.IsPrivateChat() {

@@ -134,6 +134,7 @@ type LSTable struct {
 	LSAddPollOptionV2                             []*LSAddPollOption                               `json:",omitempty"`
 	LSAddPollVote                                 []*LSAddPollVote                                 `json:",omitempty"`
 	LSAddPollVoteV2                               []*LSAddPollVote                                 `json:",omitempty"`
+	LSUpdateThreadMuteSetting                     []*LSUpdateThreadMuteSetting                     `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -260,6 +261,7 @@ var SPTable = map[string]string{
 	"addPollVoteV2":                               "LSAddPollVoteV2",
 	"addPollForThread":                            "LSAddPollForThread",
 	"deleteReaction":                              "LSDeleteReaction",
+	"updateThreadMuteSetting":                     "LSUpdateThreadMuteSetting",
 }
 
 func SPToDepMap(sp []string) map[string]string {

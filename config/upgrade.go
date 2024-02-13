@@ -94,6 +94,13 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "sync_direct_chat_list")
 	helper.Copy(up.Bool, "bridge", "resend_bridge_info")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
+	muteBridgingVal, _ := helper.Get(up.Str, "bridge", "mute_bridging")
+	switch muteBridgingVal {
+	case "always", "on-create", "never":
+		helper.Copy(up.Str, "bridge", "mute_bridging")
+	default:
+		// Don't copy invalid values
+	}
 	helper.Copy(up.Bool, "bridge", "federate_rooms")
 	helper.Copy(up.Map, "bridge", "double_puppet_server_map")
 	helper.Copy(up.Bool, "bridge", "double_puppet_allow_discovery")

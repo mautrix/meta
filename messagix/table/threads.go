@@ -645,3 +645,10 @@ type LSDeleteThread struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSUpdateThreadMuteSetting struct {
+	ThreadKey        int64 `index:"0" json:",omitempty"`
+	MuteExpireTimeMS int64 `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}

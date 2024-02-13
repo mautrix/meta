@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
@@ -43,6 +44,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/pushrules"
 
 	"go.mau.fi/mautrix-meta/database"
 	"go.mau.fi/mautrix-meta/messagix"
@@ -396,38 +398,42 @@ func (user *User) GetSpaceRoom(ctx context.Context) id.RoomID {
 	return user.SpaceRoom
 }
 
-func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) {
-	doublePuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
-	if doublePuppet == nil {
+func (user *User) updateChatMute(ctx context.Context, portal *Portal, mutedUntil int64, isNew bool) {
+	if portal == nil || len(portal.MXID) == 0 || user.bridge.Config.Bridge.MuteBridging == "never" {
+		// If the chat isn't bridged or the mute bridging option is never, don't do anything
+		return
+	} else if !isNew && user.bridge.Config.Bridge.MuteBridging != "always" {
+		// If the chat isn't new and the mute bridging option is on-create, don't do anything
+		return
+	} else if mutedUntil == 0 && isNew {
+		// No need to unmute new chats
 		return
 	}
-	if doublePuppet == nil || doublePuppet.CustomIntent() == nil || len(portal.MXID) == 0 {
+	doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if doublePuppet == nil || doublePuppet.CustomIntent() == nil {
 		return
 	}
-
-	// TODO: Get chat setting and sync them here
-	//if justCreated || !user.bridge.Config.Bridge.TagOnlyOnCreate {
-	//	chat, err := user.Client.Store.ChatSettings.GetChatSettings(portal.Key().ChatID)
-	//	if err != nil {
-	//		user.log.Warn().Err(err).Msgf("Failed to get settings of %s", portal.Key().ChatID)
-	//		return
-	//	}
-	//	intent := doublePuppet.CustomIntent()
-	//	if portal.Key.JID == types.StatusBroadcastJID && justCreated {
-	//		if user.bridge.Config.Bridge.MuteStatusBroadcast {
-	//			user.updateChatMute(intent, portal, time.Now().Add(365*24*time.Hour))
-	//		}
-	//		if len(user.bridge.Config.Bridge.StatusBroadcastTag) > 0 {
-	//			user.updateChatTag(intent, portal, user.bridge.Config.Bridge.StatusBroadcastTag, true)
-	//		}
-	//		return
-	//	} else if !chat.Found {
-	//		return
-	//	}
-	//	user.updateChatMute(intent, portal, chat.MutedUntil)
-	//	user.updateChatTag(intent, portal, user.bridge.Config.Bridge.ArchiveTag, chat.Archived)
-	//	user.updateChatTag(intent, portal, user.bridge.Config.Bridge.PinnedTag, chat.Pinned)
-	//}
+	log := user.log.With().
+		Str("action", "update chat mute").
+		Int64("thread_id", portal.ThreadID).
+		Stringer("portal_mxid", portal.MXID).
+		Int64("muted_until", mutedUntil).
+		Logger()
+	intent := doublePuppet.CustomIntent()
+	var err error
+	now := time.Now().UnixMilli()
+	if mutedUntil >= 0 && mutedUntil < now {
+		log.Debug().Msg("Unmuting chat")
+		err = intent.DeletePushRule(ctx, "global", pushrules.RoomRule, string(portal.MXID))
+	} else {
+		log.Debug().Msg("Muting chat")
+		err = intent.PutPushRule(ctx, "global", pushrules.RoomRule, string(portal.MXID), &mautrix.ReqPutPushRule{
+			Actions: []pushrules.PushActionType{pushrules.ActionDontNotify},
+		})
+	}
+	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		log.Err(err).Msg("Failed to update push rule through double puppet")
+	}
 }
 
 func (user *User) GetMXID() id.UserID {
@@ -587,9 +593,11 @@ func (user *User) handleTable(tbl *table.LSTable) {
 			if err != nil {
 				log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to create matrix room")
 			}
+			go user.updateChatMute(ctx, portal, thread.MuteExpireTimeMs, true)
 		} else {
 			portal.ensureUserInvited(ctx, user)
 			go portal.addToPersonalSpace(portal.log.WithContext(context.TODO()), user)
+			go user.updateChatMute(ctx, portal, thread.MuteExpireTimeMs, false)
 		}
 	}
 	for _, participant := range tbl.LSAddParticipantIdToGroupThread {
@@ -646,6 +654,10 @@ func (user *User) handleTable(tbl *table.LSTable) {
 		} else {
 			log.Warn().Int64("thread_id", thread.ThreadKey).Msg("Portal doesn't exist in verifyThreadExists, but fetch was already attempted")
 		}
+	}
+	for _, mute := range tbl.LSUpdateThreadMuteSetting {
+		portal := user.GetExistingPortalByThreadID(mute.ThreadKey)
+		go user.updateChatMute(ctx, portal, mute.MuteExpireTimeMS, false)
 	}
 	upsert, insert := tbl.WrapMessages()
 	handlePortalEvents(user, maps.Values(upsert))
