@@ -150,13 +150,10 @@ func (m *ModuleParser) Load(page string) error {
 		sharedData := m.client.configs.browserConfigTable.XIGSharedData
 		err = sharedData.ParseRaw()
 		if err != nil {
-			m.client.Logger.Debug().Str("raw_data", sharedData.Raw).Msg("Errored raw XIGSharedData")
-			if !authenticated {
-				return fmt.Errorf("messagix-moduleparser: failed to parse XIGSharedData raw string into *types.XIGConfigData (%v)", err)
-			}
+			m.client.Logger.Debug().Err(err).Str("raw_data", sharedData.Raw).Msg("Errored raw XIGSharedData")
 		}
 		m.client.Logger.Debug().Any("authenticated", authenticated).Msg("Instagram Authentication Status")
-		if !authenticated {
+		if !authenticated && err == nil {
 			err = cookies.UpdateMultipleValues(
 				m.client.cookies,
 				[]string{"csrftoken", "ig_did", "mid"},
