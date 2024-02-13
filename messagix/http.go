@@ -120,9 +120,8 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 	headers.Set("sec-ch-ua-model", SecCHModel)
 	headers.Set("sec-ch-ua-platform-version", SecCHPlatformVersion)
 
-	if c.platform.IsMessenger() {
-		c.addFacebookHeaders(&headers)
-	} else {
+	c.addFacebookHeaders(&headers)
+	if !c.platform.IsMessenger() {
 		c.addInstagramHeaders(&headers)
 	}
 
@@ -139,10 +138,8 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 }
 
 func (c *Client) addFacebookHeaders(h *http.Header) {
-	if c.configs != nil {
-		if c.configs.LsdToken != "" {
-			h.Set("x-fb-lsd", c.configs.LsdToken)
-		}
+	if c.configs != nil && c.configs.LsdToken != "" {
+		h.Set("x-fb-lsd", c.configs.LsdToken)
 	}
 }
 
