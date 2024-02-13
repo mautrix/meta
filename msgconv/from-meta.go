@@ -290,7 +290,22 @@ func trimPostTitle(title string, maxLines int) string {
 func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) []*ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
-		return []*ConvertedMessagePart{minimalConverted}
+		parts := []*ConvertedMessagePart{minimalConverted}
+		// This is a hacky way to include the title and external_url for FB post shares
+		// TODO deduplicate TitleText handling with IG post shares, but ensure it doesn't add titles to anything else?
+		if att.TitleText != "" && att.CTA != nil && att.CTA.ActionUrl != "" {
+			parts = append(parts, &ConvertedMessagePart{
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType: event.MsgText,
+					Body:    trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines)),
+				},
+				Extra: map[string]any{
+					"external_url": att.CTA.ActionUrl,
+				},
+			})
+		}
+		return parts
 	}
 	log := zerolog.Ctx(ctx)
 	switch {
