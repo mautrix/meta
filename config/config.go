@@ -52,6 +52,7 @@ type Config struct {
 
 	Meta struct {
 		Mode         BridgeMode `yaml:"mode"`
+		IGE2EE       bool       `yaml:"ig_e2ee"`
 		Proxy        string     `yaml:"proxy"`
 		GetProxyFrom string     `yaml:"get_proxy_from"`
 	} `yaml:"meta"`

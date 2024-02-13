@@ -70,6 +70,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "metrics", "listen")
 
 	helper.Copy(up.Str, "meta", "mode")
+	helper.Copy(up.Bool, "meta", "ig_e2ee")
 	helper.Copy(up.Str|up.Null, "meta", "proxy")
 	helper.Copy(up.Str|up.Null, "meta", "get_proxy_from")
 

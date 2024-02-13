@@ -935,7 +935,7 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		user.tryAutomaticDoublePuppeting()
 		user.handleTable(evt.Table)
-		if user.bridge.Config.Meta.Mode.IsMessenger() {
+		if user.bridge.Config.Meta.Mode.IsMessenger() || user.bridge.Config.Meta.IGE2EE {
 			go func() {
 				err := user.connectE2EE()
 				if err != nil {

@@ -90,7 +90,7 @@ var cmdToggleEncryption = &commands.FullHandler{
 }
 
 func fnToggleEncryption(ce *WrappedCommandEvent) {
-	if !ce.Bridge.Config.Meta.Mode.IsMessenger() {
+	if !ce.Bridge.Config.Meta.Mode.IsMessenger() && !ce.Bridge.Config.Meta.IGE2EE {
 		ce.Reply("Encryption support is not yet enabled in Instagram mode")
 		return
 	} else if !ce.Portal.IsPrivateChat() {
