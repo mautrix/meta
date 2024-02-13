@@ -148,10 +148,21 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 				MsgType: event.MsgNotice,
 				Body:    "Unsupported message",
 			},
+			Extra: map[string]any{
+				"fi.mau.unsupported": true,
+			},
 		})
 	}
 	replyTo, sender := mc.GetMatrixReply(ctx, msg.ReplySourceId, msg.ReplyToUserId)
 	for _, part := range cm.Parts {
+		_, hasExternalURL := part.Extra["external_url"]
+		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
+		if unsupported && !hasExternalURL {
+			_, threadURL := mc.GetThreadURL(ctx)
+			if threadURL != "" {
+				part.Extra["external_url"] = threadURL
+			}
+		}
 		if part.Content.Mentions == nil {
 			part.Content.Mentions = &event.Mentions{}
 		}
@@ -175,6 +186,9 @@ func errorToNotice(err error, attachmentContainerType string) *ConvertedMessageP
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgNotice,
 			Body:    errMsg,
+		},
+		Extra: map[string]any{
+			"fi.mau.unsupported": true,
 		},
 	}
 }

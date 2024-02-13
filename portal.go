@@ -307,6 +307,25 @@ func (portal *Portal) getBridgeInfoStateKey() string {
 	return fmt.Sprintf("fi.mau.meta://%s/%d", portal.bridge.BeeperNetworkName, portal.ThreadID)
 }
 
+func (portal *Portal) GetThreadURL(_ context.Context) (protocol, channel string) {
+	switch portal.bridge.Config.Meta.Mode {
+	case config.ModeInstagram:
+		protocol = "https://www.instagram.com/"
+		channel = fmt.Sprintf("https://www.instagram.com/direct/t/%d/", portal.ThreadID)
+	case config.ModeFacebook, config.ModeFacebookTor:
+		protocol = "https://www.facebook.com/"
+		channel = fmt.Sprintf("https://www.facebook.com/messages/t/%d", portal.ThreadID)
+	case config.ModeMessenger:
+		protocol = "https://www.messenger.com/"
+		channel = fmt.Sprintf("https://www.messenger.com/t/%d", portal.ThreadID)
+	}
+	if portal.ThreadType.IsWhatsApp() {
+		// TODO store fb-side thread ID? (the whatsapp chat id is not the same as the fb-side thread id used in urls)
+		channel = ""
+	}
+	return
+}
+
 func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	bridgeInfo := event.BridgeEventContent{
 		BridgeBot: portal.bridge.Bot.UserID,
@@ -322,21 +341,7 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			AvatarURL:   portal.AvatarURL.CUString(),
 		},
 	}
-	switch portal.bridge.Config.Meta.Mode {
-	case config.ModeInstagram:
-		bridgeInfo.Protocol.ExternalURL = "https://www.instagram.com/"
-		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.instagram.com/direct/t/%d/", portal.ThreadID)
-	case config.ModeFacebook, config.ModeFacebookTor:
-		bridgeInfo.Protocol.ExternalURL = "https://www.facebook.com/"
-		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.facebook.com/messages/t/%d", portal.ThreadID)
-	case config.ModeMessenger:
-		bridgeInfo.Protocol.ExternalURL = "https://www.messenger.com/"
-		bridgeInfo.Channel.ExternalURL = fmt.Sprintf("https://www.messenger.com/t/%d", portal.ThreadID)
-	}
-	if portal.ThreadType.IsWhatsApp() {
-		// TODO store fb-side thread ID? (the whatsapp chat id is not the same as the fb-side thread id used in urls)
-		bridgeInfo.Channel.ExternalURL = ""
-	}
+	bridgeInfo.Protocol.ExternalURL, bridgeInfo.Channel.ExternalURL = portal.GetThreadURL(nil)
 	var roomType string
 	if portal.IsPrivateChat() {
 		roomType = "dm"

@@ -35,6 +35,7 @@ type PortalMethods interface {
 	GetMetaReply(ctx context.Context, content *event.MessageEventContent) *socket.ReplyMetaData
 	GetUserMXID(ctx context.Context, userID int64) id.UserID
 	ShouldFetchXMA(ctx context.Context) bool
+	GetThreadURL(ctx context.Context) (string, string)
 
 	GetClient(ctx context.Context) *messagix.Client
 	GetE2EEClient(ctx context.Context) *whatsmeow.Client
