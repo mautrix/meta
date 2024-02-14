@@ -423,7 +423,10 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			return secondConverted
 		}
 	default:
-		log.Debug().Any("cta_data", att.CTA).Msg("Unrecognized CTA data")
+		log.Debug().
+			Any("cta_data", att.CTA).
+			Any("xma_data", att.LSInsertXmaAttachment).
+			Msg("Unrecognized CTA data")
 	}
 	return minimalConverted
 }
