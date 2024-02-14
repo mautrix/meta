@@ -18,6 +18,7 @@ package msgconv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -36,17 +37,19 @@ import (
 
 var mediaHTTPClient = http.Client{
 	Transport: &http.Transport{
-		DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-		TLSHandshakeTimeout:   5 * time.Second,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
 		ForceAttemptHTTP2:     true,
 	},
-	Timeout: 60 * time.Second,
+	Timeout: 120 * time.Second,
 }
 var MediaReferer string
 var BypassOnionForMedia bool
 
-func DownloadMedia(ctx context.Context, url string) ([]byte, error) {
+var ErrTooLargeFile = errors.New("too large file")
+
+func DownloadMedia(ctx context.Context, url string, maxSize int64) ([]byte, error) {
 	if BypassOnionForMedia {
 		url = strings.ReplaceAll(url, "facebookcooa4ldbat4g7iacswl3p2zrf5nuylvnhxn6kqolvojixwid.onion", "fbcdn.net")
 	}
@@ -73,8 +76,12 @@ func DownloadMedia(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
 		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
-	} else if respData, err := io.ReadAll(resp.Body); err != nil {
+	} else if resp.ContentLength > maxSize {
+		return nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
+	} else if respData, err := io.ReadAll(io.LimitReader(resp.Body, maxSize+2)); err != nil {
 		return nil, fmt.Errorf("failed to read response data: %w", err)
+	} else if int64(len(respData)) > maxSize {
+		return nil, ErrTooLargeFile
 	} else {
 		return respData, nil
 	}
@@ -112,7 +119,7 @@ func UpdateAvatar(
 		*avatarSet = true
 		return true
 	}
-	avatarData, err := DownloadMedia(ctx, newAvatarURL)
+	avatarData, err := DownloadMedia(ctx, newAvatarURL, 5*1024*1024)
 	if err != nil {
 		log.Err(err).
 			Str("avatar_id", newAvatarID).

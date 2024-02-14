@@ -180,6 +180,8 @@ func errorToNotice(err error, attachmentContainerType string) *ConvertedMessageP
 	errMsg := "Failed to transfer attachment"
 	if errors.Is(err, ErrURLNotFound) {
 		errMsg = fmt.Sprintf("Unrecognized %s attachment type", attachmentContainerType)
+	} else if errors.Is(err, ErrTooLargeFile) {
+		errMsg = "Too large attachment"
 	}
 	return &ConvertedMessagePart{
 		Type: event.EventMessage,
@@ -543,7 +545,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	if url == "" {
 		return nil, ErrURLNotFound
 	}
-	data, err := DownloadMedia(ctx, url)
+	data, err := DownloadMedia(ctx, url, mc.MaxFileSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download attachment: %w", err)
 	}
