@@ -110,7 +110,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			content.MsgType = event.MsgNotice
 		}
 		extra := make(map[string]any)
-		if msg.ReplySnippet != "" {
+		if msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 {
 			extra["com.beeper.relation_snippet"] = msg.ReplySnippet
 			// This is extremely hacky
 			isReaction := strings.Contains(msg.ReplySnippet, "Reacted")
