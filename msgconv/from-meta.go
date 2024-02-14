@@ -161,6 +161,20 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			_, threadURL := mc.GetThreadURL(ctx)
 			if threadURL != "" {
 				part.Extra["external_url"] = threadURL
+				part.Content.EnsureHasHTML()
+				var protocolName string
+				switch {
+				case strings.HasPrefix(threadURL, "https://www.instagram.com"):
+					protocolName = "Instagram"
+				case strings.HasPrefix(threadURL, "https://www.facebook.com"):
+					protocolName = "Facebook"
+				case strings.HasPrefix(threadURL, "https://www.messenger.com"):
+					protocolName = "Messenger"
+				default:
+					protocolName = "native app"
+				}
+				part.Content.Body = fmt.Sprintf("%s\n\nOpen in %s: %s", part.Content.Body, protocolName, threadURL)
+				part.Content.FormattedBody = fmt.Sprintf("%s<br><br><a href=\"%s\">Click here to open in %s</a>", part.Content.FormattedBody, threadURL, protocolName)
 			}
 		}
 		if part.Content.Mentions == nil {
