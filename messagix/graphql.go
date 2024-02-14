@@ -142,8 +142,13 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	}
 
 	var lsData *lightspeed.LightSpeedData
-	err = json.Unmarshal([]byte(lightSpeedRes), &lsData)
+	err = json.Unmarshal(lightSpeedRes, &lsData)
 	if err != nil {
+		if len(respBody) < 4096 {
+			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored inner LS response bytes")
+		} else {
+			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored inner LS response bytes (truncated)")
+		}
 		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %v", err)
 	}
 
