@@ -586,7 +586,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	if url == "" {
 		return nil, ErrURLNotFound
 	}
-	data, err := DownloadMedia(ctx, url, mc.MaxFileSize)
+	data, err := DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download attachment: %w", err)
 	}
