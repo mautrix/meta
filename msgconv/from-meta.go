@@ -392,6 +392,9 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				Any("response", resp).
 				Msg("Fetched XMA story")
 			minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
+			// Update external URL to use username so it works on mobile
+			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", reel.User.Username, match[1])
+			minimalConverted.Extra["external_url"] = externalURL
 			var relevantItem *responses.Items
 			foundIDs := make([]string, len(reel.Items))
 			for i, item := range reel.Items {
