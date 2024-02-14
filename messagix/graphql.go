@@ -124,6 +124,19 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 			}
 			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %v", err)
 		}
+		if graphQLData.Error != 0 {
+			c.Logger.Warn().
+				Str("error_description", graphQLData.ErrorDescription).
+				Str("error_summary", graphQLData.ErrorSummary).
+				Int("error_code", graphQLData.Error).
+				Msg("GraphQL error in lightspeed request")
+			if graphQLData.Data == nil {
+				return nil, fmt.Errorf("graphql error %d: %s", graphQLData.Error, graphQLData.ErrorSummary)
+			}
+		} else if graphQLData.Data == nil {
+			c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no data and no error")
+			return nil, fmt.Errorf("graphql request didn't return data")
+		}
 		lightSpeedRes = []byte(graphQLData.Data.Viewer.LightspeedWebRequest.Payload)
 		deps = graphQLData.Data.Viewer.LightspeedWebRequest.Dependencies
 	} else {
@@ -136,6 +149,19 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
 			}
 			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestForIGDQuery struct: %v", err)
+		}
+		if graphQLData.Error != 0 {
+			c.Logger.Warn().
+				Str("error_description", graphQLData.ErrorDescription).
+				Str("error_summary", graphQLData.ErrorSummary).
+				Int("error_code", graphQLData.Error).
+				Msg("GraphQL error in lightspeed request")
+			if graphQLData.Data == nil {
+				return nil, fmt.Errorf("graphql error %d: %s", graphQLData.Error, graphQLData.ErrorSummary)
+			}
+		} else if graphQLData.Data == nil {
+			c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no data and no error")
+			return nil, fmt.Errorf("graphql request didn't return data")
 		}
 		lightSpeedRes = []byte(graphQLData.Data.LightspeedWebRequestForIgd.Payload)
 		deps = graphQLData.Data.LightspeedWebRequestForIgd.Dependencies

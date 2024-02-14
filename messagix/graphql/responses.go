@@ -5,7 +5,10 @@ package graphql
 */
 
 type LSPlatformGraphQLLightspeedRequestQuery struct {
-	Data struct {
+	Error            int    `json:"error,omitempty"`
+	ErrorSummary     string `json:"errorSummary,omitempty"`
+	ErrorDescription string `json:"errorDescription,omitempty"`
+	Data             *struct {
 		Viewer struct {
 			LightspeedWebRequest struct {
 				Dependencies []struct {
@@ -408,7 +411,10 @@ type PresenceStatusProviderSubscriptionComponentQuery struct {
 }
 
 type LSPlatformGraphQLLightspeedRequestForIGDQuery struct {
-	Data struct {
+	Error            int    `json:"error,omitempty"`
+	ErrorSummary     string `json:"errorSummary,omitempty"`
+	ErrorDescription string `json:"errorDescription,omitempty"`
+	Data             *struct {
 		LightspeedWebRequestForIgd struct {
 			Dependencies []struct {
 				Name  string `json:"name,omitempty"`
