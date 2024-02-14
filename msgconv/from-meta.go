@@ -311,25 +311,10 @@ func removeLPHP(addr string) string {
 	return addr
 }
 
-func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) []*ConvertedMessagePart {
+func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
-		parts := []*ConvertedMessagePart{minimalConverted}
-		// This is a hacky way to include the title and external_url for FB post shares
-		// TODO deduplicate TitleText handling with IG post shares, but ensure it doesn't add titles to anything else?
-		if att.TitleText != "" && att.CTA != nil && att.CTA.ActionUrl != "" {
-			parts = append(parts, &ConvertedMessagePart{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType: event.MsgText,
-					Body:    trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines)),
-				},
-				Extra: map[string]any{
-					"external_url": removeLPHP(att.CTA.ActionUrl),
-				},
-			})
-		}
-		return parts
+		return minimalConverted
 	}
 	log := zerolog.Ctx(ctx)
 	switch {
@@ -344,7 +329,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
-			return []*ConvertedMessagePart{minimalConverted}
+			return minimalConverted
 		}
 
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
@@ -373,20 +358,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
-			parts := []*ConvertedMessagePart{secondConverted}
-			if att.TitleText != "" {
-				parts = append(parts, &ConvertedMessagePart{
-					Type: event.EventMessage,
-					Content: &event.MessageEventContent{
-						MsgType: event.MsgText,
-						Body:    trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines)),
-					},
-					Extra: map[string]any{
-						"com.beeper.instagram_full_post_caption": att.TitleText,
-					},
-				})
-			}
-			return parts
+			return secondConverted
 		}
 	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
@@ -394,7 +366,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
-			return []*ConvertedMessagePart{minimalConverted}
+			return minimalConverted
 		}
 
 		if match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
@@ -435,7 +407,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 					Str("media_id", match[1]).
 					Strs("found_ids", foundIDs).
 					Msg("Failed to find exact item in fetched XMA story")
-				return []*ConvertedMessagePart{minimalConverted}
+				return minimalConverted
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
 			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
@@ -445,12 +417,12 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
-			return []*ConvertedMessagePart{secondConverted}
+			return secondConverted
 		}
 	default:
 		log.Debug().Any("cta_data", att.CTA).Msg("Unrecognized CTA data")
 	}
-	return []*ConvertedMessagePart{minimalConverted}
+	return minimalConverted
 }
 
 var instagramProfileURLRegex = regexp.MustCompile(`^https://www.instagram.com/([a-z0-9._]{1,30})$`)
@@ -499,9 +471,28 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), 0)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
-		return []*ConvertedMessagePart{errorToNotice(err, "XMA")}
+		converted = errorToNotice(err, "XMA")
+	} else {
+		converted = mc.fetchFullXMA(ctx, att, converted)
 	}
-	return mc.fetchFullXMA(ctx, att, converted)
+	_, hasExternalURL := converted.Extra["external_url"]
+	if !hasExternalURL && att.CTA != nil && att.CTA.ActionUrl != "" {
+		converted.Extra["external_url"] = removeLPHP(att.CTA.ActionUrl)
+	}
+	parts := []*ConvertedMessagePart{converted}
+	if att.TitleText != "" {
+		parts = append(parts, &ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines)),
+			},
+			Extra: map[string]any{
+				"com.beeper.meta.full_post_title": att.TitleText,
+			},
+		})
+	}
+	return parts
 }
 
 func (mc *MessageConverter) uploadAttachment(ctx context.Context, data []byte, fileName, mimeType string) (*event.MessageEventContent, error) {
