@@ -281,6 +281,7 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 }
 
 var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
+var reelActionURLRegex2 = regexp.MustCompile(`^/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
 
 func trimPostTitle(title string, maxLines int) string {
 	// For some reason Instagram gives maxLines 1 less than what they mean (i.e. what the official clients render)
@@ -413,6 +414,49 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				return minimalConverted
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
+			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
+			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if externalURL != "" {
+				secondConverted.Extra["external_url"] = externalURL
+			}
+			return secondConverted
+		}
+	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/"):
+		log.Trace().Any("cta_data", att.CTA).Msg("Fetching second type of XMA story from CTA data")
+		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
+		minimalConverted.Extra["external_url"] = externalURL
+		if !mc.ShouldFetchXMA(ctx) {
+			log.Debug().Msg("Not fetching XMA media")
+			return minimalConverted
+		}
+
+		if match := reelActionURLRegex2.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
+			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL (type 2)")
+		} else if resp, err := ig.FetchReel([]string{match[2]}, ""); err != nil {
+			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story (type 2)")
+		} else if reel, ok := resp.Reels[match[2]]; !ok {
+			log.Trace().
+				Str("action_url", att.CTA.ActionUrl).
+				Any("response", resp).
+				Msg("XMA story fetch data")
+			log.Warn().
+				Str("action_url", att.CTA.ActionUrl).
+				Str("reel_id", match[2]).
+				Str("media_id", match[1]).
+				Str("response_status", resp.Status).
+				Msg("Got empty XMA story response (type 2)")
+		} else {
+			log.Trace().
+				Str("action_url", att.CTA.ActionUrl).
+				Str("reel_id", match[2]).
+				Str("media_id", match[1]).
+				Any("response", resp).
+				Msg("Fetched XMA story (type 2)")
+			minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
+			log.Debug().Int("item_count", len(reel.Items)).Msg("Fetched XMA story (no exact item, type 2)")
+			relevantItem := &reel.Items[0].Items
 			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
