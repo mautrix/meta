@@ -866,7 +866,7 @@ func (user *User) connectE2EE() error {
 
 func (user *User) e2eeEventHandler(rawEvt any) {
 	switch evt := rawEvt.(type) {
-	case *events.FBConsumerMessage:
+	case *events.FBMessage:
 		log := user.log.With().
 			Str("action", "handle whatsapp message").
 			Stringer("chat_jid", evt.Info.Chat).

@@ -29,6 +29,7 @@ import (
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloApplication"
 	"go.mau.fi/whatsmeow/binary/armadillo/waCommon"
 	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
 	"go.mau.fi/whatsmeow/binary/armadillo/waMediaTransport"
@@ -247,8 +248,8 @@ func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waC
 	return
 }
 
-func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, evt *events.FBConsumerMessage) (converted, caption *ConvertedMessagePart, err error) {
-	switch content := evt.Message.GetPayload().GetContent().GetContent().(type) {
+func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (converted, caption *ConvertedMessagePart, err error) {
+	switch content := rawContent.GetContent().(type) {
 	case *waConsumerApplication.ConsumerApplication_Content_ImageMessage:
 		return mc.convertWhatsAppImage(ctx, content.ImageMessage)
 	case *waConsumerApplication.ConsumerApplication_Content_StickerMessage:
@@ -273,24 +274,22 @@ func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, evt *event
 	}
 }
 
-func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FBConsumerMessage) *ConvertedMessage {
-	cm := &ConvertedMessage{
-		Parts: make([]*ConvertedMessagePart, 0),
-	}
-	switch content := evt.Message.GetPayload().GetContent().GetContent().(type) {
+func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (parts []*ConvertedMessagePart) {
+	parts = make([]*ConvertedMessagePart, 0, 2)
+	switch content := rawContent.GetContent().(type) {
 	case *waConsumerApplication.ConsumerApplication_Content_MessageText:
-		cm.Parts = append(cm.Parts, mc.WhatsAppTextToMatrix(ctx, content.MessageText))
+		parts = append(parts, mc.WhatsAppTextToMatrix(ctx, content.MessageText))
 	case *waConsumerApplication.ConsumerApplication_Content_ExtendedTextMessage:
 		part := mc.WhatsAppTextToMatrix(ctx, content.ExtendedTextMessage.GetText())
 		// TODO convert url previews
-		cm.Parts = append(cm.Parts, part)
+		parts = append(parts, part)
 	case *waConsumerApplication.ConsumerApplication_Content_ImageMessage,
 		*waConsumerApplication.ConsumerApplication_Content_StickerMessage,
 		*waConsumerApplication.ConsumerApplication_Content_ViewOnceMessage,
 		*waConsumerApplication.ConsumerApplication_Content_DocumentMessage,
 		*waConsumerApplication.ConsumerApplication_Content_AudioMessage,
 		*waConsumerApplication.ConsumerApplication_Content_VideoMessage:
-		converted, caption, err := mc.convertWhatsAppMedia(ctx, evt)
+		converted, caption, err := mc.convertWhatsAppMedia(ctx, rawContent)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to convert media message")
 			converted = &ConvertedMessagePart{
@@ -301,12 +300,12 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 				},
 			}
 		}
-		cm.Parts = append(cm.Parts, converted)
+		parts = append(parts, converted)
 		if caption != nil {
-			cm.Parts = append(cm.Parts, caption)
+			parts = append(parts, caption)
 		}
 	case *waConsumerApplication.ConsumerApplication_Content_LocationMessage:
-		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
+		parts = append(parts, &ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgLocation,
@@ -315,7 +314,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 			},
 		})
 	case *waConsumerApplication.ConsumerApplication_Content_LiveLocationMessage:
-		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
+		parts = append(parts, &ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgLocation,
@@ -324,7 +323,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 			},
 		})
 	case *waConsumerApplication.ConsumerApplication_Content_ContactMessage:
-		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
+		parts = append(parts, &ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -332,7 +331,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 			},
 		})
 	case *waConsumerApplication.ConsumerApplication_Content_ContactsArrayMessage:
-		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
+		parts = append(parts, &ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -341,14 +340,55 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 		})
 	default:
 		zerolog.Ctx(ctx).Warn().Type("content_type", content).Msg("Unrecognized content type")
-		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
+		parts = append(parts, &ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    "Unsupported message (unknown type)",
+				Body:    fmt.Sprintf("Unsupported message (%T)", content),
 			},
 		})
 	}
+	return
+}
+
+func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent *waArmadilloApplication.Armadillo_Content) (parts []*ConvertedMessagePart) {
+	parts = make([]*ConvertedMessagePart, 0, 2)
+	switch content := rawContent.GetContent().(type) {
+	//case *waArmadilloApplication.Armadillo_Content_ExtendedContentMessage:
+	//	// TODO
+	//case *waArmadilloApplication.Armadillo_Content_RavenMessage_:
+	//	// TODO
+	default:
+		zerolog.Ctx(ctx).Warn().Type("content_type", content).Msg("Unrecognized armadillo content type")
+		parts = append(parts, &ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    fmt.Sprintf("Unsupported message (%T)", content),
+			},
+		})
+	}
+	return
+}
+
+func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FBMessage) *ConvertedMessage {
+	cm := &ConvertedMessage{}
+
+	switch typedMsg := evt.Message.(type) {
+	case *waConsumerApplication.ConsumerApplication:
+		cm.Parts = mc.waConsumerToMatrix(ctx, typedMsg.GetPayload().GetContent())
+	case *waArmadilloApplication.Armadillo:
+		cm.Parts = mc.waArmadilloToMatrix(ctx, typedMsg.GetPayload().GetContent())
+	default:
+		cm.Parts = []*ConvertedMessagePart{{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    "Unsupported message content type",
+			},
+		}}
+	}
+
 	var replyTo id.EventID
 	var sender id.UserID
 	if qm := evt.Application.GetMetadata().GetQuotedMessage(); qm != nil {

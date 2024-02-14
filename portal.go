@@ -30,6 +30,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloApplication"
 	"go.mau.fi/whatsmeow/binary/armadillo/waCommon"
 	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
 	"go.mau.fi/whatsmeow/binary/armadillo/waMsgApplication"
@@ -1118,7 +1119,7 @@ func (portal *Portal) GetUserMXID(ctx context.Context, userID int64) id.UserID {
 
 func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 	switch typedEvt := portalMessage.evt.(type) {
-	case *events.FBConsumerMessage:
+	case *events.FBMessage:
 		portal.handleEncryptedMessage(portalMessage.user, typedEvt)
 	case *events.Receipt:
 		portal.handleWhatsAppReceipt(portalMessage.user, typedEvt)
@@ -1231,7 +1232,7 @@ func (portal *Portal) handleWhatsAppReceipt(source *User, receipt *events.Receip
 	}
 }
 
-func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsumerMessage) {
+func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBMessage) {
 	sender := portal.bridge.GetPuppetByID(int64(evt.Info.Sender.UserInt()))
 	log := portal.log.With().
 		Str("action", "handle whatsapp message").
@@ -1243,29 +1244,47 @@ func (portal *Portal) handleEncryptedMessage(source *User, evt *events.FBConsume
 	ctx := log.WithContext(context.TODO())
 	sender.FetchAndUpdateInfoIfNecessary(ctx, source)
 
-	switch payload := evt.Message.GetPayload().GetPayload().(type) {
-	case *waConsumerApplication.ConsumerApplication_Payload_Content:
-		switch content := payload.Content.GetContent().(type) {
-		case *waConsumerApplication.ConsumerApplication_Content_EditMessage:
-			portal.handleWhatsAppEditMessage(ctx, sender, content.EditMessage)
-		case *waConsumerApplication.ConsumerApplication_Content_ReactionMessage:
-			portal.handleMetaOrWhatsAppReaction(ctx, sender, content.ReactionMessage.GetKey().GetID(), content.ReactionMessage.GetText(), content.ReactionMessage.GetSenderTimestampMS())
+	switch typedMsg := evt.Message.(type) {
+	case *waConsumerApplication.ConsumerApplication:
+		switch payload := typedMsg.GetPayload().GetPayload().(type) {
+		case *waConsumerApplication.ConsumerApplication_Payload_Content:
+			switch content := payload.Content.GetContent().(type) {
+			case *waConsumerApplication.ConsumerApplication_Content_EditMessage:
+				portal.handleWhatsAppEditMessage(ctx, sender, content.EditMessage)
+			case *waConsumerApplication.ConsumerApplication_Content_ReactionMessage:
+				portal.handleMetaOrWhatsAppReaction(ctx, sender, content.ReactionMessage.GetKey().GetID(), content.ReactionMessage.GetText(), content.ReactionMessage.GetSenderTimestampMS())
+			default:
+				portal.handleMetaOrWhatsAppMessage(ctx, source, sender, evt, nil)
+			}
+		case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
+			switch applicationContent := payload.ApplicationData.GetApplicationContent().(type) {
+			case *waConsumerApplication.ConsumerApplication_ApplicationData_Revoke:
+				portal.handleMetaOrWhatsAppDelete(ctx, sender, applicationContent.Revoke.GetKey().GetID())
+			default:
+				log.Warn().Type("content_type", applicationContent).Msg("Unrecognized application content type")
+			}
+		case *waConsumerApplication.ConsumerApplication_Payload_Signal:
+			log.Warn().Msg("Unsupported consumer signal payload message")
+		case *waConsumerApplication.ConsumerApplication_Payload_SubProtocol:
+			log.Warn().Msg("Unsupported consumer subprotocol payload message")
 		default:
+			log.Warn().Type("payload_type", payload).Msg("Unrecognized consumer message payload type")
+		}
+	case *waArmadilloApplication.Armadillo:
+		switch payload := typedMsg.GetPayload().GetPayload().(type) {
+		case *waArmadilloApplication.Armadillo_Payload_Content:
 			portal.handleMetaOrWhatsAppMessage(ctx, source, sender, evt, nil)
-		}
-	case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
-		switch applicationContent := payload.ApplicationData.GetApplicationContent().(type) {
-		case *waConsumerApplication.ConsumerApplication_ApplicationData_Revoke:
-			portal.handleMetaOrWhatsAppDelete(ctx, sender, applicationContent.Revoke.GetKey().GetID())
+		case *waArmadilloApplication.Armadillo_Payload_ApplicationData:
+			log.Warn().Msg("Unsupported armadillo application data message")
+		case *waArmadilloApplication.Armadillo_Payload_Signal:
+			log.Warn().Msg("Unsupported armadillo signal payload message")
+		case *waArmadilloApplication.Armadillo_Payload_SubProtocol:
+			log.Warn().Msg("Unsupported armadillo subprotocol payload message")
 		default:
-			log.Warn().Type("content_type", applicationContent).Msg("Unrecognized application content type")
+			log.Warn().Type("payload_type", payload).Msg("Unrecognized armadillo message payload type")
 		}
-	case *waConsumerApplication.ConsumerApplication_Payload_Signal:
-		log.Warn().Msg("Unsupported signal payload message")
-	case *waConsumerApplication.ConsumerApplication_Payload_SubProtocol:
-		log.Warn().Msg("Unsupported subprotocol payload message")
 	default:
-		log.Warn().Type("payload_type", payload).Msg("Unrecognized payload type")
+		log.Warn().Type("message_type", evt.Message).Msg("Unrecognized message type")
 	}
 }
 
@@ -1281,7 +1300,7 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 	portal.handleMetaOrWhatsAppMessage(ctx, source, sender, nil, message)
 }
 
-func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *User, sender *Puppet, waMsg *events.FBConsumerMessage, metaMsg *table.WrappedMessage) {
+func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *User, sender *Puppet, waMsg *events.FBMessage, metaMsg *table.WrappedMessage) {
 	log := zerolog.Ctx(ctx)
 
 	if portal.MXID == "" {
