@@ -46,6 +46,7 @@ const SecCHPrefersColorScheme = "light"
 var (
 	ErrTokenInvalidated  = errors.New("access token is no longer valid")
 	ErrChallengeRequired = errors.New("challenge required")
+	ErrConsentRequired   = errors.New("consent required")
 )
 
 type EventHandler func(evt interface{})
@@ -95,6 +96,8 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 				}
 				if req.URL.Path == "/challenge/" {
 					return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
+				} else if req.URL.Path == "/consent/" {
+					return fmt.Errorf("%w: redirected to %s", ErrConsentRequired, req.URL.String())
 				}
 				respCookies := req.Response.Cookies()
 				for _, cookie := range respCookies {

@@ -171,6 +171,7 @@ const (
 	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"
 	MetaConnectError           status.BridgeStateErrorCode = "meta-connect-error"
 	IGChallengeRequired        status.BridgeStateErrorCode = "ig-challenge-required"
+	IGConsentRequired          status.BridgeStateErrorCode = "ig-consent-required"
 )
 
 func init() {
@@ -179,6 +180,7 @@ func init() {
 		MetaConnectionUnauthorized: "Logged out, please relogin to continue",
 		MetaCookieRemoved:          "Logged out, please relogin to continue",
 		IGChallengeRequired:        "Challenge required, please check the Instagram website to continue",
+		IGConsentRequired:          "Consent required, please check the Instagram website to continue",
 	})
 }
 
@@ -482,6 +484,11 @@ func (user *User) Connect() {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      IGChallengeRequired,
+			})
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      IGConsentRequired,
 			})
 		} else if lsErr := (&messagix.LSErrorResponse{}); errors.As(err, &lsErr) {
 			user.BridgeState.Send(status.BridgeState{
