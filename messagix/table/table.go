@@ -265,7 +265,7 @@ var SPTable = map[string]string{
 	"deleteReaction":                              "LSDeleteReaction",
 	"updateThreadMuteSetting":                     "LSUpdateThreadMuteSetting",
 	"insertAttachment":                            "LSInsertAttachment",
-	"updateAttachmentExtraColumns":                "LSUpdateAttachmentExtraColumns",
+	"updateExtraAttachmentColumns":                "LSUpdateExtraAttachmentColumns",
 }
 
 func SPToDepMap(sp []string) map[string]string {
