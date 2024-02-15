@@ -63,6 +63,7 @@ func (br *MetaBridge) RegisterCommands() {
 		cmdUnsetRelay,
 		cmdDeletePortal,
 		cmdDeleteAllPortals,
+		cmdDeleteThread,
 		cmdSearch,
 	)
 }
@@ -351,6 +352,38 @@ func fnLoginEnterCookies(ce *WrappedCommandEvent) {
 		ce.Reply("Failed to log in: %v", err)
 	} else {
 		ce.Reply("Successfully logged in as %d", ce.User.MetaID)
+	}
+}
+
+var cmdDeleteThread = &commands.FullHandler{
+	Func:    wrapCommand(fnDeleteThread),
+	Name:    "delete-chat",
+	Aliases: []string{"delete-thread"},
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Delete the current chat on Meta and then delete the Matrix room",
+	},
+	RequiresLogin:  true,
+	RequiresPortal: true,
+}
+
+func fnDeleteThread(ce *WrappedCommandEvent) {
+	if ce.Portal.ThreadType.IsWhatsApp() {
+		ce.Reply("Deleting encrypted chats is not yet supported")
+		return
+	}
+	resp, err := ce.User.Client.ExecuteTasks(&socket.DeleteThreadTask{
+		ThreadKey:  ce.Portal.ThreadID,
+		RemoveType: 0,
+		SyncGroup:  1, // 95 for encrypted chats
+	})
+	ce.ZLog.Trace().Any("response_data", resp).Err(err).Msg("Delete thread response")
+	if err != nil {
+		ce.ZLog.Err(err).Msg("Failed to delete thread")
+		ce.Reply("Failed to delete thread")
+	} else {
+		ce.Portal.Delete()
+		ce.Portal.Cleanup(ce.Ctx, false)
 	}
 }
 
