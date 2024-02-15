@@ -88,6 +88,9 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	for _, blobAtt := range msg.BlobAttachments {
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt))
 	}
+	for _, legacyAtt := range msg.Attachments {
+		cm.Parts = append(cm.Parts, mc.legacyAttachmentToMatrix(ctx, legacyAtt))
+	}
 	for _, xmaAtt := range msg.XMAAttachments {
 		// Skip URL previews and polls for now
 		if xmaAtt.CTA != nil && ((msg.Text != "" && isProbablyURLPreview(xmaAtt)) || strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_")) {
@@ -211,7 +214,10 @@ func errorToNotice(err error, attachmentContainerType string) *ConvertedMessageP
 
 func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *table.LSInsertBlobAttachment) *ConvertedMessagePart {
 	url := att.PlayableUrl
-	mime := att.AttachmentMimeType
+	mime := att.PlayableUrlMimeType
+	if mime == "" {
+		mime = att.AttachmentMimeType
+	}
 	duration := att.PlayableDurationMs
 	var width, height int64
 	if url == "" {
@@ -223,6 +229,24 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer blob media")
 		return errorToNotice(err, "blob")
+	}
+	return converted
+}
+
+func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *table.LSInsertAttachment) *ConvertedMessagePart {
+	url := att.PlayableUrl
+	mime := att.PlayableUrlMimeType
+	duration := att.PlayableDurationMs
+	var width, height int64
+	if url == "" {
+		url = att.PreviewUrl
+		mime = att.PreviewUrlMimeType
+		width, height = att.PreviewWidth, att.PreviewHeight
+	}
+	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), int(duration))
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
+		return errorToNotice(err, "generic")
 	}
 	return converted
 }

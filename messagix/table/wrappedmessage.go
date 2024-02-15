@@ -99,6 +99,17 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 				Msg("Got blob attachment in table without corresponding message")
 		}
 	}
+	for _, att := range table.LSInsertAttachment {
+		msg, ok := messageMap[att.MessageId]
+		if ok {
+			msg.Attachments = append(msg.Attachments, att)
+		} else {
+			badGlobalLog.Warn().
+				Str("message_id", att.MessageId).
+				Str("attachment_id", att.AttachmentFbid).
+				Msg("Got attachment in table without corresponding message")
+		}
+	}
 	ctaMap := make(map[string]*LSInsertAttachmentCta, len(table.LSInsertAttachmentCta))
 	for _, cta := range table.LSInsertAttachmentCta {
 		ctaMap[cta.AttachmentFbid] = cta
@@ -133,6 +144,7 @@ type WrappedMessage struct {
 	*LSInsertMessage
 	IsUpsert        bool
 	BlobAttachments []*LSInsertBlobAttachment
+	Attachments     []*LSInsertAttachment
 	XMAAttachments  []*WrappedXMA
 	Stickers        []*LSInsertStickerAttachment
 	Reactions       []*LSUpsertReaction
