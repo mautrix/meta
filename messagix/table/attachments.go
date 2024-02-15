@@ -79,21 +79,21 @@ type LSInsertAttachment struct {
 	ListItemsSecondaryDescriptionText          string                 `index:"79" json:",omitempty"`
 	ListItemId1                                int64                  `index:"80" json:",omitempty"`
 	ListItemTitleText1                         string                 `index:"81" json:",omitempty"`
-	ListItemContactUrlList1                    string                 `index:"82" json:",omitempty"`
+	ListItemContactUrlList1                    any                    `index:"82" json:",omitempty"`
 	ListItemProgressBarFilledPercentage1       any                    `index:"83" json:",omitempty"`
 	ListItemContactUrlExpirationTimestampList1 any                    `index:"84" json:",omitempty"`
 	ListItemContactUrlFallbackList1            any                    `index:"85" json:",omitempty"`
 	ListItemTotalCount1                        int64                  `index:"86" json:",omitempty"`
 	ListItemId2                                int64                  `index:"87" json:",omitempty"`
 	ListItemTitleText2                         string                 `index:"88" json:",omitempty"`
-	ListItemContactUrlList2                    string                 `index:"89" json:",omitempty"`
+	ListItemContactUrlList2                    any                    `index:"89" json:",omitempty"`
 	ListItemProgressBarFilledPercentage2       any                    `index:"90" json:",omitempty"`
 	ListItemContactUrlExpirationTimestampList2 any                    `index:"91" json:",omitempty"`
 	ListItemContactUrlFallbackList2            any                    `index:"92" json:",omitempty"`
 	ListItemTotalCount2                        int64                  `index:"93" json:",omitempty"`
 	ListItemId3                                int64                  `index:"94" json:",omitempty"`
 	ListItemTitleText3                         string                 `index:"95" json:",omitempty"`
-	ListItemContactUrlList3                    string                 `index:"96" json:",omitempty"`
+	ListItemContactUrlList3                    any                    `index:"96" json:",omitempty"`
 	ListItemProgressBarFilledPercentage3       any                    `index:"97" json:",omitempty"`
 	ListItemContactUrlExpirationTimestampList3 any                    `index:"98" json:",omitempty"`
 	ListItemContactUrlFallbackList3            any                    `index:"99" json:",omitempty"`
@@ -126,27 +126,27 @@ type LSInsertAttachment struct {
 }
 
 type LSUpdateExtraAttachmentColumns struct {
-	ThreadKey                            int64    `index:"0" json:",omitempty"`
-	UnknownInt64                         int64    `index:"1" json:",omitempty"` // 0
-	MessageID                            string   `index:"2" json:",omitempty"`
-	AttachmentFBID                       string   `index:"3" json:",omitempty"`
-	ListItemAccessibilityText1           string   `index:"4" json:",omitempty"`
-	ListItemAccessibilityText2           string   `index:"5" json:",omitempty"`
-	ListItemAccessibilityText3           string   `index:"6" json:",omitempty"`
-	AvatarViewURLList                    []string `index:"10" json:",omitempty"`
-	AvatarViewURLExpirationTimestampList []int64  `index:"11" json:",omitempty"`
-	AvatarViewURLFallbackList            []string `index:"12" json:",omitempty"`
-	AvatarViewTitleList                  []string `index:"13" json:",omitempty"`
-	AvatarViewSize                       int64    `index:"14" json:",omitempty"`
-	AvatarCount                          int64    `index:"15" json:",omitempty"`
-	AvatarViewContentText                string   `index:"16" json:",omitempty"`
-	SubtitleIconURL                      string   `index:"17" json:",omitempty"`
-	AttachmentLoggingType                int64    `index:"18" json:",omitempty"`
-	PreheaderText                        string   `index:"19" json:",omitempty"`
-	ShouldAutoplayVideo                  bool     `index:"20" json:",omitempty"`
-	PreviewURLLarge                      string   `index:"21" json:",omitempty"`
-	PreviewWidthLarge                    int64    `index:"24" json:",omitempty"`
-	PreviewHeightLarge                   int64    `index:"25" json:",omitempty"`
+	ThreadKey                            int64  `index:"0" json:",omitempty"`
+	UnknownInt64                         int64  `index:"1" json:",omitempty"` // 0
+	MessageID                            string `index:"2" json:",omitempty"`
+	AttachmentFBID                       string `index:"3" json:",omitempty"`
+	ListItemAccessibilityText1           string `index:"4" json:",omitempty"`
+	ListItemAccessibilityText2           string `index:"5" json:",omitempty"`
+	ListItemAccessibilityText3           string `index:"6" json:",omitempty"`
+	AvatarViewURLList                    any    `index:"10" json:",omitempty"`
+	AvatarViewURLExpirationTimestampList any    `index:"11" json:",omitempty"`
+	AvatarViewURLFallbackList            any    `index:"12" json:",omitempty"`
+	AvatarViewTitleList                  any    `index:"13" json:",omitempty"`
+	AvatarViewSize                       int64  `index:"14" json:",omitempty"`
+	AvatarCount                          int64  `index:"15" json:",omitempty"`
+	AvatarViewContentText                string `index:"16" json:",omitempty"`
+	SubtitleIconURL                      string `index:"17" json:",omitempty"`
+	AttachmentLoggingType                int64  `index:"18" json:",omitempty"`
+	PreheaderText                        string `index:"19" json:",omitempty"`
+	ShouldAutoplayVideo                  bool   `index:"20" json:",omitempty"`
+	PreviewURLLarge                      string `index:"21" json:",omitempty"`
+	PreviewWidthLarge                    int64  `index:"24" json:",omitempty"`
+	PreviewHeightLarge                   int64  `index:"25" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

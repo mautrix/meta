@@ -244,9 +244,12 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 				continue
 			}
 			newDepInstance.Field(i).SetFloat(floatVal)
+		case reflect.Slice:
+			// TODO
+			fallthrough
 		default:
 			badGlobalLog.Warn().Stringer("kind", kind).Any("val", val).Type("val_type", val).Msg("Unknown kind")
-			os.Exit(1)
+			//os.Exit(1)
 		}
 		decodedData[index] = nil
 	}
