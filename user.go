@@ -181,6 +181,7 @@ func init() {
 		MetaCookieRemoved:          "Logged out, please relogin to continue",
 		IGChallengeRequired:        "Challenge required, please check the Instagram website to continue",
 		IGConsentRequired:          "Consent required, please check the Instagram website to continue",
+		MetaConnectError:           "Unknown connection error",
 	})
 }
 
@@ -500,7 +501,6 @@ func (user *User) Connect() {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaConnectError,
-				Message:    err.Error(),
 			})
 		}
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Failed to connect to %s: %v", user.bridge.ProtocolName, err)
