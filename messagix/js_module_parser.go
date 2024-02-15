@@ -79,7 +79,7 @@ func (m *ModuleParser) Load(page string) error {
 
 	doc, err := html.Parse(bytes.NewReader(htmlData))
 	if err != nil {
-		return fmt.Errorf("messagix-moduleparser: failed to parse doc string (%w)", err)
+		return fmt.Errorf("messagix-moduleparser: failed to parse doc string: %w", err)
 	}
 
 	scriptTags := m.findScriptTags(doc)
@@ -185,7 +185,7 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 	var moduleNames []string
 	err := json.Unmarshal([]byte(moduleSplit[0]+"]"), &moduleNames)
 	if err != nil {
-		return fmt.Errorf("messagix-moduleparser: failed to get module names from requireLazy module (%v)", err)
+		return fmt.Errorf("messagix-moduleparser: failed to get module names from requireLazy module (%w)", err)
 	}
 
 	for _, mName := range moduleNames {
@@ -199,13 +199,13 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 			var bigPipeData *BigPipe
 			err = json.Unmarshal([]byte(handleData), &bigPipeData)
 			if err != nil {
-				return fmt.Errorf("messagix-moduleparser: failed to unmarshal BigPipe data (%v)", err)
+				return fmt.Errorf("messagix-moduleparser: failed to unmarshal BigPipe data (%w)", err)
 			}
 
 			for _, d := range bigPipeData.JSMods.Define {
 				err := m.SSJSHandle(d)
 				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to handle serverjs module (%v)", err)
+					return fmt.Errorf("messagix-moduleparser: failed to handle serverjs module (%w)", err)
 				}
 			}
 
@@ -220,13 +220,13 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 			var moduleData *ModuleData
 			err = json.Unmarshal([]byte(handleData), &moduleData)
 			if err != nil {
-				return fmt.Errorf("messagix-moduleparser: failed to unmarshal handleData[0] into struct *ModuleData (%v)", err)
+				return fmt.Errorf("messagix-moduleparser: failed to unmarshal handleData[0] into struct *ModuleData (%w)", err)
 			}
 
 			for _, d := range moduleData.Define {
 				err := m.SSJSHandle(d)
 				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to handle serverjs module (%v)", err)
+					return fmt.Errorf("messagix-moduleparser: failed to handle serverjs module (%w)", err)
 				}
 			}
 		case "HasteSupportData":
@@ -240,12 +240,12 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 			var moduleData *ModuleData
 			err = json.Unmarshal([]byte(handleData), &moduleData)
 			if err != nil {
-				return fmt.Errorf("messagix-moduleparser: failed to unmarshal handleData[0] into struct *ModuleData (%v)", err)
+				return fmt.Errorf("messagix-moduleparser: failed to unmarshal handleData[0] into struct *ModuleData (%w)", err)
 			}
 			for _, d := range moduleData.Define {
 				err := m.SSJSHandle(d)
 				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to handle hastesupportdata module (%v)", err)
+					return fmt.Errorf("messagix-moduleparser: failed to handle hastesupportdata module (%w)", err)
 				}
 			}
 		case "bootstrapWebSession":
@@ -287,7 +287,7 @@ func (m *ModuleParser) handleModule(data []interface{}) error {
 			case "handle":
 				err := m.SSJSHandle(d)
 				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to handle scheduledserverjs module (%v)", err)
+					return fmt.Errorf("messagix-moduleparser: failed to handle scheduledserverjs module (%w)", err)
 				}
 			}
 		}
@@ -298,7 +298,7 @@ func (m *ModuleParser) handleModule(data []interface{}) error {
 			case "handlePayload":
 				err := m.Bootloader_HandlePayload(d, &m.client.configs.browserConfigTable.BootloaderConfig)
 				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to handle Bootloader_handlePayload call (%v)", err)
+					return fmt.Errorf("messagix-moduleparser: failed to handle Bootloader_handlePayload call (%w)", err)
 				}
 				//debug.Debug().Any("csrBitmap", modules.CsrBitmap).Msg("handlePayload")
 			}

@@ -156,7 +156,7 @@ func (c *Client) configureAfterLogin() error {
 	moduleLoader := &ModuleParser{client: c}
 	err := moduleLoader.Load(c.getEndpoint("messages"))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load inbox: %w", err)
 	}
 
 	c.SyncManager = c.NewSyncManager()
