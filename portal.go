@@ -517,6 +517,7 @@ func (portal *Portal) handleMatrixReadReceiptForWhatsApp(ctx context.Context, se
 }
 
 const MaxEditCount = 5
+const MaxEditTime = 15 * time.Minute
 
 func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt *event.Event, timings messageTimings) {
 	log := zerolog.Ctx(ctx)
@@ -667,6 +668,15 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	go ms.sendMessageMetrics(evt, err, "Error sending", true)
 }
 
+func (portal *Portal) redactFailedEdit(ctx context.Context, evtID id.EventID, reason string) {
+	_, err := portal.MainIntent().RedactEvent(ctx, portal.MXID, evtID, mautrix.ReqRedact{
+		Reason: reason,
+	})
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to redact failed Matrix edit")
+	}
+}
+
 func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRelay bool, realSenderMXID id.UserID, ms *metricSender, evt *event.Event, content *event.MessageEventContent) {
 	log := zerolog.Ctx(ctx)
 	editTarget := content.RelatesTo.GetReplaceID()
@@ -684,6 +694,11 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 		return
 	} else if !portal.ThreadType.IsWhatsApp() && editTargetMsg.EditCount >= MaxEditCount {
 		go ms.sendMessageMetrics(evt, errEditCountExceeded, "Error converting", true)
+		go portal.redactFailedEdit(ctx, evt.ID, errEditCountExceeded.Error())
+		return
+	} else if !portal.ThreadType.IsWhatsApp() && time.Since(editTargetMsg.Timestamp) > MaxEditTime {
+		go ms.sendMessageMetrics(evt, errEditTooOld, "Error converting", true)
+		go portal.redactFailedEdit(ctx, evt.ID, errEditTooOld.Error())
 		return
 	}
 	if content.NewContent != nil {
@@ -694,6 +709,7 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 	if isRelay {
 		portal.addRelaybotFormat(ctx, realSenderMXID, evt, content)
 	}
+	newEditCount := editTargetMsg.EditCount + 1
 	if portal.ThreadType.IsWhatsApp() {
 		consumerMsg := wrapEdit(&waConsumerApplication.ConsumerApplication_EditMessage{
 			Key:         portal.buildMessageKey(sender, editTargetMsg),
@@ -711,11 +727,27 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 		var resp *table.LSTable
 		resp, err = sender.Client.ExecuteTasks(editTask)
 		log.Trace().Any("response", resp).Msg("Meta edit response")
+		if err == nil {
+			if len(resp.LSEditMessage) == 0 {
+				log.Debug().Msg("Edit response didn't contain new edit?")
+			} else if resp.LSEditMessage[0].MessageID != editTargetMsg.ID {
+				log.Debug().Msg("Edit response contained different message ID")
+			} else if resp.LSEditMessage[0].Text != content.Body {
+				log.Warn().Msg("Server returned edit with different text")
+				err = errEditReverted
+				go portal.redactFailedEdit(ctx, evt.ID, err.Error())
+			} else if resp.LSEditMessage[0].EditCount != newEditCount {
+				log.Warn().
+					Int64("expected_edit_count", newEditCount).
+					Int64("actual_edit_count", resp.LSEditMessage[0].EditCount).
+					Msg("Edit count mismatch")
+			}
+		}
 	}
 	go ms.sendMessageMetrics(evt, err, "Error sending", true)
 	if err == nil {
 		// TODO does the response contain the edit count?
-		err = editTargetMsg.UpdateEditCount(ctx, editTargetMsg.EditCount+1)
+		err = editTargetMsg.UpdateEditCount(ctx, newEditCount)
 		if err != nil {
 			log.Err(err).Msg("Failed to update edit count")
 		}

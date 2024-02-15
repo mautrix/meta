@@ -52,6 +52,7 @@ var (
 	errEditDifferentSender              = errors.New("can't edit message sent by another user")
 	errEditTooOld                       = errors.New("message is too old to be edited")
 	errEditCountExceeded                = errors.New("message has been edited too many times")
+	errEditReverted                     = errors.New("server reverted the edit")
 
 	errMessageTakingLong     = errors.New("bridging the message is taking longer than usual")
 	errTimeoutBeforeHandling = errors.New("message timed out before handling was started")
@@ -67,6 +68,7 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, false, err.Error()
 	case errors.Is(err, errEditDifferentSender),
 		errors.Is(err, errEditTooOld),
+		errors.Is(err, errEditReverted),
 		errors.Is(err, errEditCountExceeded),
 		errors.Is(err, errEditUnknownTarget):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
