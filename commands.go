@@ -32,6 +32,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/database"
+	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
@@ -101,6 +102,37 @@ func fnToggleEncryption(ce *WrappedCommandEvent) {
 		ce.Portal.ThreadType = table.ONE_TO_ONE
 		ce.Reply("Messages in this room will now be sent unencrypted over Messenger")
 	} else {
+		if len(ce.Args) == 0 || ce.Args[0] != "--force" {
+			resp, err := ce.User.Client.ExecuteTasks(&socket.CreateWhatsAppThreadTask{
+				WAJID:            ce.Portal.ThreadID,
+				OfflineThreadKey: methods.GenerateEpochId(),
+				ThreadType:       table.ENCRYPTED_OVER_WA_ONE_TO_ONE,
+				FolderType:       table.INBOX,
+				BumpTimestampMS:  time.Now().UnixMilli(),
+				TAMThreadSubtype: 0,
+			})
+			if err != nil {
+				ce.ZLog.Err(err).Msg("Failed to create WhatsApp thread")
+				ce.Reply("Failed to create WhatsApp thread")
+				return
+			}
+			ce.ZLog.Trace().Any("create_resp", resp).Msg("Create WhatsApp thread response")
+			if len(resp.LSIssueNewTask) > 0 {
+				tasks := make([]socket.Task, len(resp.LSIssueNewTask))
+				for i, task := range resp.LSIssueNewTask {
+					ce.ZLog.Trace().Any("task", task).Msg("Create WhatsApp thread response task")
+					tasks[i] = task
+				}
+				resp, err = ce.User.Client.ExecuteTasks(tasks...)
+				if err != nil {
+					ce.ZLog.Err(err).Msg("Failed to create WhatsApp thread (subtask)")
+					ce.Reply("Failed to create WhatsApp thread")
+					return
+				} else {
+					ce.ZLog.Trace().Any("create_resp", resp).Msg("Create thread response")
+				}
+			}
+		}
 		ce.Portal.ThreadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
 		ce.Reply("Messages in this room will now be sent encrypted over WhatsApp")
 	}

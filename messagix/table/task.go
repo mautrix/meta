@@ -1,5 +1,10 @@
 package table
 
+import (
+	"encoding/json"
+	"strconv"
+)
+
 type LSTaskExists struct {
 	TaskId int64 `index:"0" json:",omitempty"`
 
@@ -40,7 +45,7 @@ type LSMailboxTaskCompletionApiOnTaskCompletion struct {
 type LSIssueNewTask struct {
 	QueueName                string `index:"0" json:",omitempty"`
 	Context                  int64  `index:"1" json:",omitempty"`
-	TaskValue                int64  `index:"2" json:",omitempty"`
+	TaskValue                string `index:"2" json:",omitempty"`
 	HttpUrlOverride          string `index:"3" json:",omitempty"`
 	TimeoutTimestampMs       int64  `index:"4" json:",omitempty"`
 	PluginType               int64  `index:"5" json:",omitempty"`
@@ -50,4 +55,12 @@ type LSIssueNewTask struct {
 	MinTimeToSyncTimestampMs int64  `index:"9" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (l *LSIssueNewTask) GetLabel() string {
+	return strconv.FormatInt(l.Context, 10)
+}
+
+func (l *LSIssueNewTask) Create() (any, any, bool) {
+	return json.RawMessage(l.TaskValue), l.QueueName, false
 }

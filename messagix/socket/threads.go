@@ -357,3 +357,20 @@ func (t *DeleteThreadTask) GetLabel() string {
 func (t *DeleteThreadTask) Create() (interface{}, interface{}, bool) {
 	return t, strconv.FormatInt(t.ThreadKey, 10), false
 }
+
+type CreateWhatsAppThreadTask struct {
+	WAJID            int64            `json:"wa_jid"`
+	OfflineThreadKey int64            `json:"offline_thread_key"`
+	ThreadType       table.ThreadType `json:"thread_type"`
+	FolderType       table.FolderType `json:"folder_type"`
+	BumpTimestampMS  int64            `json:"bump_timestamp_ms"`
+	TAMThreadSubtype int64            `json:"tam_thread_subtype"` // 0
+}
+
+func (t *CreateWhatsAppThreadTask) GetLabel() string {
+	return TaskLabels["CreateWhatsAppThreadTask"]
+}
+
+func (t *CreateWhatsAppThreadTask) Create() (any, any, bool) {
+	return t, strconv.FormatInt(t.OfflineThreadKey, 10), false
+}
