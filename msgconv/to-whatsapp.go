@@ -187,7 +187,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	mediaType := msgToMediaType(content.MsgType)
 	uploaded, err := mc.GetE2EEClient(ctx).Upload(ctx, data, mediaType)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("%w: %w", ErrMediaUploadFailed, err)
 	}
 	w, h := clampTo400(content.Info.Width, content.Info.Height)
 	if w == 0 && content.MsgType == event.MsgImage {

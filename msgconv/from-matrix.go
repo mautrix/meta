@@ -153,7 +153,7 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.E
 		IsVoiceClip: isVoice,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrMediaUploadFailed, err)
 	}
 	return resp, nil
 }

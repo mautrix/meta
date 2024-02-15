@@ -140,19 +140,19 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 ) (*ConvertedMessagePart, error) {
 	data, err := mc.GetE2EEClient(ctx).DownloadFB(transport.GetIntegral(), mediaType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrMediaDownloadFailed, err)
 	}
 	var fileName string
 	mimeType := transport.GetAncillary().GetMimetype()
 	if convert != nil {
 		data, mimeType, fileName, err = convert(ctx, data, mimeType)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert: %w", err)
+			return nil, err
 		}
 	}
 	content, err := mc.uploadAttachment(ctx, data, fileName, mimeType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrMediaUploadFailed, err)
 	}
 	return &ConvertedMessagePart{
 		Type:    event.EventMessage,
@@ -207,7 +207,7 @@ func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waC
 		if audio.GetPTT() && !strings.HasPrefix(mimeType, "audio/ogg") {
 			data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-c:a", "libopus"}, mimeType)
 			if err != nil {
-				return data, mimeType, fileName, fmt.Errorf("failed to convert audio to ogg/opus: %w", err)
+				return data, mimeType, fileName, fmt.Errorf("%w audio to ogg/opus: %w", ErrMediaConvertFailed, err)
 			}
 			fileName += ".ogg"
 			mimeType = "audio/ogg"
