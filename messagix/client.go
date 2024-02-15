@@ -267,7 +267,10 @@ func (c *Client) Connect() error {
 			if ctx.Err() != nil {
 				return
 			}
-			if errors.Is(err, CONNECTION_REFUSED_UNAUTHORIZED) || errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) {
+			if errors.Is(err, CONNECTION_REFUSED_UNAUTHORIZED) ||
+				errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) ||
+				// TODO server unavailable may mean a challenge state, should be checked somehow
+				errors.Is(err, CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
 				c.eventHandler(&Event_PermanentError{Err: err})
 				return
 			}
