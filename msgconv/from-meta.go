@@ -236,6 +236,9 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *table.LSInsertAttachment) *ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
+	if mime == "" {
+		mime = att.AttachmentMimeType
+	}
 	duration := att.PlayableDurationMs
 	var width, height int64
 	if url == "" {

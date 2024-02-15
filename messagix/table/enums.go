@@ -310,3 +310,21 @@ const (
 	ReplySourceTypeSharedAlbum
 	ReplySourceTypeAvatarDetail
 )
+
+type EphemeralMediaViewMode int64
+
+const (
+	EphemeralMediaViewOnce EphemeralMediaViewMode = iota
+	EphemeralMediaReplayable
+	EphemeralMediaPermanent
+)
+
+type EphemeralMediaState int64
+
+const (
+	EphemeralMediaStatePermanent EphemeralMediaState = iota
+	EphemeralMediaStateUnseen
+	EphemeralMediaStateSeen
+	EphemeralMediaStateReplayed
+	EphemeralMediaStateExpired
+)
