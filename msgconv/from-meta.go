@@ -384,7 +384,6 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
 			log.Debug().Msg("Fetched XMA media")
 			targetItem := resp.Items[0]
-			minimalConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
 			if targetItem.CarouselMedia != nil && carouselChildMediaID != "" {
 				for _, subitem := range targetItem.CarouselMedia {
 					if subitem.ID == carouselChildMediaID {
@@ -397,6 +396,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			secondConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
@@ -459,6 +459,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
@@ -502,6 +503,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
