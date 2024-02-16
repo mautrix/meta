@@ -11,17 +11,15 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.32.0
-	github.com/tidwall/gjson v1.17.0
-	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.1.0
-	go.mau.fi/util v0.3.1-0.20240209114727-da0b16df0446
+	go.mau.fi/util v0.4.0
 	go.mau.fi/whatsmeow v0.0.0-20240214134033-43138278d3ed
 	golang.org/x/crypto v0.19.0
-	golang.org/x/exp v0.0.0-20240205201215-2c58cdc269a3
+	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a
 	golang.org/x/image v0.15.0
 	golang.org/x/net v0.21.0
 	google.golang.org/protobuf v1.32.0
-	maunium.net/go/mautrix v0.17.1-0.20240209172009-b369efbc06b2
+	maunium.net/go/mautrix v0.18.0-beta.1
 )
 
 require (
@@ -30,6 +28,7 @@ require (
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/rs/xid v1.5.0 // indirect
+	github.com/tidwall/gjson v1.17.1 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
