@@ -469,6 +469,19 @@ func (user *User) GetMXID() id.UserID {
 
 var MessagixPlatform types.Platform
 
+func isNotNetworkError(err error) bool {
+	if errors.Is(err, messagix.ErrTokenInvalidated) ||
+		errors.Is(err, messagix.ErrChallengeRequired) ||
+		errors.Is(err, messagix.ErrConsentRequired) {
+		return true
+	}
+	lsErr := &messagix.LSErrorResponse{}
+	if errors.As(err, &lsErr) {
+		return true
+	}
+	return false
+}
+
 func (user *User) Connect() {
 	user.Lock()
 	defer user.Unlock()
@@ -577,7 +590,7 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) (*messagix
 	for {
 		cli, err = messagix.NewClient(MessagixPlatform, cookies, log, proxyAddr)
 		if err != nil {
-			if attempts > maxConnectAttempts {
+			if attempts > maxConnectAttempts || isNotNetworkError(err) {
 				return nil, fmt.Errorf("failed to prepare client: %w", err)
 			}
 			attempts += 1
