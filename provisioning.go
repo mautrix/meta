@@ -119,7 +119,8 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	err = user.Login(ctx, cookies)
 	if err != nil {
-		jsonResponse(w, http.StatusInternalServerError, Error{ErrCode: "M_UNKNOWN", Error: err.Error()})
+		log.Err(err).Msg("Failed to log in")
+		jsonResponse(w, http.StatusInternalServerError, Error{ErrCode: "M_UNKNOWN", Error: "Internal error logging in"})
 	} else {
 		jsonResponse(w, http.StatusOK, Response{
 			Success: true,
