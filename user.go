@@ -54,6 +54,8 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
+const maxConnectAttempts = 5
+
 var (
 	ErrNotConnected = errors.New("not connected")
 	ErrNotLoggedIn  = errors.New("not logged in")
@@ -570,10 +572,20 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) (*messagix
 	}
 	user.log.Debug().Msg("Connecting to Meta")
 	// TODO set proxy for media client?
-	cli, err := messagix.NewClient(MessagixPlatform, cookies, log, proxyAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare client: %w", err)
+	attempts := 1
+	var cli *messagix.Client
+	for {
+		cli, err = messagix.NewClient(MessagixPlatform, cookies, log, proxyAddr)
+		if err != nil {
+			if attempts > maxConnectAttempts {
+				return nil, fmt.Errorf("failed to prepare client: %w", err)
+			}
+			attempts += 1
+			continue
+		}
+		break
 	}
+
 	if user.bridge.Config.Meta.GetProxyFrom != "" {
 		cli.GetNewProxy = user.getProxy
 	}
