@@ -172,6 +172,7 @@ const (
 	MetaPermanentError         status.BridgeStateErrorCode = "meta-unknown-permanent-error"
 	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"
 	MetaConnectError           status.BridgeStateErrorCode = "meta-connect-error"
+	MetaTransientDisconnect    status.BridgeStateErrorCode = "meta-transient-disconnect"
 	IGChallengeRequired        status.BridgeStateErrorCode = "ig-challenge-required"
 	IGChallengeRequiredMaybe   status.BridgeStateErrorCode = "ig-challenge-required-maybe"
 	IGConsentRequired          status.BridgeStateErrorCode = "ig-consent-required"
@@ -180,6 +181,7 @@ const (
 func init() {
 	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
 		WADisconnected:             "Disconnected from encrypted chat server. Trying to reconnect.",
+		MetaTransientDisconnect:    "Disconnected from server, trying to reconnect",
 		MetaConnectionUnauthorized: "Logged out, please relogin to continue",
 		MetaCookieRemoved:          "Logged out, please relogin to continue",
 		IGChallengeRequired:        "Challenge required, please check the Instagram website to continue",
@@ -1035,8 +1037,7 @@ func (user *User) eventHandler(rawEvt any) {
 	case *messagix.Event_SocketError:
 		user.metaState = status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
-			Error:      "meta-transient-disconnect",
-			Message:    evt.Err.Error(),
+			Error:      MetaTransientDisconnect,
 		}
 		user.BridgeState.Send(user.metaState)
 	case *messagix.Event_Reconnected:
