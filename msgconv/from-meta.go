@@ -291,7 +291,7 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 	return converted
 }
 
-func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, att *table.WrappedXMA, resp *responses.Items) *ConvertedMessagePart {
+func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, att *table.WrappedXMA, resp *responses.Items) (*ConvertedMessagePart, error) {
 	var url, mime string
 	var width, height int
 	var found bool
@@ -311,12 +311,7 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 			}
 		}
 	}
-	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, width, height, int(resp.VideoDuration*1000))
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
-		return errorToNotice(err, "fetched")
-	}
-	return converted
+	return mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, width, height, int(resp.VideoDuration*1000))
 }
 
 func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
@@ -412,7 +407,12 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 					}
 				}
 			}
-			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, targetItem)
+			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, targetItem)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
+				return minimalConverted
+			}
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
@@ -475,7 +475,12 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				return minimalConverted
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
-			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
+			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
+				return minimalConverted
+			}
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
@@ -519,7 +524,12 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
 			log.Debug().Int("item_count", len(reel.Items)).Msg("Fetched XMA story (no exact item, type 2)")
 			relevantItem := &reel.Items[0].Items
-			secondConverted := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
+			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
+				return minimalConverted
+			}
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
