@@ -50,15 +50,15 @@ type LSInsertAttachment struct {
 	AttachmentCta1Id                           int64                  `index:"48" json:",omitempty"`
 	Cta1Title                                  string                 `index:"49" json:",omitempty"`
 	Cta1IconType                               int64                  `index:"50" json:",omitempty"`
-	Cta1Type                                   int64                  `index:"51" json:",omitempty"`
+	Cta1Type                                   string                 `index:"51" json:",omitempty"`
 	AttachmentCta2Id                           int64                  `index:"53" json:",omitempty"`
 	Cta2Title                                  string                 `index:"54" json:",omitempty"`
 	Cta2IconType                               int64                  `index:"55" json:",omitempty"`
-	Cta2Type                                   int64                  `index:"56" json:",omitempty"`
+	Cta2Type                                   string                 `index:"56" json:",omitempty"`
 	AttachmentCta3Id                           int64                  `index:"58" json:",omitempty"`
 	Cta3Title                                  string                 `index:"59" json:",omitempty"`
 	Cta3IconType                               int64                  `index:"60" json:",omitempty"`
-	Cta3Type                                   int64                  `index:"61" json:",omitempty"`
+	Cta3Type                                   string                 `index:"61" json:",omitempty"`
 	ImageUrl                                   string                 `index:"62" json:",omitempty"`
 	ImageUrlFallback                           string                 `index:"63" json:",omitempty"`
 	ImageUrlExpirationTimestampMs              int64                  `index:"64" json:",omitempty"`
@@ -219,17 +219,17 @@ type LSInsertXmaAttachment struct {
 	DefaultCtaTitle                            string         `index:"37" json:",omitempty"`
 	DefaultCtaType                             int64          `index:"38" json:",omitempty"`
 	AttachmentCta1Id                           int64          `index:"40" json:",omitempty"`
-	Cta1Title                                  int64          `index:"41" json:",omitempty"`
+	Cta1Title                                  string         `index:"41" json:",omitempty"`
 	Cta1IconType                               int64          `index:"42" json:",omitempty"`
-	Cta1Type                                   int64          `index:"43" json:",omitempty"`
+	Cta1Type                                   string         `index:"43" json:",omitempty"`
 	AttachmentCta2Id                           int64          `index:"45" json:",omitempty"`
-	Cta2Title                                  int64          `index:"46" json:",omitempty"`
+	Cta2Title                                  string         `index:"46" json:",omitempty"`
 	Cta2IconType                               int64          `index:"47" json:",omitempty"`
-	Cta2Type                                   int64          `index:"48" json:",omitempty"`
+	Cta2Type                                   string         `index:"48" json:",omitempty"`
 	AttachmentCta3Id                           int64          `index:"50" json:",omitempty"`
 	Cta3Title                                  string         `index:"51" json:",omitempty"`
 	Cta3IconType                               int64          `index:"52" json:",omitempty"`
-	Cta3Type                                   int64          `index:"53" json:",omitempty"`
+	Cta3Type                                   string         `index:"53" json:",omitempty"`
 	ImageUrl                                   string         `index:"54" json:",omitempty"`
 	ImageUrlFallback                           string         `index:"55" json:",omitempty"`
 	ImageUrlExpirationTimestampMs              int64          `index:"56" json:",omitempty"`
@@ -415,15 +415,15 @@ type LSInsertAttachmentItem struct {
 	AttachmentCta1Id                 int64  `index:"34" json:",omitempty"`
 	Cta1Title                        string `index:"35" json:",omitempty"`
 	Cta1IconType                     int64  `index:"36" json:",omitempty"`
-	Cta1Type                         int64  `index:"37" json:",omitempty"`
+	Cta1Type                         string `index:"37" json:",omitempty"`
 	AttachmentCta2Id                 int64  `index:"39" json:",omitempty"`
 	Cta2Title                        string `index:"40" json:",omitempty"`
 	Cta2IconType                     int64  `index:"41" json:",omitempty"`
-	Cta2Type                         int64  `index:"42" json:",omitempty"`
+	Cta2Type                         string `index:"42" json:",omitempty"`
 	AttachmentCta3Id                 int64  `index:"44" json:",omitempty"`
 	Cta3Title                        string `index:"45" json:",omitempty"`
 	Cta3IconType                     int64  `index:"46" json:",omitempty"`
-	Cta3Type                         int64  `index:"47" json:",omitempty"`
+	Cta3Type                         string `index:"47" json:",omitempty"`
 	FaviconUrl                       string `index:"48" json:",omitempty"`
 	FaviconUrlFallback               string `index:"49" json:",omitempty"`
 	FaviconUrlExpirationTimestampMs  int64  `index:"50" json:",omitempty"`
