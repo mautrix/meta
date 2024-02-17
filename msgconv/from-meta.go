@@ -77,8 +77,11 @@ type ConvertedMessagePart struct {
 }
 
 func isProbablyURLPreview(xma *table.WrappedXMA) bool {
-	return xma.CTA != nil && xma.CTA.Type_ == "xma_web_url" && xma.CTA.TargetId == 0 && xma.CTA.NativeUrl == "" &&
-		(strings.HasPrefix(xma.CTA.ActionUrl, "https://l.facebook.com") || strings.HasPrefix(xma.CTA.ActionUrl, "https://l.messenger.com"))
+	return xma.CTA != nil &&
+		xma.CTA.Type_ == "xma_web_url" &&
+		xma.CTA.TargetId == 0 &&
+		xma.CTA.NativeUrl == "" &&
+		strings.Contains(xma.CTA.ActionUrl, "/l.php?")
 }
 
 func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMessage) *ConvertedMessage {
@@ -91,9 +94,14 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	for _, legacyAtt := range msg.Attachments {
 		cm.Parts = append(cm.Parts, mc.legacyAttachmentToMatrix(ctx, legacyAtt))
 	}
+	var urlPreviews []*table.WrappedXMA
 	for _, xmaAtt := range msg.XMAAttachments {
-		// Skip URL previews and polls for now
-		if xmaAtt.CTA != nil && ((msg.Text != "" && isProbablyURLPreview(xmaAtt)) || strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_")) {
+		if isProbablyURLPreview(xmaAtt) {
+			// URL previews are handled in the text section
+			urlPreviews = append(urlPreviews, xmaAtt)
+			continue
+		} else if xmaAtt.CTA != nil && strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_") {
+			// Skip poll metadata entirely for now
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
@@ -101,7 +109,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	for _, sticker := range msg.Stickers {
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
 	}
-	if msg.Text != "" || msg.ReplySnippet != "" {
+	if msg.Text != "" || msg.ReplySnippet != "" || len(urlPreviews) > 0 {
 		mentions := &socket.MentionData{
 			MentionIDs:     msg.MentionIds,
 			MentionOffsets: msg.MentionOffsets,
@@ -112,8 +120,20 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 		if msg.IsAdminMessage {
 			content.MsgType = event.MsgNotice
 		}
+		if len(urlPreviews) > 0 {
+			content.BeeperLinkPreviews = make([]*event.BeeperLinkPreview, len(urlPreviews))
+			previewLinks := make([]string, len(urlPreviews))
+			for i, preview := range urlPreviews {
+				content.BeeperLinkPreviews[i] = mc.urlPreviewToBeeper(ctx, preview)
+				previewLinks[i] = content.BeeperLinkPreviews[i].CanonicalURL
+			}
+			// TODO do more fancy detection of whether the link is in the body?
+			if len(content.Body) == 0 {
+				content.Body = strings.Join(previewLinks, "\n")
+			}
+		}
 		extra := make(map[string]any)
-		if msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 {
+		if msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews) {
 			extra["com.beeper.relation_snippet"] = msg.ReplySnippet
 			// This is extremely hacky
 			isReaction := strings.Contains(msg.ReplySnippet, "Reacted")
@@ -540,6 +560,29 @@ func (mc *MessageConverter) xmaProfileShareToMatrix(ctx context.Context, att *ta
 			"external_url": att.CTA.NativeUrl,
 		},
 	}
+}
+
+func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.WrappedXMA) *event.BeeperLinkPreview {
+	preview := &event.BeeperLinkPreview{
+		LinkPreview: event.LinkPreview{
+			CanonicalURL: removeLPHP(att.CTA.ActionUrl),
+			Title:        att.TitleText,
+			Description:  att.SubtitleText,
+		},
+	}
+	if att.PreviewUrl != "" {
+		converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, int(att.PreviewWidth), int(att.PreviewHeight), 0)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload URL preview image")
+		} else {
+			preview.ImageEncryption = converted.Content.File
+			preview.ImageURL = converted.Content.URL
+			preview.ImageWidth = converted.Content.Info.Width
+			preview.ImageHeight = converted.Content.Info.Height
+			preview.ImageSize = converted.Content.Info.Size
+		}
+	}
+	return preview
 }
 
 func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) []*ConvertedMessagePart {

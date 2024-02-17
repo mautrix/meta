@@ -19,7 +19,7 @@ require (
 	golang.org/x/image v0.15.0
 	golang.org/x/net v0.21.0
 	google.golang.org/protobuf v1.32.0
-	maunium.net/go/mautrix v0.18.0-beta.1
+	maunium.net/go/mautrix v0.18.0-beta.1.0.20240217133417-b1b1c97a115c
 )
 
 require (
