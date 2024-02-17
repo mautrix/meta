@@ -371,6 +371,7 @@ func removeLPHP(addr string) string {
 func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
+		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unsupported"
 		return minimalConverted
 	}
 	log := zerolog.Ctx(ctx)
@@ -386,6 +387,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
 			return minimalConverted
 		}
 
@@ -393,8 +395,12 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), att.CTA.NativeUrl)
 		if err != nil {
 			log.Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+			return minimalConverted
 		} else if len(resp.Items) == 0 {
 			log.Warn().Int64("target_id", att.CTA.TargetId).Msg("Got empty XMA media response")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+			return minimalConverted
 		} else {
 			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
 			log.Debug().Msg("Fetched XMA media")
@@ -420,6 +426,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
+			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
 		}
 	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
@@ -428,13 +435,18 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
 			return minimalConverted
 		}
 
 		if match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
+			return minimalConverted
 		} else if resp, err := ig.FetchReel([]string{match[2]}, match[1]); err != nil {
 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+			return minimalConverted
 		} else if reel, ok := resp.Reels[match[2]]; !ok {
 			log.Trace().
 				Str("action_url", att.CTA.ActionUrl).
@@ -446,6 +458,8 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				Str("media_id", match[1]).
 				Str("response_status", resp.Status).
 				Msg("Got empty XMA story response")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+			return minimalConverted
 		} else {
 			log.Trace().
 				Str("action_url", att.CTA.ActionUrl).
@@ -472,6 +486,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 					Str("media_id", match[1]).
 					Strs("found_ids", foundIDs).
 					Msg("Failed to find exact item in fetched XMA story")
+				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "item not found in response"
 				return minimalConverted
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
@@ -488,6 +503,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
+			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
 		}
 	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/"):
@@ -496,13 +512,18 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
 			return minimalConverted
 		}
 
 		if match := reelActionURLRegex2.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL (type 2)")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
+			return minimalConverted
 		} else if resp, err := ig.FetchReel([]string{match[2]}, ""); err != nil {
 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story (type 2)")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+			return minimalConverted
 		} else if reel, ok := resp.Reels[match[2]]; !ok {
 			log.Trace().
 				Str("action_url", att.CTA.ActionUrl).
@@ -514,6 +535,8 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				Str("media_id", match[1]).
 				Str("response_status", resp.Status).
 				Msg("Got empty XMA story response (type 2)")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+			return minimalConverted
 		} else {
 			log.Trace().
 				Str("action_url", att.CTA.ActionUrl).
@@ -537,6 +560,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
+			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
 		}
 	default:
@@ -544,8 +568,9 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			Any("cta_data", att.CTA).
 			Any("xma_data", att.LSInsertXmaAttachment).
 			Msg("Unrecognized CTA data")
+		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unrecognized"
+		return minimalConverted
 	}
-	return minimalConverted
 }
 
 var instagramProfileURLRegex = regexp.MustCompile(`^https://www.instagram.com/([a-z0-9._]{1,30})$`)
