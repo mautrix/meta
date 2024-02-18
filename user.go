@@ -966,9 +966,11 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 			portal.metaMessages <- portalMetaMessage{user: user, evt: evt}
 		}
 	case *events.Connected:
+		user.log.Debug().Msg("Connected to WhatsApp socket")
 		user.waState = status.BridgeState{StateEvent: status.StateConnected}
 		user.BridgeState.Send(user.waState)
 	case *events.Disconnected:
+		user.log.Debug().Msg("Disconnected from WhatsApp socket")
 		user.waState = status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      WADisconnected,
@@ -1023,6 +1025,7 @@ func (user *User) eventHandler(rawEvt any) {
 		}
 		puppet := user.bridge.GetPuppetByID(user.MetaID)
 		puppet.UpdateInfo(context.TODO(), evt.CurrentUser)
+		user.log.Debug().Msg("Initial connect to Meta socket completed")
 		user.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		user.BridgeState.Send(user.metaState)
 		user.tryAutomaticDoublePuppeting()
@@ -1037,12 +1040,14 @@ func (user *User) eventHandler(rawEvt any) {
 		}
 		go user.BackfillLoop()
 	case *messagix.Event_SocketError:
+		user.log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
 		user.metaState = status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      MetaTransientDisconnect,
 		}
 		user.BridgeState.Send(user.metaState)
 	case *messagix.Event_Reconnected:
+		user.log.Debug().Msg("Reconnected to Meta socket")
 		user.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		user.BridgeState.Send(user.metaState)
 	case *messagix.Event_PermanentError:
