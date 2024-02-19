@@ -1059,7 +1059,7 @@ func (user *User) eventHandler(rawEvt any) {
 		} else if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
 			if user.bridge.Config.Meta.Mode.IsMessenger() {
 				user.metaState = status.BridgeState{
-					StateEvent: status.StateBadCredentials,
+					StateEvent: status.StateUnknownError,
 					Error:      MetaServerUnavailable,
 				}
 			} else {
