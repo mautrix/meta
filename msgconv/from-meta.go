@@ -723,7 +723,9 @@ func (mc *MessageConverter) reuploadAttachment(
 		fileName += ".ogg"
 		mimeType = "audio/ogg"
 		extra["org.matrix.msc3245.voice"] = map[string]any{}
-		extra["org.matrix.msc1767.audio"] = map[string]any{}
+		extra["org.matrix.msc1767.audio"] = map[string]any{
+			"duration": duration,
+		}
 	}
 	if (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0) {
 		config, _, err := image.DecodeConfig(bytes.NewReader(data))

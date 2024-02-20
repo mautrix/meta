@@ -221,7 +221,9 @@ func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waC
 		converted.Content.Info.Duration = int(metadata.GetSeconds() * 1000)
 		if isVoiceMessage {
 			converted.Extra["org.matrix.msc3245.voice"] = map[string]any{}
-			converted.Extra["org.matrix.msc1767.audio"] = map[string]any{}
+			converted.Extra["org.matrix.msc1767.audio"] = map[string]any{
+				"duration": converted.Content.Info.Duration,
+			}
 		}
 	}
 	return
