@@ -852,11 +852,17 @@ func (user *User) GetRemoteName() string {
 
 func (user *User) FillBridgeState(state status.BridgeState) status.BridgeState {
 	if state.StateEvent == status.StateConnected {
+		var copyFrom *status.BridgeState
 		if user.waState.StateEvent != "" && user.waState.StateEvent != status.StateConnected {
-			state = user.waState
+			copyFrom = &user.waState
 		}
 		if user.metaState.StateEvent != "" && user.metaState.StateEvent != status.StateConnected {
-			state = user.metaState
+			copyFrom = &user.metaState
+		}
+		if copyFrom != nil {
+			state.StateEvent = copyFrom.StateEvent
+			state.Error = copyFrom.Error
+			state.Message = copyFrom.Message
 		}
 	}
 	return state
