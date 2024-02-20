@@ -202,9 +202,11 @@ func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, documen
 }
 
 func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waConsumerApplication.ConsumerApplication_AudioMessage) (converted, caption *ConvertedMessagePart, err error) {
+	// Treat all audio messages as voice messages, official clients don't set the flag for some reason
+	isVoiceMessage := true // audio.GetPTT()
 	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.AudioTransport](ctx, mc, audio, whatsmeow.MediaAudio, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
 		fileName := "audio" + exmime.ExtensionFromMimetype(mimeType)
-		if audio.GetPTT() && !strings.HasPrefix(mimeType, "audio/ogg") {
+		if isVoiceMessage && !strings.HasPrefix(mimeType, "audio/ogg") {
 			data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-c:a", "libopus"}, mimeType)
 			if err != nil {
 				return data, mimeType, fileName, fmt.Errorf("%w audio to ogg/opus: %w", ErrMediaConvertFailed, err)
@@ -217,7 +219,7 @@ func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waC
 	if converted != nil {
 		converted.Content.MsgType = event.MsgAudio
 		converted.Content.Info.Duration = int(metadata.GetSeconds() * 1000)
-		if audio.GetPTT() {
+		if isVoiceMessage {
 			converted.Extra["org.matrix.msc3245.voice"] = map[string]any{}
 			converted.Extra["org.matrix.msc1767.audio"] = map[string]any{}
 		}
