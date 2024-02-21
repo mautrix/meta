@@ -1,31 +1,36 @@
 package graphql
 
+import (
+	"go.mau.fi/mautrix-meta/messagix/types"
+)
+
 /*
 	Most likely missing a bunch of data, so if you find more fields in the payload add them
 */
 
 type LSPlatformGraphQLLightspeedRequestQuery struct {
-	Error            int    `json:"error,omitempty"`
-	ErrorSummary     string `json:"errorSummary,omitempty"`
-	ErrorDescription string `json:"errorDescription,omitempty"`
-	Data             *struct {
+	types.ErrorResponse
+	Data *struct {
 		Viewer struct {
-			LightspeedWebRequest struct {
-				Dependencies []struct {
-					Name  string `json:"name,omitempty"`
-					Value struct {
-						Dr string `json:"__dr,omitempty"`
-					} `json:"value,omitempty"`
-				} `json:"dependencies,omitempty"`
-				Experiments any    `json:"experiments,omitempty"`
-				Payload     string `json:"payload,omitempty"`
-				Target      string `json:"target,omitempty"`
-			} `json:"lightspeed_web_request,omitempty"`
+			LightspeedWebRequest *LightspeedWebRequest `json:"lightspeed_web_request,omitempty"`
 		} `json:"viewer,omitempty"`
+		LightspeedWebRequestForIG *LightspeedWebRequest `json:"lightspeed_web_request_for_igd,omitempty"`
 	} `json:"data,omitempty"`
 	Extensions struct {
 		IsFinal bool `json:"is_final,omitempty"`
 	} `json:"extensions,omitempty"`
+}
+
+type LightspeedWebRequest struct {
+	Dependencies []struct {
+		Name  string `json:"name,omitempty"`
+		Value struct {
+			Dr string `json:"__dr,omitempty"`
+		} `json:"value,omitempty"`
+	} `json:"dependencies,omitempty"`
+	Experiments any    `json:"experiments,omitempty"`
+	Payload     string `json:"payload,omitempty"`
+	Target      string `json:"target,omitempty"`
 }
 
 type CometActorGatewayHandlerQuery struct {
@@ -404,28 +409,6 @@ type PresenceStatusProviderSubscriptionComponentQuery struct {
 		Viewer struct {
 			ChatSidebarContactRankings []any `json:"chat_sidebar_contact_rankings,omitempty"`
 		} `json:"viewer,omitempty"`
-	} `json:"data,omitempty"`
-	Extensions struct {
-		IsFinal bool `json:"is_final,omitempty"`
-	} `json:"extensions,omitempty"`
-}
-
-type LSPlatformGraphQLLightspeedRequestForIGDQuery struct {
-	Error            int    `json:"error,omitempty"`
-	ErrorSummary     string `json:"errorSummary,omitempty"`
-	ErrorDescription string `json:"errorDescription,omitempty"`
-	Data             *struct {
-		LightspeedWebRequestForIgd struct {
-			Dependencies []struct {
-				Name  string `json:"name,omitempty"`
-				Value struct {
-					Dr string `json:"__dr,omitempty"`
-				} `json:"value,omitempty"`
-			} `json:"dependencies,omitempty"`
-			Experiments any    `json:"experiments,omitempty"`
-			Payload     string `json:"payload,omitempty"`
-			Target      string `json:"target,omitempty"`
-		} `json:"lightspeed_web_request_for_igd,omitempty"`
 	} `json:"data,omitempty"`
 	Extensions struct {
 		IsFinal bool `json:"is_final,omitempty"`

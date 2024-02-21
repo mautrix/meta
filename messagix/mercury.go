@@ -80,6 +80,8 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 	var mercuryResponse *types.MercuryUploadResponse
 	if err := json.Unmarshal(jsonData, &mercuryResponse); err != nil {
 		return nil, err
+	} else if mercuryResponse.ErrorCode != 0 {
+		return nil, fmt.Errorf("error in mercury upload: %w", &mercuryResponse.ErrorResponse)
 	}
 	mercuryResponse.Raw = jsonData
 

@@ -47,6 +47,10 @@ func (c *Client) PrepareE2EEClient() *whatsmeow.Client {
 }
 
 type refreshCATResponseGraphQL struct {
+	types.ErrorResponse
+	Ar  int    `json:"__ar,omitempty"`
+	LID string `json:"lid,omitempty"`
+
 	Data struct {
 		SecureMessageOverWACATQuery types.CryptoAuthToken `json:"secure_message_over_wa_cat_query"`
 	} `json:"data"`
@@ -90,6 +94,9 @@ func (c *Client) refreshCAT() error {
 		return fmt.Errorf("failed to parse response: %w", err)
 	} else if len(parsedResp.Data.SecureMessageOverWACATQuery.EncryptedSerializedCat) == 0 {
 		c.Logger.Debug().RawJSON("resp_data", respData).Msg("Response data for failed CAT query")
+		if parsedResp.ErrorCode != 0 {
+			return fmt.Errorf("graphql error in CAT query %w", &parsedResp.ErrorResponse)
+		}
 		return fmt.Errorf("didn't get CAT in response")
 	}
 	c.Logger.Info().Msg("Successfully refreshed crypto auth token")

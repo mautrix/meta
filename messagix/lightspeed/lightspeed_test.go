@@ -45,13 +45,13 @@ func TestDecodeIG(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	var queryData *graphql.LSPlatformGraphQLLightspeedRequestForIGDQuery
+	var queryData *graphql.LSPlatformGraphQLLightspeedRequestQuery
 	err = json.Unmarshal(data, &queryData)
 	if err != nil {
 		log.Fatalf("failed to parse LightSpeedQLRequest data from html (INSTAGRAM): %v", err)
 	}
-	lsPayloadStr := queryData.Data.LightspeedWebRequestForIgd.Payload
-	deps := queryData.Data.LightspeedWebRequestForIgd.Dependencies
+	lsPayloadStr := queryData.Data.LightspeedWebRequestForIG.Payload
+	deps := queryData.Data.LightspeedWebRequestForIG.Dependencies
 	var lsData *lightspeed.LightSpeedData
 	err = json.Unmarshal([]byte(lsPayloadStr), &lsData)
 	if err != nil {

@@ -7,13 +7,11 @@ import (
 type MercuryUploadResponse struct {
 	Raw json.RawMessage `json:"-"`
 
-	Ar               int           `json:"__ar,omitempty"`
-	Error            int           `json:"error,omitempty"`
-	ErrorSummary     string        `json:"errorSummary,omitempty"`
-	ErrorDescription string        `json:"errorDescription,omitempty"`
-	Payload          MediaPayloads `json:"payload,omitempty"`
-	Hsrp             Hsrp          `json:"hsrp,omitempty"`
-	Lid              string        `json:"lid,omitempty"`
+	ErrorResponse
+	Ar      int           `json:"__ar,omitempty"`
+	Payload MediaPayloads `json:"payload,omitempty"`
+	Hsrp    Hsrp          `json:"hsrp,omitempty"`
+	Lid     string        `json:"lid,omitempty"`
 }
 
 type MediaMetadata interface {

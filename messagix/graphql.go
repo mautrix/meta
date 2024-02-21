@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -57,23 +56,8 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 	if err == nil && resp != nil {
 		cookies.UpdateFromResponse(c.cookies, resp.Header)
 	}
+	respData = bytes.TrimPrefix(respData, antiJSPrefix)
 	return resp, respData, err
-}
-
-type LSErrorResponse struct {
-	ErrorCode        int    `json:"error"`
-	ErrorSummary     string `json:"errorSummary"`
-	ErrorDescription string `json:"errorDescription"`
-	RedirectTo       string `json:"redirectTo"`
-}
-
-func (lser *LSErrorResponse) Is(other error) bool {
-	var otherLS *LSErrorResponse
-	return errors.As(other, &otherLS) && lser.ErrorCode == otherLS.ErrorCode
-}
-
-func (lser *LSErrorResponse) Error() string {
-	return fmt.Sprintf("%d: %s", lser.ErrorCode, lser.ErrorDescription)
 }
 
 func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVariables, reqType int) (*table.LSTable, error) {
@@ -101,80 +85,46 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	if err != nil {
 		return nil, err
 	}
-	respBody = bytes.TrimPrefix(respBody, antiJSPrefix)
 
-	if bytes.HasPrefix(respBody, []byte(`{"error"`)) {
-		var lsErr LSErrorResponse
-		err = json.Unmarshal(respBody, &lsErr)
-		if err == nil && lsErr.ErrorCode != 0 {
-			return nil, &lsErr
+	var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestQuery
+	err = json.Unmarshal(respBody, &graphQLData)
+	if err != nil {
+		if len(respBody) < 4096 {
+			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored LS response bytes")
+		} else {
+			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
 		}
+		return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %v", err)
 	}
-
+	if graphQLData.ErrorCode != 0 {
+		c.Logger.Warn().
+			Str("error_description", graphQLData.ErrorDescription).
+			Str("error_summary", graphQLData.ErrorSummary).
+			Int("error_code", graphQLData.ErrorCode).
+			Msg("GraphQL error in lightspeed request")
+		if graphQLData.Data == nil {
+			return nil, fmt.Errorf("graphql error %w", &graphQLData.ErrorResponse)
+		}
+	} else if graphQLData.Data == nil {
+		c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no data and no error")
+		return nil, fmt.Errorf("graphql request didn't return data")
+	}
 	var lightSpeedRes []byte
-	var deps interface{}
-	if c.platform.IsMessenger() {
-		var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestQuery
-		err = json.Unmarshal(respBody, &graphQLData)
-		if err != nil {
-			if len(respBody) < 4096 {
-				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored LS response bytes")
-			} else {
-				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
-			}
-			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %v", err)
-		}
-		if graphQLData.Error != 0 {
-			c.Logger.Warn().
-				Str("error_description", graphQLData.ErrorDescription).
-				Str("error_summary", graphQLData.ErrorSummary).
-				Int("error_code", graphQLData.Error).
-				Msg("GraphQL error in lightspeed request")
-			if graphQLData.Data == nil {
-				return nil, fmt.Errorf("graphql error %d: %s", graphQLData.Error, graphQLData.ErrorSummary)
-			}
-		} else if graphQLData.Data == nil {
-			c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no data and no error")
-			return nil, fmt.Errorf("graphql request didn't return data")
-		}
+	var deps any
+	if graphQLData.Data.LightspeedWebRequestForIG != nil {
+		lightSpeedRes = []byte(graphQLData.Data.LightspeedWebRequestForIG.Payload)
+		deps = graphQLData.Data.LightspeedWebRequestForIG.Dependencies
+	} else if graphQLData.Data.Viewer.LightspeedWebRequest != nil {
 		lightSpeedRes = []byte(graphQLData.Data.Viewer.LightspeedWebRequest.Payload)
 		deps = graphQLData.Data.Viewer.LightspeedWebRequest.Dependencies
 	} else {
-		var graphQLData *graphql.LSPlatformGraphQLLightspeedRequestForIGDQuery
-		err = json.Unmarshal(respBody, &graphQLData)
-		if err != nil {
-			if len(respBody) < 4096 {
-				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored LS response bytes")
-			} else {
-				c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
-			}
-			return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestForIGDQuery struct: %v", err)
-		}
-		if graphQLData.Error != 0 {
-			c.Logger.Warn().
-				Str("error_description", graphQLData.ErrorDescription).
-				Str("error_summary", graphQLData.ErrorSummary).
-				Int("error_code", graphQLData.Error).
-				Msg("GraphQL error in lightspeed request")
-			if graphQLData.Data == nil {
-				return nil, fmt.Errorf("graphql error %d: %s", graphQLData.Error, graphQLData.ErrorSummary)
-			}
-		} else if graphQLData.Data == nil {
-			c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no data and no error")
-			return nil, fmt.Errorf("graphql request didn't return data")
-		}
-		lightSpeedRes = []byte(graphQLData.Data.LightspeedWebRequestForIgd.Payload)
-		deps = graphQLData.Data.LightspeedWebRequestForIgd.Dependencies
+		c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no lightspeed response data and no error")
+		return nil, fmt.Errorf("graphql request didn't return LS data")
 	}
-
 	var lsData *lightspeed.LightSpeedData
 	err = json.Unmarshal(lightSpeedRes, &lsData)
 	if err != nil {
-		if len(respBody) < 4096 {
-			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored inner LS response bytes")
-		} else {
-			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored inner LS response bytes (truncated)")
-		}
+		c.Logger.Debug().RawJSON("respBody", respBody).Msg("Response data for errored inner response")
 		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %v", err)
 	}
 

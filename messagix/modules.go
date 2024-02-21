@@ -139,18 +139,24 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data interface{}, parserFunc st
 	var deps interface{}
 	switch parserFunc {
 	case "LSPlatformGraphQLLightspeedRequestForIGDQuery":
-		var lsData *graphql.LSPlatformGraphQLLightspeedRequestForIGDQuery
+		var lsData *graphql.LSPlatformGraphQLLightspeedRequestQuery
 		err := methods.InterfaceToStructJSON(&data, &lsData)
 		if err != nil {
-			return fmt.Errorf("messagix-moduleparser: failed to parse LightSpeedQLRequest data from html (INSTAGRAM): %v", err)
+			return fmt.Errorf("messagix-moduleparser: failed to parse LightSpeedQLRequest data from html (INSTAGRAM): %w", err)
 		}
-		lsPayloadStr = lsData.Data.LightspeedWebRequestForIgd.Payload
-		deps = lsData.Data.LightspeedWebRequestForIgd.Dependencies
+		if lsData.Data.LightspeedWebRequestForIG == nil {
+			return nil
+		}
+		lsPayloadStr = lsData.Data.LightspeedWebRequestForIG.Payload
+		deps = lsData.Data.LightspeedWebRequestForIG.Dependencies
 	case "LSPlatformGraphQLLightspeedRequestQuery":
 		var lsData *graphql.LSPlatformGraphQLLightspeedRequestQuery
 		err := methods.InterfaceToStructJSON(&data, &lsData)
 		if err != nil {
-			return fmt.Errorf("messagix-moduleparser: failed to parse LightSpeedQLRequest data from html (FACEBOOK): %v", err)
+			return fmt.Errorf("messagix-moduleparser: failed to parse LightSpeedQLRequest data from html (FACEBOOK): %w", err)
+		}
+		if lsData.Data.Viewer.LightspeedWebRequest == nil {
+			return nil
 		}
 		lsPayloadStr = lsData.Data.Viewer.LightspeedWebRequest.Payload
 		deps = lsData.Data.Viewer.LightspeedWebRequest.Dependencies

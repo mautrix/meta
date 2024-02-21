@@ -481,7 +481,7 @@ func isNotNetworkError(err error) bool {
 		errors.Is(err, messagix.ErrConsentRequired) {
 		return true
 	}
-	lsErr := &messagix.LSErrorResponse{}
+	lsErr := &types.ErrorResponse{}
 	if errors.As(err, &lsErr) {
 		return true
 	}
@@ -512,7 +512,7 @@ func (user *User) Connect() {
 				StateEvent: status.StateBadCredentials,
 				Error:      IGConsentRequired,
 			})
-		} else if lsErr := (&messagix.LSErrorResponse{}); errors.As(err, &lsErr) {
+		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
