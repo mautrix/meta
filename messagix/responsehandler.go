@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"sync"
 	"time"
 )
 
@@ -13,25 +14,35 @@ const (
 
 type ResponseHandler struct {
 	client          *Client
+	lock            sync.RWMutex
 	requestChannels map[uint16]chan interface{}
 	packetChannels  map[uint16]chan interface{}
 }
 
 func (p *ResponseHandler) hasPacket(packetId uint16) bool {
+	p.lock.RLock()
 	_, ok := p.requestChannels[packetId]
+	p.lock.RUnlock()
 	return ok
 }
 
 func (p *ResponseHandler) addPacketChannel(packetId uint16) {
+	p.lock.Lock()
 	p.packetChannels[packetId] = make(chan interface{}, 1) // buffered channel with capacity of 1
+	p.lock.Unlock()
 }
 
 func (p *ResponseHandler) addRequestChannel(packetId uint16) {
+	p.lock.Lock()
 	p.requestChannels[packetId] = make(chan interface{}, 1)
+	p.lock.Unlock()
 }
 
 func (p *ResponseHandler) updatePacketChannel(packetId uint16, packetData interface{}) bool {
-	if ch, ok := p.packetChannels[packetId]; ok {
+	p.lock.RLock()
+	ch, ok := p.packetChannels[packetId]
+	p.lock.RUnlock()
+	if ok {
 		ch <- packetData
 		return true
 	}
@@ -39,7 +50,10 @@ func (p *ResponseHandler) updatePacketChannel(packetId uint16, packetData interf
 }
 
 func (p *ResponseHandler) updateRequestChannel(packetId uint16, packetData interface{}) bool {
-	if ch, ok := p.requestChannels[packetId]; ok {
+	p.lock.RLock()
+	ch, ok := p.requestChannels[packetId]
+	p.lock.RUnlock()
+	if ok {
 		ch <- packetData
 		return true
 	}
@@ -83,11 +97,19 @@ func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelTyp
 }
 
 func (p *ResponseHandler) deleteDetails(packetId uint16, channelType ChannelType) {
-	if ch, ok := p.getChannel(packetId, channelType); ok {
-		close(ch)
-		if channelType == RequestChannel {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	switch channelType {
+	case RequestChannel:
+		ch, ok := p.requestChannels[packetId]
+		if ok {
+			close(ch)
 			delete(p.requestChannels, packetId)
-		} else {
+		}
+	case PacketChannel:
+		ch, ok := p.packetChannels[packetId]
+		if ok {
+			close(ch)
 			delete(p.packetChannels, packetId)
 		}
 	}
@@ -96,11 +118,13 @@ func (p *ResponseHandler) deleteDetails(packetId uint16, channelType ChannelType
 func (p *ResponseHandler) getChannel(packetId uint16, channelType ChannelType) (chan interface{}, bool) {
 	var ch chan interface{}
 	var ok bool
+	p.lock.RLock()
 	switch channelType {
 	case RequestChannel:
 		ch, ok = p.requestChannels[packetId]
 	case PacketChannel:
 		ch, ok = p.packetChannels[packetId]
 	}
+	p.lock.RUnlock()
 	return ch, ok
 }
