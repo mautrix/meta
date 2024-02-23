@@ -492,8 +492,7 @@ func (user *User) Connect() {
 	user.Lock()
 	defer user.Unlock()
 	user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
-	var err error
-	user.Client, err = user.unlockedConnectWithCookies(user.Cookies)
+	err := user.unlockedConnectWithCookies(user.Cookies)
 	if err != nil {
 		user.log.Error().Err(err).Msg("Failed to connect")
 		if errors.Is(err, messagix.ErrTokenInvalidated) {
@@ -531,11 +530,10 @@ func (user *User) Connect() {
 func (user *User) Login(ctx context.Context, cookies cookies.Cookies) error {
 	user.Lock()
 	defer user.Unlock()
-	cli, err := user.unlockedConnectWithCookies(cookies)
+	err := user.unlockedConnectWithCookies(cookies)
 	if err != nil {
 		return err
 	}
-	user.Client = cli
 	user.Cookies = cookies
 	err = user.Update(ctx)
 	if err != nil {
@@ -579,15 +577,15 @@ func (user *User) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
-func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) (*messagix.Client, error) {
+func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) error {
 	if cookies == nil {
-		return nil, fmt.Errorf("no cookies provided")
+		return fmt.Errorf("no cookies provided")
 	}
 
 	log := user.log.With().Str("component", "messagix").Logger()
 	proxyAddr, err := user.getProxy("connect")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get proxy: %w", err)
+		return fmt.Errorf("failed to get proxy: %w", err)
 	}
 	user.log.Debug().Msg("Connecting to Meta")
 	// TODO set proxy for media client?
@@ -597,7 +595,7 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) (*messagix
 		cli, err = messagix.NewClient(MessagixPlatform, cookies, log, proxyAddr)
 		if err != nil {
 			if attempts > maxConnectAttempts || isNotNetworkError(err) {
-				return nil, fmt.Errorf("failed to prepare client: %w", err)
+				return fmt.Errorf("failed to prepare client: %w", err)
 			}
 			attempts += 1
 			continue
@@ -609,11 +607,14 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) (*messagix
 		cli.GetNewProxy = user.getProxy
 	}
 	cli.SetEventHandler(user.eventHandler)
+	// This needs to be set before Event_Ready is handled in eventHandler
+	user.Client = cli
 	err = cli.Connect()
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect: %w", err)
+		user.Client = nil
+		return fmt.Errorf("failed to connect: %w", err)
 	}
-	return cli, nil
+	return nil
 }
 
 func (br *MetaBridge) StartUsers() {
