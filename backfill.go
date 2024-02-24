@@ -308,7 +308,7 @@ func (portal *Portal) handleMetaUpsertMessages(user *User, upsert *table.UpsertM
 	}
 	if lastMessage == nil {
 		// Chat is empty, request more history or bridge the one received message immediately depending on history_fetch_count
-		if portal.bridge.Config.Bridge.Backfill.HistoryFetchPages > 0 {
+		if portal.bridge.Config.Bridge.Backfill.HistoryFetchPages != 0 {
 			log.Debug().Msg("Got first historical message in empty chat, requesting more")
 			portal.backfillCollector = &BackfillCollector{
 				UpsertMessages: upsert,
