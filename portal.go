@@ -1409,7 +1409,7 @@ func (portal *Portal) handleWhatsAppEditMessage(ctx context.Context, sender *Pup
 	} else if len(targetMsg) > 1 {
 		log.Warn().Msg("Ignoring edit of multipart message")
 		return
-	} else if targetMsg[0].EditTimestamp() <= edit.TimestampMS {
+	} else if targetMsg[0].EditTimestamp() >= edit.TimestampMS {
 		log.Debug().Int64("existing_edit_ts", targetMsg[0].EditTimestamp()).Msg("Ignoring duplicate edit")
 		return
 	}
