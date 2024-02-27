@@ -50,6 +50,7 @@ import (
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
+	metaTypes "go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/msgconv"
 )
 
@@ -608,6 +609,11 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	} else {
 		ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
 		tasks, otid, err = portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
+		if errors.Is(err, metaTypes.ErrPleaseReloadPage) && time.Since(sender.lastFullReconnect) > MinFullReconnectInterval {
+			log.Err(err).Msg("Got please reload page error while converting message, reloading page in background")
+			go sender.FullReconnect()
+			err = errReloading
+		}
 	}
 	if err != nil {
 		log.Err(err).Msg("Failed to convert message")

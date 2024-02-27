@@ -56,6 +56,8 @@ var (
 
 	errMessageTakingLong     = errors.New("bridging the message is taking longer than usual")
 	errTimeoutBeforeHandling = errors.New("message timed out before handling was started")
+
+	errReloading = errors.New("refresh error; please retry in a few minutes")
 )
 
 func errorToStatusReason(err error) (reason event.MessageStatusReason, status event.MessageStatus, isCertain, sendNotice bool, humanMessage string) {
@@ -76,7 +78,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"
 	case errors.Is(err, context.DeadlineExceeded):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, false, true, "handling the message took too long and was cancelled"
-	case errors.Is(err, errServerRejected):
+	case errors.Is(err, errServerRejected),
+		errors.Is(err, errReloading):
 		return event.MessageStatusGenericError, event.MessageStatusRetriable, false, true, err.Error()
 	case errors.Is(err, errMessageTakingLong):
 		return event.MessageStatusTooOld, event.MessageStatusPending, false, true, err.Error()

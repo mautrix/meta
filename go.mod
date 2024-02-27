@@ -13,7 +13,7 @@ require (
 	github.com/rs/zerolog v1.32.0
 	go.mau.fi/libsignal v0.1.0
 	go.mau.fi/util v0.4.0
-	go.mau.fi/whatsmeow v0.0.0-20240214134033-43138278d3ed
+	go.mau.fi/whatsmeow v0.0.0-20240227155050-c5e8575efc35
 	golang.org/x/crypto v0.19.0
 	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a
 	golang.org/x/image v0.15.0

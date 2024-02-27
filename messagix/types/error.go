@@ -12,6 +12,8 @@ type ErrorResponse struct {
 	RedirectTo       string `json:"redirectTo,omitempty"`
 }
 
+var ErrPleaseReloadPage = &ErrorResponse{ErrorCode: 1357004}
+
 func (er *ErrorResponse) Is(other error) bool {
 	var otherLS *ErrorResponse
 	return errors.As(other, &otherLS) && er.ErrorCode == otherLS.ErrorCode

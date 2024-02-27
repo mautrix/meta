@@ -59,6 +59,8 @@ var (
 	ErrNotLoggedIn  = errors.New("not logged in")
 )
 
+const MinFullReconnectInterval = 1 * time.Hour
+
 func (br *MetaBridge) GetUserByMXID(userID id.UserID) *User {
 	return br.maybeGetUserByMXID(userID, &userID)
 }
@@ -225,6 +227,8 @@ type User struct {
 	InboxPagesFetched int
 
 	initialTable atomic.Pointer[table.LSTable]
+
+	lastFullReconnect time.Time
 }
 
 var (
@@ -478,6 +482,10 @@ var MessagixPlatform types.Platform
 func (user *User) Connect() {
 	user.Lock()
 	defer user.Unlock()
+	user.unlockedConnect()
+}
+
+func (user *User) unlockedConnect() {
 	user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	err := user.unlockedConnectWithCookies(user.Cookies)
 	if err != nil {
@@ -592,6 +600,7 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) error {
 		user.Client = nil
 		return fmt.Errorf("failed to connect: %w", err)
 	}
+	user.lastFullReconnect = time.Now()
 	return nil
 }
 
@@ -961,6 +970,19 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 			Error:      WADisconnected,
 		}
 		user.BridgeState.Send(user.waState)
+	case *events.CATRefreshError:
+		if errors.Is(evt.Error, types.ErrPleaseReloadPage) && time.Since(user.lastFullReconnect) > MinFullReconnectInterval {
+			user.log.Err(evt.Error).Msg("Got CATRefreshError, reloading page")
+			go user.FullReconnect()
+			return
+		}
+		user.waState = status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      WAPermanentError,
+			Message:    evt.PermanentDisconnectDescription(),
+		}
+		user.BridgeState.Send(user.waState)
+		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
 		user.waState = status.BridgeState{
 			StateEvent: status.StateUnknownError,
@@ -1100,11 +1122,21 @@ func (user *User) unlockedDisconnect() {
 	user.metaState = status.BridgeState{}
 }
 
-func (user *User) Disconnect() error {
+func (user *User) FullReconnect() {
+	user.Lock()
+	defer user.Unlock()
+	if time.Since(user.lastFullReconnect) < MinFullReconnectInterval {
+		return
+	}
+	user.unlockedDisconnect()
+	user.lastFullReconnect = time.Now()
+	user.unlockedConnect()
+}
+
+func (user *User) Disconnect() {
 	user.Lock()
 	defer user.Unlock()
 	user.unlockedDisconnect()
-	return nil
 }
 
 func (user *User) DeleteSession() {
@@ -1119,6 +1151,7 @@ func (user *User) DeleteSession() {
 	}
 	user.Cookies = nil
 	user.MetaID = 0
+	user.lastFullReconnect = time.Time{}
 	doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
 	if doublePuppet != nil {
 		doublePuppet.ClearCustomMXID()
