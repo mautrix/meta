@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"go.mau.fi/mautrix-meta/messagix/crypto"
+	"go.mau.fi/mautrix-meta/messagix/graphql"
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
@@ -16,6 +17,7 @@ type Configs struct {
 	needSync           bool
 	browserConfigTable *types.SchedulerJSDefineConfig
 	accountConfigTable *table.LSTable
+	graphqlConfigTable *graphql.GraphQLTable
 	LsdToken           string
 	CometReq           string
 	VersionId          int64

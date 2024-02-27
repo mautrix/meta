@@ -12,19 +12,19 @@ import (
 )
 
 type LightSpeedDecoder struct {
-	Table               interface{} // struct that contains pointers to all the dependencies/stores
-	Dependencies        map[string]string
-	StatementReferences map[int]interface{}
+	Table               any // struct that contains pointers to all the dependencies/stores
+	Dependencies        DependencyMap
+	StatementReferences map[int]any
 }
 
-func NewLightSpeedDecoder(dependencies map[string]string, table interface{}) *LightSpeedDecoder {
+func NewLightSpeedDecoder(dependencies DependencyMap, table any) *LightSpeedDecoder {
 	if reflect.ValueOf(table).Kind() != reflect.Ptr {
 		return nil
 	}
 	return &LightSpeedDecoder{
 		Table:               table,
 		Dependencies:        dependencies,
-		StatementReferences: make(map[int]interface{}),
+		StatementReferences: make(map[int]any),
 	}
 }
 

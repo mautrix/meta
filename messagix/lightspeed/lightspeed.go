@@ -1,10 +1,5 @@
 package lightspeed
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
 type StepType int
 
 const (
@@ -149,22 +144,13 @@ type DependencyValue struct {
 	ReferenceName string `json:"__dr,omitempty"`
 }
 
-func DependenciesToMap(dep interface{}) (map[string]string, error) {
-	var converted []Dependency
-	b, err := json.Marshal(dep)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal dependencies: %v", err)
-	}
+type DependencyList []Dependency
+type DependencyMap map[string]string
 
-	err = json.Unmarshal(b, &converted)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal dependencies: %v", err)
-	}
-
-	depMap := make(map[string]string, 0)
-	for _, d := range converted {
+func (dl DependencyList) ToMap() DependencyMap {
+	depMap := make(DependencyMap, len(dl))
+	for _, d := range dl {
 		depMap[d.Name] = d.Value.ReferenceName
 	}
-
-	return depMap, nil
+	return depMap
 }

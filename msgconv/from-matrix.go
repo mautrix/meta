@@ -75,7 +75,7 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 		if err != nil {
 			return nil, 0, err
 		}
-		attachmentID := resp.Payload.Metadata.(types.MediaMetadata).GetFbId()
+		attachmentID := resp.Payload.RealMetadata.GetFbId()
 		if attachmentID == 0 {
 			zerolog.Ctx(ctx).Warn().RawJSON("response", resp.Raw).Msg("No fbid received for upload")
 			return nil, 0, fmt.Errorf("failed to upload attachment: fbid not received")

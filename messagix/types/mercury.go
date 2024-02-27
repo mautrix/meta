@@ -78,8 +78,9 @@ and for an image it returns a slice/array like this:
 So you will have to use type assertion to handle these cases seperately.
 */
 type MediaPayloads struct {
-	UploadID any         `json:"uploadID,omitempty"`
-	Metadata interface{} `json:"metadata,omitempty"`
+	UploadID     any             `json:"uploadID,omitempty"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	RealMetadata MediaMetadata   `json:"-"`
 }
 
 type Hblp struct {

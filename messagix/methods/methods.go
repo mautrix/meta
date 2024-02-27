@@ -3,7 +3,6 @@ package methods
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -87,15 +86,6 @@ func GenerateMachineId() string {
 
 func PreprocessJSObject(s string) string {
 	return jsObjectRe.ReplaceAllString(s, "$1 \"$2\":")
-}
-
-func InterfaceToStructJSON(data interface{}, i interface{}) error {
-	b, err := json.Marshal(&data)
-	if err != nil {
-		return err
-	}
-
-	return json.Unmarshal(b, &i)
 }
 
 func NeedUpdateSyncGroups(data *table.LSTable) bool {

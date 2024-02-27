@@ -18,15 +18,34 @@ import (
 
 var jsDatrPattern = regexp.MustCompile(`"_js_datr","([^"]+)"`)
 var versionPattern = regexp.MustCompile(`__d\("LSVersion"[^)]+\)\{e\.exports="(\d+)"\}`)
-var ssjsHackyVersionPattern = regexp.MustCompile(`\\\\\\"snapshot_num_threads_per_page\\\\\\":\d+}\\",\\"version\\":(\d+)}`)
 
-type ModuleData struct {
-	Define    [][]interface{} `json:"define,omitempty"`
-	Instances [][]interface{} `json:"instances,omitempty"`
-	Markup    [][]interface{} `json:"markup,omitempty"`
-	Elements  [][]interface{} `json:"elements,omitempty"`
-	Require   [][]interface{} `json:"require,omitempty"`
-	Contexts  [][]interface{} `json:"contexts,omitempty"`
+type BBoxContainer struct {
+	BBox *BBox `json:"__bbox,omitempty"`
+}
+
+type BBox struct {
+	Require []*ModuleEntry `json:"require"`
+	Define  []*ModuleEntry `json:"define"`
+	// Might also contain instances, markup, elements, contexts
+}
+
+type ModuleEntry struct {
+	Name string
+	Data []json.RawMessage
+}
+
+func (me *ModuleEntry) UnmarshalJSON(data []byte) error {
+	var fullData []json.RawMessage
+	err := json.Unmarshal(data, &fullData)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(fullData[0], &me.Name)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal ssjs entry name: %w", err)
+	}
+	me.Data = fullData[1:]
+	return nil
 }
 
 type AttributeMap map[string]string
@@ -85,32 +104,22 @@ func (m *ModuleParser) Load(page string) error {
 
 	scriptTags := m.findScriptTags(doc)
 	for _, tag := range scriptTags {
-		//rel, ok := tag.Attributes["rel"]
-		//if ok {
-		//	log.Println(rel)
-		//}
 		id := tag.Attributes["id"]
 		switch id {
 		case "envjson", "__eqmc":
-			m.HandleRawJSON([]byte(tag.Content), id)
+			err = m.HandleRawJSON([]byte(tag.Content), id)
+			if err != nil {
+				return fmt.Errorf("failed to handle raw JSON: %w", err)
+			}
 		default:
 			if tag.Content == "" {
 				continue
 			}
-			match := ssjsHackyVersionPattern.FindStringSubmatch(tag.Content)
-			if len(match) == 2 {
-				m.client.configs.VersionId, err = strconv.ParseInt(match[1], 10, 64)
-				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to parse version id from ssjsHackyVersionPattern: %w", err)
-				}
-				m.client.Logger.Info().Int64("ls_version", m.client.configs.VersionId).Msg("Found LSVersion in SSJS")
-			}
-			var data *ModuleData
-			err := json.Unmarshal([]byte(tag.Content), &data)
+			var data *BBox
+			err = json.Unmarshal([]byte(tag.Content), &data)
 			if err != nil {
-				tagStr := string(tag.Content)
-				if strings.HasPrefix(tagStr, "requireLazy") {
-					err = m.requireLazyModule(tagStr)
+				if strings.HasPrefix(tag.Content, "requireLazy") {
+					err = m.requireLazyModule(tag.Content)
 					if err != nil {
 						return err
 					}
@@ -120,8 +129,7 @@ func (m *ModuleParser) Load(page string) error {
 				continue
 			}
 
-			req := data.Require
-			for _, mod := range req {
+			for _, mod := range data.Require {
 				err = m.handleModule(mod)
 				if err != nil {
 					return err
@@ -186,7 +194,7 @@ func (m *ModuleParser) Load(page string) error {
 }
 
 type BigPipe struct {
-	JSMods *ModuleData `json:"jsmods,omitempty"`
+	JSMods *BBox `json:"jsmods,omitempty"`
 }
 
 func (m *ModuleParser) requireLazyModule(data string) error {
@@ -212,7 +220,7 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 			}
 
 			for _, d := range bigPipeData.JSMods.Define {
-				err := m.SSJSHandle(d)
+				err := m.SSJSHandle(d.Data[2])
 				if err != nil {
 					return fmt.Errorf("messagix-moduleparser: failed to handle serverjs module (%w)", err)
 				}
@@ -226,14 +234,14 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 			}
 		case "ServerJS":
 			handleData := "{" + strings.Split(strings.Split(data, ".handle({")[1], ");requireLazy")[0]
-			var moduleData *ModuleData
+			var moduleData *BBox
 			err = json.Unmarshal([]byte(handleData), &moduleData)
 			if err != nil {
 				return fmt.Errorf("messagix-moduleparser: failed to unmarshal handleData[0] into struct *ModuleData (%w)", err)
 			}
 
 			for _, d := range moduleData.Define {
-				err := m.SSJSHandle(d)
+				err := m.SSJSHandle(d.Data[2])
 				if err != nil {
 					return fmt.Errorf("messagix-moduleparser: failed to handle serverjs module (%w)", err)
 				}
@@ -246,13 +254,13 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 			}
 			handleData := "{" + strings.Split(strings.Split(data, ".handle({")[2], ");requireLazy")[0]
 			handleData = handleData[:len(handleData)-5]
-			var moduleData *ModuleData
+			var moduleData *BBox
 			err = json.Unmarshal([]byte(handleData), &moduleData)
 			if err != nil {
 				return fmt.Errorf("messagix-moduleparser: failed to unmarshal handleData[0] into struct *ModuleData (%w)", err)
 			}
 			for _, d := range moduleData.Define {
-				err := m.SSJSHandle(d)
+				err := m.SSJSHandle(d.Data[2])
 				if err != nil {
 					return fmt.Errorf("messagix-moduleparser: failed to handle hastesupportdata module (%w)", err)
 				}
@@ -286,41 +294,36 @@ func (m *ModuleParser) crawlJavascriptFile(href string) (bool, error) {
 	return false, nil
 }
 
-func (m *ModuleParser) handleModule(data []interface{}) error {
-	modName := data[0].(string)
-	modData := data[3].([]interface{})
-	switch modName {
+func (m *ModuleParser) handleModule(data *ModuleEntry) error {
+	if len(data.Data) < 3 {
+		return fmt.Errorf("module %s has less than 3 data elements", data.Name)
+	}
+	switch data.Name {
 	case "ScheduledServerJS", "ScheduledServerJSWithCSS":
-		method := data[1].(string)
-		for _, d := range modData {
-			switch method {
-			case "handle":
-				err := m.SSJSHandle(d)
-				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to handle scheduledserverjs module (%w)", err)
-				}
+		if string(data.Data[0]) != `"handle"` {
+			return fmt.Errorf("unexpected SSJS command %s", data.Data[0])
+		}
+		var datas []json.RawMessage
+		err := json.Unmarshal(data.Data[2], &datas)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal ssjs list: %w", err)
+		}
+		for _, innerData := range datas {
+			err = m.SSJSHandle(innerData)
+			if err != nil {
+				return fmt.Errorf("failed to handle serverjs module: %w", err)
 			}
 		}
 	case "Bootloader":
-		method := data[1].(string)
-		for _, d := range modData {
-			switch method {
-			case "handlePayload":
-				err := m.Bootloader_HandlePayload(d, &m.client.configs.browserConfigTable.BootloaderConfig)
-				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to handle Bootloader_handlePayload call (%w)", err)
-				}
-				//debug.Debug().Any("csrBitmap", modules.CsrBitmap).Msg("handlePayload")
-			}
+		if string(data.Data[0]) != `"handlePayload"` {
+			return fmt.Errorf("unexpected Bootloader command %s", data.Data[0])
 		}
-		/*
-			add later if needed for the gkx data
-			case "HasteSupportData":
-				log.Println("got haste support data!")
-				m.client.Logger.Debug().Any("data", modData).Msg("Got haste support data")
-				os.Exit(1)
-			}
-		*/
+		err := m.HandleBootloaderPayload(data.Data[2], &m.client.configs.browserConfigTable.BootloaderConfig)
+		if err != nil {
+			return fmt.Errorf("failed to handle bootloader payload: %w", err)
+		}
+	case "HasteSupportData":
+		//m.client.Logger.Debug().Bytes("data", data.Data[2]).Msg("Got haste support data")
 	}
 	return nil
 }

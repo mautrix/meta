@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"go.mau.fi/mautrix-meta/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
@@ -22,15 +23,10 @@ type LSPlatformGraphQLLightspeedRequestQuery struct {
 }
 
 type LightspeedWebRequest struct {
-	Dependencies []struct {
-		Name  string `json:"name,omitempty"`
-		Value struct {
-			Dr string `json:"__dr,omitempty"`
-		} `json:"value,omitempty"`
-	} `json:"dependencies,omitempty"`
-	Experiments any    `json:"experiments,omitempty"`
-	Payload     string `json:"payload,omitempty"`
-	Target      string `json:"target,omitempty"`
+	Dependencies lightspeed.DependencyList `json:"dependencies,omitempty"`
+	Experiments  any                       `json:"experiments,omitempty"`
+	Payload      string                    `json:"payload,omitempty"`
+	Target       string                    `json:"target,omitempty"`
 }
 
 type CometActorGatewayHandlerQuery struct {

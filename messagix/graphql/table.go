@@ -1,5 +1,9 @@
 package graphql
 
+import (
+	"encoding/json"
+)
+
 type GraphQLTable struct {
 	CometActorGatewayHandlerQuery                         []CometActorGatewayHandlerQuery
 	CometAppNavigationProfileSwitcherConfigQuery          []CometAppNavigationProfileSwitcherConfigQuery
@@ -19,10 +23,15 @@ type GraphQLTable struct {
 }
 
 type GraphQLPreloader struct {
-	ActorID     any       `json:"actorID,omitempty"`
-	PreloaderID string    `json:"preloaderID,omitempty"`
-	QueryID     string    `json:"queryID,omitempty"`
-	Variables   Variables `json:"variables,omitempty"`
+	ActorID     any             `json:"actorID,omitempty"`
+	PreloaderID string          `json:"preloaderID,omitempty"`
+	QueryID     string          `json:"queryID,omitempty"`
+	Variables   json.RawMessage `json:"variables,omitempty"`
+}
+
+func (gqp *GraphQLPreloader) ParseVariables() (vars Variables, err error) {
+	err = json.Unmarshal(gqp.Variables, &vars)
+	return
 }
 
 type Variables struct {

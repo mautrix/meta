@@ -242,6 +242,9 @@ type RawJSONConfigs struct {
 }
 
 type SchedulerJSDefineConfig struct {
+	// NOTE: ModuleParser.handleConfigData accesses these fields by name with reflection
+	// TODO: change it to use struct tags instead of field names
+
 	MqttWebConfig                 MqttWebConfig
 	MqttWebDeviceID               MqttWebDeviceID
 	WebDevicePerfClassData        WebDevicePerfClassData

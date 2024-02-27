@@ -110,7 +110,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		return nil, fmt.Errorf("graphql request didn't return data")
 	}
 	var lightSpeedRes []byte
-	var deps any
+	var deps lightspeed.DependencyList
 	if graphQLData.Data.LightspeedWebRequestForIG != nil {
 		lightSpeedRes = []byte(graphQLData.Data.LightspeedWebRequestForIG.Payload)
 		deps = graphQLData.Data.LightspeedWebRequestForIG.Dependencies
@@ -128,13 +128,8 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %v", err)
 	}
 
-	dependencies, err := lightspeed.DependenciesToMap(deps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert dependencies to map: %v", err)
-	}
-
 	lsTable := &table.LSTable{}
-	lsDecoder := lightspeed.NewLightSpeedDecoder(dependencies, lsTable)
+	lsDecoder := lightspeed.NewLightSpeedDecoder(deps.ToMap(), lsTable)
 	lsDecoder.Decode(lsData.Steps)
 
 	return lsTable, nil

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/textproto"
-	"reflect"
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
@@ -95,22 +94,31 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 }
 
 func (c *Client) parseMetadata(response *types.MercuryUploadResponse) error {
-	var err error
-
-	switch metadata := response.Payload.Metadata.(type) {
-	case []interface{}:
-		var realMetadata types.ImageMetadata
-		err = methods.InterfaceToStructJSON(metadata[0], &realMetadata)
-		response.Payload.Metadata = &realMetadata
-	case map[string]interface{}:
-		var realMetadata types.VideoMetadata
-		err = methods.InterfaceToStructJSON(metadata["0"], &realMetadata)
-		response.Payload.Metadata = &realMetadata
-	default:
-		return fmt.Errorf("got invalid metadata type, cannot proceed with type assertion: %v", reflect.TypeOf(metadata))
+	if len(response.Payload.Metadata) == 0 {
+		return fmt.Errorf("no metadata in upload response")
 	}
 
-	return err
+	switch response.Payload.Metadata[0] {
+	case '[':
+		var realMetadata []types.ImageMetadata
+		err := json.Unmarshal(response.Payload.Metadata, &realMetadata)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal image metadata in upload response: %v", err)
+		}
+		response.Payload.RealMetadata = &realMetadata[0]
+	case '{':
+		var realMetadata map[string]types.VideoMetadata
+		err := json.Unmarshal(response.Payload.Metadata, &realMetadata)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal video metadata in upload response: %v", err)
+		}
+		realMetaEntry := realMetadata["0"]
+		response.Payload.RealMetadata = &realMetaEntry
+	default:
+		return fmt.Errorf("unexpected metadata in upload response")
+	}
+
+	return nil
 }
 
 // returns payloadBytes, multipart content-type header
