@@ -1042,7 +1042,7 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(user.metaState)
 		if initTable := user.initialTable.Swap(nil); initTable != nil {
 			user.log.Debug().Msg("Handling cached initial table")
-			user.handleTable(initTable)
+			go user.handleTable(initTable)
 		}
 		if user.bridge.Config.Meta.Mode.IsMessenger() || user.bridge.Config.Meta.IGE2EE {
 			go func() {
