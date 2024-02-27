@@ -90,10 +90,9 @@ func (c *Cookies) GetMissingCookieNames() []MetaCookieName {
 	} else {
 		missingCookies = slices.Clone(IGRequiredCookies)
 	}
-	slices.DeleteFunc(missingCookies, func(name MetaCookieName) bool {
+	return slices.DeleteFunc(missingCookies, func(name MetaCookieName) bool {
 		return c.values[name] != ""
 	})
-	return missingCookies
 }
 
 func (c *Cookies) IsLoggedIn() bool {

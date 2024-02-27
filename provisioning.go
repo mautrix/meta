@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"strings"
@@ -112,7 +113,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	missingRequiredCookies := newCookies.GetMissingCookieNames()
 	if len(missingRequiredCookies) > 0 {
 		log.Debug().Any("missing_cookies", missingRequiredCookies).Msg("Missing cookies in login request")
-		jsonResponse(w, http.StatusBadRequest, Error{ErrCode: mautrix.MBadJSON.ErrCode, Error: "Missing some cookies"})
+		jsonResponse(w, http.StatusBadRequest, Error{ErrCode: mautrix.MBadJSON.ErrCode, Error: fmt.Sprintf("Missing cookies: %v", missingRequiredCookies)})
 		return
 	}
 	err = user.Login(ctx, &newCookies)
