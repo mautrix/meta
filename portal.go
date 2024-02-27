@@ -613,6 +613,12 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 			log.Err(err).Msg("Got please reload page error while converting message, reloading page in background")
 			go sender.FullReconnect()
 			err = errReloading
+		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+			go sender.DisconnectFromError(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      MetaCookieRemoved,
+			})
+			err = errLoggedOut
 		}
 	}
 	if err != nil {

@@ -58,6 +58,7 @@ var (
 	errTimeoutBeforeHandling = errors.New("message timed out before handling was started")
 
 	errReloading = errors.New("refresh error; please retry in a few minutes")
+	errLoggedOut = errors.New("logged out; please relogin to send the message")
 )
 
 func errorToStatusReason(err error) (reason event.MessageStatusReason, status event.MessageStatus, isCertain, sendNotice bool, humanMessage string) {
@@ -79,7 +80,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 	case errors.Is(err, context.DeadlineExceeded):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, false, true, "handling the message took too long and was cancelled"
 	case errors.Is(err, errServerRejected),
-		errors.Is(err, errReloading):
+		errors.Is(err, errReloading),
+		errors.Is(err, errLoggedOut):
 		return event.MessageStatusGenericError, event.MessageStatusRetriable, false, true, err.Error()
 	case errors.Is(err, errMessageTakingLong):
 		return event.MessageStatusTooOld, event.MessageStatusPending, false, true, err.Error()

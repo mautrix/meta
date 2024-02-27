@@ -1143,6 +1143,11 @@ func (user *User) FullReconnect() {
 	user.unlockedConnect()
 }
 
+func (user *User) DisconnectFromError(stat status.BridgeState) {
+	user.BridgeState.Send(stat)
+	user.Disconnect()
+}
+
 func (user *User) Disconnect() {
 	user.Lock()
 	defer user.Unlock()
