@@ -168,6 +168,7 @@ func (br *MetaBridge) NewUser(dbUser *database.User) *User {
 const (
 	WADisconnected             status.BridgeStateErrorCode = "wa-transient-disconnect"
 	WAPermanentError           status.BridgeStateErrorCode = "wa-unknown-permanent-error"
+	WACATError                 status.BridgeStateErrorCode = "wa-cat-refresh-error"
 	MetaConnectionUnauthorized status.BridgeStateErrorCode = "meta-connection-unauthorized"
 	MetaPermanentError         status.BridgeStateErrorCode = "meta-unknown-permanent-error"
 	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"
@@ -978,12 +979,17 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		}
 		user.waState = status.BridgeState{
 			StateEvent: status.StateUnknownError,
-			Error:      WAPermanentError,
+			Error:      WACATError,
 			Message:    evt.PermanentDisconnectDescription(),
 		}
 		user.BridgeState.Send(user.waState)
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
+		cf, ok := evt.(*events.ConnectFailure)
+		if ok && cf.Reason == events.ConnectFailureLoggedOut && time.Since(user.lastFullReconnect) > MinFullReconnectInterval {
+			user.log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
+			go user.FullReconnect()
+		}
 		user.waState = status.BridgeState{
 			StateEvent: status.StateUnknownError,
 			Error:      WAPermanentError,
@@ -1075,6 +1081,10 @@ func (user *User) eventHandler(rawEvt any) {
 				user.metaState = status.BridgeState{
 					StateEvent: status.StateUnknownError,
 					Error:      MetaServerUnavailable,
+				}
+				if time.Since(user.lastFullReconnect) > MinFullReconnectInterval {
+					user.log.Debug().Msg("Doing full reconnect after server unavailable error")
+					go user.FullReconnect()
 				}
 			} else {
 				user.metaState = status.BridgeState{
