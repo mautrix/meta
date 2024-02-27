@@ -4,331 +4,147 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/textproto"
-	"os"
-	"reflect"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"golang.org/x/net/http/httpguts"
 
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
-type Cookies interface {
-	GetValue(name string) string
-	GetViewports() (string, string)
-	IsLoggedIn() bool
-	ToJSON() ([]byte, error)
-	GetUserID() int64
-	RequiredCookies() map[string]string
+type MetaCookieName string
+
+const (
+	// MetaCookieDatr seems to be a session ID that's displayed in security settings
+	MetaCookieDatr             MetaCookieName = "datr"
+	MetaCookieDevicePixelRatio MetaCookieName = "dpr"
+
+	// FBCookieXS is the main session cookie for Facebook
+	FBCookieXS MetaCookieName = "xs"
+	// FBCookieCUser contains the user ID for Facebook
+	FBCookieCUser MetaCookieName = "c_user"
+
+	FBCookieSB               MetaCookieName = "sb"
+	FBCookieFR               MetaCookieName = "fr"
+	FBCookieWindowDimensions MetaCookieName = "wd"
+	FBCookiePresence         MetaCookieName = "presence"
+	FBCookieOO               MetaCookieName = "oo"
+
+	// IGCookieSessionID is the main session cookie for Instagram
+	IGCookieSessionID MetaCookieName = "sessionid"
+	// IGCookieCSRFToken is the CSRF token for Instagram which must match the one in request headers
+	IGCookieCSRFToken MetaCookieName = "csrftoken"
+	// IGCookieDSUserID contains the user ID for Instagram
+	IGCookieDSUserID MetaCookieName = "ds_user_id"
+
+	IGCookieMachineID MetaCookieName = "mid"
+	IGCookieDeviceID  MetaCookieName = "ig_did"
+)
+
+var FBRequiredCookies = []MetaCookieName{FBCookieXS, FBCookieCUser}
+var IGRequiredCookies = []MetaCookieName{IGCookieSessionID, IGCookieCSRFToken, IGCookieDSUserID, IGCookieMachineID, IGCookieDeviceID}
+
+type Cookies struct {
+	Platform types.Platform
+	values   map[MetaCookieName]string
+	lock     sync.RWMutex
+
+	IGWWWClaim string
 }
 
-func UpdateValue(cookieStruct Cookies, name, val string) {
-	//val = strings.Replace(val, "\\", "\\/", -1)
-	v := reflect.ValueOf(cookieStruct).Elem()
-	t := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		tagVal, ok := t.Field(i).Tag.Lookup("cookie")
-		if !ok {
-			continue
-		}
-
-		tagMainVal := strings.Split(tagVal, ",")[0]
-		if tagMainVal == name && field.CanSet() {
-			field.SetString(val)
-		}
-	}
+func (c *Cookies) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.values)
 }
 
-/*
-Make sure the indexes for the names correspond with the correct value they should be set to
-*/
-func UpdateMultipleValues(cookieStruct Cookies, names []string, values []string) error {
-	if len(names) != len(values) {
-		return fmt.Errorf("expected same len for both names and values (names=%v, values=%v)", names, values)
-	}
-
-	for i := 0; i < len(names); i++ {
-		UpdateValue(cookieStruct, names[i], values[i])
-	}
-	return nil
+func (c *Cookies) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &c.values)
 }
 
-func UpdateFromResponse(cookieStruct Cookies, h http.Header) {
-	cookies := ReadSetCookiesCustom(h)
-	for _, c := range cookies {
-		UpdateValue(cookieStruct, c.Name, c.Value)
+func (c *Cookies) String() string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	var out []string
+	for k, v := range c.values {
+		out = append(out, fmt.Sprintf("%s=%s", k, v))
 	}
+	return strings.Join(out, "; ")
 }
 
-func CookiesToString(c Cookies) string {
-	s := ""
-	values := reflect.ValueOf(c)
-	if values.Kind() == reflect.Ptr {
-		values = values.Elem()
+func (c *Cookies) GetViewports() (width, height string) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	pxs := strings.Split(c.values[FBCookieWindowDimensions], "x")
+	if len(pxs) != 2 {
+		return "1920", "1003"
 	}
-
-	for i := 0; i < values.NumField(); i++ {
-		field := values.Type().Field(i)
-		value := values.Field(i).Interface()
-
-		tagValue := field.Tag.Get("cookie")
-		zeroValue := reflect.Zero(field.Type).Interface()
-		if value == zeroValue || tagValue == "" {
-			continue
-		}
-
-		tagName := strings.Split(tagValue, ",")[0]
-		s += fmt.Sprintf("%s=%v; ", tagName, value)
-	}
-
-	return s
+	return pxs[0], pxs[1]
 }
 
-func NewCookiesFromResponse(cookies []*http.Cookie) Cookies {
-	return nil
-}
-
-// FROM JSON FILE.
-func NewCookiesFromFile(path string, platform types.Platform) (Cookies, error) {
-	jsonBytes, jsonErr := os.ReadFile(path)
-	if jsonErr != nil {
-		return nil, jsonErr
-	}
-
-	var session Cookies
-
-	if platform == types.Instagram {
-		session = &InstagramCookies{}
+func (c *Cookies) GetMissingCookieNames() []MetaCookieName {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	var missingCookies []MetaCookieName
+	if c.Platform.IsMessenger() {
+		missingCookies = slices.Clone(FBRequiredCookies)
 	} else {
-		session = &FacebookCookies{}
+		missingCookies = slices.Clone(IGRequiredCookies)
 	}
-
-	marshalErr := json.Unmarshal(jsonBytes, session)
-	if marshalErr != nil {
-		return nil, marshalErr
-	}
-
-	return session, nil
+	slices.DeleteFunc(missingCookies, func(name MetaCookieName) bool {
+		return c.values[name] != ""
+	})
+	return missingCookies
 }
 
-/*
-Example:
-
-	var cookies types.FacebookCookies
-	err := types.NewCookiesFromString("...", &cookies)
-*/
-func NewCookiesFromString(cookieStr string, cookieStruct Cookies) error {
-	val := reflect.ValueOf(cookieStruct)
-	if val.Kind() == reflect.Ptr && val.Elem().Kind() == reflect.Struct {
-		val = val.Elem()
+func (c *Cookies) IsLoggedIn() bool {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	var cookieKey MetaCookieName
+	if c.Platform.IsMessenger() {
+		cookieKey = FBCookieXS
 	} else {
-		return fmt.Errorf("expected a pointer to a struct")
+		cookieKey = IGCookieSessionID
 	}
-
-	typ := val.Type()
-	for i := 0; i < val.NumField(); i++ {
-		fieldVal := val.Field(i)
-		fieldType := typ.Field(i)
-		tag, ok := fieldType.Tag.Lookup("cookie")
-		if ok {
-			cookieValue := extractCookieValue(cookieStr, strings.Split(tag, ",")[0])
-			fieldVal.SetString(cookieValue)
-		}
-	}
-
-	return nil
+	return c.values[cookieKey] != ""
 }
 
-func extractCookieValue(cookieString, key string) string {
-	startIndex := strings.Index(cookieString, key)
-	if startIndex < 0 {
-		return ""
+func (c *Cookies) GetUserID() int64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	var cookieKey MetaCookieName
+	if c.Platform.IsMessenger() {
+		cookieKey = FBCookieCUser
+	} else {
+		cookieKey = IGCookieDSUserID
 	}
-
-	startIndex += len(key) + 1
-	endIndex := strings.IndexByte(cookieString[startIndex:], ';')
-	if endIndex == -1 {
-		return cookieString[startIndex:]
-	}
-
-	return cookieString[startIndex : startIndex+endIndex]
+	userID, _ := strconv.ParseInt(c.values[cookieKey], 10, 64)
+	return userID
 }
 
-func getCookieValue(name string, cookieStruct Cookies) string {
-	v := reflect.ValueOf(cookieStruct)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	t := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		tagVal, ok := t.Field(i).Tag.Lookup("cookie")
-		if !ok {
-			continue
-		}
-
-		tagMainVal := strings.Split(tagVal, ",")[0]
-		if tagMainVal == name {
-			return field.String()
-		}
-	}
-	return ""
+func (c *Cookies) Set(key MetaCookieName, value string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.values[key] = value
 }
 
-// Custom implementation of std http lib implementation of parsing the Set-Cookie in response headers
-//
-// Because their implementation can apparently says cookie values that start with " or contain \ are invalid (https://github.com/golang/go/blob/master/src/net/http/cookie.go#L415)
-//
-// https://github.com/golang/go/blob/master/src/net/http/cookie.go#L60
-// readSetCookies parses all "Set-Cookie" values from
-// the header h and returns the successfully parsed Cookies.
-func ReadSetCookiesCustom(h http.Header) []*http.Cookie {
-	cookieCount := len(h["Set-Cookie"])
-	if cookieCount == 0 {
-		return []*http.Cookie{}
-	}
-	cookies := make([]*http.Cookie, 0, cookieCount)
-	for _, line := range h["Set-Cookie"] {
-		parts := strings.Split(textproto.TrimString(line), ";")
-		if len(parts) == 1 && parts[0] == "" {
-			continue
-		}
-		parts[0] = textproto.TrimString(parts[0])
-		name, value, ok := strings.Cut(parts[0], "=")
-		if !ok {
-			continue
-		}
-		name = textproto.TrimString(name)
-		if !isCookieNameValid(name) {
-			continue
-		}
-		value, ok = parseCookieValue(value, true)
-		if !ok {
-			continue
-		}
-		c := &http.Cookie{
-			Name:  name,
-			Value: value,
-			Raw:   line,
-		}
-		for i := 1; i < len(parts); i++ {
-			parts[i] = textproto.TrimString(parts[i])
-			if len(parts[i]) == 0 {
-				continue
-			}
-			attr, val, _ := strings.Cut(parts[i], "=")
-			lowerAttr, isASCII := ToLower(attr)
-			if !isASCII {
-				continue
-			}
-			val, ok = parseCookieValue(val, false)
-			if !ok {
-				c.Unparsed = append(c.Unparsed, parts[i])
-				continue
-			}
-
-			switch lowerAttr {
-			case "samesite":
-				lowerVal, ascii := ToLower(val)
-				if !ascii {
-					c.SameSite = http.SameSiteDefaultMode
-					continue
-				}
-				switch lowerVal {
-				case "lax":
-					c.SameSite = http.SameSiteLaxMode
-				case "strict":
-					c.SameSite = http.SameSiteStrictMode
-				case "none":
-					c.SameSite = http.SameSiteNoneMode
-				default:
-					c.SameSite = http.SameSiteDefaultMode
-				}
-				continue
-			case "secure":
-				c.Secure = true
-				continue
-			case "httponly":
-				c.HttpOnly = true
-				continue
-			case "domain":
-				c.Domain = val
-				continue
-			case "max-age":
-				secs, err := strconv.Atoi(val)
-				if err != nil || secs != 0 && val[0] == '0' {
-					break
-				}
-				if secs <= 0 {
-					secs = -1
-				}
-				c.MaxAge = secs
-				continue
-			case "expires":
-				c.RawExpires = val
-				exptime, err := time.Parse(time.RFC1123, val)
-				if err != nil {
-					exptime, err = time.Parse("Mon, 02-Jan-2006 15:04:05 MST", val)
-					if err != nil {
-						c.Expires = time.Time{}
-						break
-					}
-				}
-				c.Expires = exptime.UTC()
-				continue
-			case "path":
-				c.Path = val
-				continue
-			}
-			c.Unparsed = append(c.Unparsed, parts[i])
-		}
-		cookies = append(cookies, c)
-	}
-	return cookies
+func (c *Cookies) Get(key MetaCookieName) string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.values[key]
 }
 
-func validCookieValueByte(b byte) bool {
-	return 0x20 <= b && b < 0x7f && b != ';'
-}
-
-func parseCookieValue(raw string, allowDoubleQuote bool) (string, bool) {
-	for i := 0; i < len(raw); i++ {
-		if !validCookieValueByte(raw[i]) {
-			return "", false
+func (c *Cookies) UpdateFromResponse(r *http.Response) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	// Note: this will fail to parse rur, shbid and shbts because they have quotes and backslashes
+	for _, cookie := range r.Cookies() {
+		if cookie.MaxAge == 0 || cookie.Expires.Before(time.Now()) {
+			delete(c.values, MetaCookieName(cookie.Name))
+		} else {
+			c.values[MetaCookieName(cookie.Name)] = cookie.Value
 		}
 	}
-	return raw, true
-}
-
-func isCookieNameValid(raw string) bool {
-	if raw == "" {
-		return false
+	if wwwClaim := r.Header.Get("x-ig-set-www-claim"); wwwClaim != "" {
+		c.IGWWWClaim = wwwClaim
 	}
-	return strings.IndexFunc(raw, isNotToken) < 0
-}
-
-func ToLower(s string) (lower string, ok bool) {
-	if !IsPrint(s) {
-		return "", false
-	}
-	return strings.ToLower(s), true
-}
-
-func isNotToken(r rune) bool {
-	return !httpguts.IsTokenRune(r)
-}
-
-// IsPrint returns whether s is ASCII and printable according to
-// https://tools.ietf.org/html/rfc20#section-4.2.
-func IsPrint(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] < ' ' || s[i] > '~' {
-			return false
-		}
-	}
-	return true
 }

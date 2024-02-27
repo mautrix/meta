@@ -478,8 +478,6 @@ func (user *User) GetMXID() id.UserID {
 	return user.MXID
 }
 
-var MessagixPlatform types.Platform
-
 func (user *User) Connect() {
 	user.Lock()
 	defer user.Unlock()
@@ -523,7 +521,7 @@ func (user *User) unlockedConnect() {
 	}
 }
 
-func (user *User) Login(ctx context.Context, cookies cookies.Cookies) error {
+func (user *User) Login(ctx context.Context, cookies *cookies.Cookies) error {
 	user.Lock()
 	defer user.Unlock()
 	err := user.unlockedConnectWithCookies(cookies)
@@ -573,7 +571,7 @@ func (user *User) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
-func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) error {
+func (user *User) unlockedConnectWithCookies(cookies *cookies.Cookies) error {
 	if cookies == nil {
 		return fmt.Errorf("no cookies provided")
 	}
@@ -581,7 +579,7 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) error {
 	log := user.log.With().Str("component", "messagix").Logger()
 	user.log.Debug().Msg("Connecting to Meta")
 	// TODO set proxy for media client?
-	cli := messagix.NewClient(MessagixPlatform, cookies, log)
+	cli := messagix.NewClient(cookies, log)
 	if user.bridge.Config.Meta.GetProxyFrom != "" || user.bridge.Config.Meta.Proxy != "" {
 		cli.GetNewProxy = user.getProxy
 		if !cli.UpdateProxy("connect") {

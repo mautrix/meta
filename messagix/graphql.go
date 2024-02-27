@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/go-querystring/query"
 
-	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/graphql"
 	"go.mau.fi/mautrix-meta/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/messagix/table"
@@ -54,7 +53,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
 	resp, respData, err := c.MakeRequest(reqUrl, "POST", headers, payloadBytes, types.FORM)
 	if err == nil && resp != nil {
-		cookies.UpdateFromResponse(c.cookies, resp.Header)
+		c.cookies.UpdateFromResponse(resp)
 	}
 	respData = bytes.TrimPrefix(respData, antiJSPrefix)
 	return resp, respData, err

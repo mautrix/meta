@@ -26,12 +26,12 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/database"
+	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
@@ -313,7 +313,8 @@ var wrappedFnLoginEnterCookies = commands.MinimalHandlerFunc(wrapCommand(fnLogin
 var curlCookieRegex = regexp.MustCompile(`-H '[cC]ookie: ([^']*)'`)
 
 func fnLoginEnterCookies(ce *WrappedCommandEvent) {
-	newCookies := database.NewCookies()
+	var newCookies cookies.Cookies
+	newCookies.Platform = database.MessagixPlatform
 	ce.Redact()
 	if strings.HasPrefix(strings.TrimSpace(ce.RawArgs), "curl") {
 		cookieHeader := curlCookieRegex.FindStringSubmatch(ce.RawArgs)
@@ -327,27 +328,24 @@ func fnLoginEnterCookies(ce *WrappedCommandEvent) {
 			data[cookie.Name] = cookie.Value
 		}
 		rawData, _ := json.Marshal(data)
-		err := json.Unmarshal(rawData, newCookies)
+		err := json.Unmarshal(rawData, &newCookies)
 		if err != nil {
 			ce.Reply("Failed to parse cookies into struct: %v", err)
 			return
 		}
 	} else {
-		err := json.Unmarshal([]byte(ce.RawArgs), newCookies)
+		err := json.Unmarshal([]byte(ce.RawArgs), &newCookies)
 		if err != nil {
 			ce.Reply("Failed to parse input as JSON: %v", err)
 			return
 		}
 	}
-	missingRequiredCookies := newCookies.RequiredCookies()
-	maps.DeleteFunc(missingRequiredCookies, func(key, value string) bool {
-		return len(value) > 0
-	})
+	missingRequiredCookies := newCookies.GetMissingCookieNames()
 	if len(missingRequiredCookies) > 0 {
-		ce.Reply("Missing some cookies: %v", maps.Keys(missingRequiredCookies))
+		ce.Reply("Missing some cookies: %v", missingRequiredCookies)
 		return
 	}
-	err := ce.User.Login(ce.Ctx, newCookies)
+	err := ce.User.Login(ce.Ctx, &newCookies)
 	if err != nil {
 		ce.Reply("Failed to log in: %v", err)
 	} else {

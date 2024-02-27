@@ -20,13 +20,13 @@ type InstagramMethods struct {
 	client *Client
 }
 
-func (ig *InstagramMethods) Login(identifier, password string) (cookies.Cookies, error) {
+func (ig *InstagramMethods) Login(identifier, password string) (*cookies.Cookies, error) {
 	ig.client.loadLoginPage()
 	if _, err := ig.client.configs.SetupConfigs(nil); err != nil {
 		return nil, err
 	}
 	h := ig.client.buildHeaders(false)
-	h.Set("x-web-device-id", ig.client.cookies.GetValue("ig_did"))
+	h.Set("x-web-device-id", ig.client.cookies.Get(cookies.IGCookieDeviceID))
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin")
@@ -50,7 +50,7 @@ func (ig *InstagramMethods) Login(identifier, password string) (cookies.Cookies,
 		return nil, fmt.Errorf("failed to fetch %s for instagram login: %v", web_shared_data_v1, err)
 	}
 
-	cookies.UpdateFromResponse(ig.client.cookies, req.Header)
+	ig.client.cookies.UpdateFromResponse(req)
 
 	err = json.Unmarshal(respBody, &ig.client.configs.browserConfigTable.XIGSharedData.ConfigData)
 	if err != nil {
@@ -102,7 +102,7 @@ func (ig *InstagramMethods) FetchProfile(username string) (*responses.ProfileInf
 		return nil, fmt.Errorf("failed to fetch the profile by username @%s: %v", username, err)
 	}
 
-	cookies.UpdateFromResponse(ig.client.cookies, resp.Header)
+	ig.client.cookies.UpdateFromResponse(resp)
 
 	var profileInfo *responses.ProfileInfoResponse
 	err = json.Unmarshal(respBody, &profileInfo)
@@ -129,7 +129,7 @@ func (ig *InstagramMethods) FetchMedia(mediaID, nativeURL string) (*responses.Fe
 		return nil, fmt.Errorf("failed to fetch the media by id %s: %v", mediaID, err)
 	}
 
-	cookies.UpdateFromResponse(ig.client.cookies, resp.Header)
+	ig.client.cookies.UpdateFromResponse(resp)
 
 	var mediaInfo *responses.FetchMediaResponse
 	err = json.Unmarshal(respBody, &mediaInfo)
@@ -159,7 +159,7 @@ func (ig *InstagramMethods) FetchReel(reelIds []string, mediaID string) (*respon
 		return nil, fmt.Errorf("failed to fetch reels by ids %v: %v", reelIds, err)
 	}
 
-	cookies.UpdateFromResponse(ig.client.cookies, resp.Header)
+	ig.client.cookies.UpdateFromResponse(resp)
 
 	var reelInfo *responses.ReelInfoResponse
 	err = json.Unmarshal(respBody, &reelInfo)

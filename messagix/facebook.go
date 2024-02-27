@@ -16,7 +16,7 @@ type FacebookMethods struct {
 	client *Client
 }
 
-func (fb *FacebookMethods) Login(identifier, password string) (cookies.Cookies, error) {
+func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies, error) {
 	moduleLoader := fb.client.loadLoginPage()
 	loginFormTags := moduleLoader.FormTags[0]
 	loginPath, ok := loginFormTags.Attributes["action"]

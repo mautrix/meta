@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
@@ -27,13 +26,11 @@ func (c *Client) processLogin(resp *http.Response, respBody []byte) error {
 			err = fmt.Errorf("failed to process login request (message=%s, statusText=%s, statusCode=%d)", loginResp.Message, loginResp.Status, statusCode)
 		} else if !loginResp.Authenticated {
 			err = fmt.Errorf("failed to login, invalid password (userExists=%t, statusText=%s, statusCode=%d)", loginResp.User, loginResp.Status, statusCode)
-		} else {
-			c.cookies.(*cookies.InstagramCookies).IgWWWClaim = resp.Header.Get("x-ig-set-www-claim")
 		}
 	}
 
 	if err == nil {
-		cookies.UpdateFromResponse(c.cookies, resp.Header)
+		c.cookies.UpdateFromResponse(resp)
 	}
 
 	return err

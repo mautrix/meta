@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -64,7 +63,7 @@ type Client struct {
 	configs      *Configs
 	SyncManager  *SyncManager
 
-	cookies     cookies.Cookies
+	cookies     *cookies.Cookies
 	httpProxy   func(*http.Request) (*url.URL, error)
 	socksProxy  proxy.Dialer
 	GetNewProxy func(reason string) (string, error)
@@ -84,7 +83,10 @@ type Client struct {
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
 }
 
-func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.Logger) *Client {
+func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
+	if cookies.Platform == types.Unset {
+		panic("messagix: platform must be set in cookies")
+	}
 	cli := &Client{
 		http: &http.Client{
 			Transport: &http.Transport{
@@ -116,7 +118,7 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 		Logger:          logger,
 		lsRequests:      0,
 		graphQLRequests: 1,
-		platform:        platform,
+		platform:        cookies.Platform,
 		activeTasks:     make([]int, 0),
 		taskMutex:       &sync.Mutex{},
 	}
@@ -166,30 +168,22 @@ func (c *Client) loadLoginPage() *ModuleParser {
 
 func (c *Client) configurePlatformClient() {
 	var selectedEndpoints map[string]string
-	var cookieStruct cookies.Cookies
 	switch c.platform {
 	case types.Facebook:
 		selectedEndpoints = endpoints.FacebookEndpoints
-		cookieStruct = &cookies.FacebookCookies{}
 		c.Facebook = &FacebookMethods{client: c}
 	case types.FacebookTor:
 		selectedEndpoints = endpoints.FacebookTorEndpoints
-		cookieStruct = &cookies.FacebookCookies{}
 		c.Facebook = &FacebookMethods{client: c}
 	case types.Messenger:
 		selectedEndpoints = endpoints.MessengerEndpoints
-		cookieStruct = &cookies.FacebookCookies{}
 		c.Facebook = &FacebookMethods{client: c}
 	case types.Instagram:
 		selectedEndpoints = endpoints.InstagramEndpoints
-		cookieStruct = &cookies.InstagramCookies{}
 		c.Instagram = &InstagramMethods{client: c}
 	}
 
 	c.endpoints = selectedEndpoints
-	if reflect.ValueOf(c.cookies).IsNil() {
-		c.cookies = cookieStruct
-	}
 }
 
 func (c *Client) SetProxy(proxyAddr string) error {
@@ -333,7 +327,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.browserConfigTable.SiteData.ServerRevision, 10))
 		variables, err := json.Marshal(&types.InstagramCookiesVariables{
 			FirstPartyTrackingOptIn: true,
-			IgDid:                   c.cookies.GetValue("ig_did"),
+			IgDid:                   c.cookies.Get("ig_did"),
 			ThirdPartyTrackingOptIn: true,
 			Input: struct {
 				ClientMutationID int "json:\"client_mutation_id,omitempty\""
@@ -367,10 +361,8 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 			return fmt.Errorf("consenting to facebook cookies failed, could not find datr cookie in set-cookie header")
 		}
 
-		c.cookies = &cookies.FacebookCookies{
-			Datr: datr.Value,
-			Wd:   "2276x1156",
-		}
+		c.cookies.Set(cookies.MetaCookieDatr, datr.Value)
+		c.cookies.Set(cookies.FBCookieWindowDimensions, "1920x1003")
 	}
 	return nil
 }

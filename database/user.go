@@ -26,6 +26,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 const (
@@ -46,7 +47,7 @@ type User struct {
 	MXID           id.UserID
 	MetaID         int64
 	WADeviceID     uint16
-	Cookies        cookies.Cookies
+	Cookies        *cookies.Cookies
 	InboxFetched   bool
 	ManagementRoom id.RoomID
 	SpaceRoom      id.RoomID
@@ -90,18 +91,19 @@ func (u *User) Update(ctx context.Context) error {
 	return u.qh.Exec(ctx, updateUserQuery, u.sqlVariables()...)
 }
 
-var NewCookies func() cookies.Cookies
+var MessagixPlatform types.Platform
 
 func (u *User) Scan(row dbutil.Scannable) (*User, error) {
 	var managementRoom, spaceRoom sql.NullString
 	var metaID sql.NullInt64
 	var waDeviceID sql.NullInt32
-	scannedCookies := NewCookies()
+	var newCookies cookies.Cookies
+	newCookies.Platform = MessagixPlatform
 	err := row.Scan(
 		&u.MXID,
 		&metaID,
 		&waDeviceID,
-		&dbutil.JSON{Data: scannedCookies},
+		&dbutil.JSON{Data: &newCookies},
 		&u.InboxFetched,
 		&managementRoom,
 		&spaceRoom,
@@ -109,8 +111,8 @@ func (u *User) Scan(row dbutil.Scannable) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	if scannedCookies.IsLoggedIn() {
-		u.Cookies = scannedCookies
+	if newCookies.IsLoggedIn() {
+		u.Cookies = &newCookies
 	}
 	u.MetaID = metaID.Int64
 	u.WADeviceID = uint16(waDeviceID.Int32)

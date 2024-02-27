@@ -173,14 +173,9 @@ func (m *ModuleParser) Load(page string) error {
 		}
 		m.client.Logger.Debug().Any("authenticated", authenticated).Msg("Instagram Authentication Status")
 		if !authenticated && err == nil {
-			err = cookies.UpdateMultipleValues(
-				m.client.cookies,
-				[]string{"csrftoken", "ig_did", "mid"},
-				[]string{sharedData.ConfigData.Config.CsrfToken, sharedData.Native.DeviceID, methods.GenerateMachineId()},
-			)
-			if err != nil {
-				return fmt.Errorf("messagix-moduleparser: failed to update cookie values for csrftoken, ig_did (%v)", err)
-			}
+			m.client.cookies.Set(cookies.IGCookieCSRFToken, sharedData.ConfigData.Config.CsrfToken)
+			m.client.cookies.Set(cookies.IGCookieDeviceID, sharedData.Native.DeviceID)
+			m.client.cookies.Set(cookies.IGCookieMachineID, methods.GenerateMachineId())
 		}
 	}
 

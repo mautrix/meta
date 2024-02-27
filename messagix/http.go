@@ -168,8 +168,7 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 	}
 
 	if c.cookies != nil && withCookies {
-		cookieStr := cookies.CookiesToString(c.cookies)
-		if cookieStr != "" {
+		if cookieStr := c.cookies.String(); cookieStr != "" {
 			headers.Set("cookie", cookieStr)
 		}
 		w, _ := c.cookies.GetViewports()
@@ -187,29 +186,20 @@ func (c *Client) addFacebookHeaders(h *http.Header) {
 
 func (c *Client) addInstagramHeaders(h *http.Header) {
 	if c.configs != nil {
-		csrfToken := c.cookies.GetValue("csrftoken")
-		mid := c.cookies.GetValue("mid")
-		if csrfToken != "" {
+		if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
 			h.Set("x-csrftoken", csrfToken)
 		}
 
-		if mid != "" {
+		if mid := c.cookies.Get(cookies.IGCookieMachineID); mid != "" {
 			h.Set("x-mid", mid)
 		}
 
 		if c.configs.browserConfigTable != nil {
-			instaCookies, ok := c.cookies.(*cookies.InstagramCookies)
-			if ok {
-				if instaCookies.IgWWWClaim == "" {
-					h.Set("x-ig-www-claim", "0")
-				} else {
-					h.Set("x-ig-www-claim", instaCookies.IgWWWClaim)
-				}
-			} else {
-				h.Set("x-ig-www-claim", "0")
+			if c.cookies.IGWWWClaim != "" {
+				h.Set("x-ig-www-claim", c.cookies.IGWWWClaim)
 			}
+			h.Set("x-ig-app-id", c.configs.browserConfigTable.CurrentUserInitialData.AppID)
 		}
-		h.Set("x-ig-app-id", c.configs.browserConfigTable.CurrentUserInitialData.AppID)
 	}
 }
 

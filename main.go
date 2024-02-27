@@ -36,7 +36,6 @@ import (
 
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
-	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
@@ -110,33 +109,27 @@ func (br *MetaBridge) Init() {
 		br.BeeperServiceName = "instagramgo"
 		br.BeeperNetworkName = "instagram"
 		defaultCommandPrefix = "!ig"
-		MessagixPlatform = types.Instagram
-		database.NewCookies = func() cookies.Cookies {
-			return &cookies.InstagramCookies{}
-		}
+		database.MessagixPlatform = types.Instagram
 	case config.ModeFacebook, config.ModeMessenger, config.ModeFacebookTor:
 		switch br.Config.Meta.Mode {
 		case config.ModeFacebook:
 			msgconv.MediaReferer = "https://www.facebook.com/"
-			MessagixPlatform = types.Facebook
+			database.MessagixPlatform = types.Facebook
 		case config.ModeMessenger:
 			msgconv.MediaReferer = "https://www.messenger.com/"
-			MessagixPlatform = types.Messenger
+			database.MessagixPlatform = types.Messenger
 		case config.ModeFacebookTor:
 			//msgconv.MediaReferer = "https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion/"
 			// Media is currently not proxied for efficiency
 			// TODO make it configurable (requires passing the proxy to mediaHTTPClient)
 			msgconv.BypassOnionForMedia = true
 			msgconv.MediaReferer = "https://www.facebook.com/"
-			MessagixPlatform = types.FacebookTor
+			database.MessagixPlatform = types.FacebookTor
 		}
 		br.ProtocolName = "Facebook Messenger"
 		br.BeeperServiceName = "facebookgo"
 		br.BeeperNetworkName = "facebook"
 		defaultCommandPrefix = "!fb"
-		database.NewCookies = func() cookies.Cookies {
-			return &cookies.FacebookCookies{}
-		}
 	}
 	if br.Config.Bridge.CommandPrefix == "default" {
 		br.Config.Bridge.CommandPrefix = defaultCommandPrefix

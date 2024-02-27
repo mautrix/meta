@@ -3,7 +3,8 @@ package types
 type Platform int
 
 const (
-	Instagram Platform = iota
+	Unset Platform = iota
+	Instagram
 	Facebook
 	Messenger
 	FacebookTor

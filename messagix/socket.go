@@ -16,7 +16,6 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/net/proxy"
 
-	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/packets"
 	"go.mau.fi/mautrix-meta/messagix/types"
@@ -384,7 +383,7 @@ func (s *Socket) makeLSRequest(payload []byte, t int) (*Event_PublishResponse, e
 func (s *Socket) getConnHeaders() http.Header {
 	h := http.Header{}
 
-	h.Set("cookie", cookies.CookiesToString(s.client.cookies))
+	h.Set("cookie", s.client.cookies.String())
 	h.Set("user-agent", UserAgent)
 	h.Set("origin", s.client.getEndpoint("base_url"))
 	h.Set("Sec-Fetch-Dest", "empty")
