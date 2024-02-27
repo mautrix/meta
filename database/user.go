@@ -80,7 +80,7 @@ func (uq *UserQuery) GetAllLoggedIn(ctx context.Context) ([]*User, error) {
 }
 
 func (u *User) sqlVariables() []any {
-	return []any{u.MXID, dbutil.NumPtr(u.MetaID), u.WADeviceID, dbutil.JSON{Data: u.Cookies}, u.InboxFetched, dbutil.StrPtr(u.ManagementRoom), dbutil.StrPtr(u.SpaceRoom)}
+	return []any{u.MXID, dbutil.NumPtr(u.MetaID), u.WADeviceID, dbutil.JSONPtr(u.Cookies), u.InboxFetched, dbutil.StrPtr(u.ManagementRoom), dbutil.StrPtr(u.SpaceRoom)}
 }
 
 func (u *User) Insert(ctx context.Context) error {

@@ -9,7 +9,7 @@ require (
 	github.com/tidwall/gjson v1.17.1
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/mautrix-meta v0.1.0
-	go.mau.fi/util v0.4.0
+	go.mau.fi/util v0.4.1-0.20240227220036-e5cb5e96d15c
 )
 
 require (
@@ -26,6 +26,5 @@ require (
 	golang.org/x/crypto v0.19.0 // indirect
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/sys v0.17.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect
 )
