@@ -2,11 +2,13 @@ package messagix
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/types"
@@ -75,7 +77,47 @@ func (c *Client) NewHttpQuery() *HttpQuery {
 	return query
 }
 
+const MaxHTTPRetries = 3
+
 func (c *Client) MakeRequest(url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+	var attempts int
+	for {
+		attempts++
+		start := time.Now()
+		resp, respDat, err := c.makeRequestDirect(url, method, headers, payload, contentType)
+		dur := time.Since(start)
+		if err == nil {
+			c.Logger.Debug().
+				Str("url", url).
+				Str("method", method).
+				Dur("duration", dur).
+				Msg("Request successful")
+			return resp, respDat, nil
+		} else if attempts > MaxHTTPRetries {
+			c.Logger.Err(err).
+				Str("url", url).
+				Str("method", method).
+				Dur("duration", dur).
+				Msg("Request failed, giving up")
+			return nil, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
+		} else if errors.Is(err, ErrConsentRequired) || errors.Is(err, ErrChallengeRequired) || errors.Is(err, ErrTokenInvalidated) {
+			c.Logger.Err(err).
+				Str("url", url).
+				Str("method", method).
+				Dur("duration", dur).
+				Msg("Request failed, cannot be retried")
+			return nil, nil, err
+		}
+		c.Logger.Err(err).
+			Str("url", url).
+			Str("method", method).
+			Dur("duration", dur).
+			Msg("Request failed, retrying")
+		time.Sleep(time.Duration(attempts) * 2)
+	}
+}
+
+func (c *Client) makeRequestDirect(url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
 	newRequest, err := http.NewRequest(method, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, nil, err
@@ -95,12 +137,12 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 	}()
 	if err != nil {
 		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: %w", ErrRequestFailed, err)
 	}
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, err)
 	}
 
 	return response, responseBody, nil

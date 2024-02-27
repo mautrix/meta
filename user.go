@@ -54,8 +54,6 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
-const maxConnectAttempts = 5
-
 var (
 	ErrNotConnected = errors.New("not connected")
 	ErrNotLoggedIn  = errors.New("not logged in")
@@ -225,6 +223,8 @@ type User struct {
 	stopBackfillTask atomic.Pointer[context.CancelFunc]
 
 	InboxPagesFetched int
+
+	initialTable atomic.Pointer[table.LSTable]
 }
 
 var (
@@ -475,19 +475,6 @@ func (user *User) GetMXID() id.UserID {
 
 var MessagixPlatform types.Platform
 
-func isNotNetworkError(err error) bool {
-	if errors.Is(err, messagix.ErrTokenInvalidated) ||
-		errors.Is(err, messagix.ErrChallengeRequired) ||
-		errors.Is(err, messagix.ErrConsentRequired) {
-		return true
-	}
-	lsErr := &types.ErrorResponse{}
-	if errors.As(err, &lsErr) {
-		return true
-	}
-	return false
-}
-
 func (user *User) Connect() {
 	user.Lock()
 	defer user.Unlock()
@@ -583,29 +570,20 @@ func (user *User) unlockedConnectWithCookies(cookies cookies.Cookies) error {
 	}
 
 	log := user.log.With().Str("component", "messagix").Logger()
-	proxyAddr, err := user.getProxy("connect")
-	if err != nil {
-		return fmt.Errorf("failed to get proxy: %w", err)
-	}
 	user.log.Debug().Msg("Connecting to Meta")
 	// TODO set proxy for media client?
-	attempts := 1
-	var cli *messagix.Client
-	for {
-		cli, err = messagix.NewClient(MessagixPlatform, cookies, log, proxyAddr)
-		if err != nil {
-			if attempts > maxConnectAttempts || isNotNetworkError(err) {
-				return fmt.Errorf("failed to prepare client: %w", err)
-			}
-			attempts += 1
-			continue
-		}
-		break
-	}
-
-	if user.bridge.Config.Meta.GetProxyFrom != "" {
+	cli := messagix.NewClient(MessagixPlatform, cookies, log)
+	if user.bridge.Config.Meta.GetProxyFrom != "" || user.bridge.Config.Meta.Proxy != "" {
 		cli.GetNewProxy = user.getProxy
+		if !cli.UpdateProxy("connect") {
+			return fmt.Errorf("failed to update proxy")
+		}
 	}
+	currentUser, initialTable, err := cli.LoadMessagesPage()
+	if err != nil {
+		return err
+	}
+	user.saveInitialTable(currentUser, initialTable)
 	cli.SetEventHandler(user.eventHandler)
 	// This needs to be set before Event_Ready is handled in eventHandler
 	user.Client = cli
@@ -996,47 +974,54 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 	}
 }
 
+func (user *User) saveInitialTable(currentUser types.UserInfo, tbl *table.LSTable) {
+	var newFBID int64
+	// TODO figure out why the contact IDs for self is different than the fbid in the ready event
+	for _, row := range tbl.LSVerifyContactRowExists {
+		if row.IsSelf && row.ContactId != newFBID {
+			if newFBID != 0 {
+				// Hopefully this won't happen
+				user.log.Warn().Int64("prev_fbid", newFBID).Int64("new_fbid", row.ContactId).Msg("Got multiple fbids for self")
+			} else {
+				user.log.Debug().Int64("fbid", row.ContactId).Msg("Found own fbid")
+			}
+			newFBID = row.ContactId
+		}
+	}
+	if newFBID == 0 {
+		newFBID = currentUser.GetFBID()
+		user.log.Warn().Int64("fbid", newFBID).Msg("Own contact entry not found, falling back to fbid in current user object")
+	}
+	if user.MetaID != newFBID {
+		user.bridge.usersLock.Lock()
+		user.MetaID = newFBID
+		// TODO check if there's another user?
+		user.bridge.usersByMetaID[user.MetaID] = user
+		user.bridge.usersLock.Unlock()
+		err := user.Update(context.TODO())
+		if err != nil {
+			user.log.Err(err).Msg("Failed to save user after getting meta ID")
+		}
+	}
+	puppet := user.bridge.GetPuppetByID(user.MetaID)
+	puppet.UpdateInfo(context.TODO(), currentUser)
+	user.tryAutomaticDoublePuppeting()
+	user.initialTable.Store(tbl)
+}
+
 func (user *User) eventHandler(rawEvt any) {
 	switch evt := rawEvt.(type) {
 	case *messagix.Event_PublishResponse:
 		user.log.Trace().Any("table", &evt.Table).Msg("Got new event")
 		user.handleTable(evt.Table)
 	case *messagix.Event_Ready:
-		var newFBID int64
-		// TODO figure out why the contact IDs for self is different than the fbid in the ready event
-		for _, row := range evt.Table.LSVerifyContactRowExists {
-			if row.IsSelf && row.ContactId != newFBID {
-				if newFBID != 0 {
-					// Hopefully this won't happen
-					user.log.Warn().Int64("prev_fbid", newFBID).Int64("new_fbid", row.ContactId).Msg("Got multiple fbids for self")
-				} else {
-					user.log.Debug().Int64("fbid", row.ContactId).Msg("Found own fbid")
-				}
-				newFBID = row.ContactId
-			}
-		}
-		if newFBID == 0 {
-			newFBID = evt.CurrentUser.GetFBID()
-			user.log.Warn().Int64("fbid", newFBID).Msg("Own contact entry not found, falling back to fbid in current user object")
-		}
-		if user.MetaID != newFBID {
-			user.bridge.usersLock.Lock()
-			user.MetaID = newFBID
-			// TODO check if there's another user?
-			user.bridge.usersByMetaID[user.MetaID] = user
-			user.bridge.usersLock.Unlock()
-			err := user.Update(context.TODO())
-			if err != nil {
-				user.log.Err(err).Msg("Failed to save user after getting meta ID")
-			}
-		}
-		puppet := user.bridge.GetPuppetByID(user.MetaID)
-		puppet.UpdateInfo(context.TODO(), evt.CurrentUser)
 		user.log.Debug().Msg("Initial connect to Meta socket completed")
 		user.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		user.BridgeState.Send(user.metaState)
-		user.tryAutomaticDoublePuppeting()
-		user.handleTable(evt.Table)
+		if initTable := user.initialTable.Swap(nil); initTable != nil {
+			user.log.Debug().Msg("Handling cached initial table")
+			user.handleTable(initTable)
+		}
 		if user.bridge.Config.Meta.Mode.IsMessenger() || user.bridge.Config.Meta.IGE2EE {
 			go func() {
 				err := user.connectE2EE()

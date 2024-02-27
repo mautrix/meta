@@ -13,7 +13,6 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/packets"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
-	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 func (s *Socket) handleReadyEvent(data *Event_Ready) error {
@@ -188,20 +187,11 @@ type Event_Ready struct {
 	client         *Client
 	IsNewSession   bool
 	ConnectionCode ConnectionCode
-	CurrentUser    types.UserInfo `skip:"1"`
-	Table          *table.LSTable
 }
 
 func (pb *Event_Ready) SetIdentifier(identifier uint16) {}
 
 func (e *Event_Ready) Finish() ResponseData {
-	// TODO this should not be in the ready event
-	if e.client.platform.IsMessenger() {
-		e.CurrentUser = &e.client.configs.browserConfigTable.CurrentUserInitialData
-	} else {
-		e.CurrentUser = &e.client.configs.browserConfigTable.PolarisViewer
-	}
-	e.Table = e.client.configs.accountConfigTable
 	return e
 }
 

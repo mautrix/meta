@@ -13,6 +13,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/methods"
+	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
@@ -72,6 +73,8 @@ type ModuleParser struct {
 	FormTags    []FormTag
 	LoginInputs []InputTag
 	JSDatr      string
+
+	LS *table.LSTable
 }
 
 func (m *ModuleParser) SetClientInstance(cli *Client) {
@@ -125,7 +128,7 @@ func (m *ModuleParser) Load(page string) error {
 					}
 					continue
 				}
-				//log.Println(fmt.Sprintf("failed to unmarshal content to moduleData: %v | content=%s", err, string(tag.Content)))
+				m.client.Logger.Warn().Err(err).Msg("Failed to parse script tag into bbox")
 				continue
 			}
 
@@ -142,8 +145,7 @@ func (m *ModuleParser) Load(page string) error {
 	// on certain occasions, the server does not return the lightspeed data or version
 	// when this is the case, the server "preloads" the js files in the link tags, so we need to loop through them until we can find the "LSVersion" module and extract the exported version string
 	if m.client.configs.VersionId == 0 && authenticated {
-		m.client.configs.needSync = true
-		m.client.Logger.Warn().Msg("Setting configs.needSync to true")
+		m.client.Logger.Warn().Msg("Version ID not found in index page")
 		var doneCrawling bool
 		linkTags := m.findLinkTags(doc)
 		for _, tag := range linkTags {

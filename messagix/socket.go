@@ -51,7 +51,7 @@ type Socket struct {
 	cleanClose          atomic.Pointer[func()]
 }
 
-func (c *Client) NewSocketClient() *Socket {
+func (c *Client) newSocketClient() *Socket {
 	return &Socket{
 		client: c,
 		responseHandler: &ResponseHandler{

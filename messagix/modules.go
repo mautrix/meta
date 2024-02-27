@@ -192,7 +192,7 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFun
 		return fmt.Errorf("messagix-moduleparser: failed to marshal lsPayloadStr into LightSpeedData: %v", err)
 	}
 
-	decoder := lightspeed.NewLightSpeedDecoder(deps.ToMap(), m.client.configs.accountConfigTable)
+	decoder := lightspeed.NewLightSpeedDecoder(deps.ToMap(), m.LS)
 	decoder.Decode(payload.Steps)
 	return nil
 }

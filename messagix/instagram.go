@@ -22,7 +22,7 @@ type InstagramMethods struct {
 
 func (ig *InstagramMethods) Login(identifier, password string) (cookies.Cookies, error) {
 	ig.client.loadLoginPage()
-	if err := ig.client.configs.SetupConfigs(); err != nil {
+	if _, err := ig.client.configs.SetupConfigs(nil); err != nil {
 		return nil, err
 	}
 	h := ig.client.buildHeaders(false)

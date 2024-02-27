@@ -44,9 +44,12 @@ const SecCHModel = ""
 const SecCHPrefersColorScheme = "light"
 
 var (
-	ErrTokenInvalidated  = errors.New("access token is no longer valid")
-	ErrChallengeRequired = errors.New("challenge required")
-	ErrConsentRequired   = errors.New("consent required")
+	ErrTokenInvalidated   = errors.New("access token is no longer valid")
+	ErrChallengeRequired  = errors.New("challenge required")
+	ErrConsentRequired    = errors.New("consent required")
+	ErrRequestFailed      = errors.New("failed to send request")
+	ErrResponseReadFailed = errors.New("failed to read response body")
+	ErrMaxRetriesReached  = errors.New("maximum retries reached")
 )
 
 type EventHandler func(evt interface{})
@@ -81,13 +84,13 @@ type Client struct {
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
 }
 
-func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.Logger, proxy string) (*Client, error) {
+func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.Logger) *Client {
 	cli := &Client{
 		http: &http.Client{
 			Transport: &http.Transport{
 				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
 				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 30 * time.Second,
+				ResponseHeaderTimeout: 20 * time.Second,
 				ForceAttemptHTTP2:     true,
 			},
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -107,7 +110,7 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 				}
 				return nil
 			},
-			Timeout: 120 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 		cookies:         cookies,
 		Logger:          logger,
@@ -121,51 +124,38 @@ func NewClient(platform types.Platform, cookies cookies.Cookies, logger zerolog.
 	cli.configurePlatformClient()
 	cli.configs = &Configs{
 		client:             cli,
-		needSync:           false,
 		browserConfigTable: &types.SchedulerJSDefineConfig{},
-		accountConfigTable: &table.LSTable{},
 		Bitmap:             crypto.NewBitmap(),
 		CsrBitmap:          crypto.NewBitmap(),
 	}
-	if proxy != "" {
-		err := cli.SetProxy(proxy)
-		if err != nil {
-			return nil, fmt.Errorf("messagix-client: failed to set proxy (%v)", err)
-		}
-	}
+	cli.socket = cli.newSocketClient()
 
-	if !cli.cookies.IsLoggedIn() {
-		return cli, nil
-	}
-
-	err := cli.configureAfterLogin()
-	if err != nil {
-		return nil, err
-	}
-
-	return cli, nil
+	return cli
 }
 
-func (c *Client) configureAfterLogin() error {
+func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 	if !c.cookies.IsLoggedIn() {
-		return fmt.Errorf("messagix-client: can't configure client after login, not authenticated yet")
+		return nil, nil, fmt.Errorf("can't load messages page without being authenticated")
 	}
-	socket := c.NewSocketClient()
-	c.socket = socket
 
-	moduleLoader := &ModuleParser{client: c}
+	moduleLoader := &ModuleParser{client: c, LS: &table.LSTable{}}
 	err := moduleLoader.Load(c.getEndpoint("messages"))
 	if err != nil {
-		return fmt.Errorf("failed to load inbox: %w", err)
+		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
 	}
 
 	c.SyncManager = c.NewSyncManager()
-	err = c.configs.SetupConfigs()
+	ls, err := c.configs.SetupConfigs(moduleLoader.LS)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-
-	return nil
+	var currentUser types.UserInfo
+	if c.platform.IsMessenger() {
+		currentUser = &c.configs.browserConfigTable.CurrentUserInitialData
+	} else {
+		currentUser = &c.configs.browserConfigTable.PolarisViewer
+	}
+	return currentUser, ls, nil
 }
 
 func (c *Client) loadLoginPage() *ModuleParser {
@@ -234,24 +224,22 @@ func (c *Client) SetEventHandler(handler EventHandler) {
 	c.eventHandler = handler
 }
 
-func (c *Client) UpdateProxy(reason string) {
+func (c *Client) UpdateProxy(reason string) bool {
 	if c.GetNewProxy == nil {
-		return
+		return true
 	}
 	if proxyAddr, err := c.GetNewProxy(reason); err != nil {
 		c.Logger.Err(err).Str("reason", reason).Msg("Failed to get new proxy")
+		return false
 	} else if err = c.SetProxy(proxyAddr); err != nil {
 		c.Logger.Err(err).Str("reason", reason).Msg("Failed to set new proxy")
+		return false
 	}
+	return true
 }
 
 func (c *Client) Connect() error {
-	if c.socket == nil {
-		err := c.configureAfterLogin()
-		if err != nil {
-			return err
-		}
-	} else if err := c.socket.CanConnect(); err != nil {
+	if err := c.socket.CanConnect(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
