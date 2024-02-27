@@ -18,6 +18,7 @@ import (
 
 var jsDatrPattern = regexp.MustCompile(`"_js_datr","([^"]+)"`)
 var versionPattern = regexp.MustCompile(`__d\("LSVersion"[^)]+\)\{e\.exports="(\d+)"\}`)
+var ssjsHackyVersionPattern = regexp.MustCompile(`\\\\\\"snapshot_num_threads_per_page\\\\\\":\d+}\\",\\"version\\":(\d+)}`)
 
 type ModuleData struct {
 	Define    [][]interface{} `json:"define,omitempty"`
@@ -96,6 +97,14 @@ func (m *ModuleParser) Load(page string) error {
 			if tag.Content == "" {
 				continue
 			}
+			match := ssjsHackyVersionPattern.FindStringSubmatch(tag.Content)
+			if len(match) == 2 {
+				m.client.configs.VersionId, err = strconv.ParseInt(match[1], 10, 64)
+				if err != nil {
+					return fmt.Errorf("messagix-moduleparser: failed to parse version id from ssjsHackyVersionPattern: %w", err)
+				}
+				m.client.Logger.Info().Int64("ls_version", m.client.configs.VersionId).Msg("Found LSVersion in SSJS")
+			}
 			var data *ModuleData
 			err := json.Unmarshal([]byte(tag.Content), &data)
 			if err != nil {
@@ -126,7 +135,7 @@ func (m *ModuleParser) Load(page string) error {
 	// when this is the case, the server "preloads" the js files in the link tags, so we need to loop through them until we can find the "LSVersion" module and extract the exported version string
 	if m.client.configs.VersionId == 0 && authenticated {
 		m.client.configs.needSync = true
-		m.client.Logger.Debug().Msg("Setting configs.needSync to true")
+		m.client.Logger.Warn().Msg("Setting configs.needSync to true")
 		var doneCrawling bool
 		linkTags := m.findLinkTags(doc)
 		for _, tag := range linkTags {
@@ -270,6 +279,7 @@ func (m *ModuleParser) crawlJavascriptFile(href string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		m.client.Logger.Info().Int64("ls_version", versionInt).Msg("Found LSVersion")
 		m.client.configs.VersionId = versionInt
 		return true, nil
 	}

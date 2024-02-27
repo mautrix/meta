@@ -63,6 +63,12 @@ func (c *Configs) SetupConfigs() error {
 			//c.client.Logger.Info().Any("lsData", lsData).Msg("Synced data through graphql query")
 			c.accountConfigTable = lsData
 		} else {
+			if len(c.accountConfigTable.LSUpsertSyncGroupThreadsRange) > 0 {
+				err := c.client.SyncManager.updateThreadRanges(c.accountConfigTable.LSUpsertSyncGroupThreadsRange)
+				if err != nil {
+					return fmt.Errorf("failed to update thread ranges from js module data: %w", err)
+				}
+			}
 			err := c.client.SyncManager.SyncTransactions(c.accountConfigTable.LSExecuteFirstBlockForSyncTransaction)
 			if err != nil {
 				return fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
