@@ -1,6 +1,7 @@
 package lightspeed
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"reflect"
@@ -132,6 +133,18 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 		first := ls.Decode(stepData[0]).(int64)
 		second := ls.Decode(stepData[1]).(int64)
 		return first + second
+	case TO_BLOB:
+		blobBase64, ok := stepData[0].(string)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in TO_BLOB (expected string)")
+			return nil
+		}
+		blob, err := base64.StdEncoding.DecodeString(blobBase64)
+		if err != nil {
+			badGlobalLog.Err(err).Str("blob_base64", blobBase64).Msg("Failed to decode blob")
+			return nil
+		}
+		return blob
 	default:
 		badGlobalLog.Error().Int("step_type", int(stepType)).Any("step_data", stepData).Msg("Got unknown step type")
 	}
