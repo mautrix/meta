@@ -41,7 +41,11 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	switch stepType {
 	case BLOCK:
 		for _, blockData := range stepData {
-			stepDataArr := blockData.([]interface{})
+			stepDataArr, ok := blockData.([]interface{})
+			if !ok {
+				badGlobalLog.Warn().Any("block_data", blockData).Msg("Failed to decode block data")
+				continue
+			}
 			ls.Decode(stepDataArr)
 		}
 	case LOAD:
@@ -76,12 +80,21 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 		ls.StatementReferences[int(key)] = int64(shouldStore)
 		ls.Decode(s[2:])
 	case CALL_STORED_PROCEDURE:
-		referenceName := stepData[0].(string)
+		referenceName, ok := stepData[0].(string)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in CALL_STORED_PROCEDURE (expected string)")
+			return nil
+		}
 		ls.handleStoredProcedure(referenceName, stepData[1:])
 	case UNDEFINED:
 		return nil
 	case I64_FROM_STRING:
-		i64, err := strconv.ParseInt(stepData[0].(string), 10, 64)
+		strVal, ok := stepData[0].(string)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in I64_FROM_STRING (expected string)")
+			return nil
+		}
+		i64, err := strconv.ParseInt(strVal, 10, 64)
 		if err != nil {
 			badGlobalLog.Err(err).Any("input_data", stepData[0]).Msg("[I64_FROM_STRING] failed to convert string to int64")
 			return 0
@@ -89,7 +102,11 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 		return i64
 	case IF:
 		statement := stepData[0]
-		result := ls.Decode(statement).(int64)
+		result, ok := ls.Decode(statement).(int64)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Failed to decode statement in IF")
+			return nil
+		}
 		if result > 0 {
 			ls.Decode(stepData[1])
 		} else if len(stepData) >= 3 {
@@ -98,7 +115,13 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 			}
 		}
 	case NOT:
-		return ls.Decode(stepData[0]).(int64)
+		val, ok := ls.Decode(stepData[0]).(int64)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in NOT (expected int64)")
+			return nil
+		}
+		// TODO why is this just returning the value?
+		return val
 	case NATIVE_OP_CURRENT_TIME:
 		return time.Now().UnixMilli()
 	case CALL_NATIVE_OPERATION:
@@ -109,7 +132,7 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case NATIVE_OP_MAP_SET:
 		mapToUpdate, ok := ls.Decode(stepData[0]).(map[string]interface{})
 		if !ok {
-			badGlobalLog.Warn().Msg("failed to type assert map from statement references...")
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in NATIVE_OP_MAP_SET (expected map)")
 			return nil
 		}
 		mapKey := ls.Decode(stepData[1])
@@ -123,16 +146,46 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 	case NATIVE_OP_ARRAY_CREATE:
 		return make([]any, 0)
 	case NATIVE_OP_ARRAY_APPEND:
-		return append(ls.Decode(stepData[0]).([]any), ls.Decode(stepData[1]))
+		decodedArr, ok := ls.Decode(stepData[0]).([]any)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in NATIVE_OP_ARRAY_APPEND (expected array)")
+			return nil
+		}
+		return append(decodedArr, ls.Decode(stepData[1]))
 	case NATIVE_OP_ARRAY_GET_SIZE:
-		return len(ls.Decode(stepData[0]).([]any))
+		decodedArr, ok := ls.Decode(stepData[0]).([]any)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in NATIVE_OP_ARRAY_GET_SIZE (expected array)")
+			return nil
+		}
+		return len(decodedArr)
 	case LOGGER_LOG:
 		badGlobalLog.Debug().Msgf("Facebook server log: %v", stepData[0]) // zerolog-allow-msgf
 		return nil
 	case I64_ADD:
-		first := ls.Decode(stepData[0]).(int64)
-		second := ls.Decode(stepData[1]).(int64)
+		first, ok := ls.Decode(stepData[0]).(int64)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in I64_ADD (expected int64)")
+			return nil
+		}
+		second, ok := ls.Decode(stepData[1]).(int64)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in I64_ADD (expected int64)")
+			return nil
+		}
 		return first + second
+	case I64_EQUAL:
+		first, ok := ls.Decode(stepData[0]).(int64)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in I64_EQUAL (expected int64)")
+			return nil
+		}
+		second, ok := ls.Decode(stepData[1]).(int64)
+		if !ok {
+			badGlobalLog.Warn().Any("step_data", stepData).Msg("Unexpected step data in I64_EQUAL (expected int64)")
+			return nil
+		}
+		return first == second
 	case TO_BLOB:
 		blobBase64, ok := stepData[0].(string)
 		if !ok {
