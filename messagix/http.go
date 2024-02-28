@@ -113,7 +113,7 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 			Str("method", method).
 			Dur("duration", dur).
 			Msg("Request failed, retrying")
-		time.Sleep(time.Duration(attempts) * 2)
+		time.Sleep(time.Duration(attempts) * 3 * time.Second)
 	}
 }
 
