@@ -506,8 +506,12 @@ func (user *User) unlockedConnect() {
 				Error:      IGConsentRequired,
 			})
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
+			stateEvt := status.StateUnknownError
+			if lsErr.ErrorCode == 1357053 {
+				stateEvt = status.StateBadCredentials
+			}
 			user.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateUnknownError,
+				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
 				Message:    lsErr.Error(),
 			})
