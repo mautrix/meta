@@ -337,7 +337,7 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 }
 
 var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
-var reelActionURLRegex2 = regexp.MustCompile(`^/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
+var reelActionURLRegex2 = regexp.MustCompile(`^https://instagram\.com/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
 
 func trimPostTitle(title string, maxLines int) string {
 	// For some reason Instagram gives maxLines 1 less than what they mean (i.e. what the official clients render)
@@ -506,9 +506,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
 		}
-	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/"):
+	//case strings.HasPrefix(att.CTA.ActionUrl, "/stories/archive/"):
+	//		TODO can these be handled?
+	case strings.HasPrefix(att.CTA.ActionUrl, "https://instagram.com/stories/"):
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching second type of XMA story from CTA data")
-		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
+		externalURL := att.CTA.ActionUrl
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
