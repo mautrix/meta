@@ -30,6 +30,7 @@ import (
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloApplication"
+	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloXMA"
 	"go.mau.fi/whatsmeow/binary/armadillo/waCommon"
 	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
 	"go.mau.fi/whatsmeow/binary/armadillo/waMediaTransport"
@@ -355,11 +356,34 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 	return
 }
 
+func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*ConvertedMessagePart) {
+	body := content.MessageText
+	for _, cta := range content.GetCtas() {
+		if strings.HasPrefix(cta.NativeURL, "https://") && !strings.Contains(body, cta.NativeURL) {
+			if body == "" {
+				body = cta.NativeURL
+			} else {
+				body = fmt.Sprintf("%s\n\n%s", body, cta.NativeURL)
+			}
+		}
+	}
+	return []*ConvertedMessagePart{{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    body,
+		},
+		Extra: map[string]any{
+			"fi.mau.meta.temporary_unsupported_type": "Armadillo ExtendedContentMessage",
+		},
+	}}
+}
+
 func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent *waArmadilloApplication.Armadillo_Content) (parts []*ConvertedMessagePart) {
 	parts = make([]*ConvertedMessagePart, 0, 2)
 	switch content := rawContent.GetContent().(type) {
-	//case *waArmadilloApplication.Armadillo_Content_ExtendedContentMessage:
-	//	// TODO
+	case *waArmadilloApplication.Armadillo_Content_ExtendedContentMessage:
+		return mc.waExtendedContentMessageToMatrix(ctx, content.ExtendedContentMessage)
 	//case *waArmadilloApplication.Armadillo_Content_RavenMessage_:
 	//	// TODO
 	default:
