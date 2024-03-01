@@ -58,7 +58,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, media *MercuryUpl
 
 	resp, err := c.parseMercuryResponse(ctx, respBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse mercury response: %v", err)
+		return nil, err
 	}
 
 	return resp, nil
@@ -78,7 +78,7 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 
 	var mercuryResponse *types.MercuryUploadResponse
 	if err := json.Unmarshal(jsonData, &mercuryResponse); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse mercury response: %v", err)
 	} else if mercuryResponse.ErrorCode != 0 {
 		return nil, fmt.Errorf("error in mercury upload: %w", &mercuryResponse.ErrorResponse)
 	}
