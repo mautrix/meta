@@ -88,6 +88,9 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	cm := &ConvertedMessage{
 		Parts: make([]*ConvertedMessagePart, 0),
 	}
+	if msg.IsUnsent {
+		return cm
+	}
 	for _, blobAtt := range msg.BlobAttachments {
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt))
 	}

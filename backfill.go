@@ -556,6 +556,10 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 			}
 		}
 	}
+	if len(events) == 0 {
+		log.Info().Msg("No events to send in backfill batch")
+		return
+	}
 	if unreadHoursThreshold := portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold; unreadHoursThreshold > 0 && !markRead && len(messages) > 0 {
 		markRead = messages[len(messages)-1].TimestampMs < time.Now().Add(-time.Duration(unreadHoursThreshold)*time.Hour).UnixMilli()
 		if markRead {
@@ -571,7 +575,7 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 		log.Info().Int("event_count", len(events)).Msg("Sending events to Matrix one by one")
 		portal.sendBackfillLegacy(ctx, source, events, metas, markRead)
 	}
-	zerolog.Ctx(ctx).Info().Msg("Finished sending backfill batch")
+	log.Info().Msg("Finished sending backfill batch")
 }
 
 func (portal *Portal) sendBackfillLegacy(ctx context.Context, source *User, events []*event.Event, metas []*BackfillPartMetadata, markRead bool) {
