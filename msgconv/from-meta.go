@@ -522,11 +522,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL (type 2)")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
 			return minimalConverted
-		} else if resp, err := ig.FetchReel([]string{match[2]}, ""); err != nil {
+		} else if resp, err := ig.FetchMedia(match[2], ""); err != nil {
 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story (type 2)")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
 			return minimalConverted
-		} else if reel, ok := resp.Reels[match[2]]; !ok {
+		} else if len(resp.Items) == 0 {
 			log.Trace().
 				Str("action_url", att.CTA.ActionUrl).
 				Any("response", resp).
@@ -540,15 +540,15 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
 			return minimalConverted
 		} else {
+			relevantItem := resp.Items[0]
 			log.Trace().
 				Str("action_url", att.CTA.ActionUrl).
 				Str("reel_id", match[2]).
 				Str("media_id", match[1]).
 				Any("response", resp).
 				Msg("Fetched XMA story (type 2)")
-			minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
-			log.Debug().Int("item_count", len(reel.Items)).Msg("Fetched XMA story (no exact item, type 2)")
-			relevantItem := &reel.Items[0].Items
+			minimalConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
+			log.Debug().Int("item_count", len(resp.Items)).Msg("Fetched XMA story (type 2)")
 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
@@ -558,7 +558,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
-			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
+			secondConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
 			}
