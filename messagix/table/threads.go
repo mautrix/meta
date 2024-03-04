@@ -159,8 +159,10 @@ type LSAddParticipantIdToGroupThread struct {
 	SubscribeSource               string `index:"7" json:",omitempty"`
 	AuthorityLevel                int64  `index:"9" json:",omitempty"`
 	NormalizedSearchTerms         string `index:"10" json:",omitempty"`
-	IsSuperAdmin                  bool   `index:"11" json:",omitempty"`
-	ThreadRoles                   int64  `index:"12" json:",omitempty"`
+	GroupParticipantJoinState     int64  `index:"11" json:",omitempty"`
+	IsModerator                   bool   `index:"12" json:",omitempty"`
+	IsSuperAdmin                  bool   `index:"13" json:",omitempty"`
+	ThreadRoles                   int64  `index:"14" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
