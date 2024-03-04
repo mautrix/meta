@@ -153,6 +153,11 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.E
 		IsVoiceClip: isVoice,
 	})
 	if err != nil {
+		zerolog.Ctx(ctx).Debug().
+			Str("file_name", fileName).
+			Str("mime_type", mimeType).
+			Bool("is_voice_clip", isVoice).
+			Msg("Failed upload metadata")
 		return nil, fmt.Errorf("%w: %w", ErrMediaUploadFailed, err)
 	}
 	return resp, nil
