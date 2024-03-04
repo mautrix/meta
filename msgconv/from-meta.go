@@ -656,13 +656,22 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		converted.Extra["external_url"] = removeLPHP(att.CTA.ActionUrl)
 	}
 	parts := []*ConvertedMessagePart{converted}
-	if att.TitleText != "" {
+	if att.TitleText != "" || att.CaptionBodyText != "" {
+		captionContent := &event.MessageEventContent{
+			MsgType: event.MsgText,
+		}
+		if att.TitleText != "" {
+			captionContent.Body = trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines))
+		}
+		if att.CaptionBodyText != "" {
+			if captionContent.Body != "" {
+				captionContent.Body += "\n\n"
+			}
+			captionContent.Body += att.CaptionBodyText
+		}
 		parts = append(parts, &ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgText,
-				Body:    trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines)),
-			},
+			Type:    event.EventMessage,
+			Content: captionContent,
 			Extra: map[string]any{
 				"com.beeper.meta.full_post_title": att.TitleText,
 			},
