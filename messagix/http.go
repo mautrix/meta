@@ -77,7 +77,7 @@ func (c *Client) NewHttpQuery() *HttpQuery {
 	return query
 }
 
-const MaxHTTPRetries = 3
+const MaxHTTPRetries = 5
 
 func (c *Client) MakeRequest(url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
 	var attempts int

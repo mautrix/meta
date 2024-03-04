@@ -92,7 +92,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 			Transport: &http.Transport{
 				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
 				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 20 * time.Second,
+				ResponseHeaderTimeout: 40 * time.Second,
 				ForceAttemptHTTP2:     true,
 			},
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
