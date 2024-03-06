@@ -102,7 +102,7 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 	if !strings.HasSuffix(req.URL.Hostname(), "fbcdn.net") && !strings.HasSuffix(req.URL.Hostname(), "facebookcooa4ldbat4g7iacswl3p2zrf5nuylvnhxn6kqolvojixwid.onion") {
 		var prevURL string
 		if len(via) > 0 {
-			prevURL = via[0].URL.String()
+			prevURL = via[len(via)-1].URL.String()
 		}
 		c.Logger.Warn().
 			Stringer("url", req.URL).
