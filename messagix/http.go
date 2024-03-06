@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
@@ -94,9 +95,19 @@ func isPermanentRequestError(err error) bool {
 		errors.Is(err, ErrConsentRequired)
 }
 
-func checkHTTPRedirect(req *http.Request, _ []*http.Request) error {
+func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error {
 	if req.Response == nil {
 		return nil
+	}
+	if !strings.HasSuffix(req.URL.Hostname(), "fbcdn.net") && !strings.HasSuffix(req.URL.Hostname(), "facebookcooa4ldbat4g7iacswl3p2zrf5nuylvnhxn6kqolvojixwid.onion") {
+		var prevURL string
+		if len(via) > 0 {
+			prevURL = via[0].URL.String()
+		}
+		c.Logger.Warn().
+			Stringer("url", req.URL).
+			Str("prev_url", prevURL).
+			Msg("HTTP request was redirected")
 	}
 	if req.URL.Path == "/challenge/" {
 		return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())

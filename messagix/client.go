@@ -86,8 +86,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 				ResponseHeaderTimeout: 40 * time.Second,
 				ForceAttemptHTTP2:     true,
 			},
-			CheckRedirect: checkHTTPRedirect,
-			Timeout:       60 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 		cookies:         cookies,
 		Logger:          logger,
@@ -97,6 +96,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		activeTasks:     make([]int, 0),
 		taskMutex:       &sync.Mutex{},
 	}
+	cli.http.CheckRedirect = cli.checkHTTPRedirect
 
 	cli.configurePlatformClient()
 	cli.configs = &Configs{
