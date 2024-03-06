@@ -42,15 +42,6 @@ const SecCHMobile = "?0"
 const SecCHModel = ""
 const SecCHPrefersColorScheme = "light"
 
-var (
-	ErrTokenInvalidated   = errors.New("access token is no longer valid")
-	ErrChallengeRequired  = errors.New("challenge required")
-	ErrConsentRequired    = errors.New("consent required")
-	ErrRequestFailed      = errors.New("failed to send request")
-	ErrResponseReadFailed = errors.New("failed to read response body")
-	ErrMaxRetriesReached  = errors.New("maximum retries reached")
-)
-
 type EventHandler func(evt interface{})
 type Client struct {
 	Instagram *InstagramMethods
@@ -95,24 +86,8 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 				ResponseHeaderTimeout: 40 * time.Second,
 				ForceAttemptHTTP2:     true,
 			},
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if req.Response == nil {
-					return nil
-				}
-				if req.URL.Path == "/challenge/" {
-					return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
-				} else if req.URL.Path == "/consent/" {
-					return fmt.Errorf("%w: redirected to %s", ErrConsentRequired, req.URL.String())
-				}
-				respCookies := req.Response.Cookies()
-				for _, cookie := range respCookies {
-					if (cookie.Name == "xs" || cookie.Name == "sessionid") && cookie.MaxAge < 0 {
-						return fmt.Errorf("%w: %s cookie was deleted", ErrTokenInvalidated, cookie.Name)
-					}
-				}
-				return nil
-			},
-			Timeout: 60 * time.Second,
+			CheckRedirect: checkHTTPRedirect,
+			Timeout:       60 * time.Second,
 		},
 		cookies:         cookies,
 		Logger:          logger,

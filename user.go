@@ -182,6 +182,7 @@ const (
 	IGChallengeRequiredMaybe   status.BridgeStateErrorCode = "ig-challenge-required-maybe"
 	MetaServerUnavailable      status.BridgeStateErrorCode = "meta-server-unavailable"
 	IGConsentRequired          status.BridgeStateErrorCode = "ig-consent-required"
+	FBConsentRequired          status.BridgeStateErrorCode = "fb-consent-required"
 )
 
 func init() {
@@ -193,6 +194,7 @@ func init() {
 		IGChallengeRequired:        "Challenge required, please check the Instagram website to continue",
 		IGChallengeRequiredMaybe:   "Connection refused, please check the Instagram website to continue",
 		IGConsentRequired:          "Consent required, please check the Instagram website to continue",
+		FBConsentRequired:          "Consent required, please check the Facebook website to continue",
 		MetaServerUnavailable:      "Connection refused by server",
 		MetaConnectError:           "Unknown connection error",
 	})
@@ -506,9 +508,13 @@ func (user *User) unlockedConnect() {
 				Error:      IGChallengeRequired,
 			})
 		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			code := IGConsentRequired
+			if user.bridge.Config.Meta.Mode.IsMessenger() {
+				code = FBConsentRequired
+			}
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
-				Error:      IGConsentRequired,
+				Error:      code,
 			})
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			stateEvt := status.StateUnknownError

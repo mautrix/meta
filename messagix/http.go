@@ -79,6 +79,39 @@ func (c *Client) NewHttpQuery() *HttpQuery {
 
 const MaxHTTPRetries = 5
 
+var (
+	ErrTokenInvalidated   = errors.New("access token is no longer valid")
+	ErrChallengeRequired  = errors.New("challenge required")
+	ErrConsentRequired    = errors.New("consent required")
+	ErrRequestFailed      = errors.New("failed to send request")
+	ErrResponseReadFailed = errors.New("failed to read response body")
+	ErrMaxRetriesReached  = errors.New("maximum retries reached")
+)
+
+func isPermanentRequestError(err error) bool {
+	return errors.Is(err, ErrTokenInvalidated) ||
+		errors.Is(err, ErrChallengeRequired) ||
+		errors.Is(err, ErrConsentRequired)
+}
+
+func checkHTTPRedirect(req *http.Request, _ []*http.Request) error {
+	if req.Response == nil {
+		return nil
+	}
+	if req.URL.Path == "/challenge/" {
+		return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
+	} else if req.URL.Path == "/consent/" || req.URL.Path == "/privacy/consent/" {
+		return fmt.Errorf("%w: redirected to %s", ErrConsentRequired, req.URL.String())
+	}
+	respCookies := req.Response.Cookies()
+	for _, cookie := range respCookies {
+		if (cookie.Name == "xs" || cookie.Name == "sessionid") && cookie.MaxAge < 0 {
+			return fmt.Errorf("%w: %s cookie was deleted", ErrTokenInvalidated, cookie.Name)
+		}
+	}
+	return nil
+}
+
 func (c *Client) MakeRequest(url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
 	var attempts int
 	for {
@@ -100,7 +133,7 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 				Dur("duration", dur).
 				Msg("Request failed, giving up")
 			return nil, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
-		} else if errors.Is(err, ErrConsentRequired) || errors.Is(err, ErrChallengeRequired) || errors.Is(err, ErrTokenInvalidated) {
+		} else if isPermanentRequestError(err) {
 			c.Logger.Err(err).
 				Str("url", url).
 				Str("method", method).
