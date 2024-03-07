@@ -240,7 +240,10 @@ func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waC
 		converted.Content.Info.Width = int(metadata.GetWidth())
 		converted.Content.Info.Height = int(metadata.GetHeight())
 		converted.Content.Info.Duration = int(metadata.GetSeconds() * 1000)
-		if metadata.GetGifPlayback() {
+		// FB is annoying and sends images in video containers sometimes
+		if converted.Content.Info.MimeType == "image/gif" {
+			converted.Content.MsgType = event.MsgImage
+		} else if metadata.GetGifPlayback() {
 			converted.Extra["info"] = map[string]any{
 				"fi.mau.gif":           true,
 				"fi.mau.loop":          true,
