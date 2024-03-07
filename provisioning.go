@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
@@ -31,6 +32,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/database"
+	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 )
 
@@ -119,7 +121,19 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	err = user.Login(ctx, &newCookies)
 	if err != nil {
 		log.Err(err).Msg("Failed to log in")
-		jsonResponse(w, http.StatusInternalServerError, Error{ErrCode: "M_UNKNOWN", Error: "Internal error logging in"})
+		if errors.Is(err, messagix.ErrChallengeRequired) {
+			jsonResponse(w, http.StatusBadRequest, Error{ErrCode: "FI.MAU.META_CHALLENGE_ERROR", Error: "Challenge required, please check the Instagram website and then try again"})
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			if prov.bridge.Config.Meta.Mode.IsMessenger() {
+				jsonResponse(w, http.StatusBadRequest, Error{ErrCode: "FI.MAU.META_CONSENT_ERROR", Error: "Consent required, please check the Facebook website and then try again"})
+			} else {
+				jsonResponse(w, http.StatusBadRequest, Error{ErrCode: "FI.MAU.META_CONSENT_ERROR", Error: "Consent required, please check the Instagram website and then try again"})
+			}
+		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+			jsonResponse(w, http.StatusBadRequest, Error{ErrCode: "FI.MAU.META_TOKEN_ERROR", Error: "Got logged out immediately"})
+		} else {
+			jsonResponse(w, http.StatusInternalServerError, Error{ErrCode: "M_UNKNOWN", Error: "Internal error logging in"})
+		}
 	} else {
 		jsonResponse(w, http.StatusOK, Response{
 			Success: true,
