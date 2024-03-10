@@ -58,8 +58,14 @@ func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, r
 		if mention.Offset < prevEnd {
 			zerolog.Ctx(ctx).Warn().Msg("Ignoring overlapping mentions in message")
 			continue
+		} else if mention.Offset >= len(utf16Text) {
+			zerolog.Ctx(ctx).Warn().Msg("Ignoring mention outside of message")
+			continue
 		}
 		end := mention.Offset + mention.Length
+		if end > len(utf16Text) {
+			end = len(utf16Text)
+		}
 		var mentionLink string
 		switch mention.Type {
 		case socket.MentionTypePerson:
