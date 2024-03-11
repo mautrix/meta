@@ -160,7 +160,7 @@ func (br *MetaBridge) Start() {
 
 func (br *MetaBridge) Stop() {
 	for _, user := range br.usersByMXID {
-		br.Log.Debugln("Disconnecting", user.MXID)
+		user.log.Debug().Msg("Disconnecting user")
 		user.Disconnect()
 	}
 }
