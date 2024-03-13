@@ -414,6 +414,7 @@ func (portal *Portal) handleMessageBatch(ctx context.Context, source *User, upse
 			log.Err(err).Msg("Failed to save oldest message ID/timestamp in database")
 		} else {
 			log.Debug().
+				Bool("more_to_backfill", portal.MoreToBackfill).
 				Int64("oldest_message_ts", portal.OldestMessageTS).
 				Str("oldest_message_id", portal.OldestMessageID).
 				Msg("Saved oldest message ID/timestamp in database")

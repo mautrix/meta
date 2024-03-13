@@ -1882,6 +1882,7 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 	portal.NameSet = len(req.Name) > 0
 	portal.AvatarSet = !portal.AvatarURL.IsEmpty()
 	portal.MXID = resp.RoomID
+	portal.MoreToBackfill = true
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
