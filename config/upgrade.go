@@ -66,9 +66,6 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Set(up.Str, legacyBotAvatar, "appservice", "bot", "avatar")
 	}
 
-	helper.Copy(up.Bool, "metrics", "enabled")
-	helper.Copy(up.Str, "metrics", "listen")
-
 	helper.Copy(up.Str, "meta", "mode")
 	helper.Copy(up.Bool, "meta", "ig_e2ee")
 	helper.Copy(up.Str|up.Null, "meta", "proxy")
@@ -168,7 +165,6 @@ var SpacedBlocks = [][]string{
 	{"appservice", "id"},
 	{"appservice", "ephemeral_events"},
 	{"appservice", "as_token"},
-	{"metrics"},
 	{"meta"},
 	{"bridge"},
 	{"bridge", "personal_filtering_spaces"},

@@ -45,11 +45,6 @@ func (bm BridgeMode) IsInstagram() bool {
 type Config struct {
 	*bridgeconfig.BaseConfig `yaml:",inline"`
 
-	Metrics struct {
-		Enabled bool   `yaml:"enabled"`
-		Listen  string `yaml:"listen"`
-	} `yaml:"metrics"`
-
 	Meta struct {
 		Mode         BridgeMode `yaml:"mode"`
 		IGE2EE       bool       `yaml:"ig_e2ee"`
