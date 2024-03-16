@@ -12,14 +12,14 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.32.0
 	go.mau.fi/libsignal v0.1.0
-	go.mau.fi/util v0.4.1-0.20240311141448-53cb04950f7e
-	go.mau.fi/whatsmeow v0.0.0-20240308162537-79d9175fa09b
+	go.mau.fi/util v0.4.1
+	go.mau.fi/whatsmeow v0.0.0-20240316104858-18372a0653fa
 	golang.org/x/crypto v0.21.0
-	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225
+	golang.org/x/exp v0.0.0-20240314144324-c7f7c6466f7f
 	golang.org/x/image v0.15.0
 	golang.org/x/net v0.22.0
 	google.golang.org/protobuf v1.33.0
-	maunium.net/go/mautrix v0.18.0-beta.1.0.20240311183606-94246ffc85aa
+	maunium.net/go/mautrix v0.18.0
 )
 
 require (
