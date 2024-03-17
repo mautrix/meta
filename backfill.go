@@ -123,7 +123,7 @@ func (user *User) handleBackfillTask(ctx context.Context, task *database.Backfil
 }
 
 func (user *User) BackfillLoop() {
-	if !user.bridge.Config.Bridge.Backfill.Enabled {
+	if !user.bridge.Config.Bridge.Backfill.Enabled || !user.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending) {
 		return
 	}
 	log := user.log.With().Str("action", "backfill loop").Logger()
