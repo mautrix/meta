@@ -9,7 +9,7 @@ require (
 	github.com/tidwall/gjson v1.17.1
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/mautrix-meta v0.1.0
-	go.mau.fi/util v0.4.1
+	go.mau.fi/util v0.4.2-0.20240318211948-d27d5a4cda9e
 )
 
 require (

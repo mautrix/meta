@@ -20,10 +20,13 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/configupgrade"
+	flag "maunium.net/go/mauflag"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
@@ -36,6 +39,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
+	"go.mau.fi/mautrix-meta/database/legacymigrate"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
@@ -52,6 +56,11 @@ var (
 	Commit    = "unknown"
 	BuildTime = "unknown"
 )
+
+var migrateLegacyFrom = flag.Make().
+	LongKey("db-migrate-from").
+	Usage("Migrate from a legacy mautrix-facebook database").
+	String()
 
 type MetaBridge struct {
 	bridge.Bridge
@@ -101,6 +110,21 @@ func (br *MetaBridge) ValidateConfig() error {
 }
 
 func (br *MetaBridge) Init() {
+	br.DB = database.New(br.Bridge.DB)
+	if *migrateLegacyFrom != "" {
+		if br.Config.Meta.Mode.IsInstagram() {
+			br.ZLog.Fatal().Msg("Instagram database can't be migrated")
+		}
+		dialect := "sqlite3"
+		if strings.HasPrefix(*migrateLegacyFrom, "postgres") {
+			dialect = "postgres"
+		}
+		br.ZLog.Info().Str("legacy_db_dialect", dialect).Msg("Database migration requested")
+		legacymigrate.Migrate(br.ZLog.WithContext(context.Background()), br.DB, dialect, *migrateLegacyFrom)
+		_ = br.DB.Close()
+		os.Exit(0)
+	}
+
 	var defaultCommandPrefix string
 	switch br.Config.Meta.Mode {
 	case config.ModeInstagram:
@@ -137,7 +161,6 @@ func (br *MetaBridge) Init() {
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
 	br.RegisterCommands()
 
-	br.DB = database.New(br.Bridge.DB)
 	br.DeviceStore = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), waLog.Zerolog(br.ZLog.With().Str("db_section", "whatsmeow").Logger()))
 
 	ss := br.Config.Bridge.Provisioning.SharedSecret
