@@ -510,6 +510,7 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 				log.Err(err).Str("message_id", msg.MessageId).Int("part_index", i).Msg("Failed to encrypt event")
 				continue
 			}
+			intent.AddDoublePuppetValue(content)
 
 			events = append(events, &event.Event{
 				Sender:    intent.UserID,
