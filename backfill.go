@@ -583,7 +583,7 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 func (portal *Portal) sendBackfillLegacy(ctx context.Context, source *User, events []*event.Event, metas []*BackfillPartMetadata, markRead bool) {
 	var lastEventID id.EventID
 	for i, evt := range events {
-		resp, err := portal.sendMatrixEvent(ctx, metas[i].Intent, evt.Type, evt.Content.Parsed, evt.Content.Raw, evt.Timestamp)
+		resp, err := metas[i].Intent.SendMassagedMessageEvent(ctx, portal.MXID, evt.Type, &evt.Content, evt.Timestamp)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Int("evt_index", i).Msg("Failed to send event")
 		} else {
