@@ -408,6 +408,7 @@ func fnSearch(ce *WrappedCommandEvent) {
 		Secondary:   false,
 	}
 	if ce.Bridge.Config.Meta.Mode.IsMessenger() {
+		task.SurfaceType = 5
 		task.SupportedTypes = append(task.SupportedTypes, table.SearchTypeCommunityMessagingThread)
 	}
 	taskCopy := *task
