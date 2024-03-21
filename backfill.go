@@ -562,6 +562,7 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 		log.Info().Msg("No events to send in backfill batch")
 		return
 	}
+	allowNotification := messages[len(messages)-1].TimestampMs < time.Now().Add(-24*time.Hour).UnixMilli()
 	if unreadHoursThreshold := portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold; unreadHoursThreshold > 0 && !markRead && len(messages) > 0 {
 		markRead = messages[len(messages)-1].TimestampMs < time.Now().Add(-time.Duration(unreadHoursThreshold)*time.Hour).UnixMilli()
 		if markRead {
@@ -571,8 +572,13 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 		}
 	}
 	if portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending) {
-		log.Info().Int("event_count", len(events)).Msg("Sending events to Matrix using Beeper batch sending")
-		portal.sendBackfillBeeper(ctx, source, events, metas, markRead, forward)
+		log.Info().
+			Int("event_count", len(events)).
+			Bool("mark_read", markRead).
+			Bool("allow_notification", allowNotification).
+			Bool("forward", forward).
+			Msg("Sending events to Matrix using Beeper batch sending")
+		portal.sendBackfillBeeper(ctx, source, events, metas, markRead, allowNotification, forward)
 	} else {
 		log.Info().Int("event_count", len(events)).Msg("Sending events to Matrix one by one")
 		portal.sendBackfillLegacy(ctx, source, events, metas, markRead)
@@ -605,14 +611,14 @@ func (portal *Portal) sendBackfillLegacy(ctx context.Context, source *User, even
 	}
 }
 
-func (portal *Portal) sendBackfillBeeper(ctx context.Context, source *User, events []*event.Event, metas []*BackfillPartMetadata, markRead, forward bool) {
+func (portal *Portal) sendBackfillBeeper(ctx context.Context, source *User, events []*event.Event, metas []*BackfillPartMetadata, markRead, allowNotification, forward bool) {
 	var markReadBy id.UserID
 	if markRead && forward {
 		markReadBy = source.MXID
 	}
 	resp, err := portal.MainIntent().BeeperBatchSend(ctx, portal.MXID, &mautrix.ReqBeeperBatchSend{
 		Forward:          forward,
-		SendNotification: forward && !markRead,
+		SendNotification: allowNotification && forward && !markRead,
 		MarkReadBy:       markReadBy,
 		Events:           events,
 	})
