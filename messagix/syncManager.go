@@ -56,7 +56,7 @@ func (sm *SyncManager) EnsureSyncedSocket(databases []int64) error {
 
 		_, err := sm.SyncSocketData(db, database)
 		if err != nil {
-			return fmt.Errorf("failed to ensure database is synced through socket: (databaseId=%d)", db)
+			return fmt.Errorf("failed to ensure database is synced through socket: (databaseId=%d): %w", db, err)
 		}
 		sm.client.Logger.Debug().Any("database_id", db).Any("database", database).Msg("Synced database")
 	}
