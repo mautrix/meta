@@ -1342,6 +1342,7 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 		Logger()
 	ctx := log.WithContext(context.TODO())
 	portal.handleMetaOrWhatsAppMessage(ctx, source, sender, nil, message)
+	log.Debug().Msg("Finished handling Meta message")
 }
 
 func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *User, sender *Puppet, waMsg *events.FBMessage, metaMsg *table.WrappedMessage) {
