@@ -84,6 +84,8 @@ type formattedOutgoingRequest struct {
 	DataTraceID string          `json:"data_trace_id"`
 	VersionID   string          `json:"version_id"`
 	Tasks       []formattedTask `json:"tasks"`
+
+	DatabaseQuery *socket.DatabaseQuery `json:"database_query,omitempty"`
 }
 
 type formattedTask struct {
@@ -100,6 +102,20 @@ func handleOutgoingRequest(data json.RawMessage) {
 	exerrors.PanicIfNotNil(json.Unmarshal(data, &payload))
 	var taskPayload socket.TaskPayload
 	exerrors.PanicIfNotNil(json.Unmarshal([]byte(payload.Payload), &taskPayload))
+	if len(taskPayload.Tasks) == 0 {
+		var dbQuery socket.DatabaseQuery
+		exerrors.PanicIfNotNil(json.Unmarshal([]byte(payload.Payload), &dbQuery))
+		exerrors.PanicIfNotNil(json.NewEncoder(os.Stdout).Encode(&formattedOutgoingRequest{
+			AppID:         payload.AppId,
+			RequestID:     payload.RequestId,
+			Type:          payload.Type,
+			EpochID:       taskPayload.EpochId,
+			DataTraceID:   taskPayload.DataTraceId,
+			VersionID:     taskPayload.VersionId,
+			DatabaseQuery: &dbQuery,
+		}))
+		return
+	}
 	formattedTasks := make([]formattedTask, len(taskPayload.Tasks))
 	for i, task := range taskPayload.Tasks {
 		formattedTasks[i] = formattedTask{
