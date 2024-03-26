@@ -72,13 +72,13 @@ func (s *Socket) newConnectJSON() (string, error) {
 			MessageID:       65536,
 			Payload:         appSettingPublishJSON,
 			QoS:             packets.QOS_LEVEL_1,
-			Topic:           "/ls_app_settings",
+			Topic:           string(LS_APP_SETTINGS),
 		})
-		if !slices.Contains(payload.SubscribedTopics, "/ls_foreground_state") {
-			payload.SubscribedTopics = append(payload.SubscribedTopics, "/ls_foreground_state")
+		if !slices.Contains(payload.SubscribedTopics, string(LS_FOREGROUND_STATE)) {
+			payload.SubscribedTopics = append(payload.SubscribedTopics, string(LS_FOREGROUND_STATE))
 		}
-		if !slices.Contains(payload.SubscribedTopics, "/ls_resp") {
-			payload.SubscribedTopics = append(payload.SubscribedTopics, "/ls_resp")
+		if !slices.Contains(payload.SubscribedTopics, string(LS_RESP)) {
+			payload.SubscribedTopics = append(payload.SubscribedTopics, string(LS_RESP))
 		}
 	}
 

@@ -35,6 +35,33 @@ var (
 	ErrSocketClosed      = errors.New("messagix-socket: socket is closed")
 	ErrSocketAlreadyOpen = errors.New("messagix-socket: socket is already open")
 	ErrNotAuthenticated  = errors.New("messagix-socket: client has not been authenticated successfully yet")
+
+	igReconnectSync = []int64{1, 2, 16}
+	fbReconnectSync = []int64{1, 2, 5, 16, 95, 104}
+	igInitialSync   = []int64{1, 2, 6, 7, 16, 28, 198}
+	fbInitialSync   = []int64{1, 2, 5, 16, 26, 28, 95, 104, 120, 140, 141, 142, 143, 196, 198}
+
+	minimalReconnectSync = []int64{1, 2}
+	minimalInitialSync   = []int64{1}
+
+	initialSync = map[types.Platform][]int64{
+		types.Instagram:   minimalInitialSync, // igInitialSync,
+		types.Facebook:    minimalInitialSync, // fbInitialSync,
+		types.Messenger:   minimalInitialSync, // fbInitialSync,
+		types.FacebookTor: minimalInitialSync, // fbInitialSync,
+	}
+	reconnectSync = map[types.Platform][]int64{
+		types.Instagram:   minimalReconnectSync, // igReconnectSync,
+		types.Facebook:    minimalReconnectSync, // fbReconnectSync,
+		types.Messenger:   minimalReconnectSync, // fbReconnectSync,
+		types.FacebookTor: minimalReconnectSync, // fbReconnectSync,
+	}
+
+	shouldRecurseDatabase = map[int64]bool{
+		1:  true,
+		2:  true,
+		95: true,
+	}
 )
 
 type Socket struct {

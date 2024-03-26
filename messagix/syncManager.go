@@ -3,6 +3,7 @@ package messagix
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"go.mau.fi/mautrix-meta/messagix/graphql"
 	"go.mau.fi/mautrix-meta/messagix/methods"
@@ -26,18 +27,21 @@ func (c *Client) NewSyncManager() *SyncManager {
 		store: map[int64]*socket.QueryMetadata{
 			1:   {SendSyncParams: false, SyncChannel: socket.MailBox},
 			2:   {SendSyncParams: false, SyncChannel: socket.Contact},
-			5:   {SendSyncParams: true},
-			16:  {SendSyncParams: true},
-			26:  {SendSyncParams: true},
-			28:  {SendSyncParams: true},
+			5:   {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			6:   {SendSyncParams: true}, // IG sync params: {"locale": "en_US"}
+			7:   {SendSyncParams: true}, // IG sync params: {"mnet_rank_types": [44]}
+			16:  {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
+			26:  {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			28:  {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 			95:  {SendSyncParams: false, SyncChannel: socket.Contact},
-			104: {SendSyncParams: true},
-			140: {SendSyncParams: true},
-			141: {SendSyncParams: true},
-			142: {SendSyncParams: true},
-			143: {SendSyncParams: true},
-			196: {SendSyncParams: true},
-			198: {SendSyncParams: true},
+			104: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			120: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			140: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			141: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			142: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			143: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			196: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			198: {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 		},
 		keyStore: map[int64]*socket.KeyStoreData{
 			1:  {MinThreadKey: 0, ParentThreadKey: -1, MinLastActivityTimestampMs: 9999999999999, HasMoreBefore: false},
@@ -47,19 +51,30 @@ func (c *Client) NewSyncManager() *SyncManager {
 	}
 }
 
-func (sm *SyncManager) EnsureSyncedSocket(databases []int64) error {
-	for _, db := range databases {
-		database, ok := sm.store[db]
-		if !ok {
-			return fmt.Errorf("could not find sync store for database: %d", db)
-		}
+func (sm *SyncManager) syncSocketData(db int64, cb func()) {
+	defer cb()
+	database, ok := sm.store[db]
+	if !ok {
+		sm.client.Logger.Error().Int64("database_id", db).Msg("Could not find sync store for database")
+		return
+	}
 
-		_, err := sm.SyncSocketData(db, database)
-		if err != nil {
-			return fmt.Errorf("failed to ensure database is synced through socket: (databaseId=%d): %w", db, err)
-		}
+	_, err := sm.SyncSocketData(db, database)
+	if err != nil {
+		sm.client.Logger.Err(err).Int64("database_id", db).Msg("Failed to sync database through socket")
+	} else {
 		sm.client.Logger.Debug().Any("database_id", db).Any("database", database).Msg("Synced database")
 	}
+	return
+}
+
+func (sm *SyncManager) EnsureSyncedSocket(databases []int64) error {
+	var wg sync.WaitGroup
+	wg.Add(len(databases))
+	for _, db := range databases {
+		go sm.syncSocketData(db, wg.Done)
+	}
+	wg.Wait()
 
 	return nil
 }
@@ -72,9 +87,13 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 		EpochId:  methods.GenerateEpochId(),
 	}
 
+	var prevCursor string
+	if db.LastAppliedCursor != nil {
+		prevCursor = *db.LastAppliedCursor
+	}
 	if db.SendSyncParams {
 		t = 1
-		payload.SyncParams = sm.getSyncParams(db.SyncChannel)
+		payload.SyncParams = sm.getSyncParams(databaseId, db.SyncChannel)
 	} else {
 		t = 2
 		payload.LastAppliedCursor = db.LastAppliedCursor
@@ -85,6 +104,10 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 		return nil, fmt.Errorf("failed to marshal DatabaseQuery struct into json bytes (databaseId=%d): %v", databaseId, err)
 	}
 
+	sm.client.Logger.Trace().
+		RawJSON("payload", jsonPayload).
+		Int64("database_id", databaseId).
+		Msg("Syncing database via socket")
 	resp, err := sm.client.socket.makeLSRequest(jsonPayload, t)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseId=%d): %v", databaseId, err)
@@ -109,8 +132,13 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 	}
 	block := resp.Table.LSExecuteFirstBlockForSyncTransaction[0]
 	nextCursor, currentCursor := block.NextCursor, block.CurrentCursor
-	sm.client.Logger.Debug().Any("full_block", block).Any("block_response", block).Any("database_id", payload.Database).Any("payload", string(jsonPayload)).Msg("Synced database")
-	if nextCursor == currentCursor {
+	sm.client.Logger.Debug().
+		Any("full_block", block).
+		Any("block_response", block).
+		Any("database_id", payload.Database).
+		Any("payload", string(jsonPayload)).
+		Msg("Synced database")
+	if nextCursor == currentCursor || nextCursor == prevCursor || nextCursor == "dummy_cursor" || nextCursor == "" || !shouldRecurseDatabase[databaseId] {
 		return resp.Table, nil
 	}
 
@@ -141,7 +169,7 @@ func (sm *SyncManager) SyncDataGraphQL(dbs []int64) (*table.LSTable, error) {
 			EpochID:           0,
 		}
 		if database.SendSyncParams {
-			variables.SyncParams = sm.getSyncParams(database.SyncChannel)
+			variables.SyncParams = sm.getSyncParams(db, database.SyncChannel)
 		}
 
 		lsTable, err := sm.client.makeLSRequest(variables, 1)
@@ -156,7 +184,6 @@ func (sm *SyncManager) SyncDataGraphQL(dbs []int64) (*table.LSTable, error) {
 		if err != nil {
 			return nil, err
 		}
-		// sm.SyncTransactions(lsTable.LSExecuteFirstBlockForSyncTransaction)
 	}
 
 	return tableData, nil
@@ -172,7 +199,12 @@ func (sm *SyncManager) SyncTransactions(transactions []*table.LSExecuteFirstBloc
 		database.LastAppliedCursor = &transaction.NextCursor
 		database.SendSyncParams = transaction.SendSyncParams
 		database.SyncChannel = socket.SyncChannel(transaction.SyncChannel)
-		sm.client.Logger.Info().Any("new_cursor", database.LastAppliedCursor).Any("syncChannel", database.SyncChannel).Any("sendSyncParams", database.SendSyncParams).Any("database_id", transaction.DatabaseId).Msg("Updated database by transaction...")
+		sm.client.Logger.Info().
+			Any("new_cursor", database.LastAppliedCursor).
+			Any("syncChannel", database.SyncChannel).
+			Any("sendSyncParams", database.SendSyncParams).
+			Any("database_id", transaction.DatabaseId).
+			Msg("Updated database by transaction...")
 	}
 
 	return nil
@@ -190,14 +222,19 @@ func (sm *SyncManager) UpdateDatabaseSyncParams(dbs []*socket.QueryMetadata) err
 	return nil
 }
 
-func (sm *SyncManager) getSyncParams(ch socket.SyncChannel) *string {
+var dbID7Params = `{"mnet_rank_types":[44]}`
+
+func (sm *SyncManager) getSyncParams(dbID int64, ch socket.SyncChannel) *string {
+	if dbID == 7 {
+		return &dbID7Params
+	}
 	switch ch {
 	case socket.MailBox:
 		return &sm.syncParams.Mailbox
 	case socket.Contact:
 		return &sm.syncParams.Contact
 	default:
-		panic(fmt.Errorf("unknown syncChannel: %d", ch))
+		return &sm.syncParams.E2Ee
 	}
 }
 
@@ -257,25 +294,3 @@ func (sm *SyncManager) updateSyncGroupCursors(table *table.LSTable) error {
 
 	return err
 }
-
-/*
-func (db *DatabaseManager) AddInitQueries() {
-	queries := []socket.DatabaseQuery{
-		{Database: 1},
-		{Database: 2},
-		{Database: 95},
-		{Database: 16},
-		{Database: 26},
-		{Database: 28},
-		{Database: 95},
-		{Database: 104},
-		{Database: 140},
-		{Database: 141},
-		{Database: 142},
-		{Database: 143},
-		{Database: 196},
-		{Database: 198},
-
-	}
-}
-*/

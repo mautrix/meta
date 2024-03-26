@@ -17,11 +17,7 @@ import (
 
 func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	if s.previouslyConnected {
-		err := s.client.SyncManager.EnsureSyncedSocket([]int64{
-			1,
-			2,
-			//16,
-		})
+		err := s.client.SyncManager.EnsureSyncedSocket(reconnectSync[s.client.platform])
 		if err != nil {
 			return fmt.Errorf("failed to sync after reconnect: %w", err)
 		}
@@ -105,9 +101,7 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		return fmt.Errorf("failed to report app state: %w", err)
 	}
 
-	err = s.client.SyncManager.EnsureSyncedSocket([]int64{
-		1,
-	})
+	err = s.client.SyncManager.EnsureSyncedSocket(initialSync[s.client.platform])
 	if err != nil {
 		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
 	}
