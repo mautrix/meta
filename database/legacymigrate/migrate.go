@@ -209,7 +209,7 @@ func Migrate(ctx context.Context, targetDB *database.Database, sourceDialect, so
 			return err
 		}
 		err = dbutil.NewSimpleReflectRowIter[LegacyMessage](sourceDB.Query(origCtx, `
-			SELECT fbid, fb_txn_id, index, fb_chat, fb_receiver, fb_sender, timestamp, mxid, mx_room
+			SELECT fbid, fb_txn_id, "index", fb_chat, fb_receiver, fb_sender, timestamp, mxid, mx_room
 			FROM message WHERE fbid<>'' AND fb_sender<>0
 		`)).Iter(reinserter[*LegacyMessage, *database.Message]{targetDB, ctx}.do)
 		if err != nil {
@@ -220,7 +220,7 @@ func Migrate(ctx context.Context, targetDB *database.Database, sourceDialect, so
 			SELECT reaction.fb_msgid, message.fb_chat, reaction.fb_receiver,
 			       reaction.fb_sender, reaction.reaction, reaction.mxid, reaction.mx_room
 			FROM reaction
-			JOIN message ON reaction.fb_msgid=message.fbid AND message.index=0
+			JOIN message ON reaction.fb_msgid=message.fbid AND message."index"=0
 			WHERE reaction.fb_sender<>0 AND message.fb_chat<>0 AND reaction.fb_msgid='mid.$gABC3ypFJHACT3lHXb2NrQyNVgAAq'
 		`)).Iter(reinserter[*LegacyReaction, *database.Reaction]{targetDB, ctx}.do)
 		if err != nil {
