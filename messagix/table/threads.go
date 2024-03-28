@@ -607,6 +607,16 @@ type LSMoveThreadToArchivedFolder struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSMoveThreadToE2EECutoverFolder struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSMoveThreadToE2EECutoverFolder) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSRemoveParticipantFromThread struct {
 	ThreadKey     int64 `index:"0" json:",omitempty"`
 	ParticipantId int64 `index:"1" json:",omitempty"`

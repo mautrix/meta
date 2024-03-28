@@ -760,6 +760,7 @@ func (user *User) handleTable(tbl *table.LSTable) {
 	handlePortalEvents(user, tbl.LSDeleteThenInsertMessage)
 	handlePortalEvents(user, tbl.LSUpsertReaction)
 	handlePortalEvents(user, tbl.LSDeleteReaction)
+	handlePortalEvents(user, tbl.LSMoveThreadToE2EECutoverFolder)
 	user.requestMoreInbox(ctx, tbl.LSUpsertInboxThreadsRange)
 }
 

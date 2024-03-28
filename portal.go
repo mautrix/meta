@@ -1201,6 +1201,15 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 		portal.handleMetaNameChange(typedEvt)
 	case *table.LSSetThreadImageURL:
 		portal.handleMetaAvatarChange(typedEvt)
+	case *table.LSMoveThreadToE2EECutoverFolder:
+		if portal.ThreadType == table.ONE_TO_ONE {
+			portal.log.Debug().Msg("Updating thread type to WA 1:1 after MoveThreadToE2EECutoverFolder event")
+			portal.ThreadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
+			err := portal.Update(context.TODO())
+			if err != nil {
+				portal.log.Err(err).Msg("Failed to save portal")
+			}
+		}
 	default:
 		portal.log.Error().
 			Type("data_type", typedEvt).
