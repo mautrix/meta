@@ -125,7 +125,7 @@ func convertWhatsAppAttachment[
 	msgWithCaption, ok := msg.(AttachmentMessageWithCaption[Integral, Ancillary, Transport])
 	if ok && len(msgWithCaption.GetCaption().GetText()) > 0 {
 		caption = mc.WhatsAppTextToMatrix(ctx, msgWithCaption.GetCaption())
-		caption.Content.MsgType = event.MsgNotice
+		caption.Content.MsgType = event.MsgText
 	}
 	metadata = typedTransport.GetAncillary()
 	transport := typedTransport.GetIntegral().GetTransport()
