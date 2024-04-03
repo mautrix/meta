@@ -105,17 +105,21 @@ type LSDeleteThenInsertThread struct {
 	NumUnreadSubthreads                   int64      `index:"69" json:",omitempty"`
 	SubthreadCount                        int64      `index:"70" json:",omitempty"`
 	ThreadInvitesEnabledV2                int64      `index:"71" json:",omitempty"`
-	EventStartTimestampMs                 int64      `index:"72" json:",omitempty"`
-	EventEndTimestampMs                   int64      `index:"73" json:",omitempty"`
-	TakedownState                         int64      `index:"74" json:",omitempty"`
-	MemberCount                           int64      `index:"75" json:",omitempty"`
-	SecondaryParentThreadKey              int64      `index:"76" json:",omitempty"`
-	IgFolder                              int64      `index:"77" json:",omitempty"`
-	InviterId                             int64      `index:"78" json:",omitempty"`
-	ThreadTags                            int64      `index:"79" json:",omitempty"`
-	ThreadStatus                          int64      `index:"80" json:",omitempty"`
-	ThreadSubtype                         int64      `index:"81" json:",omitempty"`
-	PauseThreadTimestamp                  int64      `index:"82" json:",omitempty"`
+	JoinRequestApprovalSetting            int64      `index:"72" json:",omitempty"`
+	PendingJoinRequestsCount              int64      `index:"73" json:",omitempty"`
+	EventStartTimestampMs                 int64      `index:"74" json:",omitempty"`
+	EventEndTimestampMs                   int64      `index:"75" json:",omitempty"`
+	TakedownState                         int64      `index:"76" json:",omitempty"`
+	MemberCount                           int64      `index:"77" json:",omitempty"`
+	AdmodCount                            int64      `index:"78" json:",omitempty"`
+	SecondaryParentThreadKey              int64      `index:"79" json:",omitempty"`
+	IgFolder                              int64      `index:"80" json:",omitempty"`
+	InviterId                             int64      `index:"81" json:",omitempty"`
+	ThreadTags                            int64      `index:"82" json:",omitempty"`
+	ThreadStatus                          int64      `index:"83" json:",omitempty"`
+	ThreadSubtype                         int64      `index:"84" json:",omitempty"`
+	PauseThreadTimestamp                  int64      `index:"85" json:",omitempty"`
+	Metadata                              any        `index:"86" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -530,18 +534,21 @@ type LSUpdateOrInsertThread struct {
 	SubthreadCount                         int64      `index:"87" json:",omitempty"`
 	LastNonMissedCallXmaMessageTimestampMs int64      `index:"88" json:",omitempty"`
 	ThreadInvitesEnabledV2                 int64      `index:"90" json:",omitempty"`
-	HasPendingInvitation                   int64      `index:"93" json:",omitempty"`
-	EventStartTimestampMs                  int64      `index:"94" json:",omitempty"`
-	EventEndTimestampMs                    int64      `index:"95" json:",omitempty"`
-	TakedownState                          int64      `index:"96" json:",omitempty"`
-	SecondaryParentThreadKey               int64      `index:"97" json:",omitempty"`
-	IgFolder                               int64      `index:"98" json:",omitempty"`
-	InviterId                              int64      `index:"99" json:",omitempty"`
-	ThreadTags                             int64      `index:"100" json:",omitempty"`
-	ThreadStatus                           int64      `index:"101" json:",omitempty"`
-	ThreadSubtype                          int64      `index:"102" json:",omitempty"`
-	PauseThreadTimestamp                   int64      `index:"103" json:",omitempty"`
-	Capabilities4                          int64      `index:"104" json:",omitempty"`
+	JoinRequestApprovalSetting             int64      `index:"93" json:",omitempty"`
+	HasPendingInvitation                   int64      `index:"94" json:",omitempty"`
+	EventStartTimestampMs                  int64      `index:"95" json:",omitempty"`
+	EventEndTimestampMs                    int64      `index:"96" json:",omitempty"`
+	TakedownState                          int64      `index:"97" json:",omitempty"`
+	SecondaryParentThreadKey               int64      `index:"98" json:",omitempty"`
+	IgFolder                               int64      `index:"99" json:",omitempty"`
+	InviterId                              int64      `index:"100" json:",omitempty"`
+	ThreadTags                             int64      `index:"101" json:",omitempty"`
+	IsReadReceiptsDisabled                 bool       `index:"102" json:",omitempty"`
+	ReadReceiptsDisabledV2                 bool       `index:"103" json:",omitempty"`
+	ThreadStatus                           int64      `index:"104" json:",omitempty"`
+	ThreadSubtype                          int64      `index:"105" json:",omitempty"`
+	PauseThreadTimestamp                   int64      `index:"106" json:",omitempty"`
+	Capabilities4                          int64      `index:"107" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

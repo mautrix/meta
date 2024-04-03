@@ -82,6 +82,7 @@ type LSDeleteThenInsertContact struct {
 	RestrictionType                             int64                     `index:"44" json:",omitempty"` // TODO enum
 	WaConnectStatus                             int64                     `index:"45" json:",omitempty"`
 	FbUnblockedSinceTimestampMs                 int64                     `index:"46" json:",omitempty"`
+	PageType                                    int64                     `index:"47" json:",omitempty"`
 
 	// TODO figure out where this is
 	//ProfileRingState                            int64                     `index:"0" json:",omitempty"`
