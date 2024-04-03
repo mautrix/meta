@@ -138,6 +138,7 @@ type LSTable struct {
 	LSInsertAttachment                            []*LSInsertAttachment                            `json:",omitempty"`
 	LSUpdateExtraAttachmentColumns                []*LSUpdateExtraAttachmentColumns                `json:",omitempty"`
 	LSMoveThreadToE2EECutoverFolder               []*LSMoveThreadToE2EECutoverFolder               `json:",omitempty"`
+	LSHandleFailedTask                            []*LSHandleFailedTask                            `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -268,6 +269,7 @@ var SPTable = map[string]string{
 	"insertAttachment":                            "LSInsertAttachment",
 	"updateExtraAttachmentColumns":                "LSUpdateExtraAttachmentColumns",
 	"moveThreadToE2EECutoverFolder":               "LSMoveThreadToE2EECutoverFolder",
+	"handleFailedTask":                            "LSHandleFailedTask",
 }
 
 func SPToDepMap(sp []string) map[string]string {

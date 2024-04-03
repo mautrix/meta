@@ -632,6 +632,10 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 
 	if waMsg != nil {
 		messageID := sender.E2EEClient.GenerateMessageID()
+		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
+			return c.Str("message_id", messageID)
+		})
+		log.Debug().Msg("Sending Matrix message to WhatsApp")
 		var resp whatsmeow.SendResponse
 		resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), waMsg, waMeta, whatsmeow.SendRequestExtra{
 			ID: messageID,
@@ -639,6 +643,10 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 		// TODO save message in db before sending and only update timestamp later
 		portal.storeMessageInDB(ctx, evt.ID, messageID, 0, sender.MetaID, resp.Timestamp, 0)
 	} else {
+		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
+			return c.Int64("otid", otid)
+		})
+		log.Debug().Msg("Sending Matrix message to Meta")
 		otidStr := strconv.FormatInt(otid, 10)
 		portal.pendingMessages[otid] = evt.ID
 		messageTS := time.Now()
@@ -654,6 +662,13 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 			}
 			if len(msgID) == 0 {
 				for _, failed := range resp.LSMarkOptimisticMessageFailed {
+					if failed.OTID == otidStr {
+						log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+						go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+						return
+					}
+				}
+				for _, failed := range resp.LSHandleFailedTask {
 					if failed.OTID == otidStr {
 						log.Warn().Str("message", failed.Message).Msg("Sending message failed")
 						go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)

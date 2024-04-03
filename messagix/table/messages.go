@@ -505,6 +505,14 @@ type LSMarkOptimisticMessageFailed struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSHandleFailedTask struct {
+	TaskID  int64  `index:"0" json:",omitempty"`
+	OTID    string `index:"1" json:",omitempty"`
+	Message string `index:"2" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
 type LSUpdateSubscriptErrorMessage struct {
 	ThreadKey int64  `index:"0" json:",omitempty"`
 	OTID      string `index:"1" json:",omitempty"`
