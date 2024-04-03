@@ -1196,7 +1196,10 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 		if typedEvt.IsUnsent {
 			portal.handleMetaDelete(typedEvt.MessageId)
 		} else {
-			portal.log.Warn().Str("message_id", typedEvt.MessageId).Msg("Got unexpected non-unsend DeleteThenInsertMessage command")
+			portal.log.Warn().
+				Str("message_id", typedEvt.MessageId).
+				Int64("edit_count", typedEvt.EditCount).
+				Msg("Got unexpected non-unsend DeleteThenInsertMessage command")
 		}
 	case *table.LSUpsertReaction:
 		portal.handleMetaReaction(typedEvt)
