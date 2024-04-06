@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -128,6 +129,9 @@ func (m *ModuleParser) Load(page string) error {
 					}
 					continue
 				}
+				m.client.Logger.Trace().
+					Str("script_tag_content", base64.StdEncoding.EncodeToString([]byte(tag.Content))).
+					Msg("Errored script tag data")
 				m.client.Logger.Warn().Err(err).Msg("Failed to parse script tag into bbox")
 				continue
 			}

@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -253,6 +254,9 @@ func (m *ModuleParser) SSJSHandle(data json.RawMessage) error {
 	var bboxContainer BBoxContainer
 	err := json.Unmarshal(data, &bboxContainer)
 	if err != nil {
+		m.client.Logger.Trace().
+			Str("ssjs_content", base64.StdEncoding.EncodeToString(data)).
+			Msg("Errored ssjs data")
 		return fmt.Errorf("failed to unmarshal ssjs data into bbox container: %w", err)
 	} else if bboxContainer.BBox == nil {
 		return nil
