@@ -13,6 +13,7 @@ repos:
     hooks:
       - id: go-imports
         exclude: "pb\\.go$"
+        args: ["-w"]
       - id: go-vet-mod
       #- id: go-staticcheck-repo-mod
       # TODO: reenable this and fix all the problems
