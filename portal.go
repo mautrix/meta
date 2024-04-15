@@ -1228,6 +1228,11 @@ func (portal *Portal) handleMetaMessage(portalMessage portalMetaMessage) {
 				portal.log.Err(err).Msg("Failed to save portal")
 			}
 		}
+	case *table.LSDeleteThread:
+		portal.log.Info().Msg("Deleting portal due to delete thread event")
+		ctx := context.TODO()
+		portal.Delete()
+		portal.Cleanup(ctx, false)
 	default:
 		portal.log.Error().
 			Type("data_type", typedEvt).
