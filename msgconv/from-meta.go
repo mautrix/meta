@@ -61,10 +61,18 @@ func (cm *ConvertedMessage) MergeCaption() {
 	}
 	mediaContent := cm.Parts[0].Content
 	textContent := cm.Parts[1].Content
-	mediaContent.FileName = mediaContent.Body
-	mediaContent.Body = textContent.Body
-	mediaContent.Format = textContent.Format
-	mediaContent.FormattedBody = textContent.FormattedBody
+	if mediaContent.FileName != "" && mediaContent.FileName != mediaContent.Body {
+		if textContent.FormattedBody != "" {
+			mediaContent.EnsureHasHTML()
+			mediaContent.FormattedBody = fmt.Sprintf("%s<br><br>%s", mediaContent.FormattedBody, textContent.FormattedBody)
+		}
+		mediaContent.Body = fmt.Sprintf("%s\n\n%s", mediaContent.Body, textContent.Body)
+	} else {
+		mediaContent.FileName = mediaContent.Body
+		mediaContent.Body = textContent.Body
+		mediaContent.Format = textContent.Format
+		mediaContent.FormattedBody = textContent.FormattedBody
+	}
 	mediaContent.Mentions = textContent.Mentions
 	maps.Copy(cm.Parts[0].Extra, cm.Parts[1].Extra)
 	cm.Parts = cm.Parts[:1]
@@ -371,6 +379,13 @@ func removeLPHP(addr string) string {
 	return addr
 }
 
+func addExternalURLCaption(content *event.MessageEventContent, externalURL string) {
+	content.FileName = content.Body
+	content.Body = fmt.Sprintf("%s\n\n%s", content.Body, externalURL)
+	content.Format = event.FormatHTML
+	content.FormattedBody = fmt.Sprintf(`%s<br><br><a href="%s">%s</a>`, content.FormattedBody, externalURL, externalURL)
+}
+
 func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
@@ -388,6 +403,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 
 		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="))
 		minimalConverted.Extra["external_url"] = externalURL
+		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
@@ -436,6 +452,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
 		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
 		minimalConverted.Extra["external_url"] = externalURL
+		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
@@ -515,6 +532,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching second type of XMA story from CTA data")
 		externalURL := att.CTA.ActionUrl
 		minimalConverted.Extra["external_url"] = externalURL
+		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
