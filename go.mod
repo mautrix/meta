@@ -13,14 +13,14 @@ require (
 	github.com/rs/zerolog v1.32.0
 	go.mau.fi/libsignal v0.1.0
 	go.mau.fi/util v0.4.2-0.20240318211948-d27d5a4cda9e
-	go.mau.fi/whatsmeow v0.0.0-20240326141755-051606b388f6
-	golang.org/x/crypto v0.21.0
-	golang.org/x/exp v0.0.0-20240314144324-c7f7c6466f7f
+	go.mau.fi/whatsmeow v0.0.0-20240327124018-350073db195c
+	golang.org/x/crypto v0.22.0
+	golang.org/x/exp v0.0.0-20240409090435-93d18d7e34b8
 	golang.org/x/image v0.15.0
-	golang.org/x/net v0.22.0
+	golang.org/x/net v0.24.0
 	google.golang.org/protobuf v1.33.0
 	maunium.net/go/mauflag v1.0.0
-	maunium.net/go/mautrix v0.18.0
+	maunium.net/go/mautrix v0.18.1-0.20240413105730-423d32ddf6d6
 )
 
 require (
@@ -35,7 +35,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.7.0 // indirect
 	go.mau.fi/zeroconfig v0.1.2 // indirect
-	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/sys v0.19.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
