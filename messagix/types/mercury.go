@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"strconv"
 )
 
 type MercuryUploadResponse struct {
@@ -14,42 +15,68 @@ type MercuryUploadResponse struct {
 	Lid     string        `json:"lid,omitempty"`
 }
 
+type StringOrInt int64
+
+const maxSafeIntInFloat64 = 1<<53 - 1
+const minSafeIntInFloat64 = -maxSafeIntInFloat64
+
+func (soi *StringOrInt) MarshalJSON() ([]byte, error) {
+	if *soi > maxSafeIntInFloat64 || *soi < minSafeIntInFloat64 {
+		return json.Marshal(strconv.FormatInt(int64(*soi), 10))
+	}
+	return json.Marshal(soi)
+}
+
+func (soi *StringOrInt) UnmarshalJSON(data []byte) (err error) {
+	if data[0] == '"' {
+		var str string
+		err = json.Unmarshal(data, &str)
+		if err != nil {
+			return err
+		}
+		*(*int64)(soi), err = strconv.ParseInt(str, 10, 64)
+	} else {
+		err = json.Unmarshal(data, (*int64)(soi))
+	}
+	return
+}
+
 type MediaMetadata interface {
 	GetFbId() int64
 }
 
 type ImageMetadata struct {
-	ImageID  int64  `json:"image_id,omitempty"`
-	Filename string `json:"filename,omitempty"`
-	Filetype string `json:"filetype,omitempty"`
-	Src      string `json:"src,omitempty"`
-	Fbid     int64  `json:"fbid,omitempty"`
-	GifID    int64  `json:"gif_id,omitempty"`
+	ImageID  StringOrInt `json:"image_id,omitempty"`
+	Filename string      `json:"filename,omitempty"`
+	Filetype string      `json:"filetype,omitempty"`
+	Src      string      `json:"src,omitempty"`
+	Fbid     StringOrInt `json:"fbid,omitempty"`
+	GifID    StringOrInt `json:"gif_id,omitempty"`
 }
 
 func (img *ImageMetadata) GetFbId() int64 {
 	if img.GifID != 0 {
-		return img.GifID
+		return int64(img.GifID)
 	}
-	return img.Fbid
+	return int64(img.Fbid)
 }
 
 type VideoMetadata struct {
-	FileID       int64  `json:"file_id,omitempty"`
-	AudioID      int64  `json:"audio_id,omitempty"`
-	VideoID      int64  `json:"video_id,omitempty"`
-	Filename     string `json:"filename,omitempty"`
-	Filetype     string `json:"filetype,omitempty"`
-	ThumbnailSrc string `json:"thumbnail_src,omitempty"`
+	FileID       StringOrInt `json:"file_id,omitempty"`
+	AudioID      StringOrInt `json:"audio_id,omitempty"`
+	VideoID      StringOrInt `json:"video_id,omitempty"`
+	Filename     string      `json:"filename,omitempty"`
+	Filetype     string      `json:"filetype,omitempty"`
+	ThumbnailSrc string      `json:"thumbnail_src,omitempty"`
 }
 
 func (vid *VideoMetadata) GetFbId() int64 {
 	if vid.VideoID != 0 {
-		return vid.VideoID
+		return int64(vid.VideoID)
 	} else if vid.AudioID != 0 {
-		return vid.AudioID
+		return int64(vid.AudioID)
 	} else if vid.FileID != 0 {
-		return vid.FileID
+		return int64(vid.FileID)
 	}
 	return 0
 }
