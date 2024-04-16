@@ -1,3 +1,19 @@
+# v0.3.0 (2024-04-16)
+
+* Added mautrix-facebook database migration utility
+  (see [docs](https://docs.mau.fi/bridges/go/meta/facebook-migration.html) for more info).
+* Added support for automatically detecting when Messenger force-enables
+  encryption in a chat (rather than having to wait for the first incoming
+  message).
+* Added bridging of chat deletes from Meta to Matrix.
+* Changed reel handling to include URL in caption in addition to the
+  `external_url` field if downloading the full video fails.
+* Started ignoring weird sync timeouts from Messenger that don't break anything.
+* Fixed uploading media when Meta servers return the media ID as a string.
+* Fixed messages being double encrypted in legacy backfill.
+* Fixed backfilled messages not having appropriate `fi.mau.double_puppet_source` key.
+* Fixed searching for Messenger users.
+
 # v0.2.0 (2024-03-16)
 
 * Added retries if HTTP requests to Meta fail.
