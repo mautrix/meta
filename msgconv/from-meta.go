@@ -394,14 +394,16 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 	}
 	log := zerolog.Ctx(ctx)
 	switch {
-	case strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="):
+	case strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="), strings.HasPrefix(att.CTA.NativeUrl, "instagram://reels_share/?shortcode="):
 		actionURL, _ := url.Parse(removeLPHP(att.CTA.ActionUrl))
 		var carouselChildMediaID string
 		if actionURL != nil {
 			carouselChildMediaID = actionURL.Query().Get("carousel_share_child_media_id")
 		}
 
-		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="))
+		mediaShortcode := strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode=")
+		mediaShortcode = strings.TrimPrefix(mediaShortcode, "instagram://reels_share/?shortcode=")
+		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", mediaShortcode)
 		minimalConverted.Extra["external_url"] = externalURL
 		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
@@ -411,7 +413,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		}
 
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
-		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), att.CTA.NativeUrl)
+		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), mediaShortcode)
 		if err != nil {
 			log.Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"

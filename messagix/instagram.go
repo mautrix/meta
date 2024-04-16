@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/google/go-querystring/query"
 
@@ -113,12 +112,12 @@ func (ig *InstagramMethods) FetchProfile(username string) (*responses.ProfileInf
 	return profileInfo, nil
 }
 
-func (ig *InstagramMethods) FetchMedia(mediaID, nativeURL string) (*responses.FetchMediaResponse, error) {
+func (ig *InstagramMethods) FetchMedia(mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
 	h := ig.client.buildHeaders(true)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	referer := ig.client.getEndpoint("base_url")
-	if strings.HasPrefix(nativeURL, "instagram://media/?shortcode=") {
-		referer = fmt.Sprintf("%s/p/%s/", referer, strings.TrimPrefix(nativeURL, "instagram://media/?shortcode="))
+	if mediaShortcode != "" {
+		referer = fmt.Sprintf("%s/p/%s/", referer, mediaShortcode)
 	}
 	h.Set("referer", referer)
 	h.Set("Accept", "*/*")
