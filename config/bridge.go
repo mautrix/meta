@@ -72,6 +72,7 @@ type BridgeConfig struct {
 			DontFetchXMA      bool          `yaml:"dont_fetch_xma"`
 		} `yaml:"queue"`
 	} `yaml:"backfill"`
+	DisableXMA bool `yaml:"disable_xma"`
 
 	ManagementRoomText bridgeconfig.ManagementRoomTexts `yaml:"management_room_text"`
 

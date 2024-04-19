@@ -187,6 +187,8 @@ bridge:
             sleep_between_tasks: 20s
             # Disable fetching XMA media (reels, stories, etc) when backfilling.
             dont_fetch_xma: true
+    # Disable fetching XMA media entirely.
+    disable_xma: false
 
     # Messages sent upon joining a management room.
     # Markdown is supported. The defaults are listed below.

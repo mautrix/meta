@@ -1063,7 +1063,7 @@ const (
 
 func (portal *Portal) ShouldFetchXMA(ctx context.Context) bool {
 	xmaDisabled := ctx.Value(msgconvContextKeyBackfill) == backfillTypeHistorical && portal.bridge.Config.Bridge.Backfill.Queue.DontFetchXMA
-	return !xmaDisabled
+	return !xmaDisabled && !portal.bridge.Config.Bridge.DisableXMA
 }
 
 func (portal *Portal) UploadMatrixMedia(ctx context.Context, data []byte, fileName, contentType string) (id.ContentURIString, error) {

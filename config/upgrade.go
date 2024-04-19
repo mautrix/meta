@@ -113,6 +113,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Int, "bridge", "backfill", "queue", "max_pages")
 	helper.Copy(up.Str, "bridge", "backfill", "queue", "sleep_between_tasks")
 	helper.Copy(up.Bool, "bridge", "backfill", "queue", "dont_fetch_xma")
+	helper.Copy(up.Bool, "bridge", "disable_xma")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_connected")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_unconnected")
