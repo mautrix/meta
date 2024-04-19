@@ -180,6 +180,7 @@ const (
 	MetaTransientDisconnect    status.BridgeStateErrorCode = "meta-transient-disconnect"
 	IGChallengeRequired        status.BridgeStateErrorCode = "ig-challenge-required"
 	IGChallengeRequiredMaybe   status.BridgeStateErrorCode = "ig-challenge-required-maybe"
+	IGAccountSuspended         status.BridgeStateErrorCode = "ig-account-suspended"
 	MetaServerUnavailable      status.BridgeStateErrorCode = "meta-server-unavailable"
 	IGConsentRequired          status.BridgeStateErrorCode = "ig-consent-required"
 	FBConsentRequired          status.BridgeStateErrorCode = "fb-consent-required"
@@ -191,6 +192,7 @@ func init() {
 		MetaTransientDisconnect:    "Disconnected from server, trying to reconnect",
 		MetaConnectionUnauthorized: "Logged out, please relogin to continue",
 		MetaCookieRemoved:          "Logged out, please relogin to continue",
+		IGAccountSuspended:         "Logged out, please check the Instagram website to continue",
 		IGChallengeRequired:        "Challenge required, please check the Instagram website to continue",
 		IGChallengeRequiredMaybe:   "Connection refused, please check the Instagram website to continue",
 		IGConsentRequired:          "Consent required, please check the Instagram website to continue",
@@ -506,6 +508,11 @@ func (user *User) unlockedConnect() {
 			user.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      IGChallengeRequired,
+			})
+		} else if errors.Is(err, messagix.ErrAccountSuspended) {
+			user.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      IGAccountSuspended,
 			})
 		} else if errors.Is(err, messagix.ErrConsentRequired) {
 			code := IGConsentRequired

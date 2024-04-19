@@ -84,6 +84,7 @@ var (
 	ErrTokenInvalidated   = errors.New("access token is no longer valid")
 	ErrChallengeRequired  = errors.New("challenge required")
 	ErrConsentRequired    = errors.New("consent required")
+	ErrAccountSuspended   = errors.New("account suspended")
 	ErrRequestFailed      = errors.New("failed to send request")
 	ErrResponseReadFailed = errors.New("failed to read response body")
 	ErrMaxRetriesReached  = errors.New("maximum retries reached")
@@ -92,7 +93,8 @@ var (
 func isPermanentRequestError(err error) bool {
 	return errors.Is(err, ErrTokenInvalidated) ||
 		errors.Is(err, ErrChallengeRequired) ||
-		errors.Is(err, ErrConsentRequired)
+		errors.Is(err, ErrConsentRequired) ||
+		errors.Is(err, ErrAccountSuspended)
 }
 
 func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error {
@@ -111,6 +113,8 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 	}
 	if req.URL.Path == "/challenge/" {
 		return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
+	} else if req.URL.Path == "/accounts/suspended/" {
+		return fmt.Errorf("%w: redirected to %s", ErrAccountSuspended, req.URL.String())
 	} else if req.URL.Path == "/consent/" || req.URL.Path == "/privacy/consent/" {
 		return fmt.Errorf("%w: redirected to %s", ErrConsentRequired, req.URL.String())
 	}
