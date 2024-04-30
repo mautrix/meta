@@ -17,6 +17,7 @@ func makeFacebookEndpoints(host string) map[string]string {
 		"base_url":       baseURL,
 		"login_page":     baseURL + "/login",
 		"messages":       baseURL + "/messages",
+		"thread":         baseURL + "/t/",
 		"cookie_consent": baseURL + "/cookie/consent/",
 		"graphql":        baseURL + "/api/graphql/",
 		"media_upload":   baseURL + "/ajax/mercury/upload.php?",

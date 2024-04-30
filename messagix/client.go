@@ -349,6 +349,10 @@ func (c *Client) getEndpoint(name string) string {
 	panic(fmt.Sprintf("messagix-client: endpoint %s not found", name))
 }
 
+func (c *Client) getEndpointForThreadID(threadID int64) string {
+	return c.getEndpoint("thread") + strconv.FormatInt(threadID, 10) + "/"
+}
+
 func (c *Client) IsAuthenticated() bool {
 	var isAuthenticated bool
 	if c.platform.IsMessenger() {
