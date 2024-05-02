@@ -29,7 +29,7 @@ type WaveformData struct {
 	SamplingFrequency int       `json:"sampling_frequency"`
 }
 
-func (c *Client) SendMercuryUploadRequest(ctx context.Context, media *MercuryUploadMedia) (*types.MercuryUploadResponse, error) {
+func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, media *MercuryUploadMedia) (*types.MercuryUploadResponse, error) {
 	urlQueries := c.NewHttpQuery()
 	queryValues, err := query.Values(urlQueries)
 	if err != nil {
@@ -46,7 +46,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, media *MercuryUpl
 	h.Set("accept", "*/*")
 	h.Set("content-type", contentType)
 	h.Set("origin", c.getEndpoint("base_url"))
-	h.Set("referer", c.getEndpoint("messages"))
+	h.Set("referer", c.getEndpointForThreadID(threadID))
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin") // header is required

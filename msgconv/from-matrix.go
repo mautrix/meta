@@ -133,6 +133,7 @@ func (mc *MessageConverter) downloadMatrixMedia(ctx context.Context, content *ev
 }
 
 func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*types.MercuryUploadResponse, error) {
+	threadID := mc.GetData(ctx).ThreadID
 	data, mimeType, fileName, err := mc.downloadMatrixMedia(ctx, content)
 	if err != nil {
 		return nil, err
@@ -146,7 +147,7 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, evt *event.E
 		mimeType = "audio/mp4"
 		fileName += ".m4a"
 	}
-	resp, err := mc.GetClient(ctx).SendMercuryUploadRequest(ctx, &messagix.MercuryUploadMedia{
+	resp, err := mc.GetClient(ctx).SendMercuryUploadRequest(ctx, threadID, &messagix.MercuryUploadMedia{
 		Filename:    fileName,
 		MimeType:    mimeType,
 		MediaData:   data,
