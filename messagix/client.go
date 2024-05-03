@@ -217,6 +217,7 @@ func (c *Client) Connect() error {
 		(*oldCancel)()
 	}
 	go func() {
+		connectionAttempts := 1
 		reconnectIn := 2 * time.Second
 		for {
 			connectStart := time.Now()
@@ -231,7 +232,8 @@ func (c *Client) Connect() error {
 				c.eventHandler(&Event_PermanentError{Err: err})
 				return
 			}
-			c.eventHandler(&Event_SocketError{Err: err})
+			connectionAttempts += 1
+			c.eventHandler(&Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
 			if time.Since(connectStart) > 2*time.Minute {
 				reconnectIn = 2 * time.Second
 			} else {

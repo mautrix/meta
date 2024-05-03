@@ -168,7 +168,10 @@ type Event_PingResp struct{}
 func (pr *Event_PingResp) SetIdentifier(identifier uint16) {}
 func (e *Event_PingResp) Finish() ResponseData             { return e }
 
-type Event_SocketError struct{ Err error }
+type Event_SocketError struct {
+	Err                error
+	ConnectionAttempts int
+}
 
 type Event_PermanentError struct{ Err error }
 
