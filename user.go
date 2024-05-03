@@ -61,6 +61,7 @@ var (
 )
 
 const MinFullReconnectInterval = 1 * time.Hour
+const setDisconnectStateAfterConnectAttempts = 3
 
 func (br *MetaBridge) GetUserByMXID(userID id.UserID) *User {
 	return br.maybeGetUserByMXID(userID, &userID)
@@ -1113,7 +1114,9 @@ func (user *User) eventHandler(rawEvt any) {
 			StateEvent: status.StateTransientDisconnect,
 			Error:      MetaTransientDisconnect,
 		}
-		user.BridgeState.Send(user.metaState)
+		if evt.ConnectionAttempts > setDisconnectStateAfterConnectAttempts {
+			user.BridgeState.Send(user.metaState)
+		}
 	case *messagix.Event_Reconnected:
 		user.log.Debug().Msg("Reconnected to Meta socket")
 		user.metaState = status.BridgeState{StateEvent: status.StateConnected}
