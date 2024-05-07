@@ -101,8 +101,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	var meta waMsgApplication.MessageApplication_Metadata
 	if replyTo := mc.GetMetaReply(ctx, content); replyTo != nil {
 		meta.QuotedMessage = &waMsgApplication.MessageApplication_Metadata_QuotedMessage{
-			StanzaID:  replyTo.ReplyMessageId,
-			RemoteJID: mc.GetData(ctx).JID().String(),
+			StanzaID: replyTo.ReplyMessageId,
 			// TODO: this is hacky since it hardcodes the server
 			// TODO 2: should this be included for DMs?
 			Participant: types.JID{User: strconv.FormatInt(replyTo.ReplySender, 10), Server: types.MessengerServer}.String(),
