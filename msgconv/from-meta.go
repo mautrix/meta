@@ -380,10 +380,16 @@ func removeLPHP(addr string) string {
 }
 
 func addExternalURLCaption(content *event.MessageEventContent, externalURL string) {
-	content.FileName = content.Body
-	content.Body = fmt.Sprintf("%s\n\n%s", content.Body, externalURL)
-	content.Format = event.FormatHTML
-	content.FormattedBody = fmt.Sprintf(`%s<br><br><a href="%s">%s</a>`, content.FormattedBody, externalURL, externalURL)
+	if content.FileName == "" {
+		content.FileName = content.Body
+		content.Body = externalURL
+		content.Format = event.FormatHTML
+		content.FormattedBody = fmt.Sprintf(`<a href="%s">%s</a>`, externalURL, externalURL)
+	} else {
+		content.EnsureHasHTML()
+		content.Body = fmt.Sprintf("%s\n\n%s", content.Body, externalURL)
+		content.FormattedBody = fmt.Sprintf(`%s<br><br><a href="%s">%s</a>`, content.FormattedBody, externalURL, externalURL)
+	}
 }
 
 func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
