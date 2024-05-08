@@ -349,6 +349,7 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 
 var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
 var reelActionURLRegex2 = regexp.MustCompile(`^https://instagram\.com/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
+var usernameRegex = regexp.MustCompile(`^[a-z0-9.-_]{3,32}$`)
 
 func trimPostTitle(title string, maxLines int) string {
 	// For some reason Instagram gives maxLines 1 less than what they mean (i.e. what the official clients render)
@@ -459,6 +460,12 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
 		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
+		match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl)
+		if usernameRegex.MatchString(att.HeaderTitle) && len(match) == 3 {
+			// Very hacky way to hopefully fix the URL to work on mobile.
+			// When fetching the XMA data, this is done again later in a safer way.
+			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", att.HeaderTitle, match[1])
+		}
 		minimalConverted.Extra["external_url"] = externalURL
 		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
@@ -467,7 +474,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			return minimalConverted
 		}
 
-		if match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
+		if len(match) != 3 {
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
 			return minimalConverted
