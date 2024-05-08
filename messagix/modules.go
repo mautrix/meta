@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	badGlobalLog "github.com/rs/zerolog/log"
+	"github.com/tidwall/gjson"
 
 	"go.mau.fi/mautrix-meta/messagix/graphql"
 	"go.mau.fi/mautrix-meta/messagix/lightspeed"
@@ -105,21 +106,38 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 		if err := json.Unmarshal(data.Data[0], &cometType); err != nil {
 			return fmt.Errorf("failed to parse comet type from CometPlatformRootClient: %w", err)
 		}
-		if cometType != "init" {
+		var expectedPreloaders json.RawMessage
+		if cometType == "init" {
+			var innerData []json.RawMessage
+			if err := json.Unmarshal(data.Data[2], &innerData); err != nil {
+				return fmt.Errorf("failed to parse inner array from CometPlatformRootClient: %w", err)
+			} else if len(innerData) < 5 {
+				return fmt.Errorf("inner array from CometPlatformRootClient init has less than 5 elements")
+			}
+			expectedPreloaders = innerData[4]
+		} else if cometType == "initialize" {
+			expectedPreloadersRes := gjson.GetBytes(data.Data[2], "0.expectedPreloaders")
+			if !expectedPreloadersRes.IsArray() {
+				m.client.Logger.Trace().
+					Str("comet_type", cometType).
+					Bytes("comet_data", data.Data[2]).
+					Msg("Unsupported comet data: expectedPreloaders not found in CometPlatformRootClient initialize")
+				return nil
+			}
+			if expectedPreloadersRes.Index > 0 {
+				expectedPreloaders = data.Data[2][expectedPreloadersRes.Index : expectedPreloadersRes.Index+len(expectedPreloadersRes.Raw)]
+			} else {
+				expectedPreloaders = json.RawMessage(expectedPreloadersRes.Raw)
+			}
+		} else {
 			m.client.Logger.Trace().
 				Str("comet_type", cometType).
 				Bytes("comet_data", data.Data[2]).
 				Msg("Unsupported comet data")
 			return nil
 		}
-		var innerData []json.RawMessage
-		if err := json.Unmarshal(data.Data[2], &innerData); err != nil {
-			return fmt.Errorf("failed to parse inner array from CometPlatformRootClient: %w", err)
-		} else if len(innerData) < 5 {
-			return fmt.Errorf("inner array from CometPlatformRootClient init has less than 5 elements")
-		}
 		var requests []*graphql.GraphQLPreloader
-		if err := json.Unmarshal(innerData[4], &requests); err != nil {
+		if err := json.Unmarshal(expectedPreloaders, &requests); err != nil {
 			return fmt.Errorf("failed to parse graphql preload requests from CometPlatformRootClient: %w", err)
 		}
 		for _, req := range requests {
