@@ -74,7 +74,7 @@ type Client struct {
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
 }
 
-func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
+func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, refreshIntervalSeconds uint64) *Client {
 	if cookies.Platform == types.Unset {
 		panic("messagix: platform must be set in cookies")
 	}
@@ -106,6 +106,11 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		CsrBitmap:          crypto.NewBitmap(),
 	}
 	cli.socket = cli.newSocketClient()
+
+	logger.Debug().Uint64("refresh_interval_seconds", refreshIntervalSeconds).Msg("Setting refresh interval")
+	if refreshIntervalSeconds > 0 {
+		go cli.refreshConnectionPeriodically(time.Duration(refreshIntervalSeconds) * time.Second)
+	}
 
 	return cli
 }
@@ -263,6 +268,7 @@ func (c *Client) Disconnect() {
 		(*fn)()
 	}
 	c.socket.Disconnect()
+	c.socket.conn = nil
 }
 
 func (c *Client) SaveSession(path string) error {
@@ -387,4 +393,17 @@ func (c *Client) GetTaskId() int {
 
 	c.activeTasks = append(c.activeTasks, id)
 	return id
+}
+
+func (c *Client) refreshConnectionPeriodically(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		c.Logger.Info().Msg("Refreshing connection")
+		c.Disconnect()
+		err := c.Connect()
+		if err != nil {
+			c.Logger.Err(err).Msg("Error refreshing connection")
+		}
+	}
 }

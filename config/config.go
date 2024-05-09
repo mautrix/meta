@@ -46,10 +46,11 @@ type Config struct {
 	*bridgeconfig.BaseConfig `yaml:",inline"`
 
 	Meta struct {
-		Mode         BridgeMode `yaml:"mode"`
-		IGE2EE       bool       `yaml:"ig_e2ee"`
-		Proxy        string     `yaml:"proxy"`
-		GetProxyFrom string     `yaml:"get_proxy_from"`
+		Mode                   BridgeMode `yaml:"mode"`
+		IGE2EE                 bool       `yaml:"ig_e2ee"`
+		Proxy                  string     `yaml:"proxy"`
+		GetProxyFrom           string     `yaml:"get_proxy_from"`
+		RefreshIntervalSeconds uint64     `yaml:"refresh_interval_seconds"`
 	} `yaml:"meta"`
 
 	Bridge BridgeConfig `yaml:"bridge"`
