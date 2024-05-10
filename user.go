@@ -61,7 +61,7 @@ var (
 )
 
 const MinFullReconnectInterval = 1 * time.Hour
-const setDisconnectStateAfterConnectAttempts = 3
+const setDisconnectStateAfterConnectAttempts = 10
 
 func (br *MetaBridge) GetUserByMXID(userID id.UserID) *User {
 	return br.maybeGetUserByMXID(userID, &userID)
