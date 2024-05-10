@@ -100,14 +100,14 @@ func (c *Client) parseMetadata(response *types.MercuryUploadResponse) error {
 
 	switch response.Payload.Metadata[0] {
 	case '[':
-		var realMetadata []types.ImageMetadata
+		var realMetadata []types.FileMetadata
 		err := json.Unmarshal(response.Payload.Metadata, &realMetadata)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal image metadata in upload response: %v", err)
 		}
 		response.Payload.RealMetadata = &realMetadata[0]
 	case '{':
-		var realMetadata map[string]types.VideoMetadata
+		var realMetadata map[string]types.FileMetadata
 		err := json.Unmarshal(response.Payload.Metadata, &realMetadata)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal video metadata in upload response: %v", err)
