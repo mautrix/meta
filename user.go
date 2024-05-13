@@ -542,6 +542,19 @@ func (user *User) unlockedConnect() {
 		}
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Failed to connect to %s: %v", user.bridge.ProtocolName, err)
 	}
+
+	var refreshIntervalSeconds = user.bridge.Config.Meta.RefreshIntervalSeconds
+	user.log.Debug().Uint64("refresh_interval_seconds", refreshIntervalSeconds).Msg("Setting refresh interval")
+
+	if refreshIntervalSeconds > 0 {
+		go func() {
+			var refreshTimer = time.NewTimer(time.Duration(refreshIntervalSeconds) * time.Second)
+			<-refreshTimer.C
+			user.log.Info().Msg("Refreshing connection")
+			user.Disconnect()
+			user.Connect()
+		}()
+	}
 }
 
 func (user *User) Login(ctx context.Context, cookies *cookies.Cookies) error {
@@ -602,7 +615,7 @@ func (user *User) unlockedConnectWithCookies(cookies *cookies.Cookies) error {
 	log := user.log.With().Str("component", "messagix").Logger()
 	user.log.Debug().Msg("Connecting to Meta")
 	// TODO set proxy for media client?
-	cli := messagix.NewClient(cookies, log, user.bridge.Config.Meta.RefreshIntervalSeconds)
+	cli := messagix.NewClient(cookies, log)
 	if user.bridge.Config.Meta.GetProxyFrom != "" || user.bridge.Config.Meta.Proxy != "" {
 		cli.GetNewProxy = user.getProxy
 		if !cli.UpdateProxy("connect") {
