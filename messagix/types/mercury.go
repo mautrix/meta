@@ -41,27 +41,7 @@ func (soi *StringOrInt) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-type MediaMetadata interface {
-	GetFbId() int64
-}
-
-type ImageMetadata struct {
-	ImageID  StringOrInt `json:"image_id,omitempty"`
-	Filename string      `json:"filename,omitempty"`
-	Filetype string      `json:"filetype,omitempty"`
-	Src      string      `json:"src,omitempty"`
-	Fbid     StringOrInt `json:"fbid,omitempty"`
-	GifID    StringOrInt `json:"gif_id,omitempty"`
-}
-
-func (img *ImageMetadata) GetFbId() int64 {
-	if img.GifID != 0 {
-		return int64(img.GifID)
-	}
-	return int64(img.Fbid)
-}
-
-type VideoMetadata struct {
+type FileMetadata struct {
 	FileID       StringOrInt `json:"file_id,omitempty"`
 	AudioID      StringOrInt `json:"audio_id,omitempty"`
 	VideoID      StringOrInt `json:"video_id,omitempty"`
@@ -69,10 +49,11 @@ type VideoMetadata struct {
 	GifID        StringOrInt `json:"gif_id,omitempty"`
 	Filename     string      `json:"filename,omitempty"`
 	Filetype     string      `json:"filetype,omitempty"`
+	Src          string      `json:"src,omitempty"`
 	ThumbnailSrc string      `json:"thumbnail_src,omitempty"`
 }
 
-func (vid *VideoMetadata) GetFbId() int64 {
+func (vid *FileMetadata) GetFbId() int64 {
 	if vid.VideoID != 0 {
 		return int64(vid.VideoID)
 	} else if vid.AudioID != 0 {
@@ -113,7 +94,7 @@ So you will have to use type assertion to handle these cases seperately.
 type MediaPayloads struct {
 	UploadID     any             `json:"uploadID,omitempty"`
 	Metadata     json.RawMessage `json:"metadata,omitempty"`
-	RealMetadata MediaMetadata   `json:"-"`
+	RealMetadata *FileMetadata   `json:"-"`
 }
 
 type Hblp struct {
