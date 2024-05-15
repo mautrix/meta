@@ -239,6 +239,7 @@ type User struct {
 	incomingTables chan *table.LSTable
 
 	lastFullReconnect time.Time
+	forceRefreshTimer *time.Timer
 }
 
 var (
@@ -547,9 +548,9 @@ func (user *User) unlockedConnect() {
 	if refreshInterval > 0 {
 		user.log.Debug().Msgf("Connection will be refreshed at %s", time.Now().Add(refreshInterval).Format(time.RFC3339))
 		go func() {
-			var refreshTimer = time.NewTimer(refreshInterval)
+			user.forceRefreshTimer = time.NewTimer(refreshInterval)
 
-			<-refreshTimer.C
+			<-user.forceRefreshTimer.C
 			user.log.Info().Msg("Refreshing connection")
 			user.FullReconnect()
 		}()
@@ -1165,6 +1166,7 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(user.metaState)
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
 		user.StopBackfillLoop()
+		user.forceRefreshTimer.Stop()
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
