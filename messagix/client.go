@@ -263,7 +263,6 @@ func (c *Client) Disconnect() {
 		(*fn)()
 	}
 	c.socket.Disconnect()
-	c.socket.conn = nil
 }
 
 func (c *Client) SaveSession(path string) error {
