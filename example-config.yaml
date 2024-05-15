@@ -97,6 +97,8 @@ meta:
     get_proxy_from:
     # Interval to force refresh the connection (disconnect and re-connect), default is 1 day. Set 0 to disable refreshes.
     refresh_interval_seconds: 86400
+    # Minimum interval between full reconnects in seconds
+    min_full_reconnect_interval_seconds: 1
 
 # Bridge config
 bridge:

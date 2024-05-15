@@ -609,7 +609,7 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	} else {
 		ctx = context.WithValue(ctx, msgconvContextKeyClient, sender.Client)
 		tasks, otid, err = portal.MsgConv.ToMeta(ctx, evt, content, relaybotFormatted)
-		if errors.Is(err, metaTypes.ErrPleaseReloadPage) && time.Since(sender.lastFullReconnect) > MinFullReconnectInterval {
+		if errors.Is(err, metaTypes.ErrPleaseReloadPage) && sender.canReconnect() {
 			log.Err(err).Msg("Got please reload page error while converting message, reloading page in background")
 			go sender.FullReconnect()
 			err = errReloading
