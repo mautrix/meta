@@ -95,10 +95,10 @@ meta:
     # HTTP endpoint to request new proxy address from, for dynamically assigned proxies.
     # The endpoint must return a JSON body with a string field called proxy_url.
     get_proxy_from:
-    # Interval to force refresh the connection (disconnect and re-connect), default is 1 day. Set 0 to disable refreshes.
-    refresh_interval_seconds: 86400
-    # Minimum interval between full reconnects in seconds
-    min_full_reconnect_interval_seconds: 1
+    # Minimum interval between full reconnects in seconds, default is 1 hour
+    min_full_reconnect_interval_seconds: 3600
+    # Interval to force refresh the connection (full reconnect), default is 1 day. Set 0 to disable force refreshes.
+    force_refresh_interval_seconds: 86400
 
 # Bridge config
 bridge:

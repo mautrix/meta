@@ -51,6 +51,7 @@ type Config struct {
 		Proxy                           string     `yaml:"proxy"`
 		GetProxyFrom                    string     `yaml:"get_proxy_from"`
 		MinFullReconnectIntervalSeconds int        `yaml:"min_full_reconnect_interval_seconds"`
+		ForceRefreshIntervalSeconds     int        `yaml:"force_refresh_interval_seconds"`
 	} `yaml:"meta"`
 
 	Bridge BridgeConfig `yaml:"bridge"`

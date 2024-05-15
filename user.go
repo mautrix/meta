@@ -542,16 +542,15 @@ func (user *User) unlockedConnect() {
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Failed to connect to %s: %v", user.bridge.ProtocolName, err)
 	}
 
-	var refreshIntervalSeconds = user.bridge.Config.Meta.RefreshIntervalSeconds
-	user.log.Debug().Uint64("refresh_interval_seconds", refreshIntervalSeconds).Msg("Setting refresh interval")
-
-	if refreshIntervalSeconds > 0 {
+	refreshInterval := time.Duration(user.bridge.Config.Meta.ForceRefreshIntervalSeconds) * time.Second
+	if refreshInterval > 0 {
+		user.log.Debug().Msgf("Connection will be refreshed at %s", time.Now().Add(refreshInterval).Format(time.RFC3339))
 		go func() {
-			var refreshTimer = time.NewTimer(time.Duration(refreshIntervalSeconds) * time.Second)
+			var refreshTimer = time.NewTimer(refreshInterval)
+
 			<-refreshTimer.C
 			user.log.Info().Msg("Refreshing connection")
-			user.Disconnect()
-			user.Connect()
+			user.FullReconnect()
 		}()
 	}
 }
