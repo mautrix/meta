@@ -60,7 +60,6 @@ var (
 	ErrNotLoggedIn  = errors.New("not logged in")
 )
 
-const MinFullReconnectInterval = 1 * time.Hour
 const setDisconnectStateAfterConnectAttempts = 10
 
 func (br *MetaBridge) GetUserByMXID(userID id.UserID) *User {
@@ -240,6 +239,7 @@ type User struct {
 	incomingTables chan *table.LSTable
 
 	lastFullReconnect time.Time
+	forceRefreshTimer *time.Timer
 }
 
 var (
@@ -541,6 +541,19 @@ func (user *User) unlockedConnect() {
 			})
 		}
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Failed to connect to %s: %v", user.bridge.ProtocolName, err)
+		return
+	}
+
+	refreshInterval := time.Duration(user.bridge.Config.Meta.ForceRefreshIntervalSeconds) * time.Second
+	if refreshInterval > 0 {
+		go func() {
+			user.log.Debug().Time("next_refresh", time.Now().Add(refreshInterval)).Msg("Setting force refresh timer")
+			user.forceRefreshTimer = time.NewTimer(refreshInterval)
+
+			<-user.forceRefreshTimer.C
+			user.log.Info().Msg("Refreshing connection")
+			user.FullReconnect()
+		}()
 	}
 }
 
@@ -1014,7 +1027,7 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		}
 		user.BridgeState.Send(user.waState)
 	case *events.CATRefreshError:
-		if errors.Is(evt.Error, types.ErrPleaseReloadPage) && time.Since(user.lastFullReconnect) > MinFullReconnectInterval {
+		if errors.Is(evt.Error, types.ErrPleaseReloadPage) && user.canReconnect() {
 			user.log.Err(evt.Error).Msg("Got CATRefreshError, reloading page")
 			go user.FullReconnect()
 			return
@@ -1028,7 +1041,7 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
 		cf, ok := evt.(*events.ConnectFailure)
-		if ok && cf.Reason == events.ConnectFailureLoggedOut && time.Since(user.lastFullReconnect) > MinFullReconnectInterval {
+		if ok && cf.Reason == events.ConnectFailureLoggedOut && user.canReconnect() {
 			user.log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
 			go user.FullReconnect()
 		}
@@ -1133,7 +1146,7 @@ func (user *User) eventHandler(rawEvt any) {
 					StateEvent: status.StateUnknownError,
 					Error:      MetaServerUnavailable,
 				}
-				if time.Since(user.lastFullReconnect) > MinFullReconnectInterval {
+				if user.canReconnect() {
 					user.log.Debug().Msg("Doing full reconnect after server unavailable error")
 					go user.FullReconnect()
 				}
@@ -1153,6 +1166,9 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(user.metaState)
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
 		user.StopBackfillLoop()
+		if user.forceRefreshTimer != nil {
+			user.forceRefreshTimer.Stop()
+		}
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
@@ -1183,10 +1199,14 @@ func (user *User) unlockedDisconnect() {
 	user.metaState = status.BridgeState{}
 }
 
+func (user *User) canReconnect() bool {
+	return time.Since(user.lastFullReconnect) > time.Duration(user.bridge.Config.Meta.MinFullReconnectIntervalSeconds)*time.Second
+}
+
 func (user *User) FullReconnect() {
 	user.Lock()
 	defer user.Unlock()
-	if time.Since(user.lastFullReconnect) < MinFullReconnectInterval {
+	if !user.canReconnect() {
 		return
 	}
 	user.unlockedDisconnect()
