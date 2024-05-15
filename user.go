@@ -546,8 +546,8 @@ func (user *User) unlockedConnect() {
 
 	refreshInterval := time.Duration(user.bridge.Config.Meta.ForceRefreshIntervalSeconds) * time.Second
 	if refreshInterval > 0 {
-		user.log.Debug().Msgf("Connection will be refreshed at %s", time.Now().Add(refreshInterval).Format(time.RFC3339))
 		go func() {
+			user.log.Debug().Time("next_refresh", time.Now().Add(refreshInterval)).Msg("Setting force refresh timer")
 			user.forceRefreshTimer = time.NewTimer(refreshInterval)
 
 			<-user.forceRefreshTimer.C
