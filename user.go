@@ -1166,7 +1166,9 @@ func (user *User) eventHandler(rawEvt any) {
 		user.BridgeState.Send(user.metaState)
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
 		user.StopBackfillLoop()
-		user.forceRefreshTimer.Stop()
+		if user.forceRefreshTimer != nil {
+			user.forceRefreshTimer.Stop()
+		}
 	default:
 		user.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
