@@ -540,6 +540,7 @@ func (user *User) unlockedConnect() {
 			})
 		}
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Failed to connect to %s: %v", user.bridge.ProtocolName, err)
+		return
 	}
 
 	refreshInterval := time.Duration(user.bridge.Config.Meta.ForceRefreshIntervalSeconds) * time.Second
