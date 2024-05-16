@@ -1,3 +1,12 @@
+# v0.3.1 (2024-05-16)
+
+* Added option to disable fetching XMA media (reels and such) entirely.
+  * The URL to the reel will be included in the caption when fetching is
+    disabled.
+* Added periodic refresh to avoid refresh errors when sending media.
+* Fixed many different cases of media uploads failing.
+* Fixed sending replies in encrypted chats.
+
 # v0.3.0 (2024-04-16)
 
 * Added mautrix-facebook database migration utility
