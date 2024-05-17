@@ -72,6 +72,9 @@ type Client struct {
 	unnecessaryCATRequests int
 
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
+
+	CanSendMessages  bool
+	SendMessagesCond *sync.Cond
 }
 
 func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
@@ -88,13 +91,15 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 			},
 			Timeout: 60 * time.Second,
 		},
-		cookies:         cookies,
-		Logger:          logger,
-		lsRequests:      0,
-		graphQLRequests: 1,
-		platform:        cookies.Platform,
-		activeTasks:     make([]int, 0),
-		taskMutex:       &sync.Mutex{},
+		cookies:          cookies,
+		Logger:           logger,
+		lsRequests:       0,
+		graphQLRequests:  1,
+		platform:         cookies.Platform,
+		activeTasks:      make([]int, 0),
+		taskMutex:        &sync.Mutex{},
+		CanSendMessages:  false,
+		SendMessagesCond: sync.NewCond(&sync.Mutex{}),
 	}
 	cli.http.CheckRedirect = cli.checkHTTPRedirect
 
