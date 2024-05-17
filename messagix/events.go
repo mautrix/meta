@@ -109,6 +109,12 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	data.client = s.client
 	s.client.eventHandler(data.Finish())
 	s.previouslyConnected = true
+
+	s.client.SendMessagesCond.L.Lock()
+	s.client.CanSendMessages = true
+	s.client.SendMessagesCond.Signal()
+	s.client.SendMessagesCond.L.Unlock()
+
 	return nil
 }
 
