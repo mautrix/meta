@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -18,6 +19,10 @@ type ResponseHandler struct {
 	requestChannels map[uint16]chan interface{}
 	packetChannels  map[uint16]chan interface{}
 }
+
+var ErrTimeout = fmt.Errorf("timeout waiting for response")
+var ErrContextCancelled = fmt.Errorf("context cancelled before response received")
+var ErrChannelNotFound = fmt.Errorf("channel not found for packet")
 
 func (p *ResponseHandler) hasPacket(packetId uint16) bool {
 	p.lock.RLock()
@@ -60,16 +65,28 @@ func (p *ResponseHandler) updateRequestChannel(packetId uint16, packetData inter
 	return false
 }
 
-func (p *ResponseHandler) waitForPubACKDetails(packetId uint16) *Event_PublishACK {
-	return castIfNotNil[Event_PublishACK](p.waitForDetails(packetId, PacketChannel))
+func (p *ResponseHandler) waitForPubACKDetails(packetId uint16) (*Event_PublishACK, error) {
+	response, err := p.waitForDetails(packetId, PacketChannel)
+	if err != nil {
+		return nil, err
+	}
+	return castIfNotNil[Event_PublishACK](response), nil
 }
 
-func (p *ResponseHandler) waitForSubACKDetails(packetId uint16) *Event_SubscribeACK {
-	return castIfNotNil[Event_SubscribeACK](p.waitForDetails(packetId, PacketChannel))
+func (p *ResponseHandler) waitForSubACKDetails(packetId uint16) (*Event_SubscribeACK, error) {
+	response, err := p.waitForDetails(packetId, PacketChannel)
+	if err != nil {
+		return nil, err
+	}
+	return castIfNotNil[Event_SubscribeACK](response), nil
 }
 
-func (p *ResponseHandler) waitForPubResponseDetails(packetId uint16) *Event_PublishResponse {
-	return castIfNotNil[Event_PublishResponse](p.waitForDetails(packetId, RequestChannel))
+func (p *ResponseHandler) waitForPubResponseDetails(packetId uint16) (*Event_PublishResponse, error) {
+	response, err := p.waitForDetails(packetId, RequestChannel)
+	if err != nil {
+		return nil, err
+	}
+	return castIfNotNil[Event_PublishResponse](response), nil
 }
 
 func castIfNotNil[T any](i interface{}) *T {
@@ -79,20 +96,22 @@ func castIfNotNil[T any](i interface{}) *T {
 	return nil
 }
 
-func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelType) interface{} {
+func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelType) (interface{}, error) {
 	ch, ok := p.getChannel(packetId, channelType)
 	if !ok {
-		return nil
+		return nil, ErrChannelNotFound
 	}
 
 	select {
+	case <-p.client.Context().Done():
+		p.deleteDetails(packetId, channelType)
+		return nil, ErrContextCancelled
 	case response := <-ch:
 		p.deleteDetails(packetId, channelType)
-		return response
+		return response, nil
 	case <-time.After(packetTimeout):
 		p.deleteDetails(packetId, channelType)
-		// TODO this should probably be an error
-		return nil
+		return nil, ErrTimeout
 	}
 }
 

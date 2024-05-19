@@ -21,7 +21,7 @@ func (c *Client) ExecuteTasks(tasks ...socket.Task) (*table.LSTable, error) {
 
 	resp, err := c.socket.makeLSRequest(payload, 3)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send LS request: %v", err)
+		return nil, err
 	}
 
 	resp.Finish()
