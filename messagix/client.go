@@ -67,6 +67,7 @@ type Client struct {
 	endpoints       map[string]string
 	taskMutex       *sync.Mutex
 	activeTasks     []int
+	ctx             context.Context
 
 	catRefreshLock         sync.Mutex
 	unnecessaryCATRequests int
@@ -217,6 +218,7 @@ func (c *Client) Connect() error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
+	c.ctx = ctx
 	oldCancel := c.stopCurrentConnection.Swap(&cancel)
 	if oldCancel != nil {
 		(*oldCancel)()
@@ -392,4 +394,8 @@ func (c *Client) GetTaskId() int {
 
 	c.activeTasks = append(c.activeTasks, id)
 	return id
+}
+
+func (c *Client) Context() context.Context {
+	return c.ctx
 }
