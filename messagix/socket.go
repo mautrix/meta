@@ -369,14 +369,10 @@ func (s *Socket) sendPublishPacket(topic Topic, jsonData string, packet *packets
 		s.responseHandler.deleteDetails(packetId, RequestChannel)
 		return packetId, err
 	}
-	ack, err := s.responseHandler.waitForPubACKDetails(packetId)
+	_, err = s.responseHandler.waitForPubACKDetails(packetId)
 	if err != nil {
 		s.responseHandler.deleteDetails(packetId, RequestChannel)
 		return packetId, err
-	}
-	if ack == nil {
-		s.responseHandler.deleteDetails(packetId, RequestChannel)
-		return packetId, fmt.Errorf("puback timeout")
 	}
 	return packetId, nil
 }
