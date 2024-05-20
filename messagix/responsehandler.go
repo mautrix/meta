@@ -103,7 +103,7 @@ func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelTyp
 	}
 
 	select {
-	case <-p.client.Context().Done():
+	case <-p.client.ctx.Done():
 		p.deleteDetails(packetId, channelType)
 		return nil, ErrContextCancelled
 	case response := <-ch:
