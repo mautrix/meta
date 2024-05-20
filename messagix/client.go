@@ -395,7 +395,3 @@ func (c *Client) GetTaskId() int {
 	c.activeTasks = append(c.activeTasks, id)
 	return id
 }
-
-func (c *Client) Context() context.Context {
-	return c.ctx
-}
