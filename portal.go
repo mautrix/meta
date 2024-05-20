@@ -54,6 +54,8 @@ import (
 	"go.mau.fi/mautrix-meta/msgconv"
 )
 
+const MaxMetaSendAttempts = 5
+
 func (br *MetaBridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
@@ -652,9 +654,17 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 		messageTS := time.Now()
 		var resp *table.LSTable
 
-		sender.Client.WaitForSendingMessages()
+		retries := 0
+		for retries < MaxMetaSendAttempts {
+			sender.Client.WaitUntilCanSendMessages(15 * time.Second)
+			resp, err = sender.Client.ExecuteTasks(tasks...)
+			if err == nil {
+				break
+			}
+			log.Err(err).Msg("Failed to send message to Meta, retrying")
+			retries++
+		}
 
-		resp, err = sender.Client.ExecuteTasks(tasks...)
 		log.Trace().Any("response", resp).Msg("Meta send response")
 		var msgID string
 		if err == nil {
