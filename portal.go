@@ -630,12 +630,6 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	timings.convert = time.Since(start)
 	start = time.Now()
 
-	sender.Client.SendMessagesCond.L.Lock()
-	for !sender.Client.CanSendMessages {
-		sender.Client.SendMessagesCond.Wait()
-	}
-	sender.Client.SendMessagesCond.L.Unlock()
-
 	if waMsg != nil {
 		messageID := sender.E2EEClient.GenerateMessageID()
 		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
@@ -657,6 +651,9 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 		portal.pendingMessages[otid] = evt.ID
 		messageTS := time.Now()
 		var resp *table.LSTable
+
+		sender.Client.WaitForSendingMessages()
+
 		resp, err = sender.Client.ExecuteTasks(tasks...)
 		log.Trace().Any("response", resp).Msg("Meta send response")
 		var msgID string

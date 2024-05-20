@@ -73,8 +73,8 @@ type Client struct {
 
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
 
-	CanSendMessages  bool
-	SendMessagesCond *sync.Cond
+	canSendMessages  bool
+	sendMessagesCond *sync.Cond
 }
 
 func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
@@ -98,8 +98,8 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		platform:         cookies.Platform,
 		activeTasks:      make([]int, 0),
 		taskMutex:        &sync.Mutex{},
-		CanSendMessages:  false,
-		SendMessagesCond: sync.NewCond(&sync.Mutex{}),
+		canSendMessages:  false,
+		sendMessagesCond: sync.NewCond(&sync.Mutex{}),
 	}
 	cli.http.CheckRedirect = cli.checkHTTPRedirect
 
@@ -392,4 +392,29 @@ func (c *Client) GetTaskId() int {
 
 	c.activeTasks = append(c.activeTasks, id)
 	return id
+}
+
+func (c *Client) EnableSendingMessages() {
+	c.sendMessagesCond.L.Lock()
+	c.canSendMessages = true
+	c.sendMessagesCond.Broadcast()
+	c.sendMessagesCond.L.Unlock()
+}
+
+func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
+	c.sendMessagesCond.L.Lock()
+	defer c.sendMessagesCond.L.Unlock()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for !c.canSendMessages {
+		select {
+		case <-timer.C:
+			return fmt.Errorf("timeout waiting for sending messages")
+		default:
+			c.sendMessagesCond.Wait()
+		}
+	}
+	return nil
 }
