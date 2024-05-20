@@ -411,7 +411,7 @@ func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
 	for !c.canSendMessages {
 		select {
 		case <-timer.C:
-			return fmt.Errorf("timeout waiting for sending messages")
+			return fmt.Errorf("timeout waiting for canSendMessages")
 		default:
 			c.sendMessagesCond.Wait()
 		}

@@ -656,7 +656,10 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 
 		retries := 0
 		for retries < MaxMetaSendAttempts {
-			sender.Client.WaitUntilCanSendMessages(15 * time.Second)
+			if err := sender.Client.WaitUntilCanSendMessages(15 * time.Second); err != nil {
+				log.Err(err).Msg("Error waiting to be able to send messages")
+				break
+			}
 			resp, err = sender.Client.ExecuteTasks(tasks...)
 			if err == nil {
 				break
