@@ -656,21 +656,21 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 
 		retries := 0
 		for retries < MaxMetaSendAttempts {
-			if err := sender.Client.WaitUntilCanSendMessages(15 * time.Second); err != nil {
-				log.Err(err).Msg("Error waiting to be able to send messages")
-				break
+			if err = sender.Client.WaitUntilCanSendMessages(15 * time.Second); err != nil {
+				log.Err(err).Msg("Error waiting to be able to send messages, retrying")
+			} else {
+				resp, err = sender.Client.ExecuteTasks(tasks...)
+				if err == nil {
+					break
+				}
+				log.Err(err).Msg("Failed to send message to Meta, retrying")
 			}
-			resp, err = sender.Client.ExecuteTasks(tasks...)
-			if err == nil {
-				break
-			}
-			log.Err(err).Msg("Failed to send message to Meta, retrying")
 			retries++
 		}
 
 		log.Trace().Any("response", resp).Msg("Meta send response")
 		var msgID string
-		if err == nil {
+		if resp != nil && err == nil {
 			for _, replace := range resp.LSReplaceOptimsiticMessage {
 				if replace.OfflineThreadingId == otidStr {
 					msgID = replace.MessageId
