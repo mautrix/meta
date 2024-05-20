@@ -403,8 +403,7 @@ func (s *Socket) makeLSRequest(payload []byte, t int) (*Event_PublishResponse, e
 		return nil, err
 	}
 
-	resp, err := s.responseHandler.waitForPubResponseDetails(packetId)
-	return resp, err
+	return s.responseHandler.waitForPubResponseDetails(packetId)
 }
 
 func (s *Socket) getConnHeaders() http.Header {
