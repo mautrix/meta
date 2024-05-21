@@ -21,7 +21,6 @@ type ResponseHandler struct {
 }
 
 var ErrTimeout = fmt.Errorf("timeout waiting for response")
-var ErrContextCancelled = fmt.Errorf("context cancelled before response received")
 var ErrChannelNotFound = fmt.Errorf("channel not found for packet")
 
 func (p *ResponseHandler) hasPacket(packetId uint16) bool {
