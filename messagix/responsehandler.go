@@ -103,9 +103,6 @@ func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelTyp
 	}
 
 	select {
-	case <-p.client.ctx.Done():
-		p.deleteDetails(packetId, channelType)
-		return nil, ErrContextCancelled
 	case response := <-ch:
 		p.deleteDetails(packetId, channelType)
 		return response, nil
@@ -146,4 +143,15 @@ func (p *ResponseHandler) getChannel(packetId uint16, channelType ChannelType) (
 	}
 	p.lock.RUnlock()
 	return ch, ok
+}
+
+func (p *ResponseHandler) CancelAllRequests() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	for packetId := range p.requestChannels {
+		p.deleteDetails(packetId, RequestChannel)
+	}
+	for packetId := range p.packetChannels {
+		p.deleteDetails(packetId, PacketChannel)
+	}
 }

@@ -67,7 +67,6 @@ type Client struct {
 	endpoints       map[string]string
 	taskMutex       *sync.Mutex
 	activeTasks     []int
-	ctx             context.Context
 
 	catRefreshLock         sync.Mutex
 	unnecessaryCATRequests int
@@ -218,7 +217,6 @@ func (c *Client) Connect() error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
-	c.ctx = ctx
 	oldCancel := c.stopCurrentConnection.Swap(&cancel)
 	if oldCancel != nil {
 		(*oldCancel)()

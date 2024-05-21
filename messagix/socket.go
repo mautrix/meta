@@ -140,6 +140,7 @@ func (s *Socket) Connect() error {
 	}
 
 	err = s.readLoop(conn)
+	s.responseHandler.CancelAllRequests()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInReadLoop, err)
 	}
