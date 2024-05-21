@@ -21,6 +21,7 @@ type ResponseHandler struct {
 }
 
 var ErrTimeout = fmt.Errorf("timeout waiting for response")
+var ErrConnectionClosed = fmt.Errorf("connection closed")
 var ErrChannelNotFound = fmt.Errorf("channel not found for packet")
 
 func (p *ResponseHandler) hasPacket(packetId uint16) bool {
@@ -103,6 +104,9 @@ func (p *ResponseHandler) waitForDetails(packetId uint16, channelType ChannelTyp
 
 	select {
 	case response := <-ch:
+		if response == nil {
+			return nil, ErrConnectionClosed
+		}
 		p.deleteDetails(packetId, channelType)
 		return response, nil
 	case <-time.After(packetTimeout):
