@@ -225,6 +225,7 @@ func (c *Client) Connect() error {
 		connectionAttempts := 1
 		reconnectIn := 2 * time.Second
 		for {
+			c.disableSendingMessages() // In case we're reconnecting from a normal network error
 			connectStart := time.Now()
 			err := c.socket.Connect()
 			if ctx.Err() != nil {
@@ -401,19 +402,32 @@ func (c *Client) EnableSendingMessages() {
 	c.sendMessagesCond.L.Unlock()
 }
 
-func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
+func (c *Client) disableSendingMessages() {
 	c.sendMessagesCond.L.Lock()
-	defer c.sendMessagesCond.L.Unlock()
+	c.canSendMessages = false
+	c.sendMessagesCond.L.Unlock()
+}
 
+func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		c.sendMessagesCond.L.Lock()
+		defer c.sendMessagesCond.L.Unlock()
+		c.sendMessagesCond.Wait()
+		close(done)
+	}()
 
 	for !c.canSendMessages {
 		select {
 		case <-timer.C:
 			return fmt.Errorf("timeout waiting for canSendMessages")
-		default:
-			c.sendMessagesCond.Wait()
+		case <-done:
+			if c.canSendMessages {
+				return nil
+			}
 		}
 	}
 	return nil
