@@ -54,6 +54,8 @@ import (
 	"go.mau.fi/mautrix-meta/msgconv"
 )
 
+const MaxMetaSendAttempts = 5
+
 func (br *MetaBridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
@@ -630,12 +632,6 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 	timings.convert = time.Since(start)
 	start = time.Now()
 
-	sender.Client.SendMessagesCond.L.Lock()
-	for !sender.Client.CanSendMessages {
-		sender.Client.SendMessagesCond.Wait()
-	}
-	sender.Client.SendMessagesCond.L.Unlock()
-
 	if waMsg != nil {
 		messageID := sender.E2EEClient.GenerateMessageID()
 		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
@@ -657,10 +653,24 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 		portal.pendingMessages[otid] = evt.ID
 		messageTS := time.Now()
 		var resp *table.LSTable
-		resp, err = sender.Client.ExecuteTasks(tasks...)
+
+		retries := 0
+		for retries < MaxMetaSendAttempts {
+			if err = sender.Client.WaitUntilCanSendMessages(15 * time.Second); err != nil {
+				log.Err(err).Msg("Error waiting to be able to send messages, retrying")
+			} else {
+				resp, err = sender.Client.ExecuteTasks(tasks...)
+				if err == nil {
+					break
+				}
+				log.Err(err).Msg("Failed to send message to Meta, retrying")
+			}
+			retries++
+		}
+
 		log.Trace().Any("response", resp).Msg("Meta send response")
 		var msgID string
-		if err == nil {
+		if resp != nil && err == nil {
 			for _, replace := range resp.LSReplaceOptimsiticMessage {
 				if replace.OfflineThreadingId == otidStr {
 					msgID = replace.MessageId
