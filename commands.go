@@ -56,6 +56,7 @@ func (br *MetaBridge) RegisterCommands() {
 	proc.AddHandlers(
 		cmdPing,
 		cmdLogin,
+		cmdLoginTokens,
 		cmdSyncSpace,
 		cmdDeleteSession,
 		cmdToggleEncryption,
@@ -280,6 +281,64 @@ func fnSyncSpace(ce *WrappedCommandEvent) {
 		plural = ""
 	}
 	ce.Reply("Added %d room%s to space", count, plural)
+}
+
+var cmdLoginTokens = &commands.FullHandler{
+	Func: wrapCommand(fnLoginTokens),
+	Name: "login-tokens",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Link the bridge to your Meta account using access tokens.",
+		Args:        "<datr> <c_user> <sb> <xs>",
+	},
+}
+
+func fnLoginTokens(ce *WrappedCommandEvent) {
+	if len(ce.Args) != 4 {
+		ce.Reply("**Usage**: $cmdprefix login-tokens <datr> <c_user> <sb> <xs>")
+		return
+	}
+
+	if ce.User.IsLoggedIn() {
+		if ce.User.Client.IsConnected() {
+			ce.Reply("You're already logged in")
+		} else {
+			ce.Reply("You're already logged in, but not connected 🤔")
+		}
+		return
+	}
+
+	data := make(map[string]string)
+	data["datr"] = ce.Args[0]
+	data["c_user"] = ce.Args[1]
+	data["sb"] = ce.Args[2]
+	data["xs"] = ce.Args[3]
+
+	var newCookies cookies.Cookies
+	newCookies.Platform = database.MessagixPlatform
+
+	rawData, _ := json.Marshal(data)
+	err := json.Unmarshal(rawData, &newCookies)
+	if err != nil {
+		ce.Reply("Failed to parse cookies into struct: %v", err)
+		return
+	}
+
+	// print the cookies
+	ce.Reply("Cookies: %s", newCookies.String())
+
+	missingRequiredCookies := newCookies.GetMissingCookieNames()
+	if len(missingRequiredCookies) > 0 {
+		ce.Reply("Missing some cookies: %v", missingRequiredCookies)
+		return
+	}
+
+	err = ce.User.Login(ce.Ctx, &newCookies)
+	if err != nil {
+		ce.Reply("Failed to log in: %v", err)
+	} else {
+		ce.Reply("Successfully logged in as %d", ce.User.MetaID)
+	}
 }
 
 var cmdLogin = &commands.FullHandler{
