@@ -151,10 +151,12 @@ func (p *ResponseHandler) getChannel(packetId uint16, channelType ChannelType) (
 func (p *ResponseHandler) CancelAllRequests() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	for packetId := range p.requestChannels {
-		p.deleteDetails(packetId, RequestChannel)
+	for _, ch := range p.requestChannels {
+		close(ch)
 	}
-	for packetId := range p.packetChannels {
-		p.deleteDetails(packetId, PacketChannel)
+	for _, ch := range p.packetChannels {
+		close(ch)
 	}
+	p.requestChannels = make(map[uint16]chan any)
+	p.packetChannels = make(map[uint16]chan any)
 }
