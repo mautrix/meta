@@ -140,6 +140,7 @@ func (s *Socket) Connect() error {
 	}
 
 	err = s.readLoop(conn)
+	s.responseHandler.CancelAllRequests()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInReadLoop, err)
 	}
@@ -345,7 +346,10 @@ func (s *Socket) sendSubscribePacket(topic Topic, qos packets.QoS, wait bool) (*
 
 	var resp *Event_SubscribeACK
 	if wait {
-		resp = s.responseHandler.waitForSubACKDetails(packetId)
+		resp, err = s.responseHandler.waitForSubACKDetails(packetId)
+		if err != nil {
+			return nil, err
+		}
 		if resp == nil {
 			return nil, fmt.Errorf("did not receive SubACK packet for packetid: %d", packetId)
 		}
@@ -366,10 +370,10 @@ func (s *Socket) sendPublishPacket(topic Topic, jsonData string, packet *packets
 		s.responseHandler.deleteDetails(packetId, RequestChannel)
 		return packetId, err
 	}
-	ack := s.responseHandler.waitForPubACKDetails(packetId)
-	if ack == nil {
+	_, err = s.responseHandler.waitForPubACKDetails(packetId)
+	if err != nil {
 		s.responseHandler.deleteDetails(packetId, RequestChannel)
-		return packetId, fmt.Errorf("puback timeout")
+		return packetId, err
 	}
 	return packetId, nil
 }
@@ -400,11 +404,7 @@ func (s *Socket) makeLSRequest(payload []byte, t int) (*Event_PublishResponse, e
 		return nil, err
 	}
 
-	resp := s.responseHandler.waitForPubResponseDetails(packetId)
-	if resp == nil {
-		return nil, fmt.Errorf("publish response timeout")
-	}
-	return resp, nil
+	return s.responseHandler.waitForPubResponseDetails(packetId)
 }
 
 func (s *Socket) getConnHeaders() http.Header {

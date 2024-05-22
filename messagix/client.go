@@ -225,6 +225,7 @@ func (c *Client) Connect() error {
 		connectionAttempts := 1
 		reconnectIn := 2 * time.Second
 		for {
+			c.disableSendingMessages() // In case we're reconnecting from a normal network error
 			connectStart := time.Now()
 			err := c.socket.Connect()
 			c.disableSendingMessages()
