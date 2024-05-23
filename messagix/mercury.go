@@ -69,11 +69,10 @@ var antiJSPrefix = []byte("for (;;);")
 func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*types.MercuryUploadResponse, error) {
 	jsonData := bytes.TrimPrefix(respBody, antiJSPrefix)
 
-	logEvt := zerolog.Ctx(ctx).Trace()
 	if json.Valid(jsonData) {
-		logEvt.RawJSON("response_body", jsonData).Msg("Mercury upload response")
+		zerolog.Ctx(ctx).Trace().RawJSON("response_body", jsonData).Msg("Mercury upload response")
 	} else {
-		logEvt.Bytes("response_body", respBody).Msg("Mercury upload response (invalid JSON)")
+		zerolog.Ctx(ctx).Debug().Bytes("response_body", respBody).Msg("Mercury upload response (invalid JSON)")
 	}
 
 	var mercuryResponse *types.MercuryUploadResponse
