@@ -65,20 +65,21 @@ type LSUpsertMessage struct {
 	ViewedPluginContext             int64                      `index:"54" json:",omitempty"`
 	QuickReplyType                  int64                      `index:"55" json:",omitempty"`
 	HotEmojiSize                    int64                      `index:"56" json:",omitempty"`
-	ReplySourceTimestampMs          int64                      `index:"57" json:",omitempty"`
-	EphemeralDurationInSec          int64                      `index:"58" json:",omitempty"`
-	MsUntilExpirationTs             int64                      `index:"59" json:",omitempty"`
-	EphemeralExpirationTs           int64                      `index:"60" json:",omitempty"`
-	TakedownState                   int64                      `index:"61" json:",omitempty"`
-	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
-	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
-	BotResponseID                   int64                      `index:"64" json:",omitempty"`
-	MetadataDataclass               string                     `index:"65" json:",omitempty"`
-	EditCount                       int64                      `index:"66" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"67" json:",omitempty"`
-	AdminSignatureName              string                     `index:"68" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"69" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"70" json:",omitempty"`
+	PlatformXmdEncoded              any                        `index:"57" json:",omitempty"`
+	ReplySourceTimestampMs          int64                      `index:"58" json:",omitempty"`
+	EphemeralDurationInSec          int64                      `index:"59" json:",omitempty"`
+	MsUntilExpirationTs             int64                      `index:"60" json:",omitempty"`
+	EphemeralExpirationTs           int64                      `index:"61" json:",omitempty"`
+	TakedownState                   int64                      `index:"62" json:",omitempty"`
+	IsCollapsed                     bool                       `index:"63" json:",omitempty"`
+	SubthreadKey                    int64                      `index:"64" json:",omitempty"`
+	BotResponseID                   int64                      `index:"65" json:",omitempty"`
+	MetadataDataclass               string                     `index:"66" json:",omitempty"`
+	EditCount                       int64                      `index:"67" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"68" json:",omitempty"`
+	AdminSignatureName              string                     `index:"69" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"70" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"71" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -140,6 +141,7 @@ func (um *LSUpsertMessage) ToInsert() *LSInsertMessage {
 		ViewedPluginContext:       um.ViewedPluginContext,
 		QuickReplyType:            um.QuickReplyType,
 		HotEmojiSize:              um.HotEmojiSize,
+		PlatformXmdEncoded:        um.PlatformXmdEncoded,
 		ReplySourceTimestampMs:    um.ReplySourceTimestampMs,
 		EphemeralDurationInSec:    um.EphemeralDurationInSec,
 		MsUntilExpirationTs:       um.MsUntilExpirationTs,
@@ -306,19 +308,20 @@ type LSInsertMessage struct {
 	ViewedPluginContext             int64                      `index:"53" json:",omitempty"`
 	QuickReplyType                  int64                      `index:"54" json:",omitempty"`
 	HotEmojiSize                    int64                      `index:"55" json:",omitempty"`
-	ReplySourceTimestampMs          int64                      `index:"56" json:",omitempty"`
-	EphemeralDurationInSec          int64                      `index:"57" json:",omitempty"`
-	MsUntilExpirationTs             int64                      `index:"58" json:",omitempty"`
-	EphemeralExpirationTs           int64                      `index:"59" json:",omitempty"`
-	TakedownState                   int64                      `index:"60" json:",omitempty"`
-	IsCollapsed                     bool                       `index:"61" json:",omitempty"`
-	SubthreadKey                    int64                      `index:"62" json:",omitempty"`
-	BotResponseID                   int64                      `index:"63" json:",omitempty"`
-	EditCount                       int64                      `index:"64" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"65" json:",omitempty"`
-	AdminSignatureName              string                     `index:"66" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"67" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"68" json:",omitempty"`
+	PlatformXmdEncoded              any                        `index:"56" json:",omitempty"`
+	ReplySourceTimestampMs          int64                      `index:"57" json:",omitempty"`
+	EphemeralDurationInSec          int64                      `index:"58" json:",omitempty"`
+	MsUntilExpirationTs             int64                      `index:"59" json:",omitempty"`
+	EphemeralExpirationTs           int64                      `index:"60" json:",omitempty"`
+	TakedownState                   int64                      `index:"61" json:",omitempty"`
+	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
+	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
+	BotResponseID                   int64                      `index:"64" json:",omitempty"`
+	EditCount                       int64                      `index:"65" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"66" json:",omitempty"`
+	AdminSignatureName              string                     `index:"67" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"68" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"69" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -438,19 +441,20 @@ type LSDeleteThenInsertMessage struct {
 	ViewedPluginContext             int64                      `index:"53" json:",omitempty"`
 	QuickReplyType                  int64                      `index:"54" json:",omitempty"`
 	HotEmojiSize                    int64                      `index:"55" json:",omitempty"`
-	ReplySourceTimestampMs          int64                      `index:"56" json:",omitempty"`
-	EphemeralDurationInSec          int64                      `index:"57" json:",omitempty"`
-	MsUntilExpirationTs             int64                      `index:"58" json:",omitempty"`
-	EphemeralExpirationTs           int64                      `index:"59" json:",omitempty"`
-	TakedownState                   int64                      `index:"60" json:",omitempty"`
-	IsCollapsed                     bool                       `index:"61" json:",omitempty"`
-	SubthreadKey                    int64                      `index:"62" json:",omitempty"`
-	BotResponseID                   int64                      `index:"63" json:",omitempty"`
-	EditCount                       int64                      `index:"64" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"65" json:",omitempty"`
-	AdminSignatureName              string                     `index:"66" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"67" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"68" json:",omitempty"`
+	PlatformXmdEncoded              any                        `index:"56" json:",omitempty"`
+	ReplySourceTimestampMs          int64                      `index:"57" json:",omitempty"`
+	EphemeralDurationInSec          int64                      `index:"58" json:",omitempty"`
+	MsUntilExpirationTs             int64                      `index:"59" json:",omitempty"`
+	EphemeralExpirationTs           int64                      `index:"60" json:",omitempty"`
+	TakedownState                   int64                      `index:"61" json:",omitempty"`
+	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
+	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
+	BotResponseID                   int64                      `index:"64" json:",omitempty"`
+	EditCount                       int64                      `index:"65" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"66" json:",omitempty"`
+	AdminSignatureName              string                     `index:"67" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"68" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"69" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

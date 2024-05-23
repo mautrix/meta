@@ -544,7 +544,7 @@ type LSUpdateOrInsertThread struct {
 	InviterId                              int64      `index:"100" json:",omitempty"`
 	ThreadTags                             int64      `index:"101" json:",omitempty"`
 	IsReadReceiptsDisabled                 bool       `index:"102" json:",omitempty"`
-	ReadReceiptsDisabledV2                 bool       `index:"103" json:",omitempty"`
+	ReadReceiptsDisabledV2                 int64      `index:"103" json:",omitempty"`
 	ThreadStatus                           int64      `index:"104" json:",omitempty"`
 	ThreadSubtype                          int64      `index:"105" json:",omitempty"`
 	PauseThreadTimestamp                   int64      `index:"106" json:",omitempty"`
