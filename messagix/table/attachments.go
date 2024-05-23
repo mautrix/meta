@@ -444,7 +444,7 @@ type LSInsertAttachmentCta struct {
 	MessageId           string `index:"5" json:",omitempty"`
 	Title               string `index:"6" json:",omitempty"`
 	Type_               string `index:"7" json:",omitempty"`
-	PlatformToken       int64  `index:"8" json:",omitempty"`
+	PlatformToken       string `index:"8" json:",omitempty"`
 	ActionUrl           string `index:"9" json:",omitempty"`
 	NativeUrl           string `index:"10" json:",omitempty"`
 	UrlWebviewType      int64  `index:"11" json:",omitempty"`
