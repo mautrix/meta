@@ -17,6 +17,7 @@ import (
 
 func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	if s.previouslyConnected {
+		s.client.EnableSendingMessages()
 		err := s.client.SyncManager.EnsureSyncedSocket(reconnectSync[s.client.platform])
 		if err != nil {
 			return fmt.Errorf("failed to sync after reconnect: %w", err)
@@ -43,6 +44,8 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to /ls_resp: %w", err)
 	}
+
+	s.client.EnableSendingMessages()
 
 	tskm := s.client.NewTaskManager()
 	tskm.AddNewTask(&socket.FetchThreadsTask{
@@ -109,8 +112,6 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	data.client = s.client
 	s.client.eventHandler(data.Finish())
 	s.previouslyConnected = true
-
-	s.client.EnableSendingMessages()
 
 	return nil
 }
