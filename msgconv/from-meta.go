@@ -686,7 +686,9 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	}
 	_, hasExternalURL := converted.Extra["external_url"]
 	if !hasExternalURL && att.CTA != nil && att.CTA.ActionUrl != "" {
-		converted.Extra["external_url"] = removeLPHP(att.CTA.ActionUrl)
+		externalURL := removeLPHP(att.CTA.ActionUrl)
+		converted.Extra["external_url"] = externalURL
+		addExternalURLCaption(converted.Content, externalURL)
 	}
 	parts := []*ConvertedMessagePart{converted}
 	if att.TitleText != "" || att.CaptionBodyText != "" {
