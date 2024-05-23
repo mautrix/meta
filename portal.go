@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exzerolog"
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloApplication"
@@ -1389,18 +1390,18 @@ func (portal *Portal) handleMetaInsertMessage(source *User, message *table.Wrapp
 		Str("otid", message.OfflineThreadingId).
 		Logger()
 	ctx := log.WithContext(context.TODO())
-	portal.handleMetaOrWhatsAppMessage(ctx, source, sender, nil, message)
-	log.Debug().Msg("Finished handling Meta message")
+	eventIDs := portal.handleMetaOrWhatsAppMessage(ctx, source, sender, nil, message)
+	log.Debug().Array("event_ids", exzerolog.ArrayOfStringers(eventIDs)).Msg("Finished handling Meta message")
 }
 
-func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *User, sender *Puppet, waMsg *events.FBMessage, metaMsg *table.WrappedMessage) {
+func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *User, sender *Puppet, waMsg *events.FBMessage, metaMsg *table.WrappedMessage) []id.EventID {
 	log := zerolog.Ctx(ctx)
 
 	if portal.MXID == "" {
 		log.Debug().Msg("Creating Matrix room from incoming message")
 		if err := portal.CreateMatrixRoom(ctx, source); err != nil {
 			log.Error().Err(err).Msg("Failed to create portal room")
-			return
+			return nil
 		}
 	}
 
@@ -1415,17 +1416,17 @@ func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *U
 		otidInt, _ = strconv.ParseInt(metaMsg.OfflineThreadingId, 10, 64)
 		messageTime = time.UnixMilli(metaMsg.TimestampMs)
 		if portal.checkPendingMessage(ctx, metaMsg.MessageId, otidInt, sender.ID, messageTime) {
-			return
+			return nil
 		}
 	}
 
 	existingMessage, err := portal.bridge.DB.Message.GetByID(ctx, messageID, 0, portal.Receiver)
 	if err != nil {
 		log.Err(err).Msg("Failed to check if message was already bridged")
-		return
+		return nil
 	} else if existingMessage != nil {
 		log.Debug().Msg("Ignoring duplicate message")
-		return
+		return nil
 	}
 
 	intent := sender.IntentFor(portal)
@@ -1443,8 +1444,9 @@ func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *U
 	}
 	if len(converted.Parts) == 0 {
 		log.Warn().Msg("Message was empty after conversion")
-		return
+		return nil
 	}
+	eventIDs := make([]id.EventID, len(converted.Parts))
 	for i, part := range converted.Parts {
 		resp, err := portal.sendMatrixEvent(ctx, intent, part.Type, part.Content, part.Extra, messageTime.UnixMilli())
 		if err != nil {
@@ -1452,7 +1454,9 @@ func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *U
 			continue
 		}
 		portal.storeMessageInDB(ctx, resp.EventID, messageID, otidInt, sender.ID, messageTime, i)
+		eventIDs[i] = resp.EventID
 	}
+	return eventIDs
 }
 
 func (portal *Portal) handleWhatsAppEditMessage(ctx context.Context, sender *Puppet, edit *waConsumerApplication.ConsumerApplication_EditMessage) {
