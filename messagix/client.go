@@ -42,6 +42,9 @@ const SecCHMobile = "?0"
 const SecCHModel = ""
 const SecCHPrefersColorScheme = "light"
 
+type ClientOptions struct {
+	WithAjaxClient bool
+}
 type EventHandler func(evt interface{})
 type Client struct {
 	Instagram *InstagramMethods
@@ -53,6 +56,7 @@ type Client struct {
 	eventHandler EventHandler
 	configs      *Configs
 	SyncManager  *SyncManager
+	ajax 	     *AjaxClient
 
 	cookies     *cookies.Cookies
 	httpProxy   func(*http.Request) (*url.URL, error)
@@ -77,7 +81,7 @@ type Client struct {
 	sendMessagesCond *sync.Cond
 }
 
-func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
+func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, opts *ClientOptions) *Client {
 	if cookies.Platform == types.Unset {
 		panic("messagix: platform must be set in cookies")
 	}
@@ -112,6 +116,12 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 	}
 	cli.socket = cli.newSocketClient()
 
+	if opts != nil {
+		if opts.WithAjaxClient {
+			cli.ajax = cli.newAjaxClient()
+		}
+	}
+
 	return cli
 }
 
@@ -137,6 +147,17 @@ func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 	} else {
 		currentUser = &c.configs.browserConfigTable.PolarisViewer
 	}
+
+	if c.ajax != nil {
+		err = c.ajax.SendQMRequest(
+			c.configs.Eqmc.AjaxURL,
+			c.configs.Eqmc.ToAjaxQMPayload(),
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	
 	return currentUser, ls, nil
 }
 

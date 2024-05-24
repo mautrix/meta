@@ -20,6 +20,7 @@ type Configs struct {
 	CometReq           string
 	VersionId          int64
 	Jazoest            string
+	Eqmc 			   *types.Eqmc
 	WebSessionId       string
 	Bitmap             *crypto.Bitmap
 	CsrBitmap          *crypto.Bitmap

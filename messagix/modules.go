@@ -37,6 +37,7 @@ func (m *ModuleParser) HandleRawJSON(data []byte, id string) error {
 		}
 		m.client.configs.Jazoest = ajaxData.Jazoest
 		m.client.configs.CometReq = ajaxData.CometReq
+		m.client.configs.Eqmc = &d
 	}
 	return nil
 }

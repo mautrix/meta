@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
@@ -202,11 +203,33 @@ type EnvJSON struct {
 
 type Eqmc struct {
 	AjaxURL        string `json:"u,omitempty"`
-	HasteSessionId string `json:"e,omitempty"`
-	S              string `json:"s,omitempty"`
-	W              int    `json:"w,omitempty"`
+	// also HasteSessionId
+	EventId 	   string `json:"e,omitempty"`
+	ScriptPath     string `json:"s,omitempty"`
+	Weight         int    `json:"w,omitempty"`
 	FbDtsg         string `json:"f,omitempty"`
-	L              any    `json:"l,omitempty"`
+	LsdToken       any    `json:"l,omitempty"`
+}
+
+type AjaxQMPayload struct {
+	EventId			string 	`url:"event_id"`
+	MarkerPageTime	int64 	`url:"marker_page_time"`
+	ScriptPath		string 	`url:"script_path"`
+	Weight			int 	`url:"weight"`
+	// 0 or 1
+	ClientStart		int 	`url:"client_start"`
+	FbDtsg 			string 	`url:"fb_dtsg"`
+}
+
+func (e *Eqmc) ToAjaxQMPayload() AjaxQMPayload {
+	return AjaxQMPayload{
+		EventId: e.EventId,
+		MarkerPageTime: methods.SpoofMarkerPageTime(),
+		ScriptPath: e.ScriptPath,
+		Weight: e.Weight,
+		ClientStart: 1, // hardcoded 1
+		FbDtsg: e.FbDtsg,
+	}
 }
 
 type AjaxQueryParams struct {

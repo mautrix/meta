@@ -92,3 +92,7 @@ func NeedUpdateSyncGroups(data *table.LSTable) bool {
 	return len(data.LSExecuteFirstBlockForSyncTransaction) > 0 ||
 		len(data.LSUpsertSyncGroupThreadsRange) > 0
 }
+
+func SpoofMarkerPageTime() int64 {
+	return int64(rand.Intn(700-150+1) + 150)
+}

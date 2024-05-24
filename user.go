@@ -615,7 +615,10 @@ func (user *User) unlockedConnectWithCookies(cookies *cookies.Cookies) error {
 	log := user.log.With().Str("component", "messagix").Logger()
 	user.log.Debug().Msg("Connecting to Meta")
 	// TODO set proxy for media client?
-	cli := messagix.NewClient(cookies, log)
+	clientOpts := messagix.ClientOptions {
+		WithAjaxClient: true,
+	}
+	cli := messagix.NewClient(cookies, log, &clientOpts)
 	if user.bridge.Config.Meta.GetProxyFrom != "" || user.bridge.Config.Meta.Proxy != "" {
 		cli.GetNewProxy = user.getProxy
 		if !cli.UpdateProxy("connect") {
