@@ -294,10 +294,6 @@ var cmdLoginTokens = &commands.FullHandler{
 }
 
 func fnLoginTokens(ce *WrappedCommandEvent) {
-	if len(ce.Args) != 4 {
-		return
-	}
-
 	if ce.User.IsLoggedIn() {
 		if ce.User.Client.IsConnected() {
 			ce.Reply("You're already logged in")
@@ -309,7 +305,7 @@ func fnLoginTokens(ce *WrappedCommandEvent) {
 
 	data := make(map[string]string)
 	if ce.Bridge.Config.Meta.Mode.IsMessenger() {
-		if len(ce.Args) != 4 {
+		if len(ce.Args) == 4 {
 			data["datr"] = ce.Args[0]
 			data["c_user"] = ce.Args[1]
 			data["sb"] = ce.Args[2]
@@ -321,7 +317,7 @@ func fnLoginTokens(ce *WrappedCommandEvent) {
 	}
 
 	if ce.Bridge.Config.Meta.Mode.IsInstagram() {
-		if len(ce.Args) != 5 {
+		if len(ce.Args) == 5 {
 			data["sessionid"] = ce.Args[0]
 			data["csrftoken"] = ce.Args[1]
 			data["mid"] = ce.Args[2]
