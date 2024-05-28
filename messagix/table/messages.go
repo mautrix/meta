@@ -386,6 +386,14 @@ type LSUpdateUnsentMessageCollapsedStatus struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSUpdateOrInsertEditMessageHistory struct {
+	OriginalMessageID             string `index:"0" json:",omitempty"`
+	ThreadKey                     int64  `index:"1" json:",omitempty"`
+	ServerAdjustedEditTimestampMS int64  `index:"2" json:",omitempty"`
+	MessageContent                string `index:"3" json:",omitempty"`
+	SendStatus                    int64  `index:"4" json:",omitempty"`
+}
+
 type LSDeleteThenInsertMessage struct {
 	Text                            string                     `index:"0" json:",omitempty"`
 	SubscriptErrorMessage           string                     `index:"1" json:",omitempty"`
