@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	badGlobalLog "github.com/rs/zerolog/log"
 )
 
@@ -208,10 +209,12 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []interface{}) {
 	depReference, ok := ls.Dependencies[referenceName]
 	if !ok {
-		badGlobalLog.Warn().
-			Str("reference_name", referenceName).
-			Any("data", data).
-			Msg("Skipping dependency with reference name (unknown dependency)")
+		logEvt := badGlobalLog.Warn().
+			Str("reference_name", referenceName)
+		if badGlobalLog.Logger.GetLevel() == zerolog.TraceLevel {
+			logEvt.Any("data", data)
+		}
+		logEvt.Msg("Skipping dependency with no reference")
 		return
 	}
 
@@ -220,10 +223,13 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 	depField := reflectedMs.FieldByName(depReference)
 
 	if !depField.IsValid() {
-		badGlobalLog.Warn().
+		logEvt := badGlobalLog.Warn().
 			Str("reference_name", referenceName).
-			Any("data", data).
-			Msg("Skipping dependency with reference name (invalid field)")
+			Str("ls_type", depReference)
+		if badGlobalLog.Logger.GetLevel() == zerolog.TraceLevel {
+			logEvt.Any("data", data)
+		}
+		logEvt.Msg("Skipping dependency with unrecognized type")
 		return
 	}
 
