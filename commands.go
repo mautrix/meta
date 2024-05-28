@@ -295,7 +295,6 @@ var cmdLoginTokens = &commands.FullHandler{
 
 func fnLoginTokens(ce *WrappedCommandEvent) {
 	if len(ce.Args) != 4 {
-		ce.Reply("**Usage**: $cmdprefix login-tokens <datr> <c_user> <sb> <xs>")
 		return
 	}
 
@@ -309,10 +308,30 @@ func fnLoginTokens(ce *WrappedCommandEvent) {
 	}
 
 	data := make(map[string]string)
-	data["datr"] = ce.Args[0]
-	data["c_user"] = ce.Args[1]
-	data["sb"] = ce.Args[2]
-	data["xs"] = ce.Args[3]
+	if ce.Bridge.Config.Meta.Mode.IsMessenger() {
+		if len(ce.Args) != 4 {
+			data["datr"] = ce.Args[0]
+			data["c_user"] = ce.Args[1]
+			data["sb"] = ce.Args[2]
+			data["xs"] = ce.Args[3]
+		} else {
+			ce.Reply("**Usage for facebook**: login-tokens <datr> <c_user> <sb> <xs>")
+			return
+		}
+	}
+
+	if ce.Bridge.Config.Meta.Mode.IsInstagram() {
+		if len(ce.Args) != 5 {
+			data["sessionid"] = ce.Args[0]
+			data["csrftoken"] = ce.Args[1]
+			data["mid"] = ce.Args[2]
+			data["ig_did"] = ce.Args[3]
+			data["ds_user_id"] = ce.Args[4]
+		} else {
+			ce.Reply("**Usage for instagram**: login-tokens <sessionid> <csrftoken> <mid> <ig_did> <ds_user_id>")
+			return
+		}
+	}
 
 	var newCookies cookies.Cookies
 	newCookies.Platform = database.MessagixPlatform
