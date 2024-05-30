@@ -1041,7 +1041,7 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
 		cf, ok := evt.(*events.LoggedOut)
-		if ok && cf.Reason == events.ConnectFailureLoggedOut && user.canReconnect() {
+		if ok && cf.Reason == events.ConnectFailureLoggedOut && !cf.OnConnect && user.canReconnect() {
 			user.WADevice = nil
 			user.log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
 			go user.FullReconnect()
