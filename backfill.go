@@ -536,20 +536,22 @@ func (portal *Portal) convertAndSendBackfill(ctx context.Context, source *User, 
 			reactionTargetEventID := portal.deterministicEventID(msg.MessageId, 0)
 			for _, react := range msg.Reactions {
 				reactSender := portal.bridge.GetPuppetByID(react.ActorId)
+				reactContent := &event.Content{
+					Parsed: &event.ReactionEventContent{
+						RelatesTo: event.RelatesTo{
+							Type:    event.RelAnnotation,
+							EventID: reactionTargetEventID,
+							Key:     variationselector.Add(react.Reaction),
+						},
+					},
+				}
+				reactSender.IntentFor(portal).AddDoublePuppetValue(reactContent)
 				events = append(events, &event.Event{
 					Sender:    reactSender.IntentFor(portal).UserID,
 					Type:      event.EventReaction,
 					Timestamp: react.TimestampMs,
 					RoomID:    portal.MXID,
-					Content: event.Content{
-						Parsed: &event.ReactionEventContent{
-							RelatesTo: event.RelatesTo{
-								Type:    event.RelAnnotation,
-								EventID: reactionTargetEventID,
-								Key:     variationselector.Add(react.Reaction),
-							},
-						},
-					},
+					Content:   *reactContent,
 				})
 				metas = append(metas, &BackfillPartMetadata{
 					MessageID:    msg.MessageId,
