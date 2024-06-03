@@ -70,6 +70,8 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "meta", "ig_e2ee")
 	helper.Copy(up.Str|up.Null, "meta", "proxy")
 	helper.Copy(up.Str|up.Null, "meta", "get_proxy_from")
+	helper.Copy(up.Int, "meta", "min_full_reconnect_interval_seconds")
+	helper.Copy(up.Int, "meta", "force_refresh_interval_seconds")
 
 	if usernameTemplate, ok := helper.Get(up.Str, "bridge", "username_template"); ok && strings.Contains(usernameTemplate, "{userid}") {
 		helper.Set(up.Str, strings.ReplaceAll(usernameTemplate, "{userid}", "{{.}}"), "bridge", "username_template")
