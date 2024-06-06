@@ -1040,16 +1040,23 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		user.BridgeState.Send(user.waState)
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
-		if user.canReconnect() {
-			switch e := evt.(type) {
-			case *events.LoggedOut:
-				if e.Reason == events.ConnectFailureLoggedOut && !e.OnConnect {
-					user.resetWADeviceAndReconnect(e.Reason)
+		switch e := evt.(type) {
+		case *events.LoggedOut:
+			if e.Reason == events.ConnectFailureLoggedOut && !e.OnConnect && user.canReconnect() {
+				user.resetWADevice()
+				user.log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
+				go user.FullReconnect()
+			}
+		case *events.ConnectFailure:
+			if e.Reason == events.ConnectFailureNotFound {
+				if user.E2EEClient != nil {
+					user.E2EEClient.Disconnect()
+					user.WADevice.Delete()
+					user.resetWADevice()
+					user.E2EEClient = nil
 				}
-			case *events.ConnectFailure:
-				if e.Reason == events.ConnectFailureNotFound {
-					user.resetWADeviceAndReconnect(e.Reason)
-				}
+				user.log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
+				go user.connectE2EE()
 			}
 		}
 
@@ -1065,10 +1072,9 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 	}
 }
 
-func (user *User) resetWADeviceAndReconnect(reason events.ConnectFailureReason) {
-	user.log.Debug().Int("ConnectFailureReason", int(reason)).Msg("Resetting WADevice and reconnecting")
+func (user *User) resetWADevice() {
 	user.WADevice = nil
-	go user.FullReconnect()
+	user.WADeviceID = 0
 }
 
 func (user *User) saveInitialTable(currentUser types.UserInfo, tbl *table.LSTable) {
