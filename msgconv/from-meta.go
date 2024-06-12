@@ -62,7 +62,8 @@ func (cm *ConvertedMessage) MergeCaption() {
 	mediaContent := cm.Parts[0].Content
 	textContent := cm.Parts[1].Content
 	if mediaContent.FileName != "" && mediaContent.FileName != mediaContent.Body {
-		if textContent.FormattedBody != "" {
+		if textContent.FormattedBody != "" || mediaContent.FormattedBody != "" {
+			textContent.EnsureHasHTML()
 			mediaContent.EnsureHasHTML()
 			mediaContent.FormattedBody = fmt.Sprintf("%s<br><br>%s", mediaContent.FormattedBody, textContent.FormattedBody)
 		}
