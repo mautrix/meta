@@ -1430,6 +1430,10 @@ func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *U
 		return
 	}
 	for i, part := range converted.Parts {
+		user, err := portal.bridge.DB.User.GetByMetaID(context.TODO(), sender.ID)
+		if err == nil && user != nil {
+			part.Extra["mx_sender_id"] = user.MXID
+		}
 		resp, err := portal.sendMatrixEvent(ctx, intent, part.Type, part.Content, part.Extra, messageTime.UnixMilli())
 		if err != nil {
 			log.Err(err).Int("part_index", i).Msg("Failed to send message to Matrix")
