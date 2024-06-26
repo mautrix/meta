@@ -242,6 +242,7 @@ func (br *MetaBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		PortalMethods:        portal,
 		ConvertVoiceMessages: true,
 		MaxFileSize:          br.MediaConfig.UploadSize,
+		BridgeMode:           br.Config.Meta.Mode,
 	}
 	go portal.messageLoop()
 

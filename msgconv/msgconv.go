@@ -23,6 +23,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/database"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/socket"
@@ -49,6 +50,7 @@ type MessageConverter struct {
 	ConvertGIFToAPNG     bool
 	MaxFileSize          int64
 	AsyncFiles           bool
+	BridgeMode           config.BridgeMode
 }
 
 func (mc *MessageConverter) IsPrivateChat(ctx context.Context) bool {
