@@ -1910,7 +1910,7 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User) error {
 		initialState = append(initialState, &event.Event{
 			Type: event.StateRoomAvatar,
 			Content: event.Content{Parsed: &event.RoomAvatarEventContent{
-				URL: portal.AvatarURL,
+				URL: portal.AvatarURL.CUString(),
 			}},
 		})
 	}

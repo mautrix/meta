@@ -25,9 +25,9 @@ import (
 	_ "net/http/pprof"
 	"strings"
 
-	"github.com/beeper/libserv/pkg/requestlog"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/hlog"
+	"go.mau.fi/util/requestlog"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"
 
