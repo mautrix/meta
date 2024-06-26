@@ -31,12 +31,13 @@ import (
 	"go.mau.fi/util/exzerolog"
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloApplication"
-	"go.mau.fi/whatsmeow/binary/armadillo/waCommon"
-	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
-	"go.mau.fi/whatsmeow/binary/armadillo/waMsgApplication"
+	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
+	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
+	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -759,7 +760,7 @@ func (portal *Portal) handleMatrixEdit(ctx context.Context, sender *User, isRela
 		consumerMsg := wrapEdit(&waConsumerApplication.ConsumerApplication_EditMessage{
 			Key:         portal.buildMessageKey(sender, editTargetMsg),
 			Message:     portal.MsgConv.TextToWhatsApp(content),
-			TimestampMS: evt.Timestamp,
+			TimestampMS: &evt.Timestamp,
 		})
 		var resp whatsmeow.SendResponse
 		resp, err = sender.E2EEClient.SendFBMessage(ctx, portal.JID(), consumerMsg, nil)
@@ -946,15 +947,19 @@ func wrapReaction(message *waConsumerApplication.ConsumerApplication_ReactionMes
 }
 
 func (portal *Portal) buildMessageKey(user *User, targetMsg *database.Message) *waCommon.MessageKey {
-	var messageKeyParticipant string
+	var messageKeyParticipant *string
 	if !portal.IsPrivateChat() {
 		// TODO: this is hacky since it hardcodes the server
-		messageKeyParticipant = types.JID{User: strconv.FormatInt(targetMsg.Sender, 10), Server: types.MessengerServer}.String()
+		messageKeyParticipant = proto.String(types.JID{User: strconv.FormatInt(targetMsg.Sender, 10), Server: types.MessengerServer}.String())
+	}
+	var fromMe *bool
+	if targetMsg.Sender == user.MetaID {
+		fromMe = proto.Bool(true)
 	}
 	return &waCommon.MessageKey{
-		RemoteJID:   portal.JID().String(),
-		FromMe:      targetMsg.Sender == user.MetaID,
-		ID:          targetMsg.ID,
+		RemoteJID:   proto.String(portal.JID().String()),
+		FromMe:      fromMe,
+		ID:          &targetMsg.ID,
 		Participant: messageKeyParticipant,
 	}
 }
@@ -963,8 +968,8 @@ func (portal *Portal) sendReaction(ctx context.Context, sender *User, targetMsg 
 	if !targetMsg.IsUnencrypted() {
 		consumerMsg := wrapReaction(&waConsumerApplication.ConsumerApplication_ReactionMessage{
 			Key:               portal.buildMessageKey(sender, targetMsg),
-			Text:              metaEmoji,
-			SenderTimestampMS: timestamp,
+			Text:              &metaEmoji,
+			SenderTimestampMS: &timestamp,
 		})
 		resp, err := sender.E2EEClient.SendFBMessage(ctx, portal.JID(), consumerMsg, nil)
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
@@ -1462,7 +1467,7 @@ func (portal *Portal) handleMetaOrWhatsAppMessage(ctx context.Context, source *U
 
 func (portal *Portal) handleWhatsAppEditMessage(ctx context.Context, sender *Puppet, edit *waConsumerApplication.ConsumerApplication_EditMessage) {
 	log := zerolog.Ctx(ctx).With().
-		Int64("edit_ts", edit.TimestampMS).
+		Int64("edit_ts", edit.GetTimestampMS()).
 		Logger()
 	ctx = log.WithContext(context.TODO())
 	targetMsg, err := portal.bridge.DB.Message.GetAllPartsByID(ctx, edit.GetKey().GetID(), portal.Receiver)
@@ -1475,16 +1480,16 @@ func (portal *Portal) handleWhatsAppEditMessage(ctx context.Context, sender *Pup
 	} else if len(targetMsg) > 1 {
 		log.Warn().Msg("Ignoring edit of multipart message")
 		return
-	} else if targetMsg[0].EditTimestamp() >= edit.TimestampMS {
+	} else if targetMsg[0].EditTimestamp() >= edit.GetTimestampMS() {
 		log.Debug().Int64("existing_edit_ts", targetMsg[0].EditTimestamp()).Msg("Ignoring duplicate edit")
 		return
 	}
 	converted := portal.MsgConv.WhatsAppTextToMatrix(ctx, edit.GetMessage())
 	converted.Content.SetEdit(targetMsg[0].MXID)
-	resp, err := portal.sendMatrixEvent(ctx, sender.IntentFor(portal), converted.Type, converted.Content, converted.Extra, edit.TimestampMS)
+	resp, err := portal.sendMatrixEvent(ctx, sender.IntentFor(portal), converted.Type, converted.Content, converted.Extra, edit.GetTimestampMS())
 	if err != nil {
 		log.Err(err).Msg("Failed to send edit to Matrix")
-	} else if err := targetMsg[0].UpdateEditTimestamp(ctx, edit.TimestampMS); err != nil {
+	} else if err := targetMsg[0].UpdateEditTimestamp(ctx, edit.GetTimestampMS()); err != nil {
 		log.Err(err).Stringer("event_id", resp.EventID).Msg("Failed to save message edit count to database")
 	} else {
 		log.Debug().Stringer("event_id", resp.EventID).Msg("Handled Meta message edit")

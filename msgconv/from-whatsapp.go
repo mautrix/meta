@@ -29,11 +29,11 @@ import (
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloApplication"
-	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloXMA"
-	"go.mau.fi/whatsmeow/binary/armadillo/waCommon"
-	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
-	"go.mau.fi/whatsmeow/binary/armadillo/waMediaTransport"
+	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
+	"go.mau.fi/whatsmeow/proto/waArmadilloXMA"
+	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
+	"go.mau.fi/whatsmeow/proto/waMediaTransport"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
@@ -52,7 +52,7 @@ func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCo
 	silent := false
 	if len(text.Commands) > 0 {
 		for _, cmd := range text.Commands {
-			switch cmd.CommandType {
+			switch cmd.GetCommandType() {
 			case waCommon.Command_SILENT:
 				silent = true
 				content.Mentions.Room = false
@@ -370,13 +370,13 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 }
 
 func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*ConvertedMessagePart) {
-	body := content.MessageText
+	body := content.GetMessageText()
 	for _, cta := range content.GetCtas() {
-		if strings.HasPrefix(cta.NativeURL, "https://") && !strings.Contains(body, cta.NativeURL) {
+		if strings.HasPrefix(cta.GetNativeURL(), "https://") && !strings.Contains(body, cta.GetNativeURL()) {
 			if body == "" {
-				body = cta.NativeURL
+				body = cta.GetNativeURL()
 			} else {
-				body = fmt.Sprintf("%s\n\n%s", body, cta.NativeURL)
+				body = fmt.Sprintf("%s\n\n%s", body, cta.GetNativeURL())
 			}
 		}
 	}

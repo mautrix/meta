@@ -27,19 +27,19 @@ import (
 
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/binary/armadillo/waMediaTransport"
-	"go.mau.fi/whatsmeow/binary/armadillo/waMsgApplication"
+	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
+	"go.mau.fi/whatsmeow/proto/waMediaTransport"
+	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/event"
-
-	"go.mau.fi/whatsmeow/binary/armadillo/waCommon"
-	"go.mau.fi/whatsmeow/binary/armadillo/waConsumerApplication"
 )
 
 func (mc *MessageConverter) TextToWhatsApp(content *event.MessageEventContent) *waCommon.MessageText {
 	// TODO mentions
 	return &waCommon.MessageText{
-		Text: content.Body,
+		Text: proto.String(content.Body),
 	}
 }
 
@@ -88,11 +88,11 @@ func (mc *MessageConverter) ToWhatsApp(
 		waContent.Content = &waConsumerApplication.ConsumerApplication_Content_LocationMessage{
 			LocationMessage: &waConsumerApplication.ConsumerApplication_LocationMessage{
 				Location: &waConsumerApplication.ConsumerApplication_Location{
-					DegreesLatitude:  lat,
-					DegreesLongitude: long,
-					Name:             content.Body,
+					DegreesLatitude:  proto.Float64(lat),
+					DegreesLongitude: proto.Float64(long),
+					Name:             proto.String(content.Body),
 				},
-				Address: "Earth",
+				Address: proto.String("Earth"),
 			},
 		}
 	default:
@@ -101,10 +101,10 @@ func (mc *MessageConverter) ToWhatsApp(
 	var meta waMsgApplication.MessageApplication_Metadata
 	if replyTo := mc.GetMetaReply(ctx, content); replyTo != nil {
 		meta.QuotedMessage = &waMsgApplication.MessageApplication_Metadata_QuotedMessage{
-			StanzaID: replyTo.ReplyMessageId,
+			StanzaID: proto.String(replyTo.ReplyMessageId),
 			// TODO: this is hacky since it hardcodes the server
 			// TODO 2: should this be included for DMs?
-			Participant: types.JID{User: strconv.FormatInt(replyTo.ReplySender, 10), Server: types.MessengerServer}.String(),
+			Participant: proto.String(types.JID{User: strconv.FormatInt(replyTo.ReplySender, 10), Server: types.MessengerServer}.String()),
 			Payload:     nil,
 		}
 	}
@@ -197,20 +197,20 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 			FileSHA256:        uploaded.FileSHA256,
 			MediaKey:          uploaded.MediaKey,
 			FileEncSHA256:     uploaded.FileEncSHA256,
-			DirectPath:        uploaded.DirectPath,
-			MediaKeyTimestamp: time.Now().Unix(),
+			DirectPath:        &uploaded.DirectPath,
+			MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
 		},
 		Ancillary: &waMediaTransport.WAMediaTransport_Ancillary{
-			FileLength: uint64(len(data)),
-			Mimetype:   mimeType,
+			FileLength: proto.Uint64(uint64(len(data))),
+			Mimetype:   &mimeType,
 			// This field is extremely required for some reason.
 			// Messenger iOS & Android will refuse to display the media if it's not present.
 			// iOS also requires that width and height are non-empty.
 			Thumbnail: &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
-				ThumbnailWidth:  uint32(w),
-				ThumbnailHeight: uint32(h),
+				ThumbnailWidth:  proto.Uint32(uint32(w)),
+				ThumbnailHeight: proto.Uint32(uint32(h)),
 			},
-			ObjectID: uploaded.ObjectID,
+			ObjectID: &uploaded.ObjectID,
 		},
 	}
 	fmt.Printf("Uploaded media transport: %+v\n", mediaTransport)
@@ -234,8 +234,8 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 				Transport: reuploaded,
 			},
 			Ancillary: &waMediaTransport.ImageTransport_Ancillary{
-				Height: uint32(content.Info.Height),
-				Width:  uint32(content.Info.Width),
+				Height: proto.Uint32(uint32(content.Info.Height)),
+				Width:  proto.Uint32(uint32(content.Info.Width)),
 			},
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_ImageMessage{ImageMessage: imageMsg}
@@ -246,8 +246,8 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 				Transport: reuploaded,
 			},
 			Ancillary: &waMediaTransport.StickerTransport_Ancillary{
-				Height: uint32(content.Info.Height),
-				Width:  uint32(content.Info.Width),
+				Height: proto.Uint32(uint32(content.Info.Height)),
+				Width:  proto.Uint32(uint32(content.Info.Width)),
 			},
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_StickerMessage{StickerMessage: stickerMsg}
@@ -263,30 +263,30 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 				Transport: reuploaded,
 			},
 			Ancillary: &waMediaTransport.VideoTransport_Ancillary{
-				Height:      uint32(content.Info.Height),
-				Width:       uint32(content.Info.Width),
-				Seconds:     uint32(content.Info.Duration / 1000),
-				GifPlayback: isGif,
+				Height:      proto.Uint32(uint32(content.Info.Height)),
+				Width:       proto.Uint32(uint32(content.Info.Width)),
+				Seconds:     proto.Uint32(uint32(content.Info.Duration / 1000)),
+				GifPlayback: &isGif,
 			},
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_VideoMessage{VideoMessage: videoMsg}
 	case event.MsgAudio:
 		_, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]
 		audioMsg := &waConsumerApplication.ConsumerApplication_AudioMessage{
-			PTT: isVoice,
+			PTT: &isVoice,
 		}
 		err = audioMsg.Set(&waMediaTransport.AudioTransport{
 			Integral: &waMediaTransport.AudioTransport_Integral{
 				Transport: reuploaded,
 			},
 			Ancillary: &waMediaTransport.AudioTransport_Ancillary{
-				Seconds: uint32(content.Info.Duration / 1000),
+				Seconds: proto.Uint32(uint32(content.Info.Duration / 1000)),
 			},
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_AudioMessage{AudioMessage: audioMsg}
 	case event.MsgFile:
 		documentMsg := &waConsumerApplication.ConsumerApplication_DocumentMessage{
-			FileName: fileName,
+			FileName: &fileName,
 		}
 		err = documentMsg.Set(&waMediaTransport.DocumentTransport{
 			Integral: &waMediaTransport.DocumentTransport_Integral{

@@ -35,12 +35,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/libsignal/ecc"
-	"google.golang.org/protobuf/proto"
-
-	"go.mau.fi/whatsmeow/binary/armadillo/waArmadilloICDC"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waArmadilloICDC"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 )
 
 type ICDCFetchResponse struct {
@@ -168,10 +167,10 @@ func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 	}
 	icdcTS := time.Now().Unix()
 	unsignedList, err := proto.Marshal(&waArmadilloICDC.ICDCIdentityList{
-		Seq:                int32(icdcMeta.ICDCSeq),
-		Timestamp:          icdcTS,
+		Seq:                proto.Int32(int32(icdcMeta.ICDCSeq)),
+		Timestamp:          proto.Int64(icdcTS),
 		Devices:            sliceifyIdentities(deviceIdentities),
-		SigningDeviceIndex: int32(ownIdentityIndex),
+		SigningDeviceIndex: proto.Int32(int32(ownIdentityIndex)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal ICDC identity list: %w", err)
