@@ -392,11 +392,20 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 	}}
 }
 
-func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent *waArmadilloApplication.Armadillo_Content) (parts []*ConvertedMessagePart) {
+func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent *waArmadilloApplication.Armadillo_Content) (parts []*ConvertedMessagePart, replyOverride *waCommon.MessageKey) {
 	parts = make([]*ConvertedMessagePart, 0, 2)
 	switch content := rawContent.GetContent().(type) {
 	case *waArmadilloApplication.Armadillo_Content_ExtendedContentMessage:
-		return mc.waExtendedContentMessageToMatrix(ctx, content.ExtendedContentMessage)
+		return mc.waExtendedContentMessageToMatrix(ctx, content.ExtendedContentMessage), nil
+	case *waArmadilloApplication.Armadillo_Content_BumpExistingMessage_:
+		parts = append(parts, &ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    "Bumped a message",
+			},
+		})
+		replyOverride = content.BumpExistingMessage.GetKey()
 	//case *waArmadilloApplication.Armadillo_Content_RavenMessage_:
 	//	// TODO
 	default:
@@ -415,11 +424,12 @@ func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent 
 func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FBMessage) *ConvertedMessage {
 	cm := &ConvertedMessage{}
 
+	var replyOverride *waCommon.MessageKey
 	switch typedMsg := evt.Message.(type) {
 	case *waConsumerApplication.ConsumerApplication:
 		cm.Parts = mc.waConsumerToMatrix(ctx, typedMsg.GetPayload().GetContent())
 	case *waArmadilloApplication.Armadillo:
-		cm.Parts = mc.waArmadilloToMatrix(ctx, typedMsg.GetPayload().GetContent())
+		cm.Parts, replyOverride = mc.waArmadilloToMatrix(ctx, typedMsg.GetPayload().GetContent())
 	default:
 		cm.Parts = []*ConvertedMessagePart{{
 			Type: event.EventMessage,
@@ -430,11 +440,14 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 		}}
 	}
 
-	var replyTo id.EventID
 	var sender id.UserID
+	var replyTo id.EventID
 	if qm := evt.Application.GetMetadata().GetQuotedMessage(); qm != nil {
 		pcp, _ := types.ParseJID(qm.GetParticipant())
 		replyTo, sender = mc.GetMatrixReply(ctx, qm.GetStanzaID(), int64(pcp.UserInt()))
+	} else if replyOverride != nil {
+		pcp, _ := types.ParseJID(replyOverride.GetParticipant())
+		replyTo, sender = mc.GetMatrixReply(ctx, replyOverride.GetID(), int64(pcp.UserInt()))
 	}
 	for _, part := range cm.Parts {
 		if part.Content.Mentions == nil {
