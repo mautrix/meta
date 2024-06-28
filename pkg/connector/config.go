@@ -2,6 +2,7 @@ package connector
 
 import (
 	_ "embed"
+
 	up "go.mau.fi/util/configupgrade"
 )
 
