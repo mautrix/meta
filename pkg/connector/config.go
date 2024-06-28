@@ -3,14 +3,13 @@ package connector
 import (
 	_ "embed"
 	up "go.mau.fi/util/configupgrade"
-
 )
 
 //go:embed example-config.yaml
 var ExampleConfig string
 
 type MetaConfig struct {
-	Mode 			    string              `yaml:"mode"`
+	Mode string `yaml:"mode"`
 }
 
 func upgradeConfig(helper up.Helper) {

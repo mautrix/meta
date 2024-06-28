@@ -23,18 +23,16 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	}}
 }
 
-type CookieLogin struct {}
+type CookieLogin struct{}
 
 var _ bridgev2.LoginProcessCookies = (*CookieLogin)(nil)
 
 func (p *CookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeCookies,
-		StepID:       "fi.mau.meta.cookies",
-		Instructions: "Please enter cookies from your browser",
-		CookiesParams: &bridgev2.LoginCookiesParams{
-
-		},
+		Type:          bridgev2.LoginStepTypeCookies,
+		StepID:        "fi.mau.meta.cookies",
+		Instructions:  "Please enter cookies from your browser",
+		CookiesParams: &bridgev2.LoginCookiesParams{},
 	}, nil
 }
 

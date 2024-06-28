@@ -2,13 +2,13 @@ package connector
 
 import (
 	"context"
-	
+
 	"maunium.net/go/mautrix/bridgev2"
 )
 
 type MetaConnector struct {
 	Bridge *bridgev2.Bridge
-	Config  *MetaConfig
+	Config *MetaConfig
 }
 
 func NewConnector() *MetaConnector {
@@ -39,7 +39,7 @@ func (s *MetaConnector) GetName() bridgev2.BridgeName {
 		NetworkIcon:      "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv", // Instagram icon
 		NetworkID:        "meta",
 		BeeperBridgeType: "meta",
-		DefaultPort:      29328,
+		DefaultPort:      29319,
 	}
 }
 
