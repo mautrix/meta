@@ -1,5 +1,8 @@
 FROM alpine:3.19
 
+# should probably be https://mau.dev/mautrix/meta but tooling can read scm data from gitlab.com and github.com
+LABEL org.opencontainers.image.source="https://github.com/mautrix/meta"
+
 ENV UID=1337 \
     GID=1337
 
