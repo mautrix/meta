@@ -29,4 +29,5 @@ var InstagramEndpoints = map[string]string{
 	"web_profile_info": instaApiV1Url + "/users/web_profile_info/?",
 	"reels_media":      instaApiV1Url + "/feed/reels_media/?",
 	"media_info":       instaApiV1Url + "/media/%s/info/",
+	"web_push":         instaApiV1Url + "/api/v1/web/push/register/",
 }

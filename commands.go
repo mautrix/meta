@@ -65,6 +65,7 @@ func (br *MetaBridge) RegisterCommands() {
 		cmdDeleteAllPortals,
 		cmdDeleteThread,
 		cmdSearch,
+		cmdRegisterPushNotifications,
 	)
 }
 
@@ -280,6 +281,30 @@ func fnSyncSpace(ce *WrappedCommandEvent) {
 		plural = ""
 	}
 	ce.Reply("Added %d room%s to space", count, plural)
+}
+
+var cmdRegisterPushNotifications = &commands.FullHandler{
+	Func: wrapCommand(fnRegisterForPushNotifications),
+	Name: "register-push-notifications",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionGeneral,
+		Description: "Register for push notifications",
+		Args:        "<push_endpoint>",
+	},
+}
+
+func fnRegisterForPushNotifications(ce *WrappedCommandEvent) {
+	endpoint := ce.Args[0]
+	var err error
+	if ce.User.Cookies.Platform.IsMessenger() {
+		err = ce.User.Client.Facebook.RegisterPushNotifications(endpoint)
+	} else {
+		err = ce.User.Client.Instagram.RegisterPushNotifications(endpoint)
+	}
+	if err != nil {
+		ce.Reply("failed to register for push notifications")
+	}
+	ce.Reply("successfully registered for push notifications")
 }
 
 var cmdLogin = &commands.FullHandler{

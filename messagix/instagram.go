@@ -2,11 +2,13 @@ package messagix
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
 
 	"github.com/google/go-querystring/query"
+	"github.com/google/uuid"
 
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/crypto"
@@ -174,4 +176,54 @@ func (ig *InstagramMethods) FetchReel(reelIds []string, mediaID string) (*respon
 // Hightlight IDs are different, they come in the format: "highlight:17913397615055292"
 func (ig *InstagramMethods) FetchHighlights(highlightIds []string) (*responses.ReelInfoResponse, error) {
 	return ig.FetchReel(highlightIds, "")
+}
+
+func (ig *InstagramMethods) RegisterPushNotifications(endpoint string) error {
+	c := ig.client
+
+	jsonKeys, err := json.Marshal(c.cookies.PushKeys.Public)
+	if err != nil {
+		c.Logger.Err(err).Msg("failed to encode push keys to json")
+		return err
+	}
+
+	u := uuid.New()
+	payload := c.NewHttpQuery()
+	payload.Mid = u.String()
+	payload.DeviceType = "web_vapid"
+	payload.DeviceToken = endpoint
+	payload.SubscriptionKeys = string(jsonKeys)
+
+	form, err := query.Values(payload)
+	if err != nil {
+		return err
+	}
+
+	payloadBytes := []byte(form.Encode())
+
+	headers := c.buildHeaders(true)
+	headers.Set("x-requested-with", "XMLHttpRequest")
+	headers.Set("Referer", c.getEndpoint("host"))
+	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+	url := c.getEndpoint("web_push")
+	resp, body, err := c.MakeRequest(url, "POST", headers, payloadBytes, types.FORM)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return fmt.Errorf("bad status code: %d", resp.StatusCode)
+	}
+
+	resBody := &struct {
+		Status string `json:"status"`
+	}{}
+
+	err = json.Unmarshal(body, resBody)
+	if err != nil {
+		return errors.New("failed to decode response payload, not subscribed to push notifications")
+	}
+
+	return nil
 }
