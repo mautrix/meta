@@ -42,7 +42,13 @@ type HttpQuery struct {
 	Variables            string `url:"variables,omitempty"`
 	ServerTimestamps     string `url:"server_timestamps,omitempty"` // "true" or "false"
 	DocID                string `url:"doc_id,omitempty"`
-	D                    string `url:"__d,omitempty"` // for insta
+	D                    string `url:"__d,omitempty"`               // for insta
+	AppID                string `url:"app_id,omitempty"`            // not required
+	PushEndpoint         string `url:"push_endpoint,omitempty"`     // not required
+	SubscriptionKeys     string `url:"subscription_keys,omitempty"` // not required
+	DeviceToken          string `url:"device_token,omitempty"`      // not required
+	DeviceType           string `url:"device_type,omitempty"`       // not required
+	Mid                  string `url:"mid,omitempty"`               // not required
 }
 
 func (c *Client) NewHttpQuery() *HttpQuery {

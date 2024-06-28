@@ -560,7 +560,13 @@ func (user *User) unlockedConnect() {
 func (user *User) Login(ctx context.Context, cookies *cookies.Cookies) error {
 	user.Lock()
 	defer user.Unlock()
-	err := user.unlockedConnectWithCookies(cookies)
+
+	err := cookies.GeneratePushKeys()
+	if err != nil {
+		return err
+	}
+
+	err = user.unlockedConnectWithCookies(cookies)
 	if err != nil {
 		return err
 	}

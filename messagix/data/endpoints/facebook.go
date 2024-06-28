@@ -21,6 +21,7 @@ func makeFacebookEndpoints(host string) map[string]string {
 		"cookie_consent": baseURL + "/cookie/consent/",
 		"graphql":        baseURL + "/api/graphql/",
 		"media_upload":   baseURL + "/ajax/mercury/upload.php?",
+		"web_push":       baseURL + "/push/register/service_worker/",
 
 		"icdc_fetch":    "https://reg-e2ee.facebook.com/v2/fb_icdc_fetch",
 		"icdc_register": "https://reg-e2ee.facebook.com/v2/fb_register_v2",
