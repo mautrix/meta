@@ -6,8 +6,11 @@
 
 *.json
 *.db
+*.db-shm
+*.db-wal
 *.log
 *.bak
 
 /mautrix-meta
+/mautrix-meta-v2
 /start
