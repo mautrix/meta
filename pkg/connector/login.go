@@ -81,8 +81,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 				URL:          "https://www.instagram.com/",
 				UserAgent:    messagix.UserAgent,
 				CookieDomain: "www.instagram.com",
-				//CookieKeys:   requiredCookiesToKeys(cookies.IGRequiredCookies),
-				CookieKeys: exslices.CastToString[string](cookies.IGRequiredCookies),
+				CookieKeys:   exslices.CastToString[string](cookies.IGRequiredCookies),
 			},
 		}, nil
 	} else {
@@ -121,10 +120,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		c.Platform = types.Facebook
 	}
 
-	c.UnmarshalJSON([]byte(`{}`))
-	for key, value := range strCookies {
-		c.Set(cookies.MetaCookieName(key), value)
-	}
+	c.UpdateValues(strCookies)
 
 	// Check if the cookies are valid
 	if !c.IsLoggedIn() {
