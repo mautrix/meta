@@ -32,14 +32,37 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (s *MetaConnector) GetName() bridgev2.BridgeName {
-	// Would be nice if we could use MetaConfig.Mode here, but it's not available yet?
-	return bridgev2.BridgeName{
-		DisplayName:      "Meta",
-		NetworkURL:       "https://meta.com",
-		NetworkIcon:      "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv", // Instagram icon
-		NetworkID:        "meta",
-		BeeperBridgeType: "meta",
-		DefaultPort:      29319,
+	if s.Config == nil || s.Config.Mode == "" {
+		return bridgev2.BridgeName{
+			DisplayName:      "Meta",
+			NetworkURL:       "https://meta.com",
+			NetworkIcon:      "mxc://maunium.net/DxpVrwwzPUwaUSazpsjXgcKB",
+			NetworkID:        "meta",
+			BeeperBridgeType: "meta",
+			DefaultPort:      29319,
+		}
+	} else {
+		if s.Config.Mode == "instagram" {
+			return bridgev2.BridgeName{
+				DisplayName:      "Instagram",
+				NetworkURL:       "https://instagram.com",
+				NetworkIcon:      "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv",
+				NetworkID:        "instagram",
+				BeeperBridgeType: "meta",
+				DefaultPort:      29319,
+			}
+		} else if s.Config.Mode == "facebook" {
+			return bridgev2.BridgeName{
+				DisplayName:      "Facebook",
+				NetworkURL:       "https://www.facebook.com/messenger",
+				NetworkIcon:      "mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak",
+				NetworkID:        "facebook",
+				BeeperBridgeType: "meta",
+				DefaultPort:      29319,
+			}
+		} else {
+			panic("unknown mode")
+		}
 	}
 }
 
