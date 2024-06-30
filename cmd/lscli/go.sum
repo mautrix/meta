@@ -36,8 +36,8 @@ github.com/zyedidia/clipboard v1.0.4 h1:r6GUQOyPtIaApRLeD56/U+2uJbXis6ANGbKWCljU
 github.com/zyedidia/clipboard v1.0.4/go.mod h1:zykFnZUXX0ErxqvYLUFEq7QDJKId8rmh2FgD0/Y8cjA=
 go.mau.fi/libsignal v0.1.0 h1:vAKI/nJ5tMhdzke4cTK1fb0idJzz1JuEIpmjprueC+c=
 go.mau.fi/libsignal v0.1.0/go.mod h1:R8ovrTezxtUNzCQE5PH30StOQWWeBskBsWE55vMfY9I=
-go.mau.fi/util v0.5.1-0.20240625181823-38eefa626984 h1:63X00R1qL5G+m2LWxdKzAS8cyihFu5IaaOzJ7QHvkzs=
-go.mau.fi/util v0.5.1-0.20240625181823-38eefa626984/go.mod h1:DsJzUrJAG53lCZnnYvq9/mOyLuPScWwYhvETiTrpdP4=
+go.mau.fi/util v0.5.1-0.20240629220711-4fa40bf64652 h1:/wY7vpwOE6he5Qlf6lICHuOUs+nAQdsC7qwRsDbsh14=
+go.mau.fi/util v0.5.1-0.20240629220711-4fa40bf64652/go.mod h1:DsJzUrJAG53lCZnnYvq9/mOyLuPScWwYhvETiTrpdP4=
 go.mau.fi/whatsmeow v0.0.0-20240625083845-6acab596dd8c h1:yiULssyKHJcFA1fae2NJkwU7QW4EHQs7QEWoIqfqilA=
 go.mau.fi/whatsmeow v0.0.0-20240625083845-6acab596dd8c/go.mod h1:0+65CYaE6r4dWzr0dN8i+UZKy0gIfJ79VuSqIl0nKRM=
 golang.org/x/crypto v0.24.0 h1:mnl8DM0o513X8fdIkmyFE/5hTYxbwYOjDS/+rK6qpRI=
