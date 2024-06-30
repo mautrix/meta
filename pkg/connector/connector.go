@@ -12,7 +12,9 @@ type MetaConnector struct {
 }
 
 func NewConnector() *MetaConnector {
-	return &MetaConnector{}
+	return &MetaConnector{
+		Config: &MetaConfig{},
+	}
 }
 
 var _ bridgev2.NetworkConnector = (*MetaConnector)(nil)
@@ -61,7 +63,7 @@ func (s *MetaConnector) GetName() bridgev2.BridgeName {
 				DefaultPort:      29319,
 			}
 		} else {
-			panic("unknown mode")
+			panic("unknown mode in config") // This should never happen if ValidateConfig is implemented correctly
 		}
 	}
 }

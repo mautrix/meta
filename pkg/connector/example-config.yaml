@@ -1,2 +1,4 @@
 # Which service is this bridge for? Either "facebook" or "instagram".
 # Remember to change the appservice id, bot profile info and bridge username_template too.
+# Leave blank to allow both services
+mode:

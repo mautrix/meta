@@ -40,14 +40,14 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 		Description: "Login using cookies from Instagram",
 		ID:          FlowIDInstagramCookies,
 	}
-	if m.Config == nil || m.Config.Mode == "" {
+	if m.Config.Mode == "" {
 		return []bridgev2.LoginFlow{facebook, instagram}
 	} else if m.Config.Mode == "facebook" {
 		return []bridgev2.LoginFlow{facebook}
 	} else if m.Config.Mode == "instagram" {
 		return []bridgev2.LoginFlow{instagram}
 	} else {
-		panic("unknown mode in config")
+		panic("unknown mode in config") // This should never happen if ValidateConfig is implemented correctly
 	}
 }
 
