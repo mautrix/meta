@@ -5,15 +5,16 @@ import (
 	"database/sql"
 	"errors"
 
+	"go.mau.fi/util/dbutil"
+
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/types"
-	"go.mau.fi/util/dbutil"
 )
 
 type MetaSession struct {
-	MetaID         int64
-	WADeviceID     uint16
-	Cookies        *cookies.Cookies
+	MetaID     int64
+	WADeviceID uint16
+	Cookies    *cookies.Cookies
 }
 
 func (s *MetaSession) Scan(row dbutil.Scannable) (*MetaSession, error) {
@@ -52,8 +53,8 @@ func (s *MetaSession) Scan(row dbutil.Scannable) (*MetaSession, error) {
 }
 
 const (
-	getUserByMetaIDQuery     = `SELECT meta_id, platform, wa_device_id, cookies FROM "meta_session" WHERE meta_id=$1`
-	insertUserQuery		     = `INSERT INTO "meta_session" (meta_id, platform, wa_device_id, cookies) VALUES ($1, $2, $3, $4)`
+	getUserByMetaIDQuery = `SELECT meta_id, platform, wa_device_id, cookies FROM "meta_session" WHERE meta_id=$1`
+	insertUserQuery      = `INSERT INTO "meta_session" (meta_id, platform, wa_device_id, cookies) VALUES ($1, $2, $3, $4)`
 )
 
 type MetaSessionQuery struct {
