@@ -2,6 +2,8 @@ package connector
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
@@ -83,5 +85,17 @@ func (m *MetaConnector) Start(ctx context.Context) error {
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
-	panic("unimplemented")
+	FBID, err := strconv.ParseInt(string(login.ID), 10, 64)
+	if err != nil {
+		return err
+	}
+	session, err := m.store.GetSessionQuery().GetByMetaID(ctx, FBID)
+	if err != nil {
+		return err
+	}
+
+	// TODO set login.Client
+	fmt.Printf("Loaded session %v\n", session)
+
+	return nil
 }

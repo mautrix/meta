@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/util/exslices"
 
@@ -12,6 +15,7 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/store"
 )
 
 const FlowIDFacebookCookies = "cookies-facebook"
@@ -136,6 +140,70 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	}
 
 	FBID := m.getFBID(currentUser, initialTable)
+
+	// Store the cookies in the database
+
+	q := m.Main.store.GetSessionQuery()
+	session, err := q.GetByMetaID(ctx, FBID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing session: %w", err)
+	}
+	if session != nil {
+		log.Debug().Int64("fbid", FBID).Msg("Deleting existing session")
+		err := q.Delete(ctx, FBID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete existing session: %w", err)
+		}
+	}
+
+	newSession := store.MetaSession {
+		MetaID: FBID,
+		Cookies: c,
+	}
+	err = q.Insert(ctx, &newSession)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save new session: %w", err)
+	}
+
+	// Store the association between the Matrix user and the cookies
+
+	login_id := networkid.UserLoginID(fmt.Sprint(FBID))
+
+	ul, err := m.Main.Bridge.GetExistingUserLoginByID(ctx, login_id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing login: %w", err)
+	}
+	if ul != nil && ul.UserMXID != m.User.MXID {
+		// TODO: Do we actually want to do this?
+		ul.Delete(ctx, status.BridgeState{StateEvent: status.StateLoggedOut, Error: "overridden-by-another-user"}, false)
+		ul = nil
+	}
+	if ul == nil {
+		ul, err = m.User.NewLogin(ctx, &database.UserLogin{
+			ID: login_id,
+			Metadata: database.UserLoginMetadata{
+				StandardUserLoginMetadata: database.StandardUserLoginMetadata{
+					// TODO: Is this the correct metadata? Any extra?
+					RemoteName: currentUser.GetName(),
+				},
+			},
+		}, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save new login: %w", err)
+		}
+	} else {
+		ul.Metadata.RemoteName = currentUser.GetName()
+		err := ul.Save(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update existing login: %w", err)
+		}
+	}
+
+	backgroundCtx := ul.Log.WithContext(context.Background())
+	err = m.Main.LoadUserLogin(backgroundCtx, ul)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare connection after login: %w", err)
+	}
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,

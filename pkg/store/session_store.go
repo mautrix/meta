@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
 
 	"go.mau.fi/util/dbutil"
 
@@ -39,7 +39,7 @@ func (s *MetaSession) Scan(row dbutil.Scannable) (*MetaSession, error) {
 		newCookies.Platform = types.Facebook
 	} else {
 		// TODO: Fix this err
-		return nil, errors.New("scanning db: unknown platform")
+		return nil, fmt.Errorf("unknown platform %s", platform.String)
 	}
 
 	if newCookies.IsLoggedIn() {
@@ -71,4 +71,8 @@ func (q *MetaSessionQuery) Insert(ctx context.Context, session *MetaSession) err
 		platform = "facebook"
 	}
 	return q.Exec(ctx, insertUserQuery, session.MetaID, platform, session.WADeviceID, dbutil.JSON{Data: &session.Cookies})
+}
+
+func (q *MetaSessionQuery) Delete(ctx context.Context, metaID int64) error {
+	return q.Exec(ctx, `DELETE FROM "meta_session" WHERE meta_id=$1`, metaID)
 }
