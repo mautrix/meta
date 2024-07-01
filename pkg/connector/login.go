@@ -156,8 +156,8 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		}
 	}
 
-	newSession := store.MetaSession {
-		MetaID: FBID,
+	newSession := store.MetaSession{
+		MetaID:  FBID,
 		Cookies: c,
 	}
 	err = q.Insert(ctx, &newSession)
