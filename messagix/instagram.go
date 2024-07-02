@@ -227,3 +227,30 @@ func (ig *InstagramMethods) RegisterPushNotifications(endpoint string) error {
 
 	return nil
 }
+
+func (ig *InstagramMethods) FetchFBID() (int64, error) {
+	currentUser, tbl, err := ig.client.LoadMessagesPage()
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch FBID: %w", err)
+	}
+
+	var newFBID int64
+
+	for _, row := range tbl.LSVerifyContactRowExists {
+		if row.IsSelf && row.ContactId != newFBID {
+			if newFBID != 0 {
+				// Hopefully this won't happen
+				ig.client.Logger.Warn().Int64("prev_fbid", newFBID).Int64("new_fbid", row.ContactId).Msg("Got multiple fbids for self")
+			} else {
+				ig.client.Logger.Debug().Int64("fbid", row.ContactId).Msg("Found own fbid")
+			}
+			newFBID = row.ContactId
+		}
+	}
+	if newFBID == 0 {
+		newFBID = currentUser.GetFBID()
+		ig.client.Logger.Warn().Int64("fbid", newFBID).Msg("Own contact entry not found, falling back to fbid in current user object")
+	}
+
+	return newFBID, nil
+}

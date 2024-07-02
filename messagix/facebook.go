@@ -139,3 +139,11 @@ type pushNotificationsResponse struct {
 type payload struct {
 	Success bool `json:"success"`
 }
+
+func (fb *FacebookMethods) FetchFBID() (int64, error) {
+	userInfo, _, err := fb.client.LoadMessagesPage()
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch FBID: %w", err)
+	}
+	return userInfo.GetFBID(), nil
+}
