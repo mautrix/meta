@@ -3,17 +3,12 @@ package connector
 import (
 	"context"
 
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
-
-	"go.mau.fi/mautrix-meta/pkg/store"
 )
 
 type MetaConnector struct {
 	Bridge *bridgev2.Bridge
 	Config *MetaConfig
-
-	store *store.Container
 }
 
 func NewConnector() *MetaConnector {
@@ -74,12 +69,11 @@ func (s *MetaConnector) GetName() bridgev2.BridgeName {
 }
 
 func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
-	m.store = store.NewStore(bridge.DB.Database, dbutil.ZeroLogger(bridge.Log.With().Str("db_section", "meta").Logger()))
 	m.Bridge = bridge
 }
 
 func (m *MetaConnector) Start(ctx context.Context) error {
-	return m.store.Upgrade(ctx)
+	return nil
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {

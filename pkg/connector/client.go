@@ -2,36 +2,43 @@ package connector
 
 import (
 	"context"
-	"strconv"
 
 	"go.mau.fi/mautrix-meta/messagix"
-	//"go.mau.fi/mautrix-meta/pkg/store"
+	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/types"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 type MetaClient struct {
-	Main *MetaConnector
-	//session *store.MetaSession
+	Main   *MetaConnector
 	client *messagix.Client
 }
 
+func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
+	platform := types.Platform(metadata["platform"].(float64))
+
+	m := make(map[string]string)
+	for k, v := range metadata["cookies"].(map[string]interface{}) {
+		m[k] = v.(string)
+	}
+
+	c := &cookies.Cookies{
+		Platform: platform,
+	}
+	c.UpdateValues(m)
+	return c
+}
+
 func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.UserLogin) (*MetaClient, error) {
-	FBID, err := strconv.ParseInt(string(login.ID), 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	session, err := main.store.GetSessionQuery().GetByMetaID(ctx, FBID)
-	if err != nil {
-		return nil, err
-	}
+	cookies := cookiesFromMetadata(login.Metadata.Extra)
 
 	log := login.User.Log.With().Str("component", "messagix").Logger()
-	client := messagix.NewClient(session.Cookies, log)
+	client := messagix.NewClient(cookies, log)
 
 	return &MetaClient{
-		Main: main,
-		//session: session,
+		Main:   main,
 		client: client,
 	}, nil
 }

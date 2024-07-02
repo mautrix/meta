@@ -13,9 +13,10 @@ import (
 
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
-	"go.mau.fi/mautrix-meta/messagix/table"
+
+	//"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
-	"go.mau.fi/mautrix-meta/pkg/store"
+	//"go.mau.fi/mautrix-meta/pkg/store"
 )
 
 const FlowIDFacebookCookies = "cookies-facebook"
@@ -95,27 +96,6 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaCookieLogin) Cancel() {}
 
-func (m *MetaCookieLogin) getFBID(currentUser types.UserInfo, tbl *table.LSTable) int64 {
-	var newFBID int64
-	// TODO figure out why the contact IDs for self is different than the fbid in the ready event
-	for _, row := range tbl.LSVerifyContactRowExists {
-		if row.IsSelf && row.ContactId != newFBID {
-			if newFBID != 0 {
-				// Hopefully this won't happen
-				m.User.Log.Warn().Int64("prev_fbid", newFBID).Int64("new_fbid", row.ContactId).Msg("Got multiple fbids for self")
-			} else {
-				m.User.Log.Debug().Int64("fbid", row.ContactId).Msg("Found own fbid")
-			}
-			newFBID = row.ContactId
-		}
-	}
-	if newFBID == 0 {
-		newFBID = currentUser.GetFBID()
-		m.User.Log.Warn().Int64("fbid", newFBID).Msg("Own contact entry not found, falling back to fbid in current user object")
-	}
-	return newFBID
-}
-
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{
 		Platform: types.Instagram,
@@ -123,10 +103,8 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if m.Flow == FlowIDFacebookCookies {
 		c.Platform = types.Facebook
 	}
-
 	c.UpdateValues(strCookies)
 
-	// Check if the cookies are valid
 	if !c.IsLoggedIn() {
 		return nil, fmt.Errorf("invalid cookies")
 	}
@@ -134,40 +112,17 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	log := m.User.Log.With().Str("component", "messagix").Logger()
 	client := messagix.NewClient(c, log)
 
-	currentUser, initialTable, err := client.LoadMessagesPage()
+	user, _, err := client.LoadMessagesPage()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load messages page: %w", err)
 	}
 
-	FBID := m.getFBID(currentUser, initialTable)
-
-	// Store the cookies in the database
-
-	q := m.Main.store.GetSessionQuery()
-	session, err := q.GetByMetaID(ctx, FBID)
+	id, err := client.FetchFBID()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get existing session: %w", err)
-	}
-	if session != nil {
-		log.Debug().Int64("fbid", FBID).Msg("Deleting existing session")
-		err := q.Delete(ctx, FBID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to delete existing session: %w", err)
-		}
+		return nil, fmt.Errorf("failed to fetch FBID: %w", err)
 	}
 
-	newSession := store.MetaSession{
-		MetaID:  FBID,
-		Cookies: c,
-	}
-	err = q.Insert(ctx, &newSession)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save new session: %w", err)
-	}
-
-	// Store the association between the Matrix user and the cookies
-
-	login_id := networkid.UserLoginID(fmt.Sprint(FBID))
+	login_id := networkid.UserLoginID(fmt.Sprint(id))
 
 	ul, err := m.Main.Bridge.GetExistingUserLoginByID(ctx, login_id)
 	if err != nil {
@@ -183,8 +138,11 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 			ID: login_id,
 			Metadata: database.UserLoginMetadata{
 				StandardUserLoginMetadata: database.StandardUserLoginMetadata{
-					// TODO: Is this the correct metadata? Any extra?
-					RemoteName: currentUser.GetName(),
+					RemoteName: user.GetName(),
+				},
+				Extra: map[string]interface{}{
+					"platform": c.Platform,
+					"cookies":  c,
 				},
 			},
 		}, nil)
@@ -192,7 +150,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 			return nil, fmt.Errorf("failed to save new login: %w", err)
 		}
 	} else {
-		ul.Metadata.RemoteName = currentUser.GetName()
+		ul.Metadata.RemoteName = user.GetName()
 		err := ul.Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update existing login: %w", err)
@@ -208,6 +166,6 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       "fi.mau.meta.complete",
-		Instructions: fmt.Sprintf("Logged in as %s (%d)", currentUser.GetName(), FBID),
+		Instructions: fmt.Sprintf("Logged in as %s (%d)", user.GetName(), id),
 	}, nil
 }
