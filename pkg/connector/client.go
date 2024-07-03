@@ -2,6 +2,9 @@ package connector
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
@@ -14,6 +17,7 @@ import (
 type MetaClient struct {
 	Main   *MetaConnector
 	client *messagix.Client
+	log    zerolog.Logger
 }
 
 func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
@@ -40,12 +44,106 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 	return &MetaClient{
 		Main:   main,
 		client: client,
+		log:    login.User.Log,
 	}, nil
 }
 
-// Connect implements bridgev2.NetworkAPI.
+func (m *MetaClient) eventHandler(rawEvt any) {
+	switch evt := rawEvt.(type) {
+	/*
+		case *messagix.Event_PublishResponse:
+			user.log.Trace().Any("table", &evt.Table).Msg("Got new event")
+			select {
+			case user.incomingTables <- evt.Table:
+			default:
+				user.log.Warn().Msg("Incoming tables channel full, event order not guaranteed")
+				go func() {
+					user.incomingTables <- evt.Table
+				}()
+			}
+		case *messagix.Event_Ready:
+			user.log.Debug().Msg("Initial connect to Meta socket completed")
+			user.metaState = status.BridgeState{StateEvent: status.StateConnected}
+			user.BridgeState.Send(user.metaState)
+			if initTable := user.initialTable.Swap(nil); initTable != nil {
+				user.log.Debug().Msg("Sending cached initial table to handler")
+				user.incomingTables <- initTable
+			}
+			if user.bridge.Config.Meta.Mode.IsMessenger() || user.bridge.Config.Meta.IGE2EE {
+				go func() {
+					err := user.connectE2EE()
+					if err != nil {
+						user.log.Err(err).Msg("Error connecting to e2ee")
+					}
+				}()
+			}
+			go user.BackfillLoop()
+		case *messagix.Event_SocketError:
+			user.log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
+			user.metaState = status.BridgeState{
+				StateEvent: status.StateTransientDisconnect,
+				Error:      MetaTransientDisconnect,
+			}
+			if evt.ConnectionAttempts > setDisconnectStateAfterConnectAttempts {
+				user.BridgeState.Send(user.metaState)
+			}
+		case *messagix.Event_Reconnected:
+			user.log.Debug().Msg("Reconnected to Meta socket")
+			user.metaState = status.BridgeState{StateEvent: status.StateConnected}
+			user.BridgeState.Send(user.metaState)
+		case *messagix.Event_PermanentError:
+			if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNAUTHORIZED) {
+				user.metaState = status.BridgeState{
+					StateEvent: status.StateBadCredentials,
+					Error:      MetaConnectionUnauthorized,
+				}
+			} else if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
+				if user.bridge.Config.Meta.Mode.IsMessenger() {
+					user.metaState = status.BridgeState{
+						StateEvent: status.StateUnknownError,
+						Error:      MetaServerUnavailable,
+					}
+					if user.canReconnect() {
+						user.log.Debug().Msg("Doing full reconnect after server unavailable error")
+						go user.FullReconnect()
+					}
+				} else {
+					user.metaState = status.BridgeState{
+						StateEvent: status.StateBadCredentials,
+						Error:      IGChallengeRequiredMaybe,
+					}
+				}
+			} else {
+				user.metaState = status.BridgeState{
+					StateEvent: status.StateUnknownError,
+					Error:      MetaPermanentError,
+					Message:    evt.Err.Error(),
+				}
+			}
+			user.BridgeState.Send(user.metaState)
+			go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
+			user.StopBackfillLoop()
+			if user.forceRefreshTimer != nil {
+				user.forceRefreshTimer.Stop()
+			}
+	*/
+	default:
+		m.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
+	}
+}
+
 func (m *MetaClient) Connect(ctx context.Context) error {
-	panic("unimplemented")
+	// We have to call this before calling `Connect`, even if we don't use the result
+	_, _, err := m.client.LoadMessagesPage()
+	if err != nil {
+		return fmt.Errorf("failed to load messages page: %w", err)
+	}
+	m.client.SetEventHandler(m.eventHandler)
+	err = m.client.Connect()
+	if err != nil {
+		return fmt.Errorf("failed to connect to messagix: %w", err)
+	}
+	return nil
 }
 
 // Disconnect implements bridgev2.NetworkAPI.
