@@ -40,10 +40,6 @@ func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
 func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.UserLogin) (*MetaClient, error) {
 	cookies := cookiesFromMetadata(login.Metadata.Extra)
 	login.Metadata.Extra["cookies"] = cookies
-	err := login.Save(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save cookies: %w", err)
-	}
 
 	log := login.User.Log.With().Str("component", "messagix").Logger()
 	client := messagix.NewClient(cookies, log)
@@ -56,12 +52,13 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 	}, nil
 }
 
-func (m *MetaClient) Update(ctx context.Context) {
+func (m *MetaClient) Update(ctx context.Context) error {
 	err := m.login.Save(ctx)
 	if err != nil {
-		m.log.Err(err).Msg("Failed to update cookies")
+		return fmt.Errorf("failed to save updated cookies: %w", err)
 	}
 	m.log.Debug().Msg("Updated cookies")
+	return nil
 }
 
 func (m *MetaClient) eventHandler(rawEvt any) {
@@ -159,7 +156,10 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to messagix: %w", err)
 	}
-	m.Update(ctx)
+	err = m.Update(ctx)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
