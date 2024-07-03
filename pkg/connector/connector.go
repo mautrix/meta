@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"go.mau.fi/mautrix-meta/messagix"
 )
 
 type MetaConnector struct {
@@ -77,10 +79,17 @@ func (m *MetaConnector) Start(ctx context.Context) error {
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
-	client, err := NewMetaClient(ctx, m, login)
+	return m.LoadUserLoginWithClient(ctx, login, nil)
+}
+
+func (m *MetaConnector) LoadUserLoginWithClient(ctx context.Context, login *bridgev2.UserLogin, client *messagix.Client) error {
+	cli, err := NewMetaClient(ctx, m, login)
 	if err != nil {
 		return err
 	}
-	login.Client = client
+	if client != nil {
+		cli.client = client
+	}
+	login.Client = cli
 	return nil
 }

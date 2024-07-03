@@ -433,11 +433,3 @@ func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
 	}
 	return nil
 }
-
-func (c *Client) FetchFBID() (int64, error) {
-	if c.platform.IsMessenger() {
-		return c.Facebook.FetchFBID()
-	} else {
-		return c.Instagram.FetchFBID()
-	}
-}

@@ -112,14 +112,17 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	log := m.User.Log.With().Str("component", "messagix").Logger()
 	client := messagix.NewClient(c, log)
 
-	user, _, err := client.LoadMessagesPage()
+	user, tbl, err := client.LoadMessagesPage()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load messages page: %w", err)
 	}
 
-	id, err := client.FetchFBID()
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch FBID: %w", err)
+	id := user.GetFBID()
+	if client.Instagram != nil {
+		id, err = client.Instagram.FetchFBID(user, tbl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch FBID: %w", err)
+		}
 	}
 
 	login_id := networkid.UserLoginID(fmt.Sprint(id))
@@ -145,7 +148,11 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 					"cookies":  c,
 				},
 			},
-		}, nil)
+		}, &bridgev2.NewLoginParams{
+			LoadUserLogin: func(ctx context.Context, login *bridgev2.UserLogin) error {
+				return m.Main.LoadUserLoginWithClient(ctx, login, client)
+			},
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to save new login: %w", err)
 		}

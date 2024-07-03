@@ -13,6 +13,7 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/crypto"
 	"go.mau.fi/mautrix-meta/messagix/data/responses"
+	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
@@ -228,12 +229,7 @@ func (ig *InstagramMethods) RegisterPushNotifications(endpoint string) error {
 	return nil
 }
 
-func (ig *InstagramMethods) FetchFBID() (int64, error) {
-	currentUser, tbl, err := ig.client.LoadMessagesPage()
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch FBID: %w", err)
-	}
-
+func (ig *InstagramMethods) FetchFBID(currentUser types.UserInfo, tbl *table.LSTable) (int64, error) {
 	var newFBID int64
 
 	for _, row := range tbl.LSVerifyContactRowExists {

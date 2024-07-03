@@ -39,11 +39,18 @@ func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
 }
 
 func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.UserLogin) (*MetaClient, error) {
-	cookies := cookiesFromMetadata(login.Metadata.Extra)
+	login.User.Log.Debug().Any("metadata", login.Metadata.Extra).Msg("Creating new Meta client")
+
+	var c *cookies.Cookies
+	if _, ok := login.Metadata.Extra["cookies"].(map[string]interface{}); ok {
+		c = cookiesFromMetadata(login.Metadata.Extra)
+	} else {
+		c = login.Metadata.Extra["cookies"].(*cookies.Cookies)
+	}
 
 	return &MetaClient{
 		Main:    main,
-		cookies: cookies,
+		cookies: c,
 		log:     login.User.Log,
 		login:   login,
 	}, nil
@@ -144,17 +151,19 @@ func (m *MetaClient) eventHandler(rawEvt any) {
 }
 
 func (m *MetaClient) Connect(ctx context.Context) error {
-	log := m.login.User.Log.With().Str("component", "messagix").Logger()
-	client := messagix.NewClient(m.cookies, log)
-	m.client = client
-
-	// We have to call this before calling `Connect`, even if we don't use the result
-	_, _, err := m.client.LoadMessagesPage()
-	if err != nil {
-		return fmt.Errorf("failed to load messages page: %w", err)
+	if m.client == nil {
+		log := m.login.User.Log.With().Str("component", "messagix").Logger()
+		client := messagix.NewClient(m.cookies, log)
+		m.client = client
+		// We have to call this before calling `Connect`, even if we don't use the result
+		_, _, err := m.client.LoadMessagesPage()
+		if err != nil {
+			return fmt.Errorf("failed to load messages page: %w", err)
+		}
 	}
+
 	m.client.SetEventHandler(m.eventHandler)
-	err = m.client.Connect()
+	err := m.client.Connect()
 	if err != nil {
 		return fmt.Errorf("failed to connect to messagix: %w", err)
 	}
