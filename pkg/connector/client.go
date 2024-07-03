@@ -15,10 +15,11 @@ import (
 )
 
 type MetaClient struct {
-	Main   *MetaConnector
-	client *messagix.Client
-	log    zerolog.Logger
-	login  *bridgev2.UserLogin
+	Main    *MetaConnector
+	client  *messagix.Client
+	log     zerolog.Logger
+	cookies *cookies.Cookies
+	login   *bridgev2.UserLogin
 }
 
 func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
@@ -39,20 +40,17 @@ func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
 
 func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.UserLogin) (*MetaClient, error) {
 	cookies := cookiesFromMetadata(login.Metadata.Extra)
-	login.Metadata.Extra["cookies"] = cookies
-
-	log := login.User.Log.With().Str("component", "messagix").Logger()
-	client := messagix.NewClient(cookies, log)
 
 	return &MetaClient{
-		Main:   main,
-		client: client,
-		log:    login.User.Log,
-		login:  login,
+		Main:    main,
+		cookies: cookies,
+		log:     login.User.Log,
+		login:   login,
 	}, nil
 }
 
 func (m *MetaClient) Update(ctx context.Context) error {
+	m.login.Metadata.Extra["cookies"] = m.cookies
 	err := m.login.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to save updated cookies: %w", err)
@@ -146,6 +144,10 @@ func (m *MetaClient) eventHandler(rawEvt any) {
 }
 
 func (m *MetaClient) Connect(ctx context.Context) error {
+	log := m.login.User.Log.With().Str("component", "messagix").Logger()
+	client := messagix.NewClient(m.cookies, log)
+	m.client = client
+
 	// We have to call this before calling `Connect`, even if we don't use the result
 	_, _, err := m.client.LoadMessagesPage()
 	if err != nil {
@@ -163,9 +165,11 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Disconnect implements bridgev2.NetworkAPI.
 func (m *MetaClient) Disconnect() {
-	panic("unimplemented")
+	if m.client != nil {
+		m.client.Disconnect()
+	}
+	m.client = nil
 }
 
 // GetCapabilities implements bridgev2.NetworkAPI.
