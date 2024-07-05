@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/rs/zerolog"
 
@@ -15,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 )
 
 type MetaClient struct {
@@ -98,6 +100,41 @@ func (m *MetaClient) handleTableEvent(tblEvt any) {
 	switch evt := tblEvt.(type) {
 	case *table.LSInsertMessage:
 		m.log.Info().Any("text", evt.Text).Any("sender", evt.SenderId).Msg("Got new message")
+		m.Main.Bridge.QueueRemoteEvent(m.login, &bridgev2.SimpleRemoteEvent[string]{
+			Type: bridgev2.RemoteEventMessage,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.
+					Str("message_id", evt.MessageId).
+					Str("sender", strconv.Itoa(int(evt.SenderId))).
+					//Str("sender_login", string(evt.Sender)).
+					Bool("is_from_me", strconv.Itoa(int(evt.SenderId)) == string(m.login.ID))
+			},
+			ID: networkid.MessageID(evt.MessageId),
+			Sender: bridgev2.EventSender{
+				IsFromMe:    strconv.Itoa(int(evt.SenderId)) == string(m.login.ID),
+				Sender:      networkid.UserID(strconv.Itoa(int(evt.SenderId))),
+				SenderLogin: networkid.UserLoginID(strconv.Itoa(int(evt.SenderId))),
+			},
+			PortalKey: networkid.PortalKey{
+				ID: networkid.PortalID("test"),
+			},
+			Data:         evt.Text,
+			CreatePortal: true,
+			ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data string) (*bridgev2.ConvertedMessage, error) {
+				return &bridgev2.ConvertedMessage{
+					Parts: []*bridgev2.ConvertedMessagePart{
+						{
+							ID:   networkid.PartID("test"),
+							Type: event.EventMessage,
+							Content: &event.MessageEventContent{
+								MsgType: event.MsgText,
+								Body:    data,
+							},
+						},
+					},
+				}, nil
+			},
+		})
 	default:
 		m.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from table")
 	}
@@ -144,13 +181,17 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 }
 
 // GetChatInfo implements bridgev2.NetworkAPI.
-func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.PortalInfo, error) {
-	panic("unimplemented")
+func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	return &bridgev2.ChatInfo{
+		Name:         &[]string{"test"}[0],
+		IsSpace:      &[]bool{false}[0],
+		IsDirectChat: &[]bool{true}[0],
+	}, nil
 }
 
 // GetUserInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	panic("unimplemented")
+	return nil, nil
 }
 
 // HandleMatrixMessage implements bridgev2.NetworkAPI.
