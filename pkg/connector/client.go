@@ -83,26 +83,14 @@ func (m *MetaClient) eventHandler(rawEvt any) {
 }
 
 func (m *MetaClient) handleTable(tbl *table.LSTable) {
-	var fields []any
-
-	tblType := reflect.TypeOf(*tbl)
-	tblFields := make([]any, tblType.NumField())
-
-	for i := 0; i < tblType.NumField(); i++ {
-		tblFields[i] = reflect.ValueOf(*tbl).Field(i).Interface()
-	}
-
-	for _, field := range tblFields {
-		if reflect.TypeOf(field).Kind() == reflect.Slice {
-			slice := reflect.ValueOf(field)
-			for i := 0; i < slice.Len(); i++ {
-				fields = append(fields, slice.Index(i).Interface())
+	tblValue := reflect.ValueOf(*tbl)
+	for i := 0; i < tblValue.NumField(); i++ {
+		field := tblValue.Field(i)
+		if field.Kind() == reflect.Slice {
+			for j := 0; j < field.Len(); j++ {
+				m.handleTableEvent(field.Index(j).Interface())
 			}
 		}
-	}
-
-	for _, field := range fields {
-		m.handleTableEvent(field)
 	}
 }
 
