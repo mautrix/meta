@@ -3,13 +3,16 @@ package connector
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
@@ -51,7 +54,7 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 	return &MetaClient{
 		Main:    main,
 		cookies: c,
-		log:     login.User.Log,
+		log:     login.Log,
 		login:   login,
 	}, nil
 }
@@ -68,86 +71,49 @@ func (m *MetaClient) Update(ctx context.Context) error {
 
 func (m *MetaClient) eventHandler(rawEvt any) {
 	switch evt := rawEvt.(type) {
-	/*
-		case *messagix.Event_PublishResponse:
-			user.log.Trace().Any("table", &evt.Table).Msg("Got new event")
-			select {
-			case user.incomingTables <- evt.Table:
-			default:
-				user.log.Warn().Msg("Incoming tables channel full, event order not guaranteed")
-				go func() {
-					user.incomingTables <- evt.Table
-				}()
-			}
-		case *messagix.Event_Ready:
-			user.log.Debug().Msg("Initial connect to Meta socket completed")
-			user.metaState = status.BridgeState{StateEvent: status.StateConnected}
-			user.BridgeState.Send(user.metaState)
-			if initTable := user.initialTable.Swap(nil); initTable != nil {
-				user.log.Debug().Msg("Sending cached initial table to handler")
-				user.incomingTables <- initTable
-			}
-			if user.bridge.Config.Meta.Mode.IsMessenger() || user.bridge.Config.Meta.IGE2EE {
-				go func() {
-					err := user.connectE2EE()
-					if err != nil {
-						user.log.Err(err).Msg("Error connecting to e2ee")
-					}
-				}()
-			}
-			go user.BackfillLoop()
-		case *messagix.Event_SocketError:
-			user.log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
-			user.metaState = status.BridgeState{
-				StateEvent: status.StateTransientDisconnect,
-				Error:      MetaTransientDisconnect,
-			}
-			if evt.ConnectionAttempts > setDisconnectStateAfterConnectAttempts {
-				user.BridgeState.Send(user.metaState)
-			}
-		case *messagix.Event_Reconnected:
-			user.log.Debug().Msg("Reconnected to Meta socket")
-			user.metaState = status.BridgeState{StateEvent: status.StateConnected}
-			user.BridgeState.Send(user.metaState)
-		case *messagix.Event_PermanentError:
-			if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNAUTHORIZED) {
-				user.metaState = status.BridgeState{
-					StateEvent: status.StateBadCredentials,
-					Error:      MetaConnectionUnauthorized,
-				}
-			} else if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
-				if user.bridge.Config.Meta.Mode.IsMessenger() {
-					user.metaState = status.BridgeState{
-						StateEvent: status.StateUnknownError,
-						Error:      MetaServerUnavailable,
-					}
-					if user.canReconnect() {
-						user.log.Debug().Msg("Doing full reconnect after server unavailable error")
-						go user.FullReconnect()
-					}
-				} else {
-					user.metaState = status.BridgeState{
-						StateEvent: status.StateBadCredentials,
-						Error:      IGChallengeRequiredMaybe,
-					}
-				}
-			} else {
-				user.metaState = status.BridgeState{
-					StateEvent: status.StateUnknownError,
-					Error:      MetaPermanentError,
-					Message:    evt.Err.Error(),
-				}
-			}
-			user.BridgeState.Send(user.metaState)
-			go user.sendMarkdownBridgeAlert(context.TODO(), "Error in %s connection: %v", user.bridge.ProtocolName, evt.Err)
-			user.StopBackfillLoop()
-			if user.forceRefreshTimer != nil {
-				user.forceRefreshTimer.Stop()
-			}
-	*/
+	case *messagix.Event_PublishResponse:
+		m.log.Trace().Any("table", &evt.Table).Msg("Got new event table")
+		m.handleTable(evt.Table)
+	case *messagix.Event_Ready:
+		m.log.Trace().Msg("Initial connect to Meta socket completed, sending connected BridgeState")
+		m.login.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	default:
 		m.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
+}
+
+func (m *MetaClient) handleTable(tbl *table.LSTable) {
+	var fields []any
+
+	tblType := reflect.TypeOf(*tbl)
+	tblFields := make([]any, tblType.NumField())
+
+	for i := 0; i < tblType.NumField(); i++ {
+		tblFields[i] = reflect.ValueOf(*tbl).Field(i).Interface()
+	}
+
+	for _, field := range tblFields {
+		if reflect.TypeOf(field).Kind() == reflect.Slice {
+			slice := reflect.ValueOf(field)
+			for i := 0; i < slice.Len(); i++ {
+				fields = append(fields, slice.Index(i).Interface())
+			}
+		}
+	}
+
+	for _, field := range fields {
+		m.handleTableEvent(field)
+	}
+}
+
+func (m *MetaClient) handleTableEvent(tblEvt any) {
+	switch evt := tblEvt.(type) {
+	case *table.LSInsertMessage:
+		m.log.Info().Any("text", evt.Text).Any("sender", evt.SenderId).Msg("Got new message")
+	default:
+		m.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from table")
+	}
+
 }
 
 func (m *MetaClient) Connect(ctx context.Context) error {
