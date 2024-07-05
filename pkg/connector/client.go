@@ -105,22 +105,25 @@ func (m *MetaClient) handleTableEvent(tblEvt any) {
 }
 
 func (m *MetaClient) Connect(ctx context.Context) error {
-	if m.client == nil {
-		log := m.login.User.Log.With().Str("component", "messagix").Logger()
-		client := messagix.NewClient(m.cookies, log)
-		m.client = client
-		// We have to call this before calling `Connect`, even if we don't use the result
-		_, _, err := m.client.LoadMessagesPage()
-		if err != nil {
-			return fmt.Errorf("failed to load messages page: %w", err)
-		}
+	log := m.login.User.Log.With().Str("component", "messagix").Logger()
+
+	client := messagix.NewClient(m.cookies, log)
+	m.client = client
+
+	_, initialTable, err := m.client.LoadMessagesPage()
+	if err != nil {
+		return fmt.Errorf("failed to load messages page: %w", err)
 	}
 
+	m.handleTable(initialTable)
+
 	m.client.SetEventHandler(m.eventHandler)
-	err := m.client.Connect()
+
+	err = m.client.Connect()
 	if err != nil {
 		return fmt.Errorf("failed to connect to messagix: %w", err)
 	}
+
 	err = m.Update(ctx)
 	if err != nil {
 		return err

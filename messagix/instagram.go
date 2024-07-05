@@ -229,7 +229,7 @@ func (ig *InstagramMethods) RegisterPushNotifications(endpoint string) error {
 	return nil
 }
 
-func (ig *InstagramMethods) FetchFBID(currentUser types.UserInfo, tbl *table.LSTable) (int64, error) {
+func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.LSTable) (int64, error) {
 	var newFBID int64
 
 	for _, row := range tbl.LSVerifyContactRowExists {

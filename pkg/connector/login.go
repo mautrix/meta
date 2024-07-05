@@ -119,7 +119,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 
 	id := user.GetFBID()
 	if client.Instagram != nil {
-		id, err = client.Instagram.FetchFBID(user, tbl)
+		id, err = client.Instagram.ExtractFBID(user, tbl)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch FBID: %w", err)
 		}
@@ -148,11 +148,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 					"cookies":  c,
 				},
 			},
-		}, &bridgev2.NewLoginParams{
-			LoadUserLogin: func(ctx context.Context, login *bridgev2.UserLogin) error {
-				return m.Main.LoadUserLoginWithClient(ctx, login, client)
-			},
-		})
+		}, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save new login: %w", err)
 		}
