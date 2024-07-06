@@ -44,7 +44,8 @@ func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
 }
 
 func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.UserLogin) (*MetaClient, error) {
-	login.User.Log.Debug().Any("metadata", login.Metadata.Extra).Msg("Creating new Meta client")
+	log := zerolog.Ctx(ctx).With().Str("component", "meta_client").Logger()
+	log.Debug().Any("metadata", login.Metadata.Extra).Msg("Creating new Meta client")
 
 	var c *cookies.Cookies
 	if _, ok := login.Metadata.Extra["cookies"].(map[string]interface{}); ok {
@@ -56,7 +57,7 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 	return &MetaClient{
 		Main:    main,
 		cookies: c,
-		log:     login.Log,
+		log:     log,
 		login:   login,
 	}, nil
 }
@@ -67,39 +68,44 @@ func (m *MetaClient) Update(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to save updated cookies: %w", err)
 	}
-	m.log.Debug().Msg("Updated cookies")
+	zerolog.Ctx(ctx).Debug().Msg("Updated cookies")
 	return nil
 }
 
-func (m *MetaClient) eventHandler(rawEvt any) {
+func (m *MetaClient) handleMetaEvent(rawEvt any) {
+	// Create a new context for this event
+	ctx := m.log.WithContext(context.TODO())
+	log := zerolog.Ctx(ctx)
+
 	switch evt := rawEvt.(type) {
 	case *messagix.Event_PublishResponse:
-		m.log.Trace().Any("table", &evt.Table).Msg("Got new event table")
-		m.handleTable(evt.Table)
+		log.Trace().Any("table", &evt.Table).Msg("Got new event table")
+		m.handleTable(ctx, evt.Table)
 	case *messagix.Event_Ready:
-		m.log.Trace().Msg("Initial connect to Meta socket completed, sending connected BridgeState")
+		log.Trace().Msg("Initial connect to Meta socket completed, sending connected BridgeState")
 		m.login.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	default:
-		m.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
+		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
 }
 
-func (m *MetaClient) handleTable(tbl *table.LSTable) {
+func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	tblValue := reflect.ValueOf(*tbl)
 	for i := 0; i < tblValue.NumField(); i++ {
 		field := tblValue.Field(i)
 		if field.Kind() == reflect.Slice {
 			for j := 0; j < field.Len(); j++ {
-				m.handleTableEvent(field.Index(j).Interface())
+				m.handleTableEvent(ctx, field.Index(j).Interface())
 			}
 		}
 	}
 }
 
-func (m *MetaClient) handleTableEvent(tblEvt any) {
+func (m *MetaClient) handleTableEvent(ctx context.Context, tblEvt any) {
+	log := zerolog.Ctx(ctx)
 	switch evt := tblEvt.(type) {
 	case *table.LSInsertMessage:
-		m.log.Info().Any("text", evt.Text).Any("sender", evt.SenderId).Msg("Got new message")
+		log.Info().Any("text", evt.Text).Any("sender", evt.SenderId).Msg("Got new message")
 		m.Main.Bridge.QueueRemoteEvent(m.login, &bridgev2.SimpleRemoteEvent[string]{
 			Type: bridgev2.RemoteEventMessage,
 			LogContext: func(c zerolog.Context) zerolog.Context {
@@ -136,15 +142,12 @@ func (m *MetaClient) handleTableEvent(tblEvt any) {
 			},
 		})
 	default:
-		m.log.Warn().Type("event_type", evt).Msg("Unrecognized event type from table")
+		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from table")
 	}
-
 }
 
 func (m *MetaClient) Connect(ctx context.Context) error {
-	log := m.login.User.Log.With().Str("component", "messagix").Logger()
-
-	client := messagix.NewClient(m.cookies, log)
+	client := messagix.NewClient(m.cookies, m.log.With().Str("component", "messagix").Logger())
 	m.client = client
 
 	_, initialTable, err := m.client.LoadMessagesPage()
@@ -152,9 +155,9 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to load messages page: %w", err)
 	}
 
-	m.handleTable(initialTable)
+	m.handleTable(ctx, initialTable)
 
-	m.client.SetEventHandler(m.eventHandler)
+	m.client.SetEventHandler(m.handleMetaEvent)
 
 	err = m.client.Connect()
 	if err != nil {
