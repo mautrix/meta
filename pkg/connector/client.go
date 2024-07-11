@@ -19,12 +19,20 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+type metaEvent struct {
+	context context.Context
+	event   any
+}
+
 type MetaClient struct {
-	Main    *MetaConnector
-	client  *messagix.Client
+	Main   *MetaConnector
+	client *messagix.Client
+
 	log     zerolog.Logger
 	cookies *cookies.Cookies
 	login   *bridgev2.UserLogin
+
+	incomingEvents chan *metaEvent
 }
 
 func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
@@ -55,10 +63,11 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 	}
 
 	return &MetaClient{
-		Main:    main,
-		cookies: c,
-		log:     log,
-		login:   login,
+		Main:           main,
+		cookies:        c,
+		log:            log,
+		login:          login,
+		incomingEvents: make(chan *metaEvent, 8),
 	}, nil
 }
 
@@ -72,12 +81,32 @@ func (m *MetaClient) Update(ctx context.Context) error {
 	return nil
 }
 
-func (m *MetaClient) handleMetaEvent(rawEvt any) {
-	// Create a new context for this event
+// We don't want to block while handling events, but they must be processed in order, so we use a channel to queue them.
+func (m *MetaClient) metaEventHandler(rawEvt any) {
 	ctx := m.log.WithContext(context.TODO())
+
+	evt := metaEvent{
+		context: ctx,
+		event:   rawEvt,
+	}
+
+	m.incomingEvents <- &evt
+}
+
+func (m *MetaClient) handleMetaEventLoop() {
+	for evt := range m.incomingEvents {
+		if evt == nil {
+			m.log.Debug().Msg("Received nil event, stopping event handling")
+			return
+		}
+		m.handleMetaEvent(evt.context, evt.event)
+	}
+}
+
+func (m *MetaClient) handleMetaEvent(ctx context.Context, evt any) {
 	log := zerolog.Ctx(ctx)
 
-	switch evt := rawEvt.(type) {
+	switch evt := evt.(type) {
 	case *messagix.Event_PublishResponse:
 		log.Trace().Any("table", &evt.Table).Msg("Got new event table")
 		m.handleTable(ctx, evt.Table)
@@ -157,7 +186,7 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 
 	m.handleTable(ctx, initialTable)
 
-	m.client.SetEventHandler(m.handleMetaEvent)
+	m.client.SetEventHandler(m.metaEventHandler)
 
 	err = m.client.Connect()
 	if err != nil {
@@ -168,10 +197,15 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	go m.handleMetaEventLoop()
+
 	return nil
 }
 
 func (m *MetaClient) Disconnect() {
+	m.incomingEvents <- nil
+	close(m.incomingEvents)
 	if m.client != nil {
 		m.client.Disconnect()
 	}
