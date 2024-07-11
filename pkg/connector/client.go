@@ -3,25 +3,41 @@ package connector
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
+
+	//"reflect"
+	//"strconv"
 
 	"github.com/rs/zerolog"
 
+	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 
+	"go.mau.fi/mautrix-meta/pkg/connector/msgconv"
+
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
+	//"maunium.net/go/mautrix/event"
 )
 
 type metaEvent struct {
 	context context.Context
 	event   any
+}
+
+type threadInfo struct {
+	ThreadKey         string
+	ThreadDescription string
+	ThreadName        string
+}
+
+type contactInfo struct {
+	ContactID   string
+	ContactName string
 }
 
 type MetaClient struct {
@@ -32,7 +48,11 @@ type MetaClient struct {
 	cookies *cookies.Cookies
 	login   *bridgev2.UserLogin
 
-	incomingEvents chan *metaEvent
+	incomingEvents   chan *metaEvent
+	messageConverter *msgconv.MessageConverter
+
+	threads  map[string]*threadInfo  // ThreadKey -> threadInfo
+	contacts map[string]*contactInfo // ContactID -> contactInfo
 }
 
 func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
@@ -68,6 +88,11 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 		log:            log,
 		login:          login,
 		incomingEvents: make(chan *metaEvent, 8),
+		messageConverter: &msgconv.MessageConverter{
+			BridgeMode: config.BridgeMode("facebook"),
+		},
+		threads:  make(map[string]*threadInfo),
+		contacts: make(map[string]*contactInfo),
 	}, nil
 }
 
@@ -119,60 +144,90 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, evt any) {
 }
 
 func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
-	tblValue := reflect.ValueOf(*tbl)
-	for i := 0; i < tblValue.NumField(); i++ {
-		field := tblValue.Field(i)
-		if field.Kind() == reflect.Slice {
-			for j := 0; j < field.Len(); j++ {
-				m.handleTableEvent(ctx, field.Index(j).Interface())
-			}
+	log := zerolog.Ctx(ctx)
+
+	for _, contact := range tbl.LSDeleteThenInsertContact {
+		log.Warn().Int64("contact_id", contact.Id).Msg("LSDeleteThenInsertContact")
+	}
+	for _, contact := range tbl.LSVerifyContactRowExists {
+		log.Warn().Int64("contact_id", contact.ContactId).Msg("LSVerifyContactRowExists")
+		m.contacts[strconv.Itoa(int(contact.ContactId))] = &contactInfo{
+			ContactID:   strconv.Itoa(int(contact.ContactId)),
+			ContactName: contact.Name,
 		}
+	}
+	for _, thread := range tbl.LSDeleteThenInsertThread {
+		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSDeleteThenInsertThread")
+		// Add to threads map
+		m.threads[strconv.Itoa(int(thread.ThreadKey))] = &threadInfo{
+			ThreadKey:         strconv.Itoa(int(thread.ThreadKey)),
+			ThreadDescription: thread.ThreadDescription,
+			ThreadName:        thread.ThreadName,
+		}
+	}
+	for _, participant := range tbl.LSAddParticipantIdToGroupThread {
+		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ContactId).Msg("LSAddParticipantIdToGroupThread")
+	}
+	for _, participant := range tbl.LSRemoveParticipantFromThread {
+		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ParticipantId).Msg("LSRemoveParticipantFromThread")
+	}
+	for _, thread := range tbl.LSVerifyThreadExists {
+		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSVerifyThreadExists")
+	}
+	for _, mute := range tbl.LSUpdateThreadMuteSetting {
+		log.Warn().Int64("thread_id", mute.ThreadKey).Msg("LSUpdateThreadMuteSetting")
+	}
+	for _, thread := range tbl.LSSyncUpdateThreadName {
+		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSUpdateThreadName")
+		m.threads[strconv.Itoa(int(thread.ThreadKey))].ThreadName = thread.ThreadName
+	}
+
+	upsert, insert := tbl.WrapMessages()
+	for _, upsert := range upsert {
+		log.Trace().Int64("thread_id", upsert.Range.ThreadKey).Msg("UpsertMessages")
+	}
+	for _, msg := range insert {
+		log.Trace().Int64("thread_id", msg.ThreadKey).Str("message_id", msg.MessageId).Msg("InsertMessage")
+		//converted := m.messageConverter.ToMatrix(ctx, msg)
+		//log.Trace().Any("converted", converted).Msg("Converted message")
+		m.insertMessage(ctx, msg)
 	}
 }
 
-func (m *MetaClient) handleTableEvent(ctx context.Context, tblEvt any) {
+func (m *MetaClient) insertMessage(ctx context.Context, msg *table.WrappedMessage) {
 	log := zerolog.Ctx(ctx)
-	switch evt := tblEvt.(type) {
-	case *table.LSInsertMessage:
-		log.Info().Any("text", evt.Text).Any("sender", evt.SenderId).Msg("Got new message")
-		m.Main.Bridge.QueueRemoteEvent(m.login, &bridgev2.SimpleRemoteEvent[string]{
-			Type: bridgev2.RemoteEventMessage,
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.
-					Str("message_id", evt.MessageId).
-					Str("sender", strconv.Itoa(int(evt.SenderId))).
-					//Str("sender_login", string(evt.Sender)).
-					Bool("is_from_me", strconv.Itoa(int(evt.SenderId)) == string(m.login.ID))
-			},
-			ID: networkid.MessageID(evt.MessageId),
-			Sender: bridgev2.EventSender{
-				IsFromMe:    strconv.Itoa(int(evt.SenderId)) == string(m.login.ID),
-				Sender:      networkid.UserID(strconv.Itoa(int(evt.SenderId))),
-				SenderLogin: networkid.UserLoginID(strconv.Itoa(int(evt.SenderId))),
-			},
-			PortalKey: networkid.PortalKey{
-				ID: networkid.PortalID("test"),
-			},
-			Data:         evt.Text,
-			CreatePortal: true,
-			ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data string) (*bridgev2.ConvertedMessage, error) {
-				return &bridgev2.ConvertedMessage{
-					Parts: []*bridgev2.ConvertedMessagePart{
-						{
-							ID:   networkid.PartID("test"),
-							Type: event.EventMessage,
-							Content: &event.MessageEventContent{
-								MsgType: event.MsgText,
-								Body:    data,
-							},
-						},
-					},
-				}, nil
-			},
-		})
-	default:
-		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from table")
+
+	//converted := m.messageConverter.ToMatrix(ctx, msg)
+	//log.Trace().Any("converted", converted).Msg("Converted message")
+
+	log.Warn().Str("sender_id", strconv.Itoa(int(msg.SenderId))).Str("login_id", string(m.login.ID)).Msg("Inserting message")
+
+	sender := bridgev2.EventSender{
+		IsFromMe:    strconv.Itoa(int(msg.SenderId)) == string(m.login.ID),
+		Sender:      networkid.UserID(strconv.Itoa(int(msg.SenderId))),
+		SenderLogin: networkid.UserLoginID(strconv.Itoa(int(msg.SenderId))),
 	}
+
+	log.Warn().Any("sender", sender).Msg("Sender")
+
+	m.Main.Bridge.QueueRemoteEvent(m.login, &bridgev2.SimpleRemoteEvent[*table.WrappedMessage]{
+		Type: bridgev2.RemoteEventMessage,
+		LogContext: func(c zerolog.Context) zerolog.Context {
+			return c.
+				Str("message_id", msg.MessageId).
+				Any("sender", sender)
+		},
+		ID:     networkid.MessageID(msg.MessageId),
+		Sender: sender,
+		PortalKey: networkid.PortalKey{
+			ID: networkid.PortalID(strconv.Itoa(int(msg.ThreadKey))),
+		},
+		Data:         msg,
+		CreatePortal: true,
+		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, msg *table.WrappedMessage) (*bridgev2.ConvertedMessage, error) {
+			return m.messageConverter.ToMatrix(ctx, msg), nil
+		},
+	})
 }
 
 func (m *MetaClient) Connect(ctx context.Context) error {
@@ -219,8 +274,13 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 
 // GetChatInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	info := m.threads[string(portal.ID)]
+	log := zerolog.Ctx(ctx)
+	log.Debug().Any("threads", m.threads).Msg("Threads")
+	log.Debug().Any("info", info).Msg("Getting chat info")
 	return &bridgev2.ChatInfo{
-		Name:         &[]string{"test"}[0],
+		Name:         &info.ThreadName,
+		Topic:        &info.ThreadDescription,
 		IsSpace:      &[]bool{false}[0],
 		IsDirectChat: &[]bool{true}[0],
 	}, nil
@@ -228,7 +288,14 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 
 // GetUserInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	return nil, nil
+	info := m.contacts[string(ghost.ID)]
+	log := zerolog.Ctx(ctx)
+	log.Debug().Any("contacts", m.contacts).Msg("Contacts")
+	log.Debug().Any("info", info).Msg("Getting user info")
+	return &bridgev2.UserInfo{
+		//Identifiers: []networkid.UserID{ghost.UserID},
+		Name: &info.ContactName,
+	}, nil
 }
 
 // HandleMatrixMessage implements bridgev2.NetworkAPI.

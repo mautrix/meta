@@ -36,54 +36,47 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
-	"golang.org/x/exp/maps"
+
+	//"golang.org/x/exp/maps"
 	_ "golang.org/x/image/webp"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/messagix/data/responses"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 )
 
-type ConvertedMessage struct {
-	Parts []*ConvertedMessagePart
-}
-
-func (cm *ConvertedMessage) MergeCaption() {
-	if len(cm.Parts) != 2 || cm.Parts[1].Content.MsgType != event.MsgText {
-		return
-	}
-	switch cm.Parts[0].Content.MsgType {
-	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
-	default:
-		return
-	}
-	mediaContent := cm.Parts[0].Content
-	textContent := cm.Parts[1].Content
-	if mediaContent.FileName != "" && mediaContent.FileName != mediaContent.Body {
-		if textContent.FormattedBody != "" || mediaContent.FormattedBody != "" {
-			textContent.EnsureHasHTML()
-			mediaContent.EnsureHasHTML()
-			mediaContent.FormattedBody = fmt.Sprintf("%s<br><br>%s", mediaContent.FormattedBody, textContent.FormattedBody)
-		}
-		mediaContent.Body = fmt.Sprintf("%s\n\n%s", mediaContent.Body, textContent.Body)
-	} else {
-		mediaContent.FileName = mediaContent.Body
-		mediaContent.Body = textContent.Body
-		mediaContent.Format = textContent.Format
-		mediaContent.FormattedBody = textContent.FormattedBody
-	}
-	mediaContent.Mentions = textContent.Mentions
-	maps.Copy(cm.Parts[0].Extra, cm.Parts[1].Extra)
-	cm.Parts = cm.Parts[:1]
-}
-
-type ConvertedMessagePart struct {
-	Type    event.Type
-	Content *event.MessageEventContent
-	Extra   map[string]any
-}
+// func (cm *bridgev2.ConvertedMessage) MergeCaption() {
+// 	if len(cm.Parts) != 2 || cm.Parts[1].Content.MsgType != event.MsgText {
+// 		return
+// 	}
+// 	switch cm.Parts[0].Content.MsgType {
+// 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
+// 	default:
+// 		return
+// 	}
+// 	mediaContent := cm.Parts[0].Content
+// 	textContent := cm.Parts[1].Content
+// 	if mediaContent.FileName != "" && mediaContent.FileName != mediaContent.Body {
+// 		if textContent.FormattedBody != "" || mediaContent.FormattedBody != "" {
+// 			textContent.EnsureHasHTML()
+// 			mediaContent.EnsureHasHTML()
+// 			mediaContent.FormattedBody = fmt.Sprintf("%s<br><br>%s", mediaContent.FormattedBody, textContent.FormattedBody)
+// 		}
+// 		mediaContent.Body = fmt.Sprintf("%s\n\n%s", mediaContent.Body, textContent.Body)
+// 	} else {
+// 		mediaContent.FileName = mediaContent.Body
+// 		mediaContent.Body = textContent.Body
+// 		mediaContent.Format = textContent.Format
+// 		mediaContent.FormattedBody = textContent.FormattedBody
+// 	}
+// 	mediaContent.Mentions = textContent.Mentions
+// 	maps.Copy(cm.Parts[0].Extra, cm.Parts[1].Extra)
+// 	cm.Parts = cm.Parts[:1]
+// }
 
 func isProbablyURLPreview(xma *table.WrappedXMA) bool {
 	return xma.CTA != nil &&
@@ -93,9 +86,9 @@ func isProbablyURLPreview(xma *table.WrappedXMA) bool {
 		strings.Contains(xma.CTA.ActionUrl, "/l.php?")
 }
 
-func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMessage) *ConvertedMessage {
-	cm := &ConvertedMessage{
-		Parts: make([]*ConvertedMessagePart, 0),
+func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMessage) *bridgev2.ConvertedMessage {
+	cm := &bridgev2.ConvertedMessage{
+		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
 	if msg.IsUnsent {
 		return cm
@@ -170,14 +163,14 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			default:
 			}
 		}
-		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
+		cm.Parts = append(cm.Parts, &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: content,
 			Extra:   extra,
 		})
 	}
 	if len(cm.Parts) == 0 {
-		cm.Parts = append(cm.Parts, &ConvertedMessagePart{
+		cm.Parts = append(cm.Parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -188,7 +181,8 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			},
 		})
 	}
-	replyTo, sender := mc.GetMatrixReply(ctx, msg.ReplySourceId, msg.ReplyToUserId)
+	//replyTo, sender := mc.GetMatrixReply(ctx, msg.ReplySourceId, msg.ReplyToUserId)
+	replyTo, sender := id.EventID("replyTo"), id.UserID("sender")
 	for _, part := range cm.Parts {
 		_, hasExternalURL := part.Extra["external_url"]
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
@@ -225,14 +219,14 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 	return cm
 }
 
-func errorToNotice(err error, attachmentContainerType string) *ConvertedMessagePart {
+func errorToNotice(err error, attachmentContainerType string) *bridgev2.ConvertedMessagePart {
 	errMsg := "Failed to transfer attachment"
 	if errors.Is(err, ErrURLNotFound) {
 		errMsg = fmt.Sprintf("Unrecognized %s attachment type", attachmentContainerType)
 	} else if errors.Is(err, ErrTooLargeFile) {
 		errMsg = "Too large attachment"
 	}
-	return &ConvertedMessagePart{
+	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgNotice,
@@ -244,7 +238,7 @@ func errorToNotice(err error, attachmentContainerType string) *ConvertedMessageP
 	}
 }
 
-func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *table.LSInsertBlobAttachment) *ConvertedMessagePart {
+func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *table.LSInsertBlobAttachment) *bridgev2.ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	if mime == "" {
@@ -265,7 +259,7 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 	return converted
 }
 
-func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *table.LSInsertAttachment) *ConvertedMessagePart {
+func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *table.LSInsertAttachment) *bridgev2.ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	if mime == "" {
@@ -286,7 +280,7 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 	return converted
 }
 
-func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSInsertStickerAttachment) *ConvertedMessagePart {
+func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSInsertStickerAttachment) *bridgev2.ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	var width, height int64
@@ -303,7 +297,7 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 	return converted
 }
 
-func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, att *table.WrappedXMA, resp *responses.Items) (*ConvertedMessagePart, error) {
+func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, att *table.WrappedXMA, resp *responses.Items) (*bridgev2.ConvertedMessagePart, error) {
 	var url, mime string
 	var width, height int
 	var found bool
@@ -326,11 +320,11 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 	return mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, width, height, int(resp.VideoDuration*1000))
 }
 
-func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
+func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.WrappedXMA) *bridgev2.ConvertedMessagePart {
 	if att.CTA.NativeUrl == "" {
 		// This happens for live locations
 		// TODO figure out how to support them properly
-		return &ConvertedMessagePart{
+		return &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -338,7 +332,7 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 			},
 		}
 	}
-	return &ConvertedMessagePart{
+	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgLocation,
@@ -394,7 +388,7 @@ func addExternalURLCaption(content *event.MessageEventContent, externalURL strin
 	}
 }
 
-func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *ConvertedMessagePart) *ConvertedMessagePart {
+func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *bridgev2.ConvertedMessagePart) *bridgev2.ConvertedMessagePart {
 	ig := mc.GetClient(ctx).Instagram
 	if att.CTA == nil || ig == nil {
 		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unsupported"
@@ -614,7 +608,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 
 var instagramProfileURLRegex = regexp.MustCompile(`^https://www.instagram.com/([a-z0-9._]{1,30})$`)
 
-func (mc *MessageConverter) xmaProfileShareToMatrix(ctx context.Context, att *table.WrappedXMA) *ConvertedMessagePart {
+func (mc *MessageConverter) xmaProfileShareToMatrix(ctx context.Context, att *table.WrappedXMA) *bridgev2.ConvertedMessagePart {
 	if att.CTA == nil || att.HeaderSubtitleText == "" || att.HeaderImageUrl == "" || att.PlayableUrl != "" {
 		return nil
 	}
@@ -622,7 +616,7 @@ func (mc *MessageConverter) xmaProfileShareToMatrix(ctx context.Context, att *ta
 	if len(match) != 2 || match[1] != att.HeaderTitle {
 		return nil
 	}
-	return &ConvertedMessagePart{
+	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType:       event.MsgText,
@@ -659,11 +653,11 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 	return preview
 }
 
-func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) []*ConvertedMessagePart {
+func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) []*bridgev2.ConvertedMessagePart {
 	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
-		return []*ConvertedMessagePart{mc.xmaLocationToMatrix(ctx, att)}
+		return []*bridgev2.ConvertedMessagePart{mc.xmaLocationToMatrix(ctx, att)}
 	} else if profileShare := mc.xmaProfileShareToMatrix(ctx, att); profileShare != nil {
-		return []*ConvertedMessagePart{profileShare}
+		return []*bridgev2.ConvertedMessagePart{profileShare}
 	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
@@ -691,7 +685,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		converted.Extra["external_url"] = externalURL
 		addExternalURLCaption(converted.Content, externalURL)
 	}
-	parts := []*ConvertedMessagePart{converted}
+	parts := []*bridgev2.ConvertedMessagePart{converted}
 	if att.TitleText != "" || att.CaptionBodyText != "" {
 		captionContent := &event.MessageEventContent{
 			MsgType: event.MsgText,
@@ -705,7 +699,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 			}
 			captionContent.Body += att.CaptionBodyText
 		}
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: captionContent,
 			Extra: map[string]any{
@@ -753,7 +747,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	ctx context.Context, attachmentType table.AttachmentType,
 	url, fileName, mimeType string,
 	width, height, duration int,
-) (*ConvertedMessagePart, error) {
+) (*bridgev2.ConvertedMessagePart, error) {
 	if url == "" {
 		return nil, ErrURLNotFound
 	}
@@ -827,7 +821,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	if content.Body == "" {
 		content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
 	}
-	return &ConvertedMessagePart{
+	return &bridgev2.ConvertedMessagePart{
 		Type:    eventType,
 		Content: content,
 		Extra:   extra,

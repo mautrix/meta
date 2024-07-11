@@ -16,6 +16,7 @@
 
 package msgconv
 
+/*
 import (
 	"context"
 	"fmt"
@@ -37,13 +38,14 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/config"
 )
 
-func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCommon.MessageText) *ConvertedMessagePart {
+func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCommon.MessageText) *bridgev2.ConvertedMessagePart {
 	content := &event.MessageEventContent{
 		MsgType:  event.MsgText,
 		Body:     text.GetText(),
@@ -83,7 +85,7 @@ func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCo
 			content.FormattedBody = strings.ReplaceAll(content.FormattedBody, mentionText, fmt.Sprintf(`<a href="%s">%s</a>`, mxid.URI().MatrixToURL(), mxid.String()))
 		}
 	}
-	return &ConvertedMessagePart{
+	return &bridgev2.ConvertedMessagePart{
 		Type:    event.EventMessage,
 		Content: content,
 	}
@@ -118,7 +120,7 @@ func convertWhatsAppAttachment[
 	msg AttachmentMessage[Integral, Ancillary, Transport],
 	mediaType whatsmeow.MediaType,
 	convert convertFunc,
-) (metadata Ancillary, media, caption *ConvertedMessagePart, err error) {
+) (metadata Ancillary, media, caption *bridgev2.ConvertedMessagePart, err error) {
 	var typedTransport Transport
 	typedTransport, err = msg.Decode()
 	if err != nil {
@@ -140,7 +142,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	transport *waMediaTransport.WAMediaTransport,
 	mediaType whatsmeow.MediaType,
 	convert convertFunc,
-) (*ConvertedMessagePart, error) {
+) (*bridgev2.ConvertedMessagePart, error) {
 	data, err := mc.GetE2EEClient(ctx).DownloadFB(transport.GetIntegral(), mediaType)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMediaDownloadFailed, err)
@@ -157,14 +159,14 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMediaUploadFailed, err)
 	}
-	return &ConvertedMessagePart{
+	return &bridgev2.ConvertedMessagePart{
 		Type:    event.EventMessage,
 		Content: content,
 		Extra:   make(map[string]any),
 	}, nil
 }
 
-func (mc *MessageConverter) convertWhatsAppImage(ctx context.Context, image *waConsumerApplication.ConsumerApplication_ImageMessage) (converted, caption *ConvertedMessagePart, err error) {
+func (mc *MessageConverter) convertWhatsAppImage(ctx context.Context, image *waConsumerApplication.ConsumerApplication_ImageMessage) (converted, caption *bridgev2.ConvertedMessage, err error) {
 	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.ImageTransport](ctx, mc, image, whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
 		fileName := "image" + exmime.ExtensionFromMimetype(mimeType)
 		return data, mimeType, fileName, nil
@@ -177,7 +179,7 @@ func (mc *MessageConverter) convertWhatsAppImage(ctx context.Context, image *waC
 	return
 }
 
-func (mc *MessageConverter) convertWhatsAppSticker(ctx context.Context, sticker *waConsumerApplication.ConsumerApplication_StickerMessage) (converted, caption *ConvertedMessagePart, err error) {
+func (mc *MessageConverter) convertWhatsAppSticker(ctx context.Context, sticker *waConsumerApplication.ConsumerApplication_StickerMessage) (converted, caption *bridgev2.ConvertedMessage, err error) {
 	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.StickerTransport](ctx, mc, sticker, whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
 		fileName := "sticker" + exmime.ExtensionFromMimetype(mimeType)
 		return data, mimeType, fileName, nil
@@ -190,7 +192,7 @@ func (mc *MessageConverter) convertWhatsAppSticker(ctx context.Context, sticker 
 	return
 }
 
-func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, document *waConsumerApplication.ConsumerApplication_DocumentMessage) (converted, caption *ConvertedMessagePart, err error) {
+func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, document *waConsumerApplication.ConsumerApplication_DocumentMessage) (converted, caption *bridgev2.ConvertedMessage, err error) {
 	_, converted, caption, err = convertWhatsAppAttachment[*waMediaTransport.DocumentTransport](ctx, mc, document, whatsmeow.MediaDocument, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
 		fileName := document.GetFileName()
 		if fileName == "" {
@@ -204,7 +206,7 @@ func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, documen
 	return
 }
 
-func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waConsumerApplication.ConsumerApplication_AudioMessage) (converted, caption *ConvertedMessagePart, err error) {
+func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waConsumerApplication.ConsumerApplication_AudioMessage) (converted, caption *bridgev2.ConvertedMessage, err error) {
 	// Treat all audio messages as voice messages, official clients don't set the flag for some reason
 	isVoiceMessage := true // audio.GetPTT()
 	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.AudioTransport](ctx, mc, audio, whatsmeow.MediaAudio, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
@@ -232,7 +234,7 @@ func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waC
 	return
 }
 
-func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waConsumerApplication.ConsumerApplication_VideoMessage) (converted, caption *ConvertedMessagePart, err error) {
+func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waConsumerApplication.ConsumerApplication_VideoMessage) (converted, caption *bridgev2.ConvertedMessage, err error) {
 	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.VideoTransport](ctx, mc, video, whatsmeow.MediaVideo, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
 		fileName := "video" + exmime.ExtensionFromMimetype(mimeType)
 		return data, mimeType, fileName, nil
@@ -258,7 +260,7 @@ func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waC
 	return
 }
 
-func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (converted, caption *ConvertedMessagePart, err error) {
+func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (converted, caption *bridgev2.ConvertedMessage, err error) {
 	switch content := rawContent.GetContent().(type) {
 	case *waConsumerApplication.ConsumerApplication_Content_ImageMessage:
 		return mc.convertWhatsAppImage(ctx, content.ImageMessage)
@@ -292,8 +294,8 @@ func (mc *MessageConverter) appName() string {
 	}
 }
 
-func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (parts []*ConvertedMessagePart) {
-	parts = make([]*ConvertedMessagePart, 0, 2)
+func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (parts []*bridgev2.ConvertedMessage) {
+	parts = make([]*bridgev2.ConvertedMessage, 0, 2)
 	switch content := rawContent.GetContent().(type) {
 	case *waConsumerApplication.ConsumerApplication_Content_MessageText:
 		parts = append(parts, mc.WhatsAppTextToMatrix(ctx, content.MessageText))
@@ -310,7 +312,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 		converted, caption, err := mc.convertWhatsAppMedia(ctx, rawContent)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to convert media message")
-			converted = &ConvertedMessagePart{
+			converted = &bridgev2.ConvertedMessage{
 				Type: event.EventMessage,
 				Content: &event.MessageEventContent{
 					MsgType: event.MsgNotice,
@@ -323,7 +325,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			parts = append(parts, caption)
 		}
 	case *waConsumerApplication.ConsumerApplication_Content_LocationMessage:
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgLocation,
@@ -332,7 +334,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			},
 		})
 	case *waConsumerApplication.ConsumerApplication_Content_LiveLocationMessage:
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgLocation,
@@ -341,7 +343,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			},
 		})
 	case *waConsumerApplication.ConsumerApplication_Content_ContactMessage:
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -349,7 +351,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			},
 		})
 	case *waConsumerApplication.ConsumerApplication_Content_ContactsArrayMessage:
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -358,7 +360,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 		})
 	default:
 		zerolog.Ctx(ctx).Warn().Type("content_type", content).Msg("Unrecognized content type")
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -369,7 +371,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 	return
 }
 
-func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*ConvertedMessagePart) {
+func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart) {
 	body := content.GetMessageText()
 	for _, cta := range content.GetCtas() {
 		if strings.HasPrefix(cta.GetNativeURL(), "https://") && !strings.Contains(body, cta.GetNativeURL()) {
@@ -380,7 +382,7 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 			}
 		}
 	}
-	return []*ConvertedMessagePart{{
+	return []*bridgev2.ConvertedMessagePart{{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgText,
@@ -392,13 +394,13 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 	}}
 }
 
-func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent *waArmadilloApplication.Armadillo_Content) (parts []*ConvertedMessagePart, replyOverride *waCommon.MessageKey) {
-	parts = make([]*ConvertedMessagePart, 0, 2)
+func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent *waArmadilloApplication.Armadillo_Content) (parts []*bridgev2.ConvertedMessagePart, replyOverride *waCommon.MessageKey) {
+	parts = make([]*bridgev2.ConvertedMessagePart, 0, 2)
 	switch content := rawContent.GetContent().(type) {
 	case *waArmadilloApplication.Armadillo_Content_ExtendedContentMessage:
 		return mc.waExtendedContentMessageToMatrix(ctx, content.ExtendedContentMessage), nil
 	case *waArmadilloApplication.Armadillo_Content_BumpExistingMessage_:
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgText,
@@ -410,7 +412,7 @@ func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent 
 	//	// TODO
 	default:
 		zerolog.Ctx(ctx).Warn().Type("content_type", content).Msg("Unrecognized armadillo content type")
-		parts = append(parts, &ConvertedMessagePart{
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -421,8 +423,8 @@ func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent 
 	return
 }
 
-func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FBMessage) *ConvertedMessage {
-	cm := &ConvertedMessage{}
+func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FBMessage) *bridgev2.ConvertedMessage {
+	cm := &bridgev2.ConvertedMessage{}
 
 	var replyOverride *waCommon.MessageKey
 	switch typedMsg := evt.Message.(type) {
@@ -431,7 +433,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 	case *waArmadilloApplication.Armadillo:
 		cm.Parts, replyOverride = mc.waArmadilloToMatrix(ctx, typedMsg.GetPayload().GetContent())
 	default:
-		cm.Parts = []*ConvertedMessagePart{{
+		cm.Parts = []*bridgev2.ConvertedMessagePart{{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
@@ -462,3 +464,4 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, evt *events.FB
 	}
 	return cm
 }
+*/
