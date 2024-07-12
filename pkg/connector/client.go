@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	//"reflect"
 	//"strconv"
@@ -29,17 +30,6 @@ type metaEvent struct {
 	event   any
 }
 
-type threadInfo struct {
-	ThreadKey         string
-	ThreadDescription string
-	ThreadName        string
-}
-
-type contactInfo struct {
-	ContactID   string
-	ContactName string
-}
-
 type MetaClient struct {
 	Main   *MetaConnector
 	client *messagix.Client
@@ -50,9 +40,6 @@ type MetaClient struct {
 
 	incomingEvents   chan *metaEvent
 	messageConverter *msgconv.MessageConverter
-
-	threads  map[string]*threadInfo  // ThreadKey -> threadInfo
-	contacts map[string]*contactInfo // ContactID -> contactInfo
 }
 
 func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
@@ -91,8 +78,6 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 		messageConverter: &msgconv.MessageConverter{
 			BridgeMode: config.BridgeMode("facebook"),
 		},
-		threads:  make(map[string]*threadInfo),
-		contacts: make(map[string]*contactInfo),
 	}, nil
 }
 
@@ -151,19 +136,30 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, contact := range tbl.LSVerifyContactRowExists {
 		log.Warn().Int64("contact_id", contact.ContactId).Msg("LSVerifyContactRowExists")
-		m.contacts[strconv.Itoa(int(contact.ContactId))] = &contactInfo{
-			ContactID:   strconv.Itoa(int(contact.ContactId)),
-			ContactName: contact.Name,
+		ghost, err := m.Main.Bridge.GetGhostByID(ctx, networkid.UserID(strconv.Itoa(int(contact.ContactId))))
+		if err != nil {
+			log.Err(err).Int64("contact_id", contact.ContactId).Msg("Failed to get ghost")
+			continue
 		}
+		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
+			Name: &contact.Name,
+		})
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSDeleteThenInsertThread")
-		// Add to threads map
-		m.threads[strconv.Itoa(int(thread.ThreadKey))] = &threadInfo{
-			ThreadKey:         strconv.Itoa(int(thread.ThreadKey)),
-			ThreadDescription: thread.ThreadDescription,
-			ThreadName:        thread.ThreadName,
+		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+			ID: networkid.PortalID(strconv.Itoa(int(thread.ThreadKey))),
+		})
+		if err != nil {
+			log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to get portal")
+			continue
 		}
+		portal.CreateMatrixRoom(ctx, m.login, &bridgev2.ChatInfo{
+			Name:         &thread.ThreadName,
+			Topic:        &thread.ThreadDescription,
+			IsSpace:      &[]bool{false}[0],
+			IsDirectChat: &[]bool{true}[0],
+		})
 	}
 	for _, participant := range tbl.LSAddParticipantIdToGroupThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ContactId).Msg("LSAddParticipantIdToGroupThread")
@@ -179,7 +175,14 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, thread := range tbl.LSSyncUpdateThreadName {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSUpdateThreadName")
-		m.threads[strconv.Itoa(int(thread.ThreadKey))].ThreadName = thread.ThreadName
+		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+			ID: networkid.PortalID(strconv.Itoa(int(thread.ThreadKey))),
+		})
+		if err != nil {
+			log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to get portal")
+			continue
+		}
+		portal.UpdateName(ctx, thread.ThreadName, nil, time.Time{})
 	}
 
 	upsert, insert := tbl.WrapMessages()
@@ -269,33 +272,17 @@ func (m *MetaClient) Disconnect() {
 
 // GetCapabilities implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
-	panic("unimplemented")
+	return &bridgev2.NetworkRoomCapabilities{}
 }
 
 // GetChatInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	info := m.threads[string(portal.ID)]
-	log := zerolog.Ctx(ctx)
-	log.Debug().Any("threads", m.threads).Msg("Threads")
-	log.Debug().Any("info", info).Msg("Getting chat info")
-	return &bridgev2.ChatInfo{
-		Name:         &info.ThreadName,
-		Topic:        &info.ThreadDescription,
-		IsSpace:      &[]bool{false}[0],
-		IsDirectChat: &[]bool{true}[0],
-	}, nil
+	panic("unimplemented")
 }
 
 // GetUserInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	info := m.contacts[string(ghost.ID)]
-	log := zerolog.Ctx(ctx)
-	log.Debug().Any("contacts", m.contacts).Msg("Contacts")
-	log.Debug().Any("info", info).Msg("Getting user info")
-	return &bridgev2.UserInfo{
-		//Identifiers: []networkid.UserID{ghost.UserID},
-		Name: &info.ContactName,
-	}, nil
+	panic("unimplemented")
 }
 
 // HandleMatrixMessage implements bridgev2.NetworkAPI.
