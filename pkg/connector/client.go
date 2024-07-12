@@ -349,7 +349,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 	})
 	log.Debug().Msg("Sending Matrix message to Meta")
 
-	//otidStr := strconv.FormatInt(otid, 10)
+	otidStr := strconv.FormatInt(otid, 10)
 	//portal.pendingMessages[otid] = evt.ID
 	//messageTS := time.Now()
 	var resp *table.LSTable
@@ -369,31 +369,31 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 	}
 
 	log.Trace().Any("response", resp).Msg("Meta send response")
-	// var msgID string
-	// if resp != nil && err == nil {
-	// 	for _, replace := range resp.LSReplaceOptimsiticMessage {
-	// 		if replace.OfflineThreadingId == otidStr {
-	// 			msgID = replace.MessageId
-	// 		}
-	// 	}
-	// 	if len(msgID) == 0 {
-	// 		for _, failed := range resp.LSMarkOptimisticMessageFailed {
-	// 			if failed.OTID == otidStr {
-	// 				log.Warn().Str("message", failed.Message).Msg("Sending message failed")
-	// 				//go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
-	// 				return
-	// 			}
-	// 		}
-	// 		for _, failed := range resp.LSHandleFailedTask {
-	// 			if failed.OTID == otidStr {
-	// 				log.Warn().Str("message", failed.Message).Msg("Sending message failed")
-	// 				go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
-	// 				return
-	// 			}
-	// 		}
-	// 		log.Warn().Msg("Message send response didn't include message ID")
-	// 	}
-	// }
+	var msgID string
+	if resp != nil && err == nil {
+		for _, replace := range resp.LSReplaceOptimsiticMessage {
+			if replace.OfflineThreadingId == otidStr {
+				msgID = replace.MessageId
+			}
+		}
+		if len(msgID) == 0 {
+			for _, failed := range resp.LSMarkOptimisticMessageFailed {
+				if failed.OTID == otidStr {
+					log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+					//go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+					return nil, fmt.Errorf("sending message failed: %s", failed.Message)
+				}
+			}
+			for _, failed := range resp.LSHandleFailedTask {
+				if failed.OTID == otidStr {
+					log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+					//go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+					return nil, fmt.Errorf("sending message failed: %s", failed.Message)
+				}
+			}
+			log.Warn().Msg("Message send response didn't include message ID")
+		}
+	}
 	// if msgID != "" {
 	// 	portal.pendingMessagesLock.Lock()
 	// 	_, ok = portal.pendingMessages[otid]
@@ -408,10 +408,10 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 	return &bridgev2.MatrixMessageResponse{
 		DB: &database.Message{
-			//ID: nil,
-			MXID: msg.Event.ID,
-			Room: networkid.PortalKey{ID: msg.Portal.ID},
-			//SenderID: nil,
+			ID:        networkid.MessageID(msgID),
+			MXID:      msg.Event.ID,
+			Room:      networkid.PortalKey{ID: msg.Portal.ID},
+			SenderID:  networkid.UserID(msg.Event.Sender),
 			Timestamp: time.Time{},
 		},
 	}, nil
