@@ -17,21 +17,24 @@
 package msgconv
 
 import (
-	"bytes"
+	//"bytes"
 	"context"
 	"fmt"
-	"image"
+
+	//"image"
 	"strconv"
 	"strings"
-	"time"
 
-	"go.mau.fi/util/ffmpeg"
+	//"time"
+
+	//"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/proto/waMediaTransport"
 	"go.mau.fi/whatsmeow/proto/waMsgApplication"
-	"go.mau.fi/whatsmeow/types"
+
+	//"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/event"
 )
@@ -99,15 +102,16 @@ func (mc *MessageConverter) ToWhatsApp(
 		return nil, nil, fmt.Errorf("%w %s", ErrUnsupportedMsgType, content.MsgType)
 	}
 	var meta waMsgApplication.MessageApplication_Metadata
-	if replyTo := mc.GetMetaReply(ctx, content); replyTo != nil {
-		meta.QuotedMessage = &waMsgApplication.MessageApplication_Metadata_QuotedMessage{
-			StanzaID: proto.String(replyTo.ReplyMessageId),
-			// TODO: this is hacky since it hardcodes the server
-			// TODO 2: should this be included for DMs?
-			Participant: proto.String(types.JID{User: strconv.FormatInt(replyTo.ReplySender, 10), Server: types.MessengerServer}.String()),
-			Payload:     nil,
-		}
-	}
+	//if replyTo := mc.GetMetaReply(ctx, content); replyTo != nil {
+	// if false {
+	// 	meta.QuotedMessage = &waMsgApplication.MessageApplication_Metadata_QuotedMessage{
+	// 		StanzaID: proto.String(replyTo.ReplyMessageId),
+	// 		// TODO: this is hacky since it hardcodes the server
+	// 		// TODO 2: should this be included for DMs?
+	// 		Participant: proto.String(types.JID{User: strconv.FormatInt(replyTo.ReplySender, 10), Server: types.MessengerServer}.String()),
+	// 		Payload:     nil,
+	// 	}
+	// }
 	return &waConsumerApplication.ConsumerApplication{
 		Payload: &waConsumerApplication.ConsumerApplication_Payload{
 			Payload: &waConsumerApplication.ConsumerApplication_Payload_Content{
@@ -149,72 +153,73 @@ func clampTo400(w, h int) (int, int) {
 }
 
 func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, error) {
-	data, mimeType, fileName, err := mc.downloadMatrixMedia(ctx, content)
-	if err != nil {
-		return nil, "", err
-	}
-	_, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]
-	if isVoice {
-		data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mimeType)
-		if err != nil {
-			return nil, "", fmt.Errorf("%w voice message to m4a: %w", ErrMediaConvertFailed, err)
-		}
-		mimeType = "audio/mp4"
-		fileName += ".m4a"
-	} else if mimeType == "image/gif" && content.MsgType == event.MsgImage {
-		data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
-			"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
-			"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
-		}, mimeType)
-		if err != nil {
-			return nil, "", fmt.Errorf("%w gif to mp4: %w", ErrMediaConvertFailed, err)
-		}
-		mimeType = "video/mp4"
-		fileName += ".mp4"
-		content.MsgType = event.MsgVideo
-		customInfo, ok := evt.Content.Raw["info"].(map[string]any)
-		if !ok {
-			customInfo = make(map[string]any)
-			evt.Content.Raw["info"] = customInfo
-		}
-		customInfo["fi.mau.gif"] = true
-	}
-	if content.MsgType == event.MsgImage && content.Info.Width == 0 {
-		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
-		content.Info.Width, content.Info.Height = cfg.Width, cfg.Height
-	}
-	mediaType := msgToMediaType(content.MsgType)
-	uploaded, err := mc.GetE2EEClient(ctx).Upload(ctx, data, mediaType)
-	if err != nil {
-		return nil, "", fmt.Errorf("%w: %w", ErrMediaUploadFailed, err)
-	}
-	w, h := clampTo400(content.Info.Width, content.Info.Height)
-	if w == 0 && content.MsgType == event.MsgImage {
-		w, h = 400, 400
-	}
-	mediaTransport := &waMediaTransport.WAMediaTransport{
-		Integral: &waMediaTransport.WAMediaTransport_Integral{
-			FileSHA256:        uploaded.FileSHA256,
-			MediaKey:          uploaded.MediaKey,
-			FileEncSHA256:     uploaded.FileEncSHA256,
-			DirectPath:        &uploaded.DirectPath,
-			MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
-		},
-		Ancillary: &waMediaTransport.WAMediaTransport_Ancillary{
-			FileLength: proto.Uint64(uint64(len(data))),
-			Mimetype:   &mimeType,
-			// This field is extremely required for some reason.
-			// Messenger iOS & Android will refuse to display the media if it's not present.
-			// iOS also requires that width and height are non-empty.
-			Thumbnail: &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
-				ThumbnailWidth:  proto.Uint32(uint32(w)),
-				ThumbnailHeight: proto.Uint32(uint32(h)),
-			},
-			ObjectID: &uploaded.ObjectID,
-		},
-	}
-	fmt.Printf("Uploaded media transport: %+v\n", mediaTransport)
-	return mediaTransport, fileName, nil
+	panic("not implemented")
+	// data, mimeType, fileName, err := mc.downloadMatrixMedia(ctx, content)
+	// if err != nil {
+	// 	return nil, "", err
+	// }
+	// _, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]
+	// if isVoice {
+	// 	data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mimeType)
+	// 	if err != nil {
+	// 		return nil, "", fmt.Errorf("%w voice message to m4a: %w", ErrMediaConvertFailed, err)
+	// 	}
+	// 	mimeType = "audio/mp4"
+	// 	fileName += ".m4a"
+	// } else if mimeType == "image/gif" && content.MsgType == event.MsgImage {
+	// 	data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
+	// 		"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
+	// 		"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+	// 	}, mimeType)
+	// 	if err != nil {
+	// 		return nil, "", fmt.Errorf("%w gif to mp4: %w", ErrMediaConvertFailed, err)
+	// 	}
+	// 	mimeType = "video/mp4"
+	// 	fileName += ".mp4"
+	// 	content.MsgType = event.MsgVideo
+	// 	customInfo, ok := evt.Content.Raw["info"].(map[string]any)
+	// 	if !ok {
+	// 		customInfo = make(map[string]any)
+	// 		evt.Content.Raw["info"] = customInfo
+	// 	}
+	// 	customInfo["fi.mau.gif"] = true
+	// }
+	// if content.MsgType == event.MsgImage && content.Info.Width == 0 {
+	// 	cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
+	// 	content.Info.Width, content.Info.Height = cfg.Width, cfg.Height
+	// }
+	// mediaType := msgToMediaType(content.MsgType)
+	// uploaded, err := mc.GetE2EEClient(ctx).Upload(ctx, data, mediaType)
+	// if err != nil {
+	// 	return nil, "", fmt.Errorf("%w: %w", ErrMediaUploadFailed, err)
+	// }
+	// w, h := clampTo400(content.Info.Width, content.Info.Height)
+	// if w == 0 && content.MsgType == event.MsgImage {
+	// 	w, h = 400, 400
+	// }
+	// mediaTransport := &waMediaTransport.WAMediaTransport{
+	// 	Integral: &waMediaTransport.WAMediaTransport_Integral{
+	// 		FileSHA256:        uploaded.FileSHA256,
+	// 		MediaKey:          uploaded.MediaKey,
+	// 		FileEncSHA256:     uploaded.FileEncSHA256,
+	// 		DirectPath:        &uploaded.DirectPath,
+	// 		MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
+	// 	},
+	// 	Ancillary: &waMediaTransport.WAMediaTransport_Ancillary{
+	// 		FileLength: proto.Uint64(uint64(len(data))),
+	// 		Mimetype:   &mimeType,
+	// 		// This field is extremely required for some reason.
+	// 		// Messenger iOS & Android will refuse to display the media if it's not present.
+	// 		// iOS also requires that width and height are non-empty.
+	// 		Thumbnail: &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
+	// 			ThumbnailWidth:  proto.Uint32(uint32(w)),
+	// 			ThumbnailHeight: proto.Uint32(uint32(h)),
+	// 		},
+	// 		ObjectID: &uploaded.ObjectID,
+	// 	},
+	// }
+	// fmt.Printf("Uploaded media transport: %+v\n", mediaTransport)
+	// return mediaTransport, fileName, nil
 }
 
 func (mc *MessageConverter) wrapWhatsAppMedia(

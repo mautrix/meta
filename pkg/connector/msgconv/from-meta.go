@@ -17,30 +17,34 @@
 package msgconv
 
 import (
-	"bytes"
+	//"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"html"
-	"image"
+
+	//"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"net/http"
+
+	//"net/http"
 	"net/url"
 	"regexp"
 	"slices"
-	"strconv"
+
+	//"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exmime"
-	"go.mau.fi/util/ffmpeg"
+	//"go.mau.fi/util/exmime"
+	//"go.mau.fi/util/ffmpeg"
 
 	//"golang.org/x/exp/maps"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/crypto/attachment"
+
+	//"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -187,24 +191,25 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 		_, hasExternalURL := part.Extra["external_url"]
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
 		if unsupported && !hasExternalURL {
-			_, threadURL := mc.GetThreadURL(ctx)
-			if threadURL != "" {
-				part.Extra["external_url"] = threadURL
-				part.Content.EnsureHasHTML()
-				var protocolName string
-				switch {
-				case strings.HasPrefix(threadURL, "https://www.instagram.com"):
-					protocolName = "Instagram"
-				case strings.HasPrefix(threadURL, "https://www.facebook.com"):
-					protocolName = "Facebook"
-				case strings.HasPrefix(threadURL, "https://www.messenger.com"):
-					protocolName = "Messenger"
-				default:
-					protocolName = "native app"
-				}
-				part.Content.Body = fmt.Sprintf("%s\n\nOpen in %s: %s", part.Content.Body, protocolName, threadURL)
-				part.Content.FormattedBody = fmt.Sprintf("%s<br><br><a href=\"%s\">Click here to open in %s</a>", part.Content.FormattedBody, threadURL, protocolName)
-			}
+			//_, threadURL := mc.GetThreadURL(ctx)
+			panic("GetThreadURL not implemented")
+			// if threadURL != "" {
+			// 	part.Extra["external_url"] = threadURL
+			// 	part.Content.EnsureHasHTML()
+			// 	var protocolName string
+			// 	switch {
+			// 	case strings.HasPrefix(threadURL, "https://www.instagram.com"):
+			// 		protocolName = "Instagram"
+			// 	case strings.HasPrefix(threadURL, "https://www.facebook.com"):
+			// 		protocolName = "Facebook"
+			// 	case strings.HasPrefix(threadURL, "https://www.messenger.com"):
+			// 		protocolName = "Messenger"
+			// 	default:
+			// 		protocolName = "native app"
+			// 	}
+			// 	part.Content.Body = fmt.Sprintf("%s\n\nOpen in %s: %s", part.Content.Body, protocolName, threadURL)
+			// 	part.Content.FormattedBody = fmt.Sprintf("%s<br><br><a href=\"%s\">Click here to open in %s</a>", part.Content.FormattedBody, threadURL, protocolName)
+			// }
 		}
 		if part.Content.Mentions == nil {
 			part.Content.Mentions = &event.Mentions{}
@@ -388,223 +393,223 @@ func addExternalURLCaption(content *event.MessageEventContent, externalURL strin
 	}
 }
 
-func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *bridgev2.ConvertedMessagePart) *bridgev2.ConvertedMessagePart {
-	ig := mc.GetClient(ctx).Instagram
-	if att.CTA == nil || ig == nil {
-		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unsupported"
-		return minimalConverted
-	}
-	log := zerolog.Ctx(ctx)
-	switch {
-	case strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="), strings.HasPrefix(att.CTA.NativeUrl, "instagram://reels_share/?shortcode="):
-		actionURL, _ := url.Parse(removeLPHP(att.CTA.ActionUrl))
-		var carouselChildMediaID string
-		if actionURL != nil {
-			carouselChildMediaID = actionURL.Query().Get("carousel_share_child_media_id")
-		}
+// func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *bridgev2.ConvertedMessagePart) *bridgev2.ConvertedMessagePart {
+// 	ig := mc.GetClient(ctx).Instagram
+// 	if att.CTA == nil || ig == nil {
+// 		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unsupported"
+// 		return minimalConverted
+// 	}
+// 	log := zerolog.Ctx(ctx)
+// 	switch {
+// 	case strings.HasPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode="), strings.HasPrefix(att.CTA.NativeUrl, "instagram://reels_share/?shortcode="):
+// 		actionURL, _ := url.Parse(removeLPHP(att.CTA.ActionUrl))
+// 		var carouselChildMediaID string
+// 		if actionURL != nil {
+// 			carouselChildMediaID = actionURL.Query().Get("carousel_share_child_media_id")
+// 		}
 
-		mediaShortcode := strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode=")
-		mediaShortcode = strings.TrimPrefix(mediaShortcode, "instagram://reels_share/?shortcode=")
-		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", mediaShortcode)
-		minimalConverted.Extra["external_url"] = externalURL
-		addExternalURLCaption(minimalConverted.Content, externalURL)
-		if !mc.ShouldFetchXMA(ctx) {
-			log.Debug().Msg("Not fetching XMA media")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
-			return minimalConverted
-		}
+// 		mediaShortcode := strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode=")
+// 		mediaShortcode = strings.TrimPrefix(mediaShortcode, "instagram://reels_share/?shortcode=")
+// 		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", mediaShortcode)
+// 		minimalConverted.Extra["external_url"] = externalURL
+// 		addExternalURLCaption(minimalConverted.Content, externalURL)
+// 		if !mc.ShouldFetchXMA(ctx) {
+// 			log.Debug().Msg("Not fetching XMA media")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
+// 			return minimalConverted
+// 		}
 
-		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
-		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), mediaShortcode)
-		if err != nil {
-			log.Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
-			return minimalConverted
-		} else if len(resp.Items) == 0 {
-			log.Warn().Int64("target_id", att.CTA.TargetId).Msg("Got empty XMA media response")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
-			return minimalConverted
-		} else {
-			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
-			log.Debug().Msg("Fetched XMA media")
-			targetItem := resp.Items[0]
-			if targetItem.CarouselMedia != nil && carouselChildMediaID != "" {
-				for _, subitem := range targetItem.CarouselMedia {
-					if subitem.ID == carouselChildMediaID {
-						targetItem = subitem
-						break
-					}
-				}
-			}
-			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, targetItem)
-			if err != nil {
-				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
-				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
-				return minimalConverted
-			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
-			secondConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
-			if externalURL != "" {
-				secondConverted.Extra["external_url"] = externalURL
-			}
-			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
-			return secondConverted
-		}
-	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
-		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
-		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
-		match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl)
-		if usernameRegex.MatchString(att.HeaderTitle) && len(match) == 3 {
-			// Very hacky way to hopefully fix the URL to work on mobile.
-			// When fetching the XMA data, this is done again later in a safer way.
-			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", att.HeaderTitle, match[1])
-		}
-		minimalConverted.Extra["external_url"] = externalURL
-		addExternalURLCaption(minimalConverted.Content, externalURL)
-		if !mc.ShouldFetchXMA(ctx) {
-			log.Debug().Msg("Not fetching XMA media")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
-			return minimalConverted
-		}
+// 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
+// 		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), mediaShortcode)
+// 		if err != nil {
+// 			log.Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+// 			return minimalConverted
+// 		} else if len(resp.Items) == 0 {
+// 			log.Warn().Int64("target_id", att.CTA.TargetId).Msg("Got empty XMA media response")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+// 			return minimalConverted
+// 		} else {
+// 			log.Trace().Int64("target_id", att.CTA.TargetId).Any("response", resp).Msg("Fetched XMA media")
+// 			log.Debug().Msg("Fetched XMA media")
+// 			targetItem := resp.Items[0]
+// 			if targetItem.CarouselMedia != nil && carouselChildMediaID != "" {
+// 				for _, subitem := range targetItem.CarouselMedia {
+// 					if subitem.ID == carouselChildMediaID {
+// 						targetItem = subitem
+// 						break
+// 					}
+// 				}
+// 			}
+// 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, targetItem)
+// 			if err != nil {
+// 				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+// 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
+// 				return minimalConverted
+// 			}
+// 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+// 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+// 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+// 			secondConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
+// 			if externalURL != "" {
+// 				secondConverted.Extra["external_url"] = externalURL
+// 			}
+// 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
+// 			return secondConverted
+// 		}
+// 	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
+// 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
+// 		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
+// 		match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl)
+// 		if usernameRegex.MatchString(att.HeaderTitle) && len(match) == 3 {
+// 			// Very hacky way to hopefully fix the URL to work on mobile.
+// 			// When fetching the XMA data, this is done again later in a safer way.
+// 			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", att.HeaderTitle, match[1])
+// 		}
+// 		minimalConverted.Extra["external_url"] = externalURL
+// 		addExternalURLCaption(minimalConverted.Content, externalURL)
+// 		if !mc.ShouldFetchXMA(ctx) {
+// 			log.Debug().Msg("Not fetching XMA media")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
+// 			return minimalConverted
+// 		}
 
-		if len(match) != 3 {
-			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
-			return minimalConverted
-		} else if resp, err := ig.FetchReel([]string{match[2]}, match[1]); err != nil {
-			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
-			return minimalConverted
-		} else if reel, ok := resp.Reels[match[2]]; !ok {
-			log.Trace().
-				Str("action_url", att.CTA.ActionUrl).
-				Any("response", resp).
-				Msg("XMA story fetch data")
-			log.Warn().
-				Str("action_url", att.CTA.ActionUrl).
-				Str("reel_id", match[2]).
-				Str("media_id", match[1]).
-				Str("response_status", resp.Status).
-				Msg("Got empty XMA story response")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
-			return minimalConverted
-		} else {
-			log.Trace().
-				Str("action_url", att.CTA.ActionUrl).
-				Str("reel_id", match[2]).
-				Str("media_id", match[1]).
-				Any("response", resp).
-				Msg("Fetched XMA story")
-			minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
-			// Update external URL to use username so it works on mobile
-			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", reel.User.Username, match[1])
-			minimalConverted.Extra["external_url"] = externalURL
-			var relevantItem *responses.Items
-			foundIDs := make([]string, len(reel.Items))
-			for i, item := range reel.Items {
-				foundIDs[i] = item.Pk
-				if item.Pk == match[1] {
-					relevantItem = &item.Items
-				}
-			}
-			if relevantItem == nil {
-				log.Warn().
-					Str("action_url", att.CTA.ActionUrl).
-					Str("reel_id", match[2]).
-					Str("media_id", match[1]).
-					Strs("found_ids", foundIDs).
-					Msg("Failed to find exact item in fetched XMA story")
-				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "item not found in response"
-				return minimalConverted
-			}
-			log.Debug().Msg("Fetched XMA story and found exact item")
-			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
-			if err != nil {
-				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
-				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
-				return minimalConverted
-			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
-			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
-			if externalURL != "" {
-				secondConverted.Extra["external_url"] = externalURL
-			}
-			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
-			return secondConverted
-		}
-	//case strings.HasPrefix(att.CTA.ActionUrl, "/stories/archive/"):
-	//		TODO can these be handled?
-	case strings.HasPrefix(att.CTA.ActionUrl, "https://instagram.com/stories/"):
-		log.Trace().Any("cta_data", att.CTA).Msg("Fetching second type of XMA story from CTA data")
-		externalURL := att.CTA.ActionUrl
-		minimalConverted.Extra["external_url"] = externalURL
-		addExternalURLCaption(minimalConverted.Content, externalURL)
-		if !mc.ShouldFetchXMA(ctx) {
-			log.Debug().Msg("Not fetching XMA media")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
-			return minimalConverted
-		}
+// 		if len(match) != 3 {
+// 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
+// 			return minimalConverted
+// 		} else if resp, err := ig.FetchReel([]string{match[2]}, match[1]); err != nil {
+// 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+// 			return minimalConverted
+// 		} else if reel, ok := resp.Reels[match[2]]; !ok {
+// 			log.Trace().
+// 				Str("action_url", att.CTA.ActionUrl).
+// 				Any("response", resp).
+// 				Msg("XMA story fetch data")
+// 			log.Warn().
+// 				Str("action_url", att.CTA.ActionUrl).
+// 				Str("reel_id", match[2]).
+// 				Str("media_id", match[1]).
+// 				Str("response_status", resp.Status).
+// 				Msg("Got empty XMA story response")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+// 			return minimalConverted
+// 		} else {
+// 			log.Trace().
+// 				Str("action_url", att.CTA.ActionUrl).
+// 				Str("reel_id", match[2]).
+// 				Str("media_id", match[1]).
+// 				Any("response", resp).
+// 				Msg("Fetched XMA story")
+// 			minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
+// 			// Update external URL to use username so it works on mobile
+// 			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", reel.User.Username, match[1])
+// 			minimalConverted.Extra["external_url"] = externalURL
+// 			var relevantItem *responses.Items
+// 			foundIDs := make([]string, len(reel.Items))
+// 			for i, item := range reel.Items {
+// 				foundIDs[i] = item.Pk
+// 				if item.Pk == match[1] {
+// 					relevantItem = &item.Items
+// 				}
+// 			}
+// 			if relevantItem == nil {
+// 				log.Warn().
+// 					Str("action_url", att.CTA.ActionUrl).
+// 					Str("reel_id", match[2]).
+// 					Str("media_id", match[1]).
+// 					Strs("found_ids", foundIDs).
+// 					Msg("Failed to find exact item in fetched XMA story")
+// 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "item not found in response"
+// 				return minimalConverted
+// 			}
+// 			log.Debug().Msg("Fetched XMA story and found exact item")
+// 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
+// 			if err != nil {
+// 				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+// 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
+// 				return minimalConverted
+// 			}
+// 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+// 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+// 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+// 			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
+// 			if externalURL != "" {
+// 				secondConverted.Extra["external_url"] = externalURL
+// 			}
+// 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
+// 			return secondConverted
+// 		}
+// 	//case strings.HasPrefix(att.CTA.ActionUrl, "/stories/archive/"):
+// 	//		TODO can these be handled?
+// 	case strings.HasPrefix(att.CTA.ActionUrl, "https://instagram.com/stories/"):
+// 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching second type of XMA story from CTA data")
+// 		externalURL := att.CTA.ActionUrl
+// 		minimalConverted.Extra["external_url"] = externalURL
+// 		addExternalURLCaption(minimalConverted.Content, externalURL)
+// 		if !mc.ShouldFetchXMA(ctx) {
+// 			log.Debug().Msg("Not fetching XMA media")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
+// 			return minimalConverted
+// 		}
 
-		if match := reelActionURLRegex2.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
-			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL (type 2)")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
-			return minimalConverted
-		} else if resp, err := ig.FetchMedia(match[2], ""); err != nil {
-			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story (type 2)")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
-			return minimalConverted
-		} else if len(resp.Items) == 0 {
-			log.Trace().
-				Str("action_url", att.CTA.ActionUrl).
-				Any("response", resp).
-				Msg("XMA story fetch data")
-			log.Warn().
-				Str("action_url", att.CTA.ActionUrl).
-				Str("reel_id", match[2]).
-				Str("media_id", match[1]).
-				Str("response_status", resp.Status).
-				Msg("Got empty XMA story response (type 2)")
-			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
-			return minimalConverted
-		} else {
-			relevantItem := resp.Items[0]
-			log.Trace().
-				Str("action_url", att.CTA.ActionUrl).
-				Str("reel_id", match[2]).
-				Str("media_id", match[1]).
-				Any("response", resp).
-				Msg("Fetched XMA story (type 2)")
-			minimalConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
-			log.Debug().Int("item_count", len(resp.Items)).Msg("Fetched XMA story (type 2)")
-			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
-			if err != nil {
-				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
-				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
-				return minimalConverted
-			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
-			secondConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
-			if externalURL != "" {
-				secondConverted.Extra["external_url"] = externalURL
-			}
-			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
-			return secondConverted
-		}
-	default:
-		log.Debug().
-			Any("cta_data", att.CTA).
-			Any("xma_data", att.LSInsertXmaAttachment).
-			Msg("Unrecognized CTA data")
-		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unrecognized"
-		return minimalConverted
-	}
-}
+// 		if match := reelActionURLRegex2.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
+// 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL (type 2)")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
+// 			return minimalConverted
+// 		} else if resp, err := ig.FetchMedia(match[2], ""); err != nil {
+// 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story (type 2)")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+// 			return minimalConverted
+// 		} else if len(resp.Items) == 0 {
+// 			log.Trace().
+// 				Str("action_url", att.CTA.ActionUrl).
+// 				Any("response", resp).
+// 				Msg("XMA story fetch data")
+// 			log.Warn().
+// 				Str("action_url", att.CTA.ActionUrl).
+// 				Str("reel_id", match[2]).
+// 				Str("media_id", match[1]).
+// 				Str("response_status", resp.Status).
+// 				Msg("Got empty XMA story response (type 2)")
+// 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+// 			return minimalConverted
+// 		} else {
+// 			relevantItem := resp.Items[0]
+// 			log.Trace().
+// 				Str("action_url", att.CTA.ActionUrl).
+// 				Str("reel_id", match[2]).
+// 				Str("media_id", match[1]).
+// 				Any("response", resp).
+// 				Msg("Fetched XMA story (type 2)")
+// 			minimalConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
+// 			log.Debug().Int("item_count", len(resp.Items)).Msg("Fetched XMA story (type 2)")
+// 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem)
+// 			if err != nil {
+// 				zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+// 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
+// 				return minimalConverted
+// 			}
+// 			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+// 			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+// 			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+// 			secondConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
+// 			if externalURL != "" {
+// 				secondConverted.Extra["external_url"] = externalURL
+// 			}
+// 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
+// 			return secondConverted
+// 		}
+// 	default:
+// 		log.Debug().
+// 			Any("cta_data", att.CTA).
+// 			Any("xma_data", att.LSInsertXmaAttachment).
+// 			Msg("Unrecognized CTA data")
+// 		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unrecognized"
+// 		return minimalConverted
+// 	}
+// }
 
 var instagramProfileURLRegex = regexp.MustCompile(`^https://www.instagram.com/([a-z0-9._]{1,30})$`)
 
@@ -677,7 +682,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
 		converted = errorToNotice(err, "XMA")
 	} else {
-		converted = mc.fetchFullXMA(ctx, att, converted)
+		//converted = mc.fetchFullXMA(ctx, att, converted)
 	}
 	_, hasExternalURL := converted.Extra["external_url"]
 	if !hasExternalURL && att.CTA != nil && att.CTA.ActionUrl != "" {
@@ -710,120 +715,123 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	return parts
 }
 
-func (mc *MessageConverter) uploadAttachment(ctx context.Context, data []byte, fileName, mimeType string) (*event.MessageEventContent, error) {
-	var file *event.EncryptedFileInfo
-	uploadMime := mimeType
-	uploadFileName := fileName
-	if mc.GetData(ctx).Encrypted {
-		file = &event.EncryptedFileInfo{
-			EncryptedFile: *attachment.NewEncryptedFile(),
-			URL:           "",
-		}
-		file.EncryptInPlace(data)
-		uploadMime = "application/octet-stream"
-		uploadFileName = ""
-	}
-	mxc, err := mc.UploadMatrixMedia(ctx, data, uploadFileName, uploadMime)
-	if err != nil {
-		return nil, err
-	}
-	content := &event.MessageEventContent{
-		Body: fileName,
-		Info: &event.FileInfo{
-			MimeType: mimeType,
-			Size:     len(data),
-		},
-	}
-	if file != nil {
-		file.URL = mxc
-		content.File = file
-	} else {
-		content.URL = mxc
-	}
-	return content, nil
-}
+// func (mc *MessageConverter) uploadAttachment(ctx context.Context, data []byte, fileName, mimeType string) (*event.MessageEventContent, error) {
+// 	var file *event.EncryptedFileInfo
+// 	uploadMime := mimeType
+// 	uploadFileName := fileName
+// 	if mc.GetData(ctx).Encrypted {
+// 		file = &event.EncryptedFileInfo{
+// 			EncryptedFile: *attachment.NewEncryptedFile(),
+// 			URL:           "",
+// 		}
+// 		file.EncryptInPlace(data)
+// 		uploadMime = "application/octet-stream"
+// 		uploadFileName = ""
+// 	}
+// 	mxc, err := mc.UploadMatrixMedia(ctx, data, uploadFileName, uploadMime)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	content := &event.MessageEventContent{
+// 		Body: fileName,
+// 		Info: &event.FileInfo{
+// 			MimeType: mimeType,
+// 			Size:     len(data),
+// 		},
+// 	}
+// 	if file != nil {
+// 		file.URL = mxc
+// 		content.File = file
+// 	} else {
+// 		content.URL = mxc
+// 	}
+// 	return content, nil
+// }
 
 func (mc *MessageConverter) reuploadAttachment(
 	ctx context.Context, attachmentType table.AttachmentType,
 	url, fileName, mimeType string,
 	width, height, duration int,
 ) (*bridgev2.ConvertedMessagePart, error) {
-	if url == "" {
-		return nil, ErrURLNotFound
-	}
-	data, err := DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download attachment: %w", err)
-	}
-	if mimeType == "" {
-		mimeType = http.DetectContentType(data)
-	}
-	extra := map[string]any{}
-	if attachmentType == table.AttachmentTypeAudio && mc.ConvertVoiceMessages && ffmpeg.Supported() {
-		data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-c:a", "libopus"}, mimeType)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert audio to ogg/opus: %w", err)
-		}
-		fileName += ".ogg"
-		mimeType = "audio/ogg"
-		extra["org.matrix.msc3245.voice"] = map[string]any{}
-		extra["org.matrix.msc1767.audio"] = map[string]any{
-			"duration": duration,
-		}
-	}
-	if (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0) {
-		config, _, err := image.DecodeConfig(bytes.NewReader(data))
-		if err == nil {
-			width, height = config.Width, config.Height
-		}
-	}
-	content, err := mc.uploadAttachment(ctx, data, fileName, mimeType)
-	if err != nil {
-		return nil, err
-	}
-	content.Info.Duration = duration
-	content.Info.Width = width
-	content.Info.Height = height
-
-	if attachmentType == table.AttachmentTypeAnimatedImage && mimeType == "video/mp4" {
-		extra["info"] = map[string]any{
-			"fi.mau.gif":           true,
-			"fi.mau.loop":          true,
-			"fi.mau.autoplay":      true,
-			"fi.mau.hide_controls": true,
-			"fi.mau.no_audio":      true,
-		}
-	}
-	eventType := event.EventMessage
-	switch attachmentType {
-	case table.AttachmentTypeSticker:
-		eventType = event.EventSticker
-	case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
-		content.MsgType = event.MsgImage
-	case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
-		content.MsgType = event.MsgVideo
-	case table.AttachmentTypeFile:
-		content.MsgType = event.MsgFile
-	case table.AttachmentTypeAudio:
-		content.MsgType = event.MsgAudio
-	default:
-		switch strings.Split(mimeType, "/")[0] {
-		case "image":
-			content.MsgType = event.MsgImage
-		case "video":
-			content.MsgType = event.MsgVideo
-		case "audio":
-			content.MsgType = event.MsgAudio
-		default:
-			content.MsgType = event.MsgFile
-		}
-	}
-	if content.Body == "" {
-		content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
-	}
-	return &bridgev2.ConvertedMessagePart{
-		Type:    eventType,
-		Content: content,
-		Extra:   extra,
-	}, nil
+	panic("not implemented")
 }
+
+// 	if url == "" {
+// 		return nil, ErrURLNotFound
+// 	}
+// 	data, err := DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to download attachment: %w", err)
+// 	}
+// 	if mimeType == "" {
+// 		mimeType = http.DetectContentType(data)
+// 	}
+// 	extra := map[string]any{}
+// 	if attachmentType == table.AttachmentTypeAudio && mc.ConvertVoiceMessages && ffmpeg.Supported() {
+// 		data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-c:a", "libopus"}, mimeType)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to convert audio to ogg/opus: %w", err)
+// 		}
+// 		fileName += ".ogg"
+// 		mimeType = "audio/ogg"
+// 		extra["org.matrix.msc3245.voice"] = map[string]any{}
+// 		extra["org.matrix.msc1767.audio"] = map[string]any{
+// 			"duration": duration,
+// 		}
+// 	}
+// 	if (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0) {
+// 		config, _, err := image.DecodeConfig(bytes.NewReader(data))
+// 		if err == nil {
+// 			width, height = config.Width, config.Height
+// 		}
+// 	}
+// 	//content, err := mc.uploadAttachment(ctx, data, fileName, mimeType)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	//content.Info.Duration = duration
+// 	//content.Info.Width = width
+// 	//content.Info.Height = height
+
+// 	if attachmentType == table.AttachmentTypeAnimatedImage && mimeType == "video/mp4" {
+// 		extra["info"] = map[string]any{
+// 			"fi.mau.gif":           true,
+// 			"fi.mau.loop":          true,
+// 			"fi.mau.autoplay":      true,
+// 			"fi.mau.hide_controls": true,
+// 			"fi.mau.no_audio":      true,
+// 		}
+// 	}
+// 	eventType := event.EventMessage
+// 	switch attachmentType {
+// 	case table.AttachmentTypeSticker:
+// 		eventType = event.EventSticker
+// 	case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
+// 		content.MsgType = event.MsgImage
+// 	case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
+// 		content.MsgType = event.MsgVideo
+// 	case table.AttachmentTypeFile:
+// 		content.MsgType = event.MsgFile
+// 	case table.AttachmentTypeAudio:
+// 		content.MsgType = event.MsgAudio
+// 	default:
+// 		switch strings.Split(mimeType, "/")[0] {
+// 		case "image":
+// 			content.MsgType = event.MsgImage
+// 		case "video":
+// 			content.MsgType = event.MsgVideo
+// 		case "audio":
+// 			content.MsgType = event.MsgAudio
+// 		default:
+// 			content.MsgType = event.MsgFile
+// 		}
+// 	}
+// 	if content.Body == "" {
+// 		content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
+// 	}
+// 	return &bridgev2.ConvertedMessagePart{
+// 		Type:    eventType,
+// 		Content: content,
+// 		Extra:   extra,
+// 	}, nil
+// }

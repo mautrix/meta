@@ -18,7 +18,7 @@ package msgconv
 
 import (
 	"context"
-	"slices"
+	//"slices"
 	"strings"
 	"unicode/utf16"
 
@@ -68,12 +68,12 @@ func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, r
 		}
 		var mentionLink string
 		switch mention.Type {
-		case socket.MentionTypePerson:
-			userID := mc.GetUserMXID(ctx, mention.ID)
-			if !slices.Contains(content.Mentions.UserIDs, userID) {
-				content.Mentions.UserIDs = append(content.Mentions.UserIDs, userID)
-			}
-			mentionLink = userID.URI().MatrixToURL()
+		// case socket.MentionTypePerson:
+		// 	userID := mc.GetUserMXID(ctx, mention.ID)
+		// 	if !slices.Contains(content.Mentions.UserIDs, userID) {
+		// 		content.Mentions.UserIDs = append(content.Mentions.UserIDs, userID)
+		// 	}
+		// 	mentionLink = userID.URI().MatrixToURL()
 		case socket.MentionTypeThread:
 			// TODO: how does one send thread mentions?
 		}

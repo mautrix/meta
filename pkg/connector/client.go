@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -14,6 +15,8 @@ import (
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
+
+	//"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 
@@ -21,8 +24,12 @@ import (
 
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
+
 	//"maunium.net/go/mautrix/event"
+	metaTypes "go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type metaEvent struct {
@@ -285,9 +292,132 @@ func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*b
 	panic("unimplemented")
 }
 
+type msgconvContextKey int
+
+const (
+	msgconvContextKeyIntent msgconvContextKey = iota
+	msgconvContextKeyClient
+	msgconvContextKeyE2EEClient
+	msgconvContextKeyBackfill
+)
+
 // HandleMatrixMessage implements bridgev2.NetworkAPI.
-func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (message *bridgev2.MatrixMessageResponse, err error) {
-	panic("unimplemented")
+func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
+	log := zerolog.Ctx(ctx)
+
+	content, ok := msg.Event.Content.Parsed.(*event.MessageEventContent)
+	if !ok {
+		log.Error().Type("content_type", content).Msg("Unexpected parsed content type")
+		return nil, fmt.Errorf("unexpected parsed content type: %T", content)
+	}
+	if content.MsgType == event.MsgNotice /*&& !portal.bridge.Config.Bridge.BridgeNotices*/ {
+		log.Warn().Msg("Ignoring notice message")
+		return nil, nil
+	}
+
+	ctx = context.WithValue(ctx, msgconvContextKeyClient, m.client)
+
+	thread, err := strconv.Atoi(string(msg.Portal.ID))
+	if err != nil {
+		log.Err(err).Str("thread_id", string(msg.Portal.ID)).Msg("Failed to parse thread ID")
+		return nil, fmt.Errorf("failed to parse thread ID: %w", err)
+	}
+
+	tasks, otid, err := m.messageConverter.ToMeta(ctx, msg.Event, content, false, int64(thread))
+	if errors.Is(err, metaTypes.ErrPleaseReloadPage) {
+		log.Err(err).Msg("Got please reload page error while converting message, reloading page in background")
+		// go m.client.Disconnect()
+		// err = errReloading
+		panic("unimplemented")
+	} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+		panic("unimplemented")
+		// go sender.DisconnectFromError(status.BridgeState{
+		// 	StateEvent: status.StateBadCredentials,
+		// 	Error:      MetaCookieRemoved,
+		// })
+		// err = errLoggedOut
+	}
+
+	if err != nil {
+		log.Err(err).Msg("Failed to convert message")
+		//go ms.sendMessageMetrics(evt, err, "Error converting", true)
+		return nil, err
+	}
+
+	log.UpdateContext(func(c zerolog.Context) zerolog.Context {
+		return c.Int64("otid", otid)
+	})
+	log.Debug().Msg("Sending Matrix message to Meta")
+
+	//otidStr := strconv.FormatInt(otid, 10)
+	//portal.pendingMessages[otid] = evt.ID
+	//messageTS := time.Now()
+	var resp *table.LSTable
+
+	retries := 0
+	for retries < 5 {
+		if err = m.client.WaitUntilCanSendMessages(15 * time.Second); err != nil {
+			log.Err(err).Msg("Error waiting to be able to send messages, retrying")
+		} else {
+			resp, err = m.client.ExecuteTasks(tasks...)
+			if err == nil {
+				break
+			}
+			log.Err(err).Msg("Failed to send message to Meta, retrying")
+		}
+		retries++
+	}
+
+	log.Trace().Any("response", resp).Msg("Meta send response")
+	// var msgID string
+	// if resp != nil && err == nil {
+	// 	for _, replace := range resp.LSReplaceOptimsiticMessage {
+	// 		if replace.OfflineThreadingId == otidStr {
+	// 			msgID = replace.MessageId
+	// 		}
+	// 	}
+	// 	if len(msgID) == 0 {
+	// 		for _, failed := range resp.LSMarkOptimisticMessageFailed {
+	// 			if failed.OTID == otidStr {
+	// 				log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+	// 				//go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+	// 				return
+	// 			}
+	// 		}
+	// 		for _, failed := range resp.LSHandleFailedTask {
+	// 			if failed.OTID == otidStr {
+	// 				log.Warn().Str("message", failed.Message).Msg("Sending message failed")
+	// 				go ms.sendMessageMetrics(evt, fmt.Errorf("%w: %s", errServerRejected, failed.Message), "Error sending", true)
+	// 				return
+	// 			}
+	// 		}
+	// 		log.Warn().Msg("Message send response didn't include message ID")
+	// 	}
+	// }
+	// if msgID != "" {
+	// 	portal.pendingMessagesLock.Lock()
+	// 	_, ok = portal.pendingMessages[otid]
+	// 	if ok {
+	// 		portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, messageTS, 0)
+	// 		delete(portal.pendingMessages, otid)
+	// 	} else {
+	// 		log.Debug().Msg("Not storing message send response: pending message was already removed from map")
+	// 	}
+	// 	portal.pendingMessagesLock.Unlock()
+	// }
+
+	return &bridgev2.MatrixMessageResponse{
+		DB: &database.Message{
+			//ID: nil,
+			MXID: msg.Event.ID,
+			Room: networkid.PortalKey{ID: msg.Portal.ID},
+			//SenderID: nil,
+			Timestamp: time.Time{},
+		},
+	}, nil
+
+	// timings.totalSend = time.Since(start)
+	// go ms.sendMessageMetrics(evt, err, "Error sending", true)
 }
 
 // IsLoggedIn implements bridgev2.NetworkAPI.

@@ -44,7 +44,7 @@ type PortalMethods interface {
 }
 
 type MessageConverter struct {
-	PortalMethods
+	//PortalMethods
 
 	ConvertVoiceMessages bool
 	ConvertGIFToAPNG     bool
@@ -53,6 +53,6 @@ type MessageConverter struct {
 	BridgeMode           config.BridgeMode
 }
 
-func (mc *MessageConverter) IsPrivateChat(ctx context.Context) bool {
-	return mc.GetData(ctx).IsPrivateChat()
-}
+// func (mc *MessageConverter) IsPrivateChat(ctx context.Context) bool {
+// 	return mc.GetData(ctx).IsPrivateChat()
+// }
