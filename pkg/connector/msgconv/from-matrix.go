@@ -21,20 +21,13 @@ import (
 	"errors"
 	"fmt"
 
-	//"net/http"
 	"time"
 
-	//"github.com/rs/zerolog"
-	//"go.mau.fi/util/exerrors"
-	//"go.mau.fi/util/exmime"
-	//"go.mau.fi/util/ffmpeg"
 	"maunium.net/go/mautrix/event"
 
-	//"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
-	//"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 var (
@@ -53,7 +46,6 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 	}
 
 	task := &socket.SendMessageTask{
-		//ThreadId:         mc.GetData(ctx).ThreadID,
 		ThreadId:         threadID,
 		Otid:             methods.GenerateEpochId(),
 		Source:           table.MESSENGER_INBOX_IN_THREAD,

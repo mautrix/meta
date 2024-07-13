@@ -7,16 +7,12 @@ import (
 	"strconv"
 	"time"
 
-	//"reflect"
-	//"strconv"
-
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 
-	//"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 
@@ -28,7 +24,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	//"maunium.net/go/mautrix/event"
 	metaTypes "go.mau.fi/mautrix-meta/messagix/types"
 )
 

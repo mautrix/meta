@@ -17,34 +17,26 @@
 package msgconv
 
 import (
-	//"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"html"
 
-	//"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 
-	//"net/http"
 	"net/url"
 	"regexp"
 	"slices"
 
-	//"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
-	//"go.mau.fi/util/exmime"
-	//"go.mau.fi/util/ffmpeg"
 
-	//"golang.org/x/exp/maps"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
 
-	//"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
