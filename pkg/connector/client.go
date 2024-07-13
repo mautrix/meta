@@ -65,6 +65,18 @@ func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
 	return c
 }
 
+// Why are these separate?
+func platformToMode(platform types.Platform) config.BridgeMode {
+	switch platform {
+	case types.Facebook:
+		return config.ModeFacebook
+	case types.Instagram:
+		return config.ModeInstagram
+	default:
+		panic(fmt.Sprintf("unknown platform %d", platform))
+	}
+}
+
 func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.UserLogin) (*MetaClient, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "meta_client").Logger()
 	log.Debug().Any("metadata", login.Metadata.Extra).Msg("Creating new Meta client")
@@ -83,7 +95,7 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 		login:          login,
 		incomingEvents: make(chan *metaEvent, 8),
 		messageConverter: &msgconv.MessageConverter{
-			BridgeMode: config.BridgeMode("facebook"),
+			BridgeMode: platformToMode(c.Platform),
 		},
 	}, nil
 }
