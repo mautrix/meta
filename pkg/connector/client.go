@@ -168,12 +168,18 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to get portal")
 			continue
 		}
-		portal.CreateMatrixRoom(ctx, m.login, &bridgev2.ChatInfo{
+
+		if portal.MXID == "" {
+			log.Warn().Int64("thread_id", thread.ThreadKey).Msg("Cannot update thread metadata, portal not created yet")
+			continue
+		}
+
+		portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
 			Name:         &thread.ThreadName,
 			Topic:        &thread.ThreadDescription,
 			IsSpace:      &[]bool{false}[0],
 			IsDirectChat: &[]bool{true}[0],
-		})
+		}, m.login, nil, time.Time{})
 	}
 	for _, participant := range tbl.LSAddParticipantIdToGroupThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ContactId).Msg("LSAddParticipantIdToGroupThread")
@@ -291,11 +297,39 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 
 // GetChatInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	panic("unimplemented")
+	// We have to request an entirely new initial table here, because unfortunately we can't get just the metadata we need.
+	_, initialTable, err := m.client.LoadMessagesPage()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load messages page: %w", err)
+	}
+
+	var thread_name string
+	var thread_description string
+
+	threadKey, err := strconv.Atoi(string(portal.ID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse thread ID: %w", err)
+	}
+
+	for _, thread := range initialTable.LSDeleteThenInsertThread {
+		if thread.ThreadKey == int64(threadKey) {
+			thread_name = thread.ThreadName
+			thread_description = thread.ThreadDescription
+			break
+		}
+	}
+
+	return &bridgev2.ChatInfo{
+		Name:         &thread_name,
+		Topic:        &thread_description,
+		IsSpace:      &[]bool{false}[0],
+		IsDirectChat: &[]bool{true}[0],
+	}, nil
 }
 
 // GetUserInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+	// This should never be called because ghost info is pre-populated when parsing the table
 	panic("unimplemented")
 }
 
