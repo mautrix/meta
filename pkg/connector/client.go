@@ -183,9 +183,52 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, participant := range tbl.LSAddParticipantIdToGroupThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ContactId).Msg("LSAddParticipantIdToGroupThread")
+		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+			ID: networkid.PortalID(strconv.Itoa(int(participant.ThreadKey))),
+		})
+		if err != nil {
+			log.Err(err).Int64("thread_id", participant.ThreadKey).Msg("Failed to get portal")
+			continue
+		}
+
+		id := networkid.UserID(strconv.Itoa(int(participant.ContactId)))
+
+		portal.SyncParticipants(ctx, &bridgev2.ChatMemberList{
+			Members: []bridgev2.ChatMember{
+				{
+					EventSender: bridgev2.EventSender{
+						Sender:      id,
+						SenderLogin: networkid.UserLoginID(id),
+					},
+					Nickname:   participant.Nickname,
+					Membership: event.MembershipJoin,
+				},
+			},
+		}, m.login, nil, time.Time{})
 	}
 	for _, participant := range tbl.LSRemoveParticipantFromThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ParticipantId).Msg("LSRemoveParticipantFromThread")
+		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+			ID: networkid.PortalID(strconv.Itoa(int(participant.ThreadKey))),
+		})
+		if err != nil {
+			log.Err(err).Int64("thread_id", participant.ThreadKey).Msg("Failed to get portal")
+			continue
+		}
+
+		id := networkid.UserID(strconv.Itoa(int(participant.ParticipantId)))
+
+		portal.SyncParticipants(ctx, &bridgev2.ChatMemberList{
+			Members: []bridgev2.ChatMember{
+				{
+					EventSender: bridgev2.EventSender{
+						Sender:      id,
+						SenderLogin: networkid.UserLoginID(id),
+					},
+					Membership: event.MembershipLeave,
+				},
+			},
+		}, m.login, nil, time.Time{})
 	}
 	for _, thread := range tbl.LSVerifyThreadExists {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSVerifyThreadExists")
@@ -305,6 +348,7 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 
 	var thread_name string
 	var thread_description string
+	var members *bridgev2.ChatMemberList = &bridgev2.ChatMemberList{}
 
 	threadKey, err := strconv.Atoi(string(portal.ID))
 	if err != nil {
@@ -319,11 +363,26 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 		}
 	}
 
+	for _, participant := range initialTable.LSAddParticipantIdToGroupThread {
+		if participant.ThreadKey == int64(threadKey) {
+			id := networkid.UserID(strconv.Itoa(int(participant.ContactId)))
+			members.Members = append(members.Members, bridgev2.ChatMember{
+				EventSender: bridgev2.EventSender{
+					Sender:      id,
+					SenderLogin: networkid.UserLoginID(id),
+				},
+				Nickname:   participant.Nickname,
+				Membership: event.MembershipJoin,
+			})
+		}
+	}
+
 	return &bridgev2.ChatInfo{
 		Name:         &thread_name,
 		Topic:        &thread_description,
 		IsSpace:      &[]bool{false}[0],
 		IsDirectChat: &[]bool{true}[0],
+		Members:      members,
 	}, nil
 }
 
