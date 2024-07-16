@@ -1063,6 +1063,11 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 				}
 				user.log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
 				go user.connectE2EE()
+			} else if e.Reason == events.ConnectFailureReason(418) {
+				// TODO: what is error 418?
+				user.resetWADevice()
+				user.log.Debug().Msg("Doing full reconnect after WhatsApp 418 error")
+				go user.FullReconnect()
 			}
 		}
 
