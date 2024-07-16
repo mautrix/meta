@@ -334,7 +334,7 @@ func main() {
 		Name:        "mautrix-meta",
 		URL:         "https://github.com/mautrix/meta",
 		Description: "A Matrix-Facebook Messenger and Instagram DM puppeting bridge.",
-		Version:     "0.3.1",
+		Version:     "0.3.2",
 
 		CryptoPickleKey: "mautrix.bridge.e2ee",
 
