@@ -142,6 +142,14 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, evt any) {
 	}
 }
 
+func (m *MetaClient) senderFromID(id int64) bridgev2.EventSender {
+	return bridgev2.EventSender{
+		IsFromMe:    strconv.Itoa(int(id)) == string(m.login.ID),
+		Sender:      networkid.UserID(strconv.Itoa(int(id))),
+		SenderLogin: networkid.UserLoginID(strconv.Itoa(int(id))),
+	}
+}
+
 func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	log := zerolog.Ctx(ctx)
 
@@ -191,17 +199,12 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			continue
 		}
 
-		id := networkid.UserID(strconv.Itoa(int(participant.ContactId)))
-
 		portal.SyncParticipants(ctx, &bridgev2.ChatMemberList{
 			Members: []bridgev2.ChatMember{
 				{
-					EventSender: bridgev2.EventSender{
-						Sender:      id,
-						SenderLogin: networkid.UserLoginID(id),
-					},
-					Nickname:   participant.Nickname,
-					Membership: event.MembershipJoin,
+					EventSender: m.senderFromID(participant.ContactId),
+					Nickname:    participant.Nickname,
+					Membership:  event.MembershipJoin,
 				},
 			},
 		}, m.login, nil, time.Time{})
@@ -216,16 +219,11 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			continue
 		}
 
-		id := networkid.UserID(strconv.Itoa(int(participant.ParticipantId)))
-
 		portal.SyncParticipants(ctx, &bridgev2.ChatMemberList{
 			Members: []bridgev2.ChatMember{
 				{
-					EventSender: bridgev2.EventSender{
-						Sender:      id,
-						SenderLogin: networkid.UserLoginID(id),
-					},
-					Membership: event.MembershipLeave,
+					EventSender: m.senderFromID(participant.ParticipantId),
+					Membership:  event.MembershipLeave,
 				},
 			},
 		}, m.login, nil, time.Time{})
@@ -258,6 +256,29 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 		//log.Trace().Any("converted", converted).Msg("Converted message")
 		m.insertMessage(ctx, msg)
 	}
+
+	for _, reaction := range tbl.LSUpsertReaction {
+		log.Warn().Str("message_id", reaction.MessageId).Msg("LSUpsertReaction")
+
+		evt := &bridgev2.SimpleRemoteEvent[any]{
+			Type: bridgev2.RemoteEventReaction,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.
+					Any("reaction", reaction.Reaction).
+					//Str("sender_id", string(id)).
+					Str("message_id", string(reaction.MessageId))
+			},
+			Sender:        m.senderFromID(reaction.ActorId),
+			PortalKey:     networkid.PortalKey{ID: networkid.PortalID(strconv.Itoa(int(reaction.ThreadKey)))},
+			TargetMessage: networkid.MessageID(reaction.MessageId),
+			EmojiID:       networkid.EmojiID(reaction.Reaction),
+			Emoji:         reaction.Reaction,
+		}
+		// if timestamp != nil {
+		// 	evt.Timestamp = *timestamp
+		// }
+		m.Main.Bridge.QueueRemoteEvent(m.login, evt)
+	}
 }
 
 func (m *MetaClient) insertMessage(ctx context.Context, msg *table.WrappedMessage) {
@@ -268,11 +289,7 @@ func (m *MetaClient) insertMessage(ctx context.Context, msg *table.WrappedMessag
 
 	log.Warn().Str("sender_id", strconv.Itoa(int(msg.SenderId))).Str("login_id", string(m.login.ID)).Msg("Inserting message")
 
-	sender := bridgev2.EventSender{
-		IsFromMe:    strconv.Itoa(int(msg.SenderId)) == string(m.login.ID),
-		Sender:      networkid.UserID(strconv.Itoa(int(msg.SenderId))),
-		SenderLogin: networkid.UserLoginID(strconv.Itoa(int(msg.SenderId))),
-	}
+	sender := m.senderFromID(msg.SenderId)
 
 	log.Warn().Any("sender", sender).Msg("Sender")
 
@@ -365,14 +382,10 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 
 	for _, participant := range initialTable.LSAddParticipantIdToGroupThread {
 		if participant.ThreadKey == int64(threadKey) {
-			id := networkid.UserID(strconv.Itoa(int(participant.ContactId)))
 			members.Members = append(members.Members, bridgev2.ChatMember{
-				EventSender: bridgev2.EventSender{
-					Sender:      id,
-					SenderLogin: networkid.UserLoginID(id),
-				},
-				Nickname:   participant.Nickname,
-				Membership: event.MembershipJoin,
+				EventSender: m.senderFromID(participant.ContactId),
+				Nickname:    participant.Nickname,
+				Membership:  event.MembershipJoin,
 			})
 		}
 	}
