@@ -252,8 +252,6 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, msg := range insert {
 		log.Trace().Int64("thread_id", msg.ThreadKey).Str("message_id", msg.MessageId).Msg("InsertMessage")
-		//converted := m.messageConverter.ToMatrix(ctx, msg)
-		//log.Trace().Any("converted", converted).Msg("Converted message")
 		m.insertMessage(ctx, msg)
 	}
 
@@ -265,18 +263,32 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			LogContext: func(c zerolog.Context) zerolog.Context {
 				return c.
 					Any("reaction", reaction.Reaction).
-					//Str("sender_id", string(id)).
 					Str("message_id", string(reaction.MessageId))
 			},
 			Sender:        m.senderFromID(reaction.ActorId),
 			PortalKey:     networkid.PortalKey{ID: networkid.PortalID(strconv.Itoa(int(reaction.ThreadKey)))},
 			TargetMessage: networkid.MessageID(reaction.MessageId),
-			EmojiID:       networkid.EmojiID(reaction.Reaction),
-			Emoji:         reaction.Reaction,
+			// only 1 reaction can be used per message, so just use a hardcoded ID
+			EmojiID: networkid.EmojiID("reaction"),
+			Emoji:   reaction.Reaction,
 		}
-		// if timestamp != nil {
-		// 	evt.Timestamp = *timestamp
-		// }
+		m.Main.Bridge.QueueRemoteEvent(m.login, evt)
+	}
+
+	for _, reaction := range tbl.LSDeleteReaction {
+		log.Warn().Str("message_id", reaction.MessageId).Msg("LSDeleteReaction")
+
+		evt := &bridgev2.SimpleRemoteEvent[any]{
+			Type: bridgev2.RemoteEventReactionRemove,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.
+					Str("message_id", string(reaction.MessageId))
+			},
+			Sender:        m.senderFromID(reaction.ActorId),
+			PortalKey:     networkid.PortalKey{ID: networkid.PortalID(strconv.Itoa(int(reaction.ThreadKey)))},
+			TargetMessage: networkid.MessageID(reaction.MessageId),
+			EmojiID:       networkid.EmojiID("reaction"),
+		}
 		m.Main.Bridge.QueueRemoteEvent(m.login, evt)
 	}
 }
