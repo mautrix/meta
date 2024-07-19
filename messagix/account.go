@@ -20,7 +20,7 @@ func (c *Client) processLogin(resp *http.Response, respBody []byte) error {
 		var loginResp *types.InstagramLoginResponse
 		err = json.Unmarshal(respBody, &loginResp)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal instagram login response to *types.InstagramLoginResponse (statusCode=%d): %v", statusCode, err)
+			return fmt.Errorf("failed to unmarshal instagram login response to *types.InstagramLoginResponse (statusCode=%d): %w", statusCode, err)
 		}
 		if loginResp.Status == "fail" {
 			err = fmt.Errorf("failed to process login request (message=%s, statusText=%s, statusCode=%d)", loginResp.Message, loginResp.Status, statusCode)

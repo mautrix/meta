@@ -163,7 +163,7 @@ func (m *ModuleParser) Load(page string) error {
 			case "script":
 				doneCrawling, err = m.crawlJavascriptFile(href)
 				if err != nil {
-					return fmt.Errorf("messagix-moduleparser: failed to crawl js file %s (%v)", href, err)
+					return fmt.Errorf("messagix-moduleparser: failed to crawl js file %s (%w)", href, err)
 				}
 			}
 		}

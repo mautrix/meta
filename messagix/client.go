@@ -319,7 +319,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		})
 		h.Del("x-csrftoken")
 		if err != nil {
-			return fmt.Errorf("failed to marshal *types.InstagramCookiesVariables into bytes: %v", err)
+			return fmt.Errorf("failed to marshal *types.InstagramCookiesVariables into bytes: %w", err)
 		}
 		q := &HttpQuery{
 			DocID:     "3810865872362889",

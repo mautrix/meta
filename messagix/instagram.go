@@ -37,7 +37,7 @@ func (ig *InstagramMethods) Login(identifier, password string) (*cookies.Cookies
 	login_page_v1 := ig.client.getEndpoint("web_login_page_v1")
 	_, _, err := ig.client.MakeRequest(login_page_v1, "GET", h, nil, types.NONE)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s for instagram login: %v", login_page_v1, err)
+		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", login_page_v1, err)
 	}
 
 	err = ig.client.sendCookieConsent("")
@@ -48,25 +48,25 @@ func (ig *InstagramMethods) Login(identifier, password string) (*cookies.Cookies
 	web_shared_data_v1 := ig.client.getEndpoint("web_shared_data_v1")
 	req, respBody, err := ig.client.MakeRequest(web_shared_data_v1, "GET", h, nil, types.NONE) // returns actual machineId you're supposed to use
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s for instagram login: %v", web_shared_data_v1, err)
+		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", web_shared_data_v1, err)
 	}
 
 	ig.client.cookies.UpdateFromResponse(req)
 
 	err = json.Unmarshal(respBody, &ig.client.configs.browserConfigTable.XIGSharedData.ConfigData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal web_shared_data_v1 resp body into *XIGSharedData.ConfigData: %v", err)
+		return nil, fmt.Errorf("failed to marshal web_shared_data_v1 resp body into *XIGSharedData.ConfigData: %w", err)
 	}
 
 	encryptionConfig := ig.client.configs.browserConfigTable.XIGSharedData.ConfigData.Encryption
 	pubKeyId, err := strconv.Atoi(encryptionConfig.KeyID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert keyId for instagram password encryption to int: %v", err)
+		return nil, fmt.Errorf("failed to convert keyId for instagram password encryption to int: %w", err)
 	}
 
 	encryptedPw, err := crypto.EncryptPassword(int(types.Instagram), pubKeyId, encryptionConfig.PublicKey, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt password for instagram: %v", err)
+		return nil, fmt.Errorf("failed to encrypt password for instagram: %w", err)
 	}
 
 	loginForm := &types.InstagramLoginPayload{
@@ -100,7 +100,7 @@ func (ig *InstagramMethods) FetchProfile(username string) (*responses.ProfileInf
 
 	resp, respBody, err := ig.client.MakeRequest(reqUrl, "GET", h, nil, types.NONE)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch the profile by username @%s: %v", username, err)
+		return nil, fmt.Errorf("failed to fetch the profile by username @%s: %w", username, err)
 	}
 
 	ig.client.cookies.UpdateFromResponse(resp)
@@ -108,7 +108,7 @@ func (ig *InstagramMethods) FetchProfile(username string) (*responses.ProfileInf
 	var profileInfo *responses.ProfileInfoResponse
 	err = json.Unmarshal(respBody, &profileInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.ProfileInfoResponse (statusCode=%d): %v", resp.StatusCode, err)
+		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.ProfileInfoResponse (statusCode=%d): %w", resp.StatusCode, err)
 	}
 
 	return profileInfo, nil
@@ -127,7 +127,7 @@ func (ig *InstagramMethods) FetchMedia(mediaID, mediaShortcode string) (*respons
 
 	resp, respBody, err := ig.client.MakeRequest(reqUrl, "GET", h, nil, types.NONE)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch the media by id %s: %v", mediaID, err)
+		return nil, fmt.Errorf("failed to fetch the media by id %s: %w", mediaID, err)
 	}
 
 	ig.client.cookies.UpdateFromResponse(resp)
@@ -135,7 +135,7 @@ func (ig *InstagramMethods) FetchMedia(mediaID, mediaShortcode string) (*respons
 	var mediaInfo *responses.FetchMediaResponse
 	err = json.Unmarshal(respBody, &mediaInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.FetchMediaResponse (statusCode=%d): %v", resp.StatusCode, err)
+		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.FetchMediaResponse (statusCode=%d): %w", resp.StatusCode, err)
 	}
 
 	return mediaInfo, nil
@@ -157,7 +157,7 @@ func (ig *InstagramMethods) FetchReel(reelIds []string, mediaID string) (*respon
 	reqUrl := ig.client.getEndpoint("reels_media") + query.Encode()
 	resp, respBody, err := ig.client.MakeRequest(reqUrl, "GET", h, nil, types.NONE)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch reels by ids %v: %v", reelIds, err)
+		return nil, fmt.Errorf("failed to fetch reels by ids %v: %w", reelIds, err)
 	}
 
 	ig.client.cookies.UpdateFromResponse(resp)
@@ -165,7 +165,7 @@ func (ig *InstagramMethods) FetchReel(reelIds []string, mediaID string) (*respon
 	var reelInfo *responses.ReelInfoResponse
 	err = json.Unmarshal(respBody, &reelInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.ReelInfoResponse (statusCode=%d): %v", resp.StatusCode, err)
+		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.ReelInfoResponse (statusCode=%d): %w", resp.StatusCode, err)
 	}
 
 	return reelInfo, nil

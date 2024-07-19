@@ -23,7 +23,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal graphql variables to json string: %v", err)
+		return nil, nil, fmt.Errorf("failed to marshal graphql variables to json string: %w", err)
 	}
 
 	payload := c.NewHttpQuery()
@@ -93,7 +93,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 		} else {
 			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
 		}
-		return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %w", err)
 	}
 	if graphQLData.ErrorCode != 0 {
 		c.Logger.Warn().
@@ -124,7 +124,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	err = json.Unmarshal(lightSpeedRes, &lsData)
 	if err != nil {
 		c.Logger.Debug().RawJSON("respBody", respBody).Msg("Response data for errored inner response")
-		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %w", err)
 	}
 
 	lsTable := &table.LSTable{}

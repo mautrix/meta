@@ -33,7 +33,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	urlQueries := c.NewHttpQuery()
 	queryValues, err := query.Values(urlQueries)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %v", err)
+		return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %w", err)
 	}
 
 	payloadQuery := queryValues.Encode()
@@ -53,7 +53,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 
 	_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send MercuryUploadRequest: %v", err)
+		return nil, fmt.Errorf("failed to send MercuryUploadRequest: %w", err)
 	}
 
 	resp, err := c.parseMercuryResponse(ctx, respBody)
@@ -77,7 +77,7 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 
 	var mercuryResponse *types.MercuryUploadResponse
 	if err := json.Unmarshal(jsonData, &mercuryResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse mercury response: %v", err)
+		return nil, fmt.Errorf("failed to parse mercury response: %w", err)
 	} else if mercuryResponse.ErrorCode != 0 {
 		return nil, fmt.Errorf("error in mercury upload: %w", &mercuryResponse.ErrorResponse)
 	}
@@ -102,14 +102,14 @@ func (c *Client) parseMetadata(response *types.MercuryUploadResponse) error {
 		var realMetadata []types.FileMetadata
 		err := json.Unmarshal(response.Payload.Metadata, &realMetadata)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal image metadata in upload response: %v", err)
+			return fmt.Errorf("failed to unmarshal image metadata in upload response: %w", err)
 		}
 		response.Payload.RealMetadata = &realMetadata[0]
 	case '{':
 		var realMetadata map[string]types.FileMetadata
 		err := json.Unmarshal(response.Payload.Metadata, &realMetadata)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal video metadata in upload response: %v", err)
+			return fmt.Errorf("failed to unmarshal video metadata in upload response: %w", err)
 		}
 		realMetaEntry := realMetadata["0"]
 		response.Payload.RealMetadata = &realMetaEntry
@@ -127,24 +127,24 @@ func (c *Client) NewMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, stri
 
 	err := writer.SetBoundary("----WebKitFormBoundary" + methods.RandStr(16))
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to set boundary (%v)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to set boundary (%w)", err)
 	}
 
 	if media.IsVoiceClip {
 		err = writer.WriteField("voice_clip", "true")
 		if err != nil {
-			return nil, "", fmt.Errorf("messagix-mercury: Failed to write voice_clip field (%v)", err)
+			return nil, "", fmt.Errorf("messagix-mercury: Failed to write voice_clip field (%w)", err)
 		}
 
 		if media.WaveformData != nil {
 			waveformBytes, err := json.Marshal(media.WaveformData)
 			if err != nil {
-				return nil, "", fmt.Errorf("messagix-mercury: Failed to marshal waveform (%v)", err)
+				return nil, "", fmt.Errorf("messagix-mercury: Failed to marshal waveform (%w)", err)
 			}
 
 			err = writer.WriteField("voice_clip_waveform_data", string(waveformBytes))
 			if err != nil {
-				return nil, "", fmt.Errorf("messagix-mercury: Failed to write waveform field (%v)", err)
+				return nil, "", fmt.Errorf("messagix-mercury: Failed to write waveform field (%w)", err)
 			}
 		}
 	}
@@ -155,17 +155,17 @@ func (c *Client) NewMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, stri
 
 	mediaPart, err := writer.CreatePart(partHeader)
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to create multipart writer (%v)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to create multipart writer (%w)", err)
 	}
 
 	_, err = mediaPart.Write(media.MediaData)
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to write data to multipart section (%v)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to write data to multipart section (%w)", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		return nil, "", fmt.Errorf("messagix-mercury: Failed to close multipart writer (%v)", err)
+		return nil, "", fmt.Errorf("messagix-mercury: Failed to close multipart writer (%w)", err)
 	}
 
 	return mercuryPayload.Bytes(), writer.FormDataContentType(), nil

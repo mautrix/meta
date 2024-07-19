@@ -16,7 +16,7 @@ func (c *Client) ExecuteTasks(tasks ...socket.Task) (*table.LSTable, error) {
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		return nil, fmt.Errorf("failed to finalize payload: %v", err)
+		return nil, fmt.Errorf("failed to finalize payload: %w", err)
 	}
 
 	resp, err := c.socket.makeLSRequest(payload, 3)

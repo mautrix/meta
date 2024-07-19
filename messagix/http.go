@@ -272,7 +272,7 @@ func (c *Client) sendLoginRequest(form url.Values, loginUrl string) (*http.Respo
 
 	resp, respBody, err := c.MakeRequest(loginUrl, "POST", h, loginPayload, types.FORM)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send login request: %v", err)
+		return nil, nil, fmt.Errorf("failed to send login request: %w", err)
 	}
 
 	return resp, respBody, nil

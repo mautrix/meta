@@ -92,7 +92,7 @@ func (b *byter) ReadToStruct(s interface{}) error {
 				jsonData := b.Buff.Next(b.Buff.Len())
 				err := json.Unmarshal(jsonData, field.Addr().Interface())
 				if err != nil {
-					return fmt.Errorf("failed to unmarshal JSON for field %s: %v", values.Type().Field(i).Name, err)
+					return fmt.Errorf("failed to unmarshal JSON for field %s: %w", values.Type().Field(i).Name, err)
 				}
 			}
 		default:
