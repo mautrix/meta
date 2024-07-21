@@ -33,9 +33,11 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	//"github.com/rs/zerolog/log"
 
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -43,6 +45,7 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/data/responses"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/connector/ids"
 )
 
 // func (cm *bridgev2.ConvertedMessage) MergeCaption() {
@@ -82,7 +85,73 @@ func isProbablyURLPreview(xma *table.WrappedXMA) bool {
 		strings.Contains(xma.CTA.ActionUrl, "/l.php?")
 }
 
-func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMessage) *bridgev2.ConvertedMessage {
+type basicUserInfo struct {
+	MXID        id.UserID
+	DisplayName string
+}
+
+func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, portal *bridgev2.Portal, user networkid.UserID) (*basicUserInfo, error) {
+	log := zerolog.Ctx(ctx).With().
+		Any("user", user).
+		Logger()
+
+	ghost, err := portal.Bridge.GetGhostByID(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ghost by ID: %w", err)
+	}
+
+	login := portal.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(user))
+
+	if login != nil {
+		return &basicUserInfo{login.UserMXID, ghost.Name}, nil
+	}
+
+	log.Debug().Msg("User login not found for reply target message, using ghost")
+
+	return &basicUserInfo{ghost.Intent.GetMXID(), ghost.Name}, nil
+}
+
+type matrixReplyInfo struct {
+	ReplyTo           id.EventID
+	ReplyTargetSender id.UserID
+}
+
+func (mc *MessageConverter) getMatrixReply(ctx context.Context, portal *bridgev2.Portal, replyToUser networkid.UserID, replyToMessage networkid.MessageID) (*matrixReplyInfo, error) {
+	log := zerolog.Ctx(ctx).With().
+		Any("reply_to_user", replyToUser).
+		Any("reply_to_msg", replyToMessage).
+		Logger()
+
+	if replyToUser == networkid.UserID("") || replyToMessage == networkid.MessageID("") {
+		log.Debug().Msg("Empty reply user or message ID, returning nil")
+		return nil, nil
+	}
+
+	message, err := portal.Bridge.DB.Message.GetFirstPartByID(ctx, portal.Receiver, replyToMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reply target message from database: %w", err)
+	} else if message == nil {
+		return nil, fmt.Errorf("reply target message not found")
+	}
+
+	uinfo, err := mc.getBasicUserInfo(ctx, portal, replyToUser)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get basic user info: %w", err)
+	}
+
+	mxid := uinfo.MXID
+
+	if message.Metadata.SenderMXID != uinfo.MXID {
+		log.Warn().
+			Any("message_sender", message.SenderID).
+			Msg("SenderID of reply target message does not match reply user, overriding")
+		mxid = message.Metadata.SenderMXID
+	}
+
+	return &matrixReplyInfo{message.MXID, mxid}, nil
+}
+
+func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMessage, portal *bridgev2.Portal) *bridgev2.ConvertedMessage {
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
@@ -177,8 +246,12 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 			},
 		})
 	}
-	//replyTo, sender := mc.GetMatrixReply(ctx, msg.ReplySourceId, msg.ReplyToUserId)
-	replyTo, sender := id.EventID("replyTo"), id.UserID("sender")
+
+	rinfo, err := mc.getMatrixReply(ctx, portal, ids.MakeUserID(msg.ReplyToUserId), networkid.MessageID(msg.ReplySourceId))
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get reply target message")
+	}
+
 	for _, part := range cm.Parts {
 		_, hasExternalURL := part.Extra["external_url"]
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
@@ -206,10 +279,10 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, msg *table.WrappedMess
 		if part.Content.Mentions == nil {
 			part.Content.Mentions = &event.Mentions{}
 		}
-		if replyTo != "" {
-			part.Content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(replyTo)
-			if !slices.Contains(part.Content.Mentions.UserIDs, sender) {
-				part.Content.Mentions.UserIDs = append(part.Content.Mentions.UserIDs, sender)
+		if rinfo != nil {
+			part.Content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(rinfo.ReplyTo)
+			if !slices.Contains(part.Content.Mentions.UserIDs, rinfo.ReplyTargetSender) {
+				part.Content.Mentions.UserIDs = append(part.Content.Mentions.UserIDs, rinfo.ReplyTargetSender)
 			}
 		}
 	}

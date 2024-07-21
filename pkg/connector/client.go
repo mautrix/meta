@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 
+	"go.mau.fi/mautrix-meta/pkg/connector/ids"
 	"go.mau.fi/mautrix-meta/pkg/connector/msgconv"
 
 	"maunium.net/go/mautrix/bridge/status"
@@ -144,9 +145,9 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, evt any) {
 
 func (m *MetaClient) senderFromID(id int64) bridgev2.EventSender {
 	return bridgev2.EventSender{
-		IsFromMe:    strconv.Itoa(int(id)) == string(m.login.ID),
-		Sender:      networkid.UserID(strconv.Itoa(int(id))),
-		SenderLogin: networkid.UserLoginID(strconv.Itoa(int(id))),
+		IsFromMe:    ids.MakeUserLoginID(id) == m.login.ID,
+		Sender:      ids.MakeUserID(id),
+		SenderLogin: ids.MakeUserLoginID(id),
 	}
 }
 
@@ -158,7 +159,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, contact := range tbl.LSVerifyContactRowExists {
 		log.Warn().Int64("contact_id", contact.ContactId).Msg("LSVerifyContactRowExists")
-		ghost, err := m.Main.Bridge.GetGhostByID(ctx, networkid.UserID(strconv.Itoa(int(contact.ContactId))))
+		ghost, err := m.Main.Bridge.GetGhostByID(ctx, ids.MakeUserID(contact.ContactId))
 		if err != nil {
 			log.Err(err).Int64("contact_id", contact.ContactId).Msg("Failed to get ghost")
 			continue
@@ -296,9 +297,6 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 func (m *MetaClient) insertMessage(ctx context.Context, msg *table.WrappedMessage) {
 	log := zerolog.Ctx(ctx)
 
-	//converted := m.messageConverter.ToMatrix(ctx, msg)
-	//log.Trace().Any("converted", converted).Msg("Converted message")
-
 	log.Warn().Str("sender_id", strconv.Itoa(int(msg.SenderId))).Str("login_id", string(m.login.ID)).Msg("Inserting message")
 
 	sender := m.senderFromID(msg.SenderId)
@@ -320,7 +318,7 @@ func (m *MetaClient) insertMessage(ctx context.Context, msg *table.WrappedMessag
 		Data:         msg,
 		CreatePortal: true,
 		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, msg *table.WrappedMessage) (*bridgev2.ConvertedMessage, error) {
-			return m.messageConverter.ToMatrix(ctx, msg), nil
+			return m.messageConverter.ToMatrix(ctx, msg, portal), nil
 		},
 	})
 }
@@ -448,6 +446,8 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		return nil, fmt.Errorf("failed to parse thread ID: %w", err)
 	}
 
+	log.Trace().Any("event", msg.Event).Msg("Handling Matrix message")
+
 	tasks, otid, err := m.messageConverter.ToMeta(ctx, msg.Event, content, false, int64(thread))
 	if errors.Is(err, metaTypes.ErrPleaseReloadPage) {
 		log.Err(err).Msg("Got please reload page error while converting message, reloading page in background")
@@ -533,10 +533,10 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 	return &bridgev2.MatrixMessageResponse{
 		DB: &database.Message{
-			ID:        networkid.MessageID(msgID),
-			MXID:      msg.Event.ID,
-			Room:      networkid.PortalKey{ID: msg.Portal.ID},
-			SenderID:  networkid.UserID(msg.Event.Sender),
+			ID:   networkid.MessageID(msgID),
+			MXID: msg.Event.ID,
+			Room: networkid.PortalKey{ID: msg.Portal.ID},
+			//SenderID:  networkid.UserID(msg.Event.Sender), // Need to convert MXID -> Meta ID??
 			Timestamp: time.Time{},
 		},
 	}, nil
