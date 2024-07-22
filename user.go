@@ -1046,8 +1046,11 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		user.BridgeState.Send(user.waState)
 		go user.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
+		stateEvent := status.StateUnknownError
+
 		switch e := evt.(type) {
 		case *events.LoggedOut:
+			stateEvent = status.StateBadCredentials
 			if e.Reason == events.ConnectFailureLoggedOut && !e.OnConnect && user.canReconnect() {
 				user.resetWADevice()
 				user.log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
@@ -1064,7 +1067,8 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 				user.log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
 				go user.connectE2EE()
 			} else if e.Reason == events.ConnectFailureReason(418) {
-				// TODO: what is error 418?
+				// WA 418 appears to indicate logout/bad credentials
+				stateEvent = status.StateBadCredentials
 				user.resetWADevice()
 				user.log.Debug().Msg("Doing full reconnect after WhatsApp 418 error")
 				go user.FullReconnect()
@@ -1072,7 +1076,7 @@ func (user *User) e2eeEventHandler(rawEvt any) {
 		}
 
 		user.waState = status.BridgeState{
-			StateEvent: status.StateUnknownError,
+			StateEvent: stateEvent,
 			Error:      WAPermanentError,
 			Message:    evt.PermanentDisconnectDescription(),
 		}
