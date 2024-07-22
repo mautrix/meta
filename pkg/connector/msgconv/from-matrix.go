@@ -20,12 +20,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
@@ -68,6 +70,78 @@ func (mc *MessageConverter) GetMetaReply(ctx context.Context, content *event.Mes
 	}
 }
 
+func (mc *MessageConverter) parseFormattedBody(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal, task *socket.SendMessageTask) {
+	log := zerolog.Ctx(ctx)
+	if content.FormattedBody == "" || content.FormattedBody == content.Body || string(content.Format) != "org.matrix.custom.html" {
+		log.Debug().Any("formatted_body", content.FormattedBody).Any("format", content.Format).Msg("No formatted body to parse")
+		return
+	}
+
+	// By necessity, we have to parse the formatted body to find mentions, rather than the unformatted body
+	// This means that we have to do all the parsing ourselves, rather than relying on whatever the unformatted body has
+	// This HTML parsing code is shit, but it works for now.
+	// TODO: Fix this
+
+	formattedBody := content.FormattedBody
+
+	var mentions socket.Mentions
+
+	for {
+		start := strings.Index(formattedBody, "<a href=\"https://matrix.to/#/@")
+		if start == -1 {
+			log.Debug().Any("formatted_body", content.FormattedBody).Msg("No more mentions in formatted body")
+			break
+		}
+
+		end := strings.Index(formattedBody[start:], ":beeper.local\">")
+		if end == -1 {
+			log.Debug().Any("formatted_body", content.FormattedBody).Msg("No mentions in formatted body")
+			break
+		}
+		end += start + len(":beeper.local\">")
+
+		url := formattedBody[start+9 : end-2]
+
+		uri, err := id.ParseMatrixURIOrMatrixToURL(url)
+		if err != nil {
+			log.Err(err).Str("url", url).Msg("Failed to parse mention URI")
+			break
+		}
+
+		log.Debug().Str("url", url).Any("uri", uri).Msg("Found mention in formatted body")
+
+		ghost, err := portal.Bridge.GetGhostByMXID(ctx, uri.UserID())
+		if err != nil {
+			log.Err(err).Stringer("uri", uri).Msg("Failed to get user for mention")
+			break
+		}
+
+		endTag := strings.Index(formattedBody[end:], "</a>")
+		if endTag == -1 {
+			log.Debug().Any("formatted_body", content.FormattedBody).Msg("No end tag for mention in formatted body")
+			break
+		}
+		endTag += end + len("</a>")
+
+		newContent := "@" + ghost.Name
+
+		// Add the mention to the list
+		mentions = append(mentions, socket.Mention{
+			ID:     ids.ParseUserID(ghost.ID),
+			Offset: start,
+			Length: len(newContent),
+			Type:   socket.MentionTypePerson,
+		})
+
+		// Replace the mention with @user's name
+		formattedBody = formattedBody[:start] + newContent + formattedBody[endTag:]
+	}
+
+	data := mentions.ToData()
+	task.MentionData = &data
+	content.Body = formattedBody
+}
+
 func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent, relaybotFormatted bool, threadID int64, portal *bridgev2.Portal) ([]socket.Task, int64, error) {
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage
@@ -91,7 +165,11 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 	}
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
+		if content.FormattedBody != "" {
+			mc.parseFormattedBody(ctx, content, portal, task)
+		}
 		task.Text = content.Body
+
 	// case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
 	// 	resp, err := mc.reuploadFileToMeta(ctx, evt, content)
 	// 	if err != nil {

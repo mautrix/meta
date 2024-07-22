@@ -18,13 +18,18 @@ package msgconv
 
 import (
 	"context"
+	"slices"
+
+	//"log"
 	"strings"
 	"unicode/utf16"
 
 	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/messagix/socket"
+	"go.mau.fi/mautrix-meta/pkg/connector/ids"
 )
 
 type UTF16String []uint16
@@ -37,7 +42,7 @@ func (u UTF16String) String() string {
 	return string(utf16.Decode(u))
 }
 
-func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, rawMentions *socket.MentionData) (content *event.MessageEventContent) {
+func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, rawMentions *socket.MentionData, portal *bridgev2.Portal) (content *event.MessageEventContent) {
 	content = &event.MessageEventContent{
 		MsgType:  event.MsgText,
 		Body:     text,
@@ -67,12 +72,16 @@ func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, r
 		}
 		var mentionLink string
 		switch mention.Type {
-		// case socket.MentionTypePerson:
-		// 	userID := mc.GetUserMXID(ctx, mention.ID)
-		// 	if !slices.Contains(content.Mentions.UserIDs, userID) {
-		// 		content.Mentions.UserIDs = append(content.Mentions.UserIDs, userID)
-		// 	}
-		// 	mentionLink = userID.URI().MatrixToURL()
+		case socket.MentionTypePerson:
+			info, err := mc.getBasicUserInfo(ctx, portal, ids.MakeUserID(mention.ID))
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to get user info for mention")
+				continue
+			}
+			if !slices.Contains(content.Mentions.UserIDs, info.MXID) {
+				content.Mentions.UserIDs = append(content.Mentions.UserIDs, info.MXID)
+			}
+			mentionLink = info.MXID.URI().MatrixToURL()
 		case socket.MentionTypeThread:
 			// TODO: how does one send thread mentions?
 		}
@@ -90,5 +99,9 @@ func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, r
 	output.WriteString(utf16Text[prevEnd:].String())
 	content.Format = event.FormatHTML
 	content.FormattedBody = output.String()
+
+	log := zerolog.Ctx(ctx)
+	log.Debug().Str("text", text).Str("formatted_body", content.FormattedBody).Msg("Converted message to Matrix text")
+
 	return content
 }
