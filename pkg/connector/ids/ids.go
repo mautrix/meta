@@ -13,3 +13,8 @@ func MakeUserID(user int64) networkid.UserID {
 func MakeUserLoginID(user int64) networkid.UserLoginID {
 	return networkid.UserLoginID(MakeUserID(user))
 }
+
+func ParseUserID(user networkid.UserID) int64 {
+	i, _ := strconv.Atoi(string(user))
+	return int64(i)
+}

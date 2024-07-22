@@ -23,11 +23,14 @@ import (
 
 	"time"
 
+	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/connector/ids"
 )
 
 var (
@@ -40,7 +43,32 @@ var (
 	ErrURLNotFound         = errors.New("url not found")
 )
 
-func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent, relaybotFormatted bool, threadID int64) ([]socket.Task, int64, error) {
+func (mc *MessageConverter) GetMetaReply(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal) *socket.ReplyMetaData {
+	log := zerolog.Ctx(ctx)
+
+	replyToID := content.RelatesTo.GetReplyTo()
+	if len(replyToID) == 0 {
+		return nil
+	}
+
+	message, err := portal.Bridge.DB.Message.GetPartByMXID(ctx, replyToID)
+	if err != nil {
+		log.Warn().Err(err).Stringer("reply_to_mxid", replyToID).Msg("Failed to get reply target message from database")
+		return nil
+	} else if message == nil {
+		log.Warn().Stringer("reply_to_mxid", replyToID).Msg("Reply target message not found")
+		return nil
+	}
+
+	return &socket.ReplyMetaData{
+		ReplyMessageId:  string(message.ID),
+		ReplySourceType: 1,
+		ReplyType:       0,
+		ReplySender:     ids.ParseUserID(message.SenderID),
+	}
+}
+
+func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent, relaybotFormatted bool, threadID int64, portal *bridgev2.Portal) ([]socket.Task, int64, error) {
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage
 	}
@@ -53,7 +81,7 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 		SendType:         table.TEXT,
 		SyncGroup:        1,
 
-		//ReplyMetaData: mc.GetMetaReply(ctx, content),
+		ReplyMetaData: mc.GetMetaReply(ctx, content, portal),
 	}
 	if content.MsgType == event.MsgEmote && !relaybotFormatted {
 		content.Body = "/me " + content.Body

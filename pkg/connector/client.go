@@ -448,7 +448,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 	log.Trace().Any("event", msg.Event).Msg("Handling Matrix message")
 
-	tasks, otid, err := m.messageConverter.ToMeta(ctx, msg.Event, content, false, int64(thread))
+	tasks, otid, err := m.messageConverter.ToMeta(ctx, msg.Event, content, false, int64(thread), msg.Portal)
 	if errors.Is(err, metaTypes.ErrPleaseReloadPage) {
 		log.Err(err).Msg("Got please reload page error while converting message, reloading page in background")
 		// go m.client.Disconnect()
@@ -531,12 +531,17 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 	// 	portal.pendingMessagesLock.Unlock()
 	// }
 
+	if m.login.User.MXID != msg.Event.Sender {
+		log.Warn().Any("sender", msg.Event.Sender).Msg("Sender mismatch with user login")
+		return nil, fmt.Errorf("sender mismatch with user login: %s", msg.Event.Sender)
+	}
+
 	return &bridgev2.MatrixMessageResponse{
 		DB: &database.Message{
-			ID:   networkid.MessageID(msgID),
-			MXID: msg.Event.ID,
-			Room: networkid.PortalKey{ID: msg.Portal.ID},
-			//SenderID:  networkid.UserID(msg.Event.Sender), // Need to convert MXID -> Meta ID??
+			ID:        networkid.MessageID(msgID),
+			MXID:      msg.Event.ID,
+			Room:      networkid.PortalKey{ID: msg.Portal.ID},
+			SenderID:  networkid.UserID(m.login.ID),
 			Timestamp: time.Time{},
 		},
 	}, nil
