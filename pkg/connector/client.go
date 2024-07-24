@@ -566,12 +566,62 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	panic("unimplemented")
 }
 
-func (m *MetaClient) ResolveIdentifier(ctx context.Context, number string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 	log := zerolog.Ctx(ctx)
-	log.Debug().Str("number", number).Bool("create_chat", createChat).Msg("Resolving identifier")
+	log.Debug().Str("identifier", identifier).Bool("create_chat", createChat).Msg("Resolving identifier")
+
+	// Make sure we can parse identifier as an int
+	id, err := ids.ParseIDFromString(identifier)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse identifier: %w", err)
+	}
+
+	var chat *bridgev2.CreateChatResponse
+	if createChat {
+		// Create the chat on the Meta side, not sure if this is necessary for DMs?
+		resp, err := m.client.ExecuteTasks(
+			&socket.CreateThreadTask{
+				ThreadFBID:                id,
+				ForceUpsert:               0,
+				UseOpenMessengerTransport: 0,
+				SyncGroup:                 1,
+				MetadataOnly:              0,
+				PreviewOnly:               0,
+			},
+		)
+
+		log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
+
+		portalKey := networkid.PortalKey{ID: ids.MakePortalID(id)}
+
+		portal, err := m.Main.Bridge.GetPortalByID(ctx, portalKey)
+		if err != nil {
+			log.Err(err).Any("portal_key", portalKey).Msg("Failed to get portal")
+		}
+
+		chatInfo, err := m.GetChatInfo(ctx, portal)
+		if err != nil {
+			log.Err(err).Any("portal_key", portalKey).Msg("Failed to get chat info")
+		}
+
+		chat = &bridgev2.CreateChatResponse{
+			Portal:     portal,
+			PortalID:   portalKey,
+			PortalInfo: chatInfo,
+		}
+	}
+	return &bridgev2.ResolveIdentifierResponse{
+		UserID: ids.MakeUserID(id),
+		Chat:   chat,
+	}, nil
+}
+
+func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	log := zerolog.Ctx(ctx)
+	log.Debug().Str("search", search).Msg("Searching users")
 
 	task := &socket.SearchUserTask{
-		Query: number,
+		Query: search,
 		SupportedTypes: []table.SearchType{
 			table.SearchTypeContact, table.SearchTypeGroup, table.SearchTypePage, table.SearchTypeNonContact,
 			table.SearchTypeIGContactFollowing, table.SearchTypeIGContactNonFollowing,
@@ -601,54 +651,25 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, number string, creat
 		return nil, fmt.Errorf("failed to search for user: %w", err)
 	}
 
+	users := make([]*bridgev2.ResolveIdentifierResponse, 0)
+
 	for _, result := range resp.LSInsertSearchResult {
 		if result.ThreadType == table.ONE_TO_ONE && result.CanViewerMessage && result.GetFBID() != 0 {
-			var chat *bridgev2.CreateChatResponse
-			if createChat {
-				// Create the chat on the Meta side, not sure if this is necessary for DMs?
-				resp, err := m.client.ExecuteTasks(
-					&socket.CreateThreadTask{
-						ThreadFBID:                result.GetFBID(),
-						ForceUpsert:               0,
-						UseOpenMessengerTransport: 0,
-						SyncGroup:                 1,
-						MetadataOnly:              0,
-						PreviewOnly:               0,
-					},
-				)
-
-				log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
-
-				portalKey := networkid.PortalKey{ID: ids.MakePortalID(result.GetFBID())}
-
-				portal, err := m.Main.Bridge.GetPortalByID(ctx, portalKey)
-				if err != nil {
-					log.Err(err).Any("portal_key", portalKey).Msg("Failed to get portal")
-				}
-
-				chatInfo, err := m.GetChatInfo(ctx, portal)
-				if err != nil {
-					log.Err(err).Any("portal_key", portalKey).Msg("Failed to get chat info")
-				}
-
-				chat = &bridgev2.CreateChatResponse{
-					Portal:     portal,
-					PortalID:   portalKey,
-					PortalInfo: chatInfo,
-				}
-			}
-			return &bridgev2.ResolveIdentifierResponse{
+			users = append(users, &bridgev2.ResolveIdentifierResponse{
 				UserID: ids.MakeUserID(result.GetFBID()),
-				Chat:   chat,
-			}, nil
+				UserInfo: &bridgev2.UserInfo{
+					Name: &result.DisplayName,
+				},
+			})
 		}
 	}
 
-	return nil, nil
+	return users, nil
 }
 
 var (
-	_ bridgev2.NetworkAPI = (*MetaClient)(nil)
+	_ bridgev2.NetworkAPI              = (*MetaClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI = (*MetaClient)(nil)
 	// _ bridgev2.EditHandlingNetworkAPI        = (*MetaClient)(nil)
 	// _ bridgev2.ReactionHandlingNetworkAPI    = (*MetaClient)(nil)
 	// _ bridgev2.RedactionHandlingNetworkAPI   = (*MetaClient)(nil)

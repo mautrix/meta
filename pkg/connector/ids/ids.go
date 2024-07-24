@@ -10,6 +10,14 @@ func MakeUserID(user int64) networkid.UserID {
 	return networkid.UserID(strconv.Itoa(int(user)))
 }
 
+func ParseIDFromString(id string) (int64, error) {
+	i, err := strconv.Atoi(id)
+	if err != nil {
+		return 0, err
+	}
+	return int64(i), nil
+}
+
 func MakeUserLoginID(user int64) networkid.UserLoginID {
 	return networkid.UserLoginID(MakeUserID(user))
 }
