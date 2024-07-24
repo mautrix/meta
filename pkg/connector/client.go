@@ -594,20 +594,8 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 
 		portalKey := networkid.PortalKey{ID: ids.MakePortalID(id)}
 
-		portal, err := m.Main.Bridge.GetPortalByID(ctx, portalKey)
-		if err != nil {
-			log.Err(err).Any("portal_key", portalKey).Msg("Failed to get portal")
-		}
-
-		chatInfo, err := m.GetChatInfo(ctx, portal)
-		if err != nil {
-			log.Err(err).Any("portal_key", portalKey).Msg("Failed to get chat info")
-		}
-
 		chat = &bridgev2.CreateChatResponse{
-			Portal:     portal,
-			PortalID:   portalKey,
-			PortalInfo: chatInfo,
+			PortalID: portalKey,
 		}
 	}
 	return &bridgev2.ResolveIdentifierResponse{
