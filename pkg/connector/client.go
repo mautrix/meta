@@ -12,6 +12,7 @@ import (
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/socket"
 
 	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
@@ -565,6 +566,87 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	panic("unimplemented")
 }
 
+func (m *MetaClient) ResolveIdentifier(ctx context.Context, number string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	log := zerolog.Ctx(ctx)
+	log.Debug().Str("number", number).Bool("create_chat", createChat).Msg("Resolving identifier")
+
+	task := &socket.SearchUserTask{
+		Query: number,
+		SupportedTypes: []table.SearchType{
+			table.SearchTypeContact, table.SearchTypeGroup, table.SearchTypePage, table.SearchTypeNonContact,
+			table.SearchTypeIGContactFollowing, table.SearchTypeIGContactNonFollowing,
+			table.SearchTypeIGNonContactFollowing, table.SearchTypeIGNonContactNonFollowing,
+		},
+		SurfaceType: 15,
+		Secondary:   false,
+	}
+	if m.cookies.Platform.IsMessenger() {
+		task.SurfaceType = 5
+		task.SupportedTypes = append(task.SupportedTypes, table.SearchTypeCommunityMessagingThread)
+	}
+	taskCopy := *task
+	taskCopy.Secondary = true
+	secondaryTask := &taskCopy
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		resp, err := m.client.ExecuteTasks(secondaryTask)
+		log.Trace().Any("response_data", resp).Err(err).Msg("Resolve identifier secondary response")
+		// The secondary response doesn't seem to have anything important, so just ignore it
+	}()
+
+	resp, err := m.client.ExecuteTasks(task)
+	log.Trace().Any("response_data", resp).Err(err).Msg("Resolve identifier primary response")
+	if err != nil {
+		return nil, fmt.Errorf("failed to search for user: %w", err)
+	}
+
+	for _, result := range resp.LSInsertSearchResult {
+		if result.ThreadType == table.ONE_TO_ONE && result.CanViewerMessage && result.GetFBID() != 0 {
+			var chat *bridgev2.CreateChatResponse
+			if createChat {
+				// Create the chat on the Meta side, not sure if this is necessary for DMs?
+				resp, err := m.client.ExecuteTasks(
+					&socket.CreateThreadTask{
+						ThreadFBID:                result.GetFBID(),
+						ForceUpsert:               0,
+						UseOpenMessengerTransport: 0,
+						SyncGroup:                 1,
+						MetadataOnly:              0,
+						PreviewOnly:               0,
+					},
+				)
+
+				log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
+
+				portalKey := networkid.PortalKey{ID: ids.MakePortalID(result.GetFBID())}
+
+				portal, err := m.Main.Bridge.GetPortalByID(ctx, portalKey)
+				if err != nil {
+					log.Err(err).Any("portal_key", portalKey).Msg("Failed to get portal")
+				}
+
+				chatInfo, err := m.GetChatInfo(ctx, portal)
+				if err != nil {
+					log.Err(err).Any("portal_key", portalKey).Msg("Failed to get chat info")
+				}
+
+				chat = &bridgev2.CreateChatResponse{
+					Portal:     portal,
+					PortalID:   portalKey,
+					PortalInfo: chatInfo,
+				}
+			}
+			return &bridgev2.ResolveIdentifierResponse{
+				UserID: ids.MakeUserID(result.GetFBID()),
+				Chat:   chat,
+			}, nil
+		}
+	}
+
+	return nil, nil
+}
+
 var (
 	_ bridgev2.NetworkAPI = (*MetaClient)(nil)
 	// _ bridgev2.EditHandlingNetworkAPI        = (*MetaClient)(nil)
@@ -573,7 +655,7 @@ var (
 	// _ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
 	// _ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
 	// _ bridgev2.TypingHandlingNetworkAPI      = (*MetaClient)(nil)
-	// _ bridgev2.IdentifierResolvingNetworkAPI = (*MetaClient)(nil)
+	_ bridgev2.IdentifierResolvingNetworkAPI = (*MetaClient)(nil)
 	// _ bridgev2.GroupCreatingNetworkAPI       = (*MetaClient)(nil)
 	// _ bridgev2.ContactListingNetworkAPI      = (*MetaClient)(nil)
 )

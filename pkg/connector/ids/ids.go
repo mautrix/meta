@@ -7,11 +7,15 @@ import (
 )
 
 func MakeUserID(user int64) networkid.UserID {
-	return networkid.UserID(networkid.UserID(strconv.Itoa(int(user))))
+	return networkid.UserID(strconv.Itoa(int(user)))
 }
 
 func MakeUserLoginID(user int64) networkid.UserLoginID {
 	return networkid.UserLoginID(MakeUserID(user))
+}
+
+func MakePortalID(portal int64) networkid.PortalID {
+	return networkid.PortalID(strconv.Itoa(int(portal)))
 }
 
 func ParseUserID(user networkid.UserID) int64 {
