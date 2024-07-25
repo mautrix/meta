@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/textproto"
+	"time"
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
@@ -51,17 +52,25 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin") // header is required
 
-	_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send MercuryUploadRequest: %w", err)
+	var attempts int
+	for {
+		attempts += 1
+		_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
+		if err != nil {
+			// MakeRequest retries itself, so bail immediately if that fails
+			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %w", err)
+		}
+		resp, err := c.parseMercuryResponse(ctx, respBody)
+		if err == nil {
+			return resp, nil
+		} else if attempts > MaxHTTPRetries {
+			return nil, err
+		}
+		c.Logger.Err(err).
+			Str("url", url).
+			Msg("Mercury response parsing failed, retrying")
+		time.Sleep(time.Duration(attempts) * 3 * time.Second)
 	}
-
-	resp, err := c.parseMercuryResponse(ctx, respBody)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
 }
 
 var antiJSPrefix = []byte("for (;;);")
