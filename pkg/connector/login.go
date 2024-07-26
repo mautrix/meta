@@ -139,21 +139,16 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if ul == nil {
 		ul, err = m.User.NewLogin(ctx, &database.UserLogin{
 			ID: login_id,
-			Metadata: database.UserLoginMetadata{
-				StandardUserLoginMetadata: database.StandardUserLoginMetadata{
-					RemoteName: user.GetName(),
-				},
-				Extra: map[string]interface{}{
-					"platform": c.Platform,
-					"cookies":  c,
-				},
+			Metadata: &MetaLoginMetadata{
+				Platform: c.Platform,
+				Cookies:  c,
 			},
 		}, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save new login: %w", err)
 		}
 	} else {
-		ul.Metadata.RemoteName = user.GetName()
+		ul.RemoteName = user.GetName()
 		err := ul.Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update existing login: %w", err)

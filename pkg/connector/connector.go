@@ -4,6 +4,10 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+
+	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type MetaConnector struct {
@@ -27,6 +31,23 @@ func (m *MetaConnector) SetMaxFileSize(maxSize int64) {
 var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	DisappearingMessages: false,
 	AggressiveUpdateInfo: false,
+}
+
+func (m *MetaConnector) GetDBMetaTypes() database.MetaTypes {
+	return database.MetaTypes{
+		Portal:   nil,
+		Ghost:    nil,
+		Message:  nil,
+		Reaction: nil,
+		UserLogin: func() any {
+			return &MetaLoginMetadata{}
+		},
+	}
+}
+
+type MetaLoginMetadata struct {
+	Platform types.Platform   `json:"platform"`
+	Cookies  *cookies.Cookies `json:"cookies"`
 }
 
 func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {

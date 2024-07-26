@@ -11,16 +11,16 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.33.0
 	github.com/tidwall/gjson v1.17.1
-	go.mau.fi/libsignal v0.1.0
-	go.mau.fi/util v0.5.1-0.20240702075351-577617730cb7
-	go.mau.fi/whatsmeow v0.0.0-20240625083845-6acab596dd8c
-	golang.org/x/crypto v0.24.0
-	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
+	go.mau.fi/libsignal v0.1.1
+	go.mau.fi/util v0.6.0
+	go.mau.fi/whatsmeow v0.0.0-20240716084021-eb41d1f09552
+	golang.org/x/crypto v0.25.0
+	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/image v0.18.0
-	golang.org/x/net v0.26.0
+	golang.org/x/net v0.27.0
 	google.golang.org/protobuf v1.34.2
 	maunium.net/go/mauflag v1.0.0
-	maunium.net/go/mautrix v0.19.0-beta.1.0.20240702082021-74c0110ee0e4
+	maunium.net/go/mautrix v0.19.0
 )
 
 require (
@@ -34,8 +34,8 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.7.4 // indirect
-	go.mau.fi/zeroconfig v0.1.2 // indirect
-	golang.org/x/sys v0.21.0 // indirect
+	go.mau.fi/zeroconfig v0.1.3 // indirect
+	golang.org/x/sys v0.22.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

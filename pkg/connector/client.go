@@ -46,22 +46,6 @@ type MetaClient struct {
 	messageConverter *msgconv.MessageConverter
 }
 
-func cookiesFromMetadata(metadata map[string]interface{}) *cookies.Cookies {
-	platform := types.Platform(metadata["platform"].(float64))
-
-	m := make(map[string]string)
-	for k, v := range metadata["cookies"].(map[string]interface{}) {
-		m[k] = v.(string)
-	}
-
-	c := &cookies.Cookies{
-		Platform: platform,
-	}
-	c.UpdateValues(m)
-
-	return c
-}
-
 // Why are these separate?
 func platformToMode(platform types.Platform) config.BridgeMode {
 	switch platform {
@@ -76,14 +60,13 @@ func platformToMode(platform types.Platform) config.BridgeMode {
 
 func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.UserLogin) (*MetaClient, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "meta_client").Logger()
-	log.Debug().Any("metadata", login.Metadata.Extra).Msg("Creating new Meta client")
 
-	var c *cookies.Cookies
-	if _, ok := login.Metadata.Extra["cookies"].(map[string]interface{}); ok {
-		c = cookiesFromMetadata(login.Metadata.Extra)
-	} else {
-		c = login.Metadata.Extra["cookies"].(*cookies.Cookies)
-	}
+	loginMetadata := login.Metadata.(*MetaLoginMetadata)
+
+	log.Debug().Any("metadata", loginMetadata).Msg("Creating new Meta client")
+
+	c := loginMetadata.Cookies
+	c.Platform = types.Platform(loginMetadata.Platform)
 
 	return &MetaClient{
 		Main:           main,
@@ -98,7 +81,7 @@ func NewMetaClient(ctx context.Context, main *MetaConnector, login *bridgev2.Use
 }
 
 func (m *MetaClient) Update(ctx context.Context) error {
-	m.login.Metadata.Extra["cookies"] = m.cookies
+	m.login.Metadata.(*MetaLoginMetadata).Cookies = m.cookies
 	err := m.login.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to save updated cookies: %w", err)
@@ -171,7 +154,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSDeleteThenInsertThread")
-		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
 			ID: networkid.PortalID(strconv.Itoa(int(thread.ThreadKey))),
 		})
 		if err != nil {
@@ -184,16 +167,18 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			continue
 		}
 
+		t := database.RoomTypeDefault
 		portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
-			Name:         &thread.ThreadName,
-			Topic:        &thread.ThreadDescription,
-			IsSpace:      &[]bool{false}[0],
-			IsDirectChat: &[]bool{true}[0],
+			Name:  &thread.ThreadName,
+			Topic: &thread.ThreadDescription,
+			Type:  &t,
+			//IsSpace:      &[]bool{false}[0],
+			//IsDirectChat: &[]bool{true}[0],
 		}, m.login, nil, time.Time{})
 	}
 	for _, participant := range tbl.LSAddParticipantIdToGroupThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ContactId).Msg("LSAddParticipantIdToGroupThread")
-		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
 			ID: networkid.PortalID(strconv.Itoa(int(participant.ThreadKey))),
 		})
 		if err != nil {
@@ -213,7 +198,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, participant := range tbl.LSRemoveParticipantFromThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ParticipantId).Msg("LSRemoveParticipantFromThread")
-		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
 			ID: networkid.PortalID(strconv.Itoa(int(participant.ThreadKey))),
 		})
 		if err != nil {
@@ -238,7 +223,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, thread := range tbl.LSSyncUpdateThreadName {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSUpdateThreadName")
-		portal, err := m.Main.Bridge.GetPortalByID(ctx, networkid.PortalKey{
+		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
 			ID: networkid.PortalID(strconv.Itoa(int(thread.ThreadKey))),
 		})
 		if err != nil {
@@ -368,45 +353,67 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 
 // GetChatInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	// We have to request an entirely new initial table here, because unfortunately we can't get just the metadata we need.
-	_, initialTable, err := m.client.LoadMessagesPage()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load messages page: %w", err)
-	}
+	// // We have to request an entirely new initial table here, because unfortunately we can't get just the metadata we need.
+	// _, initialTable, err := m.client.LoadMessagesPage()
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to load messages page: %w", err)
+	// }
 
-	var thread_name string
-	var thread_description string
-	var members *bridgev2.ChatMemberList = &bridgev2.ChatMemberList{}
+	// var thread_name string
+	// var thread_description string
+	// var members *bridgev2.ChatMemberList = &bridgev2.ChatMemberList{}
 
-	threadKey, err := strconv.Atoi(string(portal.ID))
+	// threadKey, err := strconv.Atoi(string(portal.ID))
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to parse thread ID: %w", err)
+	// }
+
+	// for _, thread := range initialTable.LSDeleteThenInsertThread {
+	// 	if thread.ThreadKey == int64(threadKey) {
+	// 		thread_name = thread.ThreadName
+	// 		thread_description = thread.ThreadDescription
+	// 		break
+	// 	}
+	// }
+
+	// for _, participant := range initialTable.LSAddParticipantIdToGroupThread {
+	// 	if participant.ThreadKey == int64(threadKey) {
+	// 		members.Members = append(members.Members, bridgev2.ChatMember{
+	// 			EventSender: m.senderFromID(participant.ContactId),
+	// 			Nickname:    participant.Nickname,
+	// 			Membership:  event.MembershipJoin,
+	// 		})
+	// 	}
+	// }
+
+	log := zerolog.Ctx(ctx)
+
+	id, err := ids.ParseIDFromString(string(portal.ID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse thread ID: %w", err)
 	}
 
-	for _, thread := range initialTable.LSDeleteThenInsertThread {
-		if thread.ThreadKey == int64(threadKey) {
-			thread_name = thread.ThreadName
-			thread_description = thread.ThreadDescription
-			break
-		}
-	}
+	resp, err := m.client.ExecuteTasks(
+		&socket.CreateThreadTask{
+			ThreadFBID:                id,
+			ForceUpsert:               0,
+			UseOpenMessengerTransport: 0,
+			SyncGroup:                 1,
+			MetadataOnly:              0,
+			PreviewOnly:               0,
+		},
+	)
 
-	for _, participant := range initialTable.LSAddParticipantIdToGroupThread {
-		if participant.ThreadKey == int64(threadKey) {
-			members.Members = append(members.Members, bridgev2.ChatMember{
-				EventSender: m.senderFromID(participant.ContactId),
-				Nickname:    participant.Nickname,
-				Membership:  event.MembershipJoin,
-			})
-		}
-	}
+	log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
 
+	t := database.RoomTypeDefault
 	return &bridgev2.ChatInfo{
-		Name:         &thread_name,
-		Topic:        &thread_description,
-		IsSpace:      &[]bool{false}[0],
-		IsDirectChat: &[]bool{true}[0],
-		Members:      members,
+		//Name:         &thread_name,
+		//Topic:        &thread_description,
+		//IsSpace:      &[]bool{false}[0],
+		//IsDirectChat: &[]bool{true}[0],
+		//Members:      members,
+		Type: &t,
 	}, nil
 }
 
@@ -595,7 +602,7 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 		portalKey := networkid.PortalKey{ID: ids.MakePortalID(id)}
 
 		chat = &bridgev2.CreateChatResponse{
-			PortalID: portalKey,
+			PortalKey: portalKey,
 		}
 	}
 	return &bridgev2.ResolveIdentifierResponse{

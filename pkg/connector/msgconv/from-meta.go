@@ -141,13 +141,6 @@ func (mc *MessageConverter) getMatrixReply(ctx context.Context, portal *bridgev2
 
 	mxid := uinfo.MXID
 
-	if message.Metadata.SenderMXID != uinfo.MXID {
-		log.Warn().
-			Any("message_sender", message.SenderID).
-			Msg("SenderID of reply target message does not match reply user, overriding")
-		mxid = message.Metadata.SenderMXID
-	}
-
 	return &matrixReplyInfo{message.MXID, mxid}, nil
 }
 
