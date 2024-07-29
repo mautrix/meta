@@ -24,6 +24,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 
 	metaTypes "go.mau.fi/mautrix-meta/messagix/types"
@@ -154,83 +155,155 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSDeleteThenInsertThread")
-		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-			ID: networkid.PortalID(strconv.Itoa(int(thread.ThreadKey))),
+
+		roomType := database.RoomTypeDefault
+		if thread.ThreadType == table.ONE_TO_ONE {
+			roomType = database.RoomTypeDM
+		} else if thread.ThreadType == table.GROUP_THREAD {
+			roomType = database.RoomTypeGroupDM
+		}
+
+		m.Main.Bridge.QueueRemoteEvent(m.login, &simplevent.ChatResync{
+			EventMeta: simplevent.EventMeta{
+				Type: bridgev2.RemoteEventChatResync,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.Int64("thread_id", thread.ThreadKey)
+				},
+				PortalKey: networkid.PortalKey{
+					ID: ids.MakePortalID(thread.ThreadKey),
+				},
+				CreatePortal: true,
+			},
+
+			ChatInfo: &bridgev2.ChatInfo{
+				Name:  &thread.ThreadName,
+				Topic: &thread.ThreadDescription,
+				Type:  &roomType,
+			},
 		})
-		if err != nil {
-			log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to get portal")
-			continue
-		}
-
-		if portal.MXID == "" {
-			log.Warn().Int64("thread_id", thread.ThreadKey).Msg("Cannot update thread metadata, portal not created yet")
-			continue
-		}
-
-		t := database.RoomTypeDefault
-		portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
-			Name:  &thread.ThreadName,
-			Topic: &thread.ThreadDescription,
-			Type:  &t,
-			//IsSpace:      &[]bool{false}[0],
-			//IsDirectChat: &[]bool{true}[0],
-		}, m.login, nil, time.Time{})
 	}
 	for _, participant := range tbl.LSAddParticipantIdToGroupThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ContactId).Msg("LSAddParticipantIdToGroupThread")
-		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-			ID: networkid.PortalID(strconv.Itoa(int(participant.ThreadKey))),
-		})
-		if err != nil {
-			log.Err(err).Int64("thread_id", participant.ThreadKey).Msg("Failed to get portal")
-			continue
-		}
 
-		portal.SyncParticipants(ctx, &bridgev2.ChatMemberList{
-			Members: []bridgev2.ChatMember{
-				{
-					EventSender: m.senderFromID(participant.ContactId),
-					Nickname:    participant.Nickname,
-					Membership:  event.MembershipJoin,
+		m.Main.Bridge.QueueRemoteEvent(m.login, &simplevent.ChatInfoChange{
+			EventMeta: simplevent.EventMeta{
+				Type: bridgev2.RemoteEventChatInfoChange,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ContactId)
+
+				},
+				PortalKey: networkid.PortalKey{
+					ID: ids.MakePortalID(participant.ThreadKey),
 				},
 			},
-		}, m.login, nil, time.Time{})
+			ChatInfoChange: &bridgev2.ChatInfoChange{
+				MemberChanges: &bridgev2.ChatMemberList{
+					Members: []bridgev2.ChatMember{
+						{
+							EventSender: m.senderFromID(participant.ContactId),
+							Nickname:    participant.Nickname,
+							Membership:  event.MembershipJoin,
+						},
+					},
+				},
+			},
+		})
 	}
 	for _, participant := range tbl.LSRemoveParticipantFromThread {
 		log.Warn().Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ParticipantId).Msg("LSRemoveParticipantFromThread")
-		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-			ID: networkid.PortalID(strconv.Itoa(int(participant.ThreadKey))),
-		})
-		if err != nil {
-			log.Err(err).Int64("thread_id", participant.ThreadKey).Msg("Failed to get portal")
-			continue
-		}
 
-		portal.SyncParticipants(ctx, &bridgev2.ChatMemberList{
-			Members: []bridgev2.ChatMember{
-				{
-					EventSender: m.senderFromID(participant.ParticipantId),
-					Membership:  event.MembershipLeave,
+		m.Main.Bridge.QueueRemoteEvent(m.login, &simplevent.ChatInfoChange{
+			EventMeta: simplevent.EventMeta{
+				Type: bridgev2.RemoteEventChatInfoChange,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.Int64("thread_id", participant.ThreadKey).Int64("contact_id", participant.ParticipantId)
+
+				},
+				PortalKey: networkid.PortalKey{
+					ID: ids.MakePortalID(participant.ThreadKey),
 				},
 			},
-		}, m.login, nil, time.Time{})
+			ChatInfoChange: &bridgev2.ChatInfoChange{
+				MemberChanges: &bridgev2.ChatMemberList{
+					Members: []bridgev2.ChatMember{
+						{
+							EventSender: m.senderFromID(participant.ParticipantId),
+							Membership:  event.MembershipLeave,
+						},
+					},
+				},
+			},
+		})
 	}
 	for _, thread := range tbl.LSVerifyThreadExists {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSVerifyThreadExists")
+
+		roomType := database.RoomTypeDefault
+		if thread.ThreadType == table.ONE_TO_ONE {
+			roomType = database.RoomTypeDM
+		} else if thread.ThreadType == table.GROUP_THREAD {
+			roomType = database.RoomTypeGroupDM
+		}
+
+		m.Main.Bridge.QueueRemoteEvent(m.login, &simplevent.ChatResync{
+			EventMeta: simplevent.EventMeta{
+				Type: bridgev2.RemoteEventChatResync,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.Int64("thread_id", thread.ThreadKey)
+				},
+				PortalKey: networkid.PortalKey{
+					ID: ids.MakePortalID(thread.ThreadKey),
+				},
+				CreatePortal: true,
+			},
+
+			GetChatInfoFunc: func(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+				// If the room isn't created yet, we're probably missing some info... this will create a stub room and ask Meta to send us the rest
+				if portal.MXID == "" {
+					resp, err := m.client.ExecuteTasks(
+						&socket.CreateThreadTask{
+							ThreadFBID:                thread.ThreadKey,
+							ForceUpsert:               0,
+							UseOpenMessengerTransport: 0,
+							SyncGroup:                 1,
+							MetadataOnly:              0,
+							PreviewOnly:               0,
+						},
+					)
+					if err != nil {
+						log.Err(err).Msg("Failed to request more thread info")
+					}
+					log.Debug().Any("response", resp).Msg("Requested more thread info")
+				}
+				return &bridgev2.ChatInfo{
+					Type: &roomType,
+				}, nil
+			},
+		})
 	}
 	for _, mute := range tbl.LSUpdateThreadMuteSetting {
 		log.Warn().Int64("thread_id", mute.ThreadKey).Msg("LSUpdateThreadMuteSetting")
 	}
 	for _, thread := range tbl.LSSyncUpdateThreadName {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSUpdateThreadName")
-		portal, err := m.Main.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-			ID: networkid.PortalID(strconv.Itoa(int(thread.ThreadKey))),
+
+		m.Main.Bridge.QueueRemoteEvent(m.login, &simplevent.ChatInfoChange{
+			EventMeta: simplevent.EventMeta{
+				Type: bridgev2.RemoteEventChatInfoChange,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.Int64("thread_id", thread.ThreadKey)
+
+				},
+				PortalKey: networkid.PortalKey{
+					ID: ids.MakePortalID(thread.ThreadKey),
+				},
+			},
+			ChatInfoChange: &bridgev2.ChatInfoChange{
+				ChatInfo: &bridgev2.ChatInfo{
+					Name: &thread.ThreadName,
+				},
+			},
 		})
-		if err != nil {
-			log.Err(err).Int64("thread_id", thread.ThreadKey).Msg("Failed to get portal")
-			continue
-		}
-		portal.UpdateName(ctx, thread.ThreadName, nil, time.Time{})
 	}
 
 	upsert, insert := tbl.WrapMessages()
@@ -386,35 +459,37 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 	// 	}
 	// }
 
-	log := zerolog.Ctx(ctx)
+	return &bridgev2.ChatInfo{}, nil
 
-	id, err := ids.ParseIDFromString(string(portal.ID))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse thread ID: %w", err)
-	}
+	// log := zerolog.Ctx(ctx)
 
-	resp, err := m.client.ExecuteTasks(
-		&socket.CreateThreadTask{
-			ThreadFBID:                id,
-			ForceUpsert:               0,
-			UseOpenMessengerTransport: 0,
-			SyncGroup:                 1,
-			MetadataOnly:              0,
-			PreviewOnly:               0,
-		},
-	)
+	// id, err := ids.ParseIDFromString(string(portal.ID))
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to parse thread ID: %w", err)
+	// }
 
-	log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
+	// resp, err := m.client.ExecuteTasks(
+	// 	&socket.CreateThreadTask{
+	// 		ThreadFBID:                id,
+	// 		ForceUpsert:               0,
+	// 		UseOpenMessengerTransport: 0,
+	// 		SyncGroup:                 1,
+	// 		MetadataOnly:              0,
+	// 		PreviewOnly:               0,
+	// 	},
+	// )
 
-	t := database.RoomTypeDefault
-	return &bridgev2.ChatInfo{
-		//Name:         &thread_name,
-		//Topic:        &thread_description,
-		//IsSpace:      &[]bool{false}[0],
-		//IsDirectChat: &[]bool{true}[0],
-		//Members:      members,
-		Type: &t,
-	}, nil
+	// log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
+
+	// t := database.RoomTypeDefault
+	// return &bridgev2.ChatInfo{
+	// 	//Name:         &thread_name,
+	// 	//Topic:        &thread_description,
+	// 	//IsSpace:      &[]bool{false}[0],
+	// 	//IsDirectChat: &[]bool{true}[0],
+	// 	//Members:      members,
+	// 	Type: &t,
+	// }, nil
 }
 
 // GetUserInfo implements bridgev2.NetworkAPI.
@@ -560,7 +635,8 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 // IsLoggedIn implements bridgev2.NetworkAPI.
 func (m *MetaClient) IsLoggedIn() bool {
-	panic("unimplemented")
+	//panic("unimplemented")
+	return true
 }
 
 // IsThisUser implements bridgev2.NetworkAPI.
