@@ -64,6 +64,23 @@ type MetaCookieLogin struct {
 
 var _ bridgev2.LoginProcessCookies = (*MetaCookieLogin)(nil)
 
+func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridgev2.LoginCookieField {
+	fields := make([]bridgev2.LoginCookieField, len(cookies))
+	for i, cookie := range cookies {
+		fields[i] = bridgev2.LoginCookieField{
+			ID: string(cookie),
+			Sources: []bridgev2.LoginCookieFieldSource{
+				{
+					Type:         bridgev2.LoginCookieTypeCookie,
+					Name:         string(cookie),
+					CookieDomain: domain,
+				},
+			},
+		}
+	}
+	return fields
+}
+
 func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	if m.Flow == FlowIDFacebookCookies {
 		return &bridgev2.LoginStep{
@@ -73,8 +90,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 			CookiesParams: &bridgev2.LoginCookiesParams{
 				URL:       "https://www.facebook.com/",
 				UserAgent: messagix.UserAgent,
-				//CookieDomain: "www.facebook.com",
-				//CookieKeys:   exslices.CastToString[string](cookies.FBRequiredCookies),
+				Fields:    cookieListToFields(cookies.FBRequiredCookies, "www.facebook.com"),
 			},
 		}, nil
 	} else if m.Flow == FlowIDInstagramCookies {
@@ -85,8 +101,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 			CookiesParams: &bridgev2.LoginCookiesParams{
 				URL:       "https://www.instagram.com/",
 				UserAgent: messagix.UserAgent,
-				//CookieDomain: "www.instagram.com",
-				//CookieKeys:   exslices.CastToString[string](cookies.IGRequiredCookies),
+				Fields:    cookieListToFields(cookies.IGRequiredCookies, "www.instagram.com"),
 			},
 		}, nil
 	} else {
