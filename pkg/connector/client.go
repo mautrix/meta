@@ -674,8 +674,9 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 		}
 	}
 	return &bridgev2.ResolveIdentifierResponse{
-		UserID: ids.MakeUserID(id),
-		Chat:   chat,
+		UserID:   ids.MakeUserID(id),
+		UserInfo: &bridgev2.UserInfo{},
+		Chat:     chat,
 	}, nil
 }
 
