@@ -156,9 +156,26 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSDeleteThenInsertThread")
 
+		members := &bridgev2.ChatMemberList{
+			Members: []bridgev2.ChatMember{
+				{
+					EventSender: bridgev2.EventSender{
+						IsFromMe:    true,
+						Sender:      networkid.UserID(m.login.ID),
+						SenderLogin: m.login.ID,
+					},
+					Membership: event.MembershipJoin,
+				},
+			},
+		}
+
 		roomType := database.RoomTypeDefault
 		if thread.ThreadType == table.ONE_TO_ONE {
 			roomType = database.RoomTypeDM
+			members.Members = append(members.Members, bridgev2.ChatMember{
+				EventSender: m.senderFromID(thread.ThreadKey), // For One-to-One threads, the other participant is the thread key
+				Membership:  event.MembershipJoin,
+			})
 		} else if thread.ThreadType == table.GROUP_THREAD {
 			roomType = database.RoomTypeGroupDM
 		}
@@ -176,9 +193,10 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			},
 
 			ChatInfo: &bridgev2.ChatInfo{
-				Name:  &thread.ThreadName,
-				Topic: &thread.ThreadDescription,
-				Type:  &roomType,
+				Name:    &thread.ThreadName,
+				Topic:   &thread.ThreadDescription,
+				Members: members,
+				Type:    &roomType,
 			},
 		})
 	}
@@ -238,9 +256,26 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	for _, thread := range tbl.LSVerifyThreadExists {
 		log.Warn().Int64("thread_id", thread.ThreadKey).Msg("LSVerifyThreadExists")
 
+		members := &bridgev2.ChatMemberList{
+			Members: []bridgev2.ChatMember{
+				{
+					EventSender: bridgev2.EventSender{
+						IsFromMe:    true,
+						Sender:      networkid.UserID(m.login.ID),
+						SenderLogin: m.login.ID,
+					},
+					Membership: event.MembershipJoin,
+				},
+			},
+		}
+
 		roomType := database.RoomTypeDefault
 		if thread.ThreadType == table.ONE_TO_ONE {
 			roomType = database.RoomTypeDM
+			members.Members = append(members.Members, bridgev2.ChatMember{
+				EventSender: m.senderFromID(thread.ThreadKey), // For One-to-One threads, the other participant is the thread key
+				Membership:  event.MembershipJoin,
+			})
 		} else if thread.ThreadType == table.GROUP_THREAD {
 			roomType = database.RoomTypeGroupDM
 		}
@@ -276,7 +311,8 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 					log.Debug().Any("response", resp).Msg("Requested more thread info")
 				}
 				return &bridgev2.ChatInfo{
-					Type: &roomType,
+					Type:    &roomType,
+					Members: members,
 				}, nil
 			},
 		})
@@ -424,78 +460,13 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	return &bridgev2.NetworkRoomCapabilities{}
 }
 
-// GetChatInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	// // We have to request an entirely new initial table here, because unfortunately we can't get just the metadata we need.
-	// _, initialTable, err := m.client.LoadMessagesPage()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to load messages page: %w", err)
-	// }
-
-	// var thread_name string
-	// var thread_description string
-	// var members *bridgev2.ChatMemberList = &bridgev2.ChatMemberList{}
-
-	// threadKey, err := strconv.Atoi(string(portal.ID))
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to parse thread ID: %w", err)
-	// }
-
-	// for _, thread := range initialTable.LSDeleteThenInsertThread {
-	// 	if thread.ThreadKey == int64(threadKey) {
-	// 		thread_name = thread.ThreadName
-	// 		thread_description = thread.ThreadDescription
-	// 		break
-	// 	}
-	// }
-
-	// for _, participant := range initialTable.LSAddParticipantIdToGroupThread {
-	// 	if participant.ThreadKey == int64(threadKey) {
-	// 		members.Members = append(members.Members, bridgev2.ChatMember{
-	// 			EventSender: m.senderFromID(participant.ContactId),
-	// 			Nickname:    participant.Nickname,
-	// 			Membership:  event.MembershipJoin,
-	// 		})
-	// 	}
-	// }
-
-	return &bridgev2.ChatInfo{}, nil
-
-	// log := zerolog.Ctx(ctx)
-
-	// id, err := ids.ParseIDFromString(string(portal.ID))
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to parse thread ID: %w", err)
-	// }
-
-	// resp, err := m.client.ExecuteTasks(
-	// 	&socket.CreateThreadTask{
-	// 		ThreadFBID:                id,
-	// 		ForceUpsert:               0,
-	// 		UseOpenMessengerTransport: 0,
-	// 		SyncGroup:                 1,
-	// 		MetadataOnly:              0,
-	// 		PreviewOnly:               0,
-	// 	},
-	// )
-
-	// log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
-
-	// t := database.RoomTypeDefault
-	// return &bridgev2.ChatInfo{
-	// 	//Name:         &thread_name,
-	// 	//Topic:        &thread_description,
-	// 	//IsSpace:      &[]bool{false}[0],
-	// 	//IsDirectChat: &[]bool{true}[0],
-	// 	//Members:      members,
-	// 	Type: &t,
-	// }, nil
+	panic("GetChatInfo should never be called")
 }
 
-// GetUserInfo implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	// This should never be called because ghost info is pre-populated when parsing the table
-	panic("unimplemented")
+	panic("GetUserInfo should never be called")
 }
 
 type msgconvContextKey int
