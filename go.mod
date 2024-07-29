@@ -10,17 +10,17 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.33.0
-	github.com/tidwall/gjson v1.17.1
+	github.com/tidwall/gjson v1.17.2
 	go.mau.fi/libsignal v0.1.1
-	go.mau.fi/util v0.6.0
-	go.mau.fi/whatsmeow v0.0.0-20240716084021-eb41d1f09552
+	go.mau.fi/util v0.6.1-0.20240719175439-20a6073e1dd4
+	go.mau.fi/whatsmeow v0.0.0-20240726213518-bb5852f056ca
 	golang.org/x/crypto v0.25.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/image v0.18.0
 	golang.org/x/net v0.27.0
 	google.golang.org/protobuf v1.34.2
 	maunium.net/go/mauflag v1.0.0
-	maunium.net/go/mautrix v0.19.0
+	maunium.net/go/mautrix v0.19.1-0.20240729144154-7a3b919723e9
 )
 
 require (

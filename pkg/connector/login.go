@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"go.mau.fi/util/exslices"
+	//"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
@@ -71,10 +71,10 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 			StepID:       "fi.mau.meta.cookies",
 			Instructions: "Please enter cookies from your browser",
 			CookiesParams: &bridgev2.LoginCookiesParams{
-				URL:          "https://www.facebook.com/",
-				UserAgent:    messagix.UserAgent,
-				CookieDomain: "www.facebook.com",
-				CookieKeys:   exslices.CastToString[string](cookies.FBRequiredCookies),
+				URL:       "https://www.facebook.com/",
+				UserAgent: messagix.UserAgent,
+				//CookieDomain: "www.facebook.com",
+				//CookieKeys:   exslices.CastToString[string](cookies.FBRequiredCookies),
 			},
 		}, nil
 	} else if m.Flow == FlowIDInstagramCookies {
@@ -83,10 +83,10 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 			StepID:       "fi.mau.meta.cookies",
 			Instructions: "Please enter cookies from your browser",
 			CookiesParams: &bridgev2.LoginCookiesParams{
-				URL:          "https://www.instagram.com/",
-				UserAgent:    messagix.UserAgent,
-				CookieDomain: "www.instagram.com",
-				CookieKeys:   exslices.CastToString[string](cookies.IGRequiredCookies),
+				URL:       "https://www.instagram.com/",
+				UserAgent: messagix.UserAgent,
+				//CookieDomain: "www.instagram.com",
+				//CookieKeys:   exslices.CastToString[string](cookies.IGRequiredCookies),
 			},
 		}, nil
 	} else {
