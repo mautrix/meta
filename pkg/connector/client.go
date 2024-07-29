@@ -648,8 +648,29 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 
 		portalKey := networkid.PortalKey{ID: ids.MakePortalID(id)}
 
+		roomtype := database.RoomTypeDM
+
 		chat = &bridgev2.CreateChatResponse{
 			PortalKey: portalKey,
+			PortalInfo: &bridgev2.ChatInfo{
+				Type: &roomtype,
+				Members: &bridgev2.ChatMemberList{
+					Members: []bridgev2.ChatMember{
+						{
+							EventSender: bridgev2.EventSender{
+								IsFromMe:    true,
+								Sender:      networkid.UserID(m.login.ID),
+								SenderLogin: m.login.ID,
+							},
+							Membership: event.MembershipJoin,
+						},
+						{
+							EventSender: m.senderFromID(id),
+							Membership:  event.MembershipJoin,
+						},
+					},
+				},
+			},
 		}
 	}
 	return &bridgev2.ResolveIdentifierResponse{
