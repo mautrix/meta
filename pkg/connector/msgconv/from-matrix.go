@@ -18,6 +18,7 @@ package msgconv
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
@@ -28,6 +29,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix/format"
 
 	"go.mau.fi/mautrix-meta/messagix/methods"
 	"go.mau.fi/mautrix-meta/messagix/socket"
@@ -70,6 +73,30 @@ func (mc *MessageConverter) GetMetaReply(ctx context.Context, content *event.Mes
 	}
 }
 
+const MENTION_LOCATOR = "meta_mention_"
+
+type MetaMention struct {
+	Locator string
+	Name    string
+	UserID  int64
+}
+
+func NewMetaMention(userID int64, name string) *MetaMention {
+	// Come up with a random string to use as the locator
+	// This is a bit of a hack, but it should work
+
+	length := 16
+	b := make([]byte, length+2)
+	rand.Read(b)
+	locator := fmt.Sprintf("%x", b)[2 : length+2]
+
+	return &MetaMention{
+		Locator: MENTION_LOCATOR + locator,
+		Name:    name,
+		UserID:  userID,
+	}
+}
+
 func (mc *MessageConverter) parseFormattedBody(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal, task *socket.SendMessageTask) {
 	log := zerolog.Ctx(ctx)
 	if content.FormattedBody == "" || content.FormattedBody == content.Body || string(content.Format) != "org.matrix.custom.html" {
@@ -77,69 +104,60 @@ func (mc *MessageConverter) parseFormattedBody(ctx context.Context, content *eve
 		return
 	}
 
-	// By necessity, we have to parse the formatted body to find mentions, rather than the unformatted body
-	// This means that we have to do all the parsing ourselves, rather than relying on whatever the unformatted body has
-	// This HTML parsing code is shit, but it works for now.
-	// TODO: Fix this
+	mentions := make([]*MetaMention, 0)
 
-	formattedBody := content.FormattedBody
+	parsed := (&format.HTMLParser{
+		PillConverter: func(displayname, mxid, eventID string, ctx format.Context) string {
+			ghost, err := portal.Bridge.GetGhostByMXID(ctx.Ctx, id.UserID(mxid))
+			if err != nil {
+				log.Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
+				return displayname
+			}
+			mention := NewMetaMention(ids.ParseUserID(ghost.ID), ghost.Name)
+			mentions = append(mentions, mention)
+			return mention.Locator
+		},
+		BoldConverter: func(text string, ctx format.Context) string {
+			return "*" + text + "*"
+		},
+		ItalicConverter: func(text string, ctx format.Context) string {
+			return "_" + text + "_"
+		},
+		StrikethroughConverter: func(text string, ctx format.Context) string {
+			return "~" + text + "~"
+		},
+		MonospaceConverter: func(text string, ctx format.Context) string {
+			return "`" + text + "`"
+		},
+		MonospaceBlockConverter: func(code, language string, ctx format.Context) string {
+			return "```\n" + code + "\n```"
+		},
+	}).Parse(content.FormattedBody, format.NewContext(ctx))
 
-	var mentions socket.Mentions
+	var socketMentions socket.Mentions
 
-	for {
-		start := strings.Index(formattedBody, "<a href=\"https://matrix.to/#/@")
-		if start == -1 {
-			log.Debug().Any("formatted_body", content.FormattedBody).Msg("No more mentions in formatted body")
-			break
+	for _, mention := range mentions {
+		// Find the mention in the parsed body
+		mentionIndex := strings.Index(parsed, mention.Locator)
+		if mentionIndex == -1 {
+			log.Warn().Any("mention", mention).Msg("Mention not found in parsed body")
+			continue
 		}
 
-		end := strings.Index(formattedBody[start:], ":beeper.local\">")
-		if end == -1 {
-			log.Debug().Any("formatted_body", content.FormattedBody).Msg("No mentions in formatted body")
-			break
-		}
-		end += start + len(":beeper.local\">")
+		parsed = parsed[:mentionIndex] + "@" + mention.Name + parsed[mentionIndex+len(mention.Locator):]
 
-		url := formattedBody[start+9 : end-2]
-
-		uri, err := id.ParseMatrixURIOrMatrixToURL(url)
-		if err != nil {
-			log.Err(err).Str("url", url).Msg("Failed to parse mention URI")
-			break
-		}
-
-		log.Debug().Str("url", url).Any("uri", uri).Msg("Found mention in formatted body")
-
-		ghost, err := portal.Bridge.GetGhostByMXID(ctx, uri.UserID())
-		if err != nil {
-			log.Err(err).Stringer("uri", uri).Msg("Failed to get user for mention")
-			break
-		}
-
-		endTag := strings.Index(formattedBody[end:], "</a>")
-		if endTag == -1 {
-			log.Debug().Any("formatted_body", content.FormattedBody).Msg("No end tag for mention in formatted body")
-			break
-		}
-		endTag += end + len("</a>")
-
-		newContent := "@" + ghost.Name
-
-		// Add the mention to the list
-		mentions = append(mentions, socket.Mention{
-			ID:     ids.ParseUserID(ghost.ID),
-			Offset: start,
-			Length: len(newContent),
+		socketMentions = append(socketMentions, socket.Mention{
+			ID:     mention.UserID,
+			Offset: mentionIndex,
+			Length: len("@" + mention.Name),
 			Type:   socket.MentionTypePerson,
 		})
-
-		// Replace the mention with @user's name
-		formattedBody = formattedBody[:start] + newContent + formattedBody[endTag:]
 	}
 
-	data := mentions.ToData()
+	data := socketMentions.ToData()
 	task.MentionData = &data
-	content.Body = formattedBody
+
+	task.Text = parsed
 }
 
 func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, content *event.MessageEventContent, relaybotFormatted bool, threadID int64, portal *bridgev2.Portal) ([]socket.Task, int64, error) {
@@ -167,8 +185,9 @@ func (mc *MessageConverter) ToMeta(ctx context.Context, evt *event.Event, conten
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		if content.FormattedBody != "" {
 			mc.parseFormattedBody(ctx, content, portal, task)
+		} else {
+			task.Text = content.Body
 		}
-		task.Text = content.Body
 
 	// case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
 	// 	resp, err := mc.reuploadFileToMeta(ctx, evt, content)
