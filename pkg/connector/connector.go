@@ -57,11 +57,12 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 func (s *MetaConnector) GetName() bridgev2.BridgeName {
 	if s.Config == nil || s.Config.Mode == "" {
 		return bridgev2.BridgeName{
-			DisplayName:      "Meta",
-			NetworkURL:       "https://meta.com",
-			NetworkIcon:      "mxc://maunium.net/DxpVrwwzPUwaUSazpsjXgcKB",
-			NetworkID:        "meta",
-			BeeperBridgeType: "meta",
+			DisplayName: "Meta",
+			NetworkURL:  "https://meta.com",
+			NetworkIcon: "mxc://maunium.net/DxpVrwwzPUwaUSazpsjXgcKB",
+			NetworkID:   "meta",
+			// this should be changed to "meta", this is just for compatibility with existing clients during development
+			BeeperBridgeType: "facebookgo",
 			DefaultPort:      29319,
 		}
 	} else {
@@ -71,7 +72,7 @@ func (s *MetaConnector) GetName() bridgev2.BridgeName {
 				NetworkURL:       "https://instagram.com",
 				NetworkIcon:      "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv",
 				NetworkID:        "instagram",
-				BeeperBridgeType: "meta",
+				BeeperBridgeType: "instagramgo",
 				DefaultPort:      29319,
 			}
 		} else if s.Config.Mode == "facebook" {
@@ -80,7 +81,7 @@ func (s *MetaConnector) GetName() bridgev2.BridgeName {
 				NetworkURL:       "https://www.facebook.com/messenger",
 				NetworkIcon:      "mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak",
 				NetworkID:        "facebook",
-				BeeperBridgeType: "meta",
+				BeeperBridgeType: "facebookgo",
 				DefaultPort:      29319,
 			}
 		} else {
