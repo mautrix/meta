@@ -8,6 +8,8 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"go.mau.fi/util/variationselector"
+
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
@@ -361,9 +363,8 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			Sender:        m.senderFromID(reaction.ActorId),
 			PortalKey:     networkid.PortalKey{ID: networkid.PortalID(strconv.Itoa(int(reaction.ThreadKey)))},
 			TargetMessage: networkid.MessageID(reaction.MessageId),
-			// only 1 reaction can be used per message, so just use a hardcoded ID
-			EmojiID: networkid.EmojiID("reaction"),
-			Emoji:   reaction.Reaction,
+			EmojiID:       networkid.EmojiID(""),
+			Emoji:         reaction.Reaction,
 		}
 		m.Main.Bridge.QueueRemoteEvent(m.login, evt)
 	}
@@ -380,7 +381,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			Sender:        m.senderFromID(reaction.ActorId),
 			PortalKey:     networkid.PortalKey{ID: networkid.PortalID(strconv.Itoa(int(reaction.ThreadKey)))},
 			TargetMessage: networkid.MessageID(reaction.MessageId),
-			EmojiID:       networkid.EmojiID("reaction"),
+			EmojiID:       networkid.EmojiID(""),
 		}
 		m.Main.Bridge.QueueRemoteEvent(m.login, evt)
 	}
@@ -601,19 +602,59 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 	}, nil
 }
 
-// HandleMatrixReaction implements bridgev2.ReactionHandlingNetworkAPI.
-func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (reaction *database.Reaction, err error) {
-	panic("unimplemented")
+func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
+	log := zerolog.Ctx(ctx)
+
+	log.Debug().Any("reaction", msg).Msg("Handling Matrix reaction")
+
+	resp, err := m.client.ExecuteTasks(&socket.SendReactionTask{
+		ThreadKey:       ids.ParsePortalID(msg.Portal.ID),
+		TimestampMs:     msg.Event.Timestamp,
+		MessageID:       string(msg.TargetMessage.ID),
+		Reaction:        msg.PreHandleResp.Emoji,
+		ActorID:         ids.ParseUserID(msg.PreHandleResp.SenderID),
+		SyncGroup:       1,
+		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to send reaction to Meta: %w", err)
+	}
+
+	log.Trace().Any("response", resp).Msg("Meta reaction response")
+
+	return &database.Reaction{}, nil
 }
 
-// HandleMatrixReactionRemove implements bridgev2.ReactionHandlingNetworkAPI.
 func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
-	panic("unimplemented")
+	log := zerolog.Ctx(ctx)
+
+	log.Debug().Any("reaction", msg).Msg("Removing Matrix reaction")
+
+	resp, err := m.client.ExecuteTasks(&socket.SendReactionTask{
+		ThreadKey:       ids.ParsePortalID(msg.Portal.ID),
+		TimestampMs:     msg.Event.Timestamp,
+		MessageID:       string(msg.TargetReaction.MessageID),
+		Reaction:        "",
+		ActorID:         ids.ParseUserID(msg.TargetReaction.SenderID),
+		SyncGroup:       1,
+		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send reaction to Meta: %w", err)
+	}
+
+	log.Trace().Any("response", resp).Msg("Meta reaction remove response")
+
+	return nil
 }
 
-// PreHandleMatrixReaction implements bridgev2.ReactionHandlingNetworkAPI.
 func (m *MetaClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
-	panic("unimplemented")
+	return bridgev2.MatrixReactionPreResponse{
+		SenderID:     networkid.UserID(m.login.ID),
+		EmojiID:      networkid.EmojiID(""),
+		Emoji:        variationselector.Remove(msg.Content.RelatesTo.Key),
+		MaxReactions: 1,
+	}, nil
 }
 
 func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
