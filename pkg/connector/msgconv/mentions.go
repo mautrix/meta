@@ -51,15 +51,21 @@ var (
 	META_MONOSPACE_BLOCK_REGEX = regexp.MustCompile("```([^`]+)```")
 )
 
-func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, rawMentions *socket.MentionData, portal *bridgev2.Portal) (content *event.MessageEventContent) {
+func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, rawMentions *socket.MentionData, portal *bridgev2.Portal) (content *event.MessageEventContent) {
 	content = &event.MessageEventContent{
 		MsgType:  event.MsgText,
 		Body:     text,
 		Mentions: &event.Mentions{},
 	}
-	mentions, err := rawMentions.Parse()
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to parse mentions")
+
+	var mentions *socket.Mentions
+
+	if rawMentions != nil {
+		mentionsP, err := rawMentions.Parse()
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to parse mentions")
+		}
+		mentions = &mentionsP
 	}
 
 	outputString := text
@@ -68,7 +74,7 @@ func (mc *MessageConverter) metaToMatrixText(ctx context.Context, text string, r
 		utf16Text := NewUTF16String(text)
 		prevEnd := 0
 		var output strings.Builder
-		for _, mention := range mentions {
+		for _, mention := range *mentions {
 			if mention.Offset < prevEnd {
 				zerolog.Ctx(ctx).Warn().Msg("Ignoring overlapping mentions in message")
 				continue
