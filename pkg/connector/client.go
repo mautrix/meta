@@ -413,8 +413,8 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 				return &bridgev2.ConvertedEdit{
 					ModifiedParts: []*bridgev2.ConvertedEditPart{
 						{
-							Part: textPart,
-							Type: event.EventMessage,
+							Part:    textPart,
+							Type:    event.EventMessage,
 							Content: m.messageConverter.MetaToMatrixText(ctx, data.Text, nil, portal),
 						},
 					},
