@@ -30,3 +30,13 @@ func ParseUserID(user networkid.UserID) int64 {
 	i, _ := strconv.Atoi(string(user))
 	return int64(i)
 }
+
+func ParseMessageID(message networkid.MessageID) int64 {
+	i, _ := strconv.Atoi(string(message))
+	return int64(i)
+}
+
+func ParsePortalID(portal networkid.PortalID) int64 {
+	i, _ := strconv.Atoi(string(portal))
+	return int64(i)
+}

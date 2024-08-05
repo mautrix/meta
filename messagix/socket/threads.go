@@ -53,7 +53,7 @@ type MentionData struct {
 }
 
 func (md *MentionData) Parse() (Mentions, error) {
-	if len(md.MentionIDs) == 0 {
+	if md == nil || len(md.MentionIDs) == 0 {
 		return nil, nil
 	}
 	mentionIDs := strings.Split(md.MentionIDs, ",")

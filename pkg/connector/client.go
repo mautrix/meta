@@ -2,12 +2,13 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
+
+	"go.mau.fi/util/variationselector"
 
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
@@ -26,8 +27,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
-
-	metaTypes "go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type metaEvent struct {
@@ -364,9 +363,8 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			Sender:        m.senderFromID(reaction.ActorId),
 			PortalKey:     networkid.PortalKey{ID: networkid.PortalID(strconv.Itoa(int(reaction.ThreadKey)))},
 			TargetMessage: networkid.MessageID(reaction.MessageId),
-			// only 1 reaction can be used per message, so just use a hardcoded ID
-			EmojiID: networkid.EmojiID("reaction"),
-			Emoji:   reaction.Reaction,
+			EmojiID:       networkid.EmojiID(""),
+			Emoji:         reaction.Reaction,
 		}
 		m.Main.Bridge.QueueRemoteEvent(m.login, evt)
 	}
@@ -383,9 +381,47 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			Sender:        m.senderFromID(reaction.ActorId),
 			PortalKey:     networkid.PortalKey{ID: networkid.PortalID(strconv.Itoa(int(reaction.ThreadKey)))},
 			TargetMessage: networkid.MessageID(reaction.MessageId),
-			EmojiID:       networkid.EmojiID("reaction"),
+			EmojiID:       networkid.EmojiID(""),
 		}
 		m.Main.Bridge.QueueRemoteEvent(m.login, evt)
+	}
+
+	for _, edit := range tbl.LSEditMessage {
+		// Get the existing message by ID
+		editId := networkid.MessageID(edit.MessageID)
+		originalMsg, err := m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.login.ID, editId)
+		if err != nil {
+			log.Err(err).Str("message_id", string(editId)).Msg("Failed to get original message")
+			continue
+		}
+
+		m.Main.Bridge.QueueRemoteEvent(m.login, &simplevent.Message[*table.LSEditMessage]{
+			EventMeta: simplevent.EventMeta{
+				Type: bridgev2.RemoteEventEdit,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.
+						Str("message_id", edit.MessageID)
+				},
+				PortalKey: originalMsg.Room,
+			},
+			Data:          edit,
+			ID:            editId,
+			TargetMessage: editId,
+			ConvertEditFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message, data *table.LSEditMessage) (*bridgev2.ConvertedEdit, error) {
+				textPart := existing[0] // TODO: Figure out a better way to get the text part, esp. if there are attachments etc.
+
+				return &bridgev2.ConvertedEdit{
+					ModifiedParts: []*bridgev2.ConvertedEditPart{
+						{
+							Part:    textPart,
+							Type:    event.EventMessage,
+							Content: m.messageConverter.MetaToMatrixText(ctx, data.Text, nil, portal),
+						},
+					},
+				}, nil
+			},
+		},
+		)
 	}
 }
 
@@ -455,9 +491,20 @@ func (m *MetaClient) Disconnect() {
 	m.client = nil
 }
 
+var metaCaps = &bridgev2.NetworkRoomCapabilities{
+	FormattedText: true,
+	UserMentions:  true,
+	Replies:       true,
+	Edits:         true,
+	EditMaxCount:  10,
+	EditMaxAge:    24 * time.Hour,
+	Reactions:     true,
+	ReactionCount: 1,
+}
+
 // GetCapabilities implements bridgev2.NetworkAPI.
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
-	return &bridgev2.NetworkRoomCapabilities{}
+	return metaCaps
 }
 
 func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
@@ -469,58 +516,20 @@ func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*b
 	panic("GetUserInfo should never be called")
 }
 
-type msgconvContextKey int
-
-const (
-	msgconvContextKeyIntent msgconvContextKey = iota
-	msgconvContextKeyClient
-	msgconvContextKeyE2EEClient
-	msgconvContextKeyBackfill
-)
-
 // HandleMatrixMessage implements bridgev2.NetworkAPI.
 func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	log := zerolog.Ctx(ctx)
 
-	content, ok := msg.Event.Content.Parsed.(*event.MessageEventContent)
-	if !ok {
-		log.Error().Type("content_type", content).Msg("Unexpected parsed content type")
-		return nil, fmt.Errorf("unexpected parsed content type: %T", content)
-	}
-	if content.MsgType == event.MsgNotice /*&& !portal.bridge.Config.Bridge.BridgeNotices*/ {
+	if msg.Content.MsgType == event.MsgNotice /*&& !portal.bridge.Config.Bridge.BridgeNotices*/ {
 		log.Warn().Msg("Ignoring notice message")
 		return nil, nil
 	}
 
-	ctx = context.WithValue(ctx, msgconvContextKeyClient, m.client)
-
-	thread, err := strconv.Atoi(string(msg.Portal.ID))
-	if err != nil {
-		log.Err(err).Str("thread_id", string(msg.Portal.ID)).Msg("Failed to parse thread ID")
-		return nil, fmt.Errorf("failed to parse thread ID: %w", err)
-	}
-
 	log.Trace().Any("event", msg.Event).Msg("Handling Matrix message")
 
-	tasks, otid, err := m.messageConverter.ToMeta(ctx, msg.Event, content, false, int64(thread), msg.Portal)
-	if errors.Is(err, metaTypes.ErrPleaseReloadPage) {
-		log.Err(err).Msg("Got please reload page error while converting message, reloading page in background")
-		// go m.client.Disconnect()
-		// err = errReloading
-		panic("unimplemented")
-	} else if errors.Is(err, messagix.ErrTokenInvalidated) {
-		panic("unimplemented")
-		// go sender.DisconnectFromError(status.BridgeState{
-		// 	StateEvent: status.StateBadCredentials,
-		// 	Error:      MetaCookieRemoved,
-		// })
-		// err = errLoggedOut
-	}
-
+	tasks, otid, err := m.messageConverter.ToMeta(ctx, msg.Event, msg.Content, false, ids.ParsePortalID(msg.Portal.ID), msg.Portal)
 	if err != nil {
-		log.Err(err).Msg("Failed to convert message")
-		//go ms.sendMessageMetrics(evt, err, "Error converting", true)
-		return nil, err
+		return nil, fmt.Errorf("failed to convert message: %w", err)
 	}
 
 	log.UpdateContext(func(c zerolog.Context) zerolog.Context {
@@ -529,8 +538,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 	log.Debug().Msg("Sending Matrix message to Meta")
 
 	otidStr := strconv.FormatInt(otid, 10)
-	//portal.pendingMessages[otid] = evt.ID
-	//messageTS := time.Now()
+
 	var resp *table.LSTable
 
 	retries := 0
@@ -573,20 +581,8 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			log.Warn().Msg("Message send response didn't include message ID")
 		}
 	}
-	// if msgID != "" {
-	// 	portal.pendingMessagesLock.Lock()
-	// 	_, ok = portal.pendingMessages[otid]
-	// 	if ok {
-	// 		portal.storeMessageInDB(ctx, evt.ID, msgID, otid, sender.MetaID, messageTS, 0)
-	// 		delete(portal.pendingMessages, otid)
-	// 	} else {
-	// 		log.Debug().Msg("Not storing message send response: pending message was already removed from map")
-	// 	}
-	// 	portal.pendingMessagesLock.Unlock()
-	// }
 
 	if m.login.User.MXID != msg.Event.Sender {
-		log.Warn().Any("sender", msg.Event.Sender).Msg("Sender mismatch with user login")
 		return nil, fmt.Errorf("sender mismatch with user login: %s", msg.Event.Sender)
 	}
 
@@ -599,9 +595,105 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			Timestamp: time.Time{},
 		},
 	}, nil
+}
 
-	// timings.totalSend = time.Since(start)
-	// go ms.sendMessageMetrics(evt, err, "Error sending", true)
+func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
+	log := zerolog.Ctx(ctx)
+
+	log.Debug().Any("reaction", msg).Msg("Handling Matrix reaction")
+
+	resp, err := m.client.ExecuteTasks(&socket.SendReactionTask{
+		ThreadKey:       ids.ParsePortalID(msg.Portal.ID),
+		TimestampMs:     msg.Event.Timestamp,
+		MessageID:       string(msg.TargetMessage.ID),
+		Reaction:        msg.PreHandleResp.Emoji,
+		ActorID:         ids.ParseUserID(msg.PreHandleResp.SenderID),
+		SyncGroup:       1,
+		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to send reaction to Meta: %w", err)
+	}
+
+	log.Trace().Any("response", resp).Msg("Meta reaction response")
+
+	return &database.Reaction{}, nil
+}
+
+func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
+	log := zerolog.Ctx(ctx)
+
+	log.Debug().Any("reaction", msg).Msg("Removing Matrix reaction")
+
+	resp, err := m.client.ExecuteTasks(&socket.SendReactionTask{
+		ThreadKey:       ids.ParsePortalID(msg.Portal.ID),
+		TimestampMs:     msg.Event.Timestamp,
+		MessageID:       string(msg.TargetReaction.MessageID),
+		Reaction:        "",
+		ActorID:         ids.ParseUserID(msg.TargetReaction.SenderID),
+		SyncGroup:       1,
+		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send reaction to Meta: %w", err)
+	}
+
+	log.Trace().Any("response", resp).Msg("Meta reaction remove response")
+
+	return nil
+}
+
+func (m *MetaClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
+	return bridgev2.MatrixReactionPreResponse{
+		SenderID:     networkid.UserID(m.login.ID),
+		EmojiID:      networkid.EmojiID(""),
+		Emoji:        variationselector.Remove(msg.Content.RelatesTo.Key),
+		MaxReactions: 1,
+	}, nil
+}
+
+func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
+	log := zerolog.Ctx(ctx)
+
+	log.Debug().Any("edit", edit).Msg("Handling Matrix edit")
+
+	// TODO: The conversion stuff wants a SendMessageTask, and I don't feel like rewriting it yet
+	fakeSendTasks, _, err := m.messageConverter.ToMeta(ctx, edit.Event, edit.Content, false, ids.ParsePortalID(edit.Portal.ID), edit.Portal)
+	if err != nil {
+		return fmt.Errorf("failed to convert message: %w", err)
+	}
+
+	fakeTask := fakeSendTasks[0].(*socket.SendMessageTask)
+
+	editTask := &socket.EditMessageTask{
+		MessageID: string(edit.EditTarget.ID),
+		Text:      fakeTask.Text,
+	}
+
+	newEditCount := int64(edit.EditTarget.EditCount) + 1
+
+	var resp *table.LSTable
+	resp, err = m.client.ExecuteTasks(editTask)
+	log.Trace().Any("response", resp).Msg("Meta edit response")
+	if err != nil {
+		return fmt.Errorf("failed to send edit to Meta: %w", err)
+	}
+
+	if len(resp.LSEditMessage) == 0 {
+		log.Debug().Msg("Edit response didn't contain new edit?")
+	} else if resp.LSEditMessage[0].MessageID != editTask.MessageID {
+		log.Debug().Msg("Edit response contained different message ID")
+	} else if resp.LSEditMessage[0].Text != editTask.Text {
+		log.Warn().Msg("Server returned edit with different text")
+		return fmt.Errorf("edit reverted")
+	} else if resp.LSEditMessage[0].EditCount != newEditCount {
+		log.Warn().
+			Int64("expected_edit_count", newEditCount).
+			Int64("actual_edit_count", resp.LSEditMessage[0].EditCount).
+			Msg("Edit count mismatch")
+	}
+
+	return nil
 }
 
 // IsLoggedIn implements bridgev2.NetworkAPI.
@@ -732,10 +824,10 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 }
 
 var (
-	_ bridgev2.NetworkAPI              = (*MetaClient)(nil)
-	_ bridgev2.UserSearchingNetworkAPI = (*MetaClient)(nil)
-	// _ bridgev2.EditHandlingNetworkAPI        = (*MetaClient)(nil)
-	// _ bridgev2.ReactionHandlingNetworkAPI    = (*MetaClient)(nil)
+	_ bridgev2.NetworkAPI                 = (*MetaClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI    = (*MetaClient)(nil)
+	_ bridgev2.EditHandlingNetworkAPI     = (*MetaClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI = (*MetaClient)(nil)
 	// _ bridgev2.RedactionHandlingNetworkAPI   = (*MetaClient)(nil)
 	// _ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
 	// _ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
