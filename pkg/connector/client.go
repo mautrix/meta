@@ -415,12 +415,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 						{
 							Part: textPart,
 							Type: event.EventMessage,
-							Content: &event.MessageEventContent{
-								MsgType:       event.MsgText,
-								Body:          data.Text,
-								Format:        event.FormatHTML,
-								FormattedBody: m.messageConverter.MetaToMatrixText(ctx, data.Text, nil, portal).Body,
-							},
+							Content: m.messageConverter.MetaToMatrixText(ctx, data.Text, nil, portal),
 						},
 					},
 				}, nil
