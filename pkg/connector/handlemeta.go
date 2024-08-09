@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"golang.org/x/exp/maps"
 
 	"maunium.net/go/mautrix/bridge/status"
@@ -184,11 +185,25 @@ func (resync *threadResyncWrapper) compile() bridgev2.RemoteChatResyncWithInfo {
 			resync.Info.Members.Members = append(resync.Info.Members.Members, self)
 		}
 	}
+	if resync.Info.UserLocal == nil {
+		resync.Info.UserLocal = &bridgev2.UserLocalPortalInfo{}
+	}
+	if resync.Raw.MuteExpireTimeMs < 0 {
+		resync.Info.UserLocal.MutedUntil = ptr.Ptr(event.MutedForever)
+	} else if resync.Raw.MuteExpireTimeMs > 0 {
+		resync.Info.UserLocal.MutedUntil = ptr.Ptr(time.UnixMilli(resync.Raw.MuteExpireTimeMs))
+	}
 	return &simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventChatResync,
 			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.Int64("thread_id", resync.Raw.ThreadKey).Int("thread_type", int(resync.Raw.ThreadType))
+				return c.
+					Int64("thread_id", resync.Raw.ThreadKey).
+					Int("thread_type", int(resync.Raw.ThreadType)).
+					Dict("debug_info", zerolog.Dict().
+						Str("thread_folder", resync.Raw.FolderName).
+						Int64("ig_folder", resync.Raw.IgFolder).
+						Int64("group_notification_settings", resync.Raw.GroupNotificationSettings))
 			},
 			PortalKey: resync.PortalKey,
 		},
