@@ -28,6 +28,9 @@ import (
 
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
+	armadillo "go.mau.fi/whatsmeow/proto"
+	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
+	"go.mau.fi/whatsmeow/proto/waArmadilloXMA"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/proto/waMediaTransport"
@@ -55,7 +58,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	client *whatsmeow.Client,
 	relaybotFormatted bool,
 	replyTo *database.Message,
-) (*waConsumerApplication.ConsumerApplication, *waMsgApplication.MessageApplication_Metadata, error) {
+) (armadillo.RealMessageApplicationSub, *waMsgApplication.MessageApplication_Metadata, error) {
 	ctx = context.WithValue(ctx, contextKeyWAClient, client)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 
@@ -69,6 +72,7 @@ func (mc *MessageConverter) ToWhatsApp(
 		}
 	}
 	var waContent waConsumerApplication.ConsumerApplication_Content
+	var armadilloContent waArmadilloApplication.Armadillo_Content
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		waContent.Content = &waConsumerApplication.ConsumerApplication_Content_MessageText{
@@ -94,15 +98,19 @@ func (mc *MessageConverter) ToWhatsApp(
 		if err != nil {
 			return nil, nil, err
 		}
-		// TODO does this actually work with any of the messenger clients?
-		waContent.Content = &waConsumerApplication.ConsumerApplication_Content_LocationMessage{
-			LocationMessage: &waConsumerApplication.ConsumerApplication_LocationMessage{
-				Location: &waConsumerApplication.ConsumerApplication_Location{
-					DegreesLatitude:  proto.Float64(lat),
-					DegreesLongitude: proto.Float64(long),
-					Name:             proto.String(content.Body),
-				},
-				Address: proto.String("Earth"),
+		// TODO this is supposed to upload a preview of the map
+		armadilloContent.Content = &waArmadilloApplication.Armadillo_Content_ExtendedContentMessage{
+			ExtendedContentMessage: &waArmadilloXMA.ExtendedContentMessage{
+				TargetID:         proto.String(""),
+				TargetType:       waArmadilloXMA.ExtendedContentMessage_MSG_LOCATION_SHARING_V2.Enum(),
+				XmaLayoutType:    waArmadilloXMA.ExtendedContentMessage_SINGLE.Enum(),
+				OverlayIconGlyph: waArmadilloXMA.ExtendedContentMessage_NONE.Enum(),
+				Ctas: []*waArmadilloXMA.ExtendedContentMessage_CTA{{
+					ButtonType: waArmadilloXMA.ExtendedContentMessage_OPEN_NATIVE.Enum(),
+					NativeURL:  proto.String(fmt.Sprintf("messenger://location_share?lat=%.6f&long=%.6f", lat, long)),
+				}},
+				TitleText:    proto.String("Shared location"),
+				SubtitleText: proto.String(""),
 			},
 		}
 	default:
@@ -121,14 +129,29 @@ func (mc *MessageConverter) ToWhatsApp(
 			}
 		}
 	}
-	return &waConsumerApplication.ConsumerApplication{
-		Payload: &waConsumerApplication.ConsumerApplication_Payload{
-			Payload: &waConsumerApplication.ConsumerApplication_Payload_Content{
-				Content: &waContent,
+	if waContent.Content != nil {
+		waConsumerApp := &waConsumerApplication.ConsumerApplication{
+			Payload: &waConsumerApplication.ConsumerApplication_Payload{
+				Payload: &waConsumerApplication.ConsumerApplication_Payload_Content{
+					Content: &waContent,
+				},
 			},
-		},
-		Metadata: nil,
-	}, &meta, nil
+			Metadata: nil,
+		}
+		return waConsumerApp, &meta, nil
+	} else if armadilloContent.Content != nil {
+		armadilloApp := &waArmadilloApplication.Armadillo{
+			Payload: &waArmadilloApplication.Armadillo_Payload{
+				Payload: &waArmadilloApplication.Armadillo_Payload_Content{
+					Content: &armadilloContent,
+				},
+			},
+			Metadata: nil,
+		}
+		return armadilloApp, &meta, nil
+	} else {
+		return nil, nil, fmt.Errorf("internal error: no content set")
+	}
 }
 
 func parseGeoURI(uri string) (lat, long float64, err error) {

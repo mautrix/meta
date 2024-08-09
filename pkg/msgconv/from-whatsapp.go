@@ -22,6 +22,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -384,10 +385,30 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 	return
 }
 
+func (mc *MessageConverter) waLocationMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage, parsedURL *url.URL) (parts []*bridgev2.ConvertedMessagePart) {
+	lat := parsedURL.Query().Get("lat")
+	long := parsedURL.Query().Get("long")
+	return []*bridgev2.ConvertedMessagePart{{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgLocation,
+			GeoURI:  fmt.Sprintf("geo:%s,%s", lat, long),
+			Body:    fmt.Sprintf("%s\n%s", content.GetTitleText(), content.GetSubtitleText()),
+		},
+	}}
+}
+
 func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart) {
 	body := content.GetMessageText()
 	for _, cta := range content.GetCtas() {
-		if strings.HasPrefix(cta.GetNativeURL(), "https://") && !strings.Contains(body, cta.GetNativeURL()) {
+		parsedURL, err := url.Parse(cta.GetNativeURL())
+		if err != nil {
+			continue
+		}
+		if parsedURL.Scheme == "messenger" && parsedURL.Host == "location_share" {
+			return mc.waLocationMessageToMatrix(ctx, content, parsedURL)
+		}
+		if parsedURL.Scheme == "https" && !strings.Contains(body, cta.GetNativeURL()) {
 			if body == "" {
 				body = cta.GetNativeURL()
 			} else {

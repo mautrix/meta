@@ -13,7 +13,7 @@ require (
 	github.com/tidwall/gjson v1.17.3
 	go.mau.fi/libsignal v0.1.1
 	go.mau.fi/util v0.6.1-0.20240809030240-c1b6f86acfc8
-	go.mau.fi/whatsmeow v0.0.0-20240808172654-730b20cc1cfc
+	go.mau.fi/whatsmeow v0.0.0-20240809160754-dcc66fc7e472
 	golang.org/x/crypto v0.26.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
 	golang.org/x/image v0.19.0

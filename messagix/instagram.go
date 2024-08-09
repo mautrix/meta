@@ -253,7 +253,7 @@ func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.L
 			Int64("fbid", newFBID).
 			Str("non_facebook_user_id", cuid.NonFacebookUserID).
 			Str("ig_user_eimu", cuid.IGUserEIMU).
-			Str("init_data_user_id", ig.client.configs.browserConfigTable.MessengerWebInitData.UserID).
+			Str("init_data_user_id", ig.client.configs.browserConfigTable.MessengerWebInitData.UserID.String()).
 			Msg("Own contact entry not found, falling back to fbid in current user object")
 	}
 	if newFBID == 0 {

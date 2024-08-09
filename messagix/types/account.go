@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"strconv"
 )
 
@@ -47,7 +48,7 @@ type MessengerWebInitData struct {
 	CryptoAuthToken CryptoAuthToken `json:"cryptoAuthToken,omitempty"`
 	LogoutToken     string          `json:"logoutToken,omitempty"`
 	SessionID       string          `json:"sessionId,omitempty"`
-	UserID          string          `json:"userId,omitempty"`
+	UserID          json.Number     `json:"userId,omitempty"` // number on fb, string on ig?
 	AccountKeyV2    string          `json:"accountKeyV2,omitempty"`
 }
 

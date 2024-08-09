@@ -158,14 +158,16 @@ func (m *MetaClient) Disconnect() {
 }
 
 var metaCaps = &bridgev2.NetworkRoomCapabilities{
-	FormattedText: true,
-	UserMentions:  true,
-	Replies:       true,
-	Edits:         true,
-	EditMaxCount:  10,
-	EditMaxAge:    24 * time.Hour,
-	Reactions:     true,
-	ReactionCount: 1,
+	FormattedText:    true,
+	UserMentions:     true,
+	Replies:          true,
+	Edits:            true,
+	EditMaxCount:     10,
+	EditMaxAge:       24 * time.Hour,
+	Reactions:        true,
+	ReactionCount:    1,
+	LocationMessages: true,
+	Captions:         true,
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {

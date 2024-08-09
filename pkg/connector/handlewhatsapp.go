@@ -48,6 +48,12 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 	log := m.UserLogin.Log
 	switch evt := rawEvt.(type) {
 	case *events.FBMessage:
+		m.UserLogin.Log.Trace().
+			Any("info", evt.Info).
+			Any("transport", evt.Transport).
+			Any("application", evt.Application).
+			Any("payload", evt.Message).
+			Msg("Received WhatsApp message")
 		portalKey, threadType, ok := m.makeWAPortalKey(evt.Info.Chat)
 		if !ok {
 			log.Warn().Stringer("chat", evt.Info.Chat).Msg("Ignoring WhatsApp message with unknown chat JID")
