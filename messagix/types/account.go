@@ -47,6 +47,8 @@ type MessengerWebInitData struct {
 	CryptoAuthToken CryptoAuthToken `json:"cryptoAuthToken,omitempty"`
 	LogoutToken     string          `json:"logoutToken,omitempty"`
 	SessionID       string          `json:"sessionId,omitempty"`
+	UserID          string          `json:"userId,omitempty"`
+	AccountKeyV2    string          `json:"accountKeyV2,omitempty"`
 }
 
 type CryptoAuthToken struct {
@@ -91,6 +93,13 @@ type CurrentUserInitialData struct {
 	Name                            string `json:"NAME,omitempty"`
 	ShortName                       string `json:"SHORT_NAME,omitempty"`
 	UserID                          string `json:"USER_ID,omitempty"`
+
+	NonFacebookUserID         string `json:"NON_FACEBOOK_USER_ID,omitempty"`
+	IGUserEIMU                string `json:"IG_USER_EIMU,omitempty"`
+	IsInstagramUser           int    `json:"IS_INSTAGRAM_USER,omitempty"`
+	IsInstagramBusinessPerson bool   `json:"IS_INSTAGRAM_BUSINESS_PERSON,omitempty"`
+	IsEmployee                bool   `json:"IS_EMPLOYEE,omitempty"`
+	IsTestUser                bool   `json:"IS_TEST_USER,omitempty"`
 }
 
 func (c *CurrentUserInitialData) GetBusinessEmail() string {

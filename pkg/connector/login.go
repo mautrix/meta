@@ -12,6 +12,7 @@ import (
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 const (
@@ -156,10 +157,9 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		ID:         loginID,
 		RemoteName: user.GetName(),
 		RemoteProfile: status.RemoteProfile{
-			Username: user.GetUsername(),
-			Name:     user.GetName(),
+			Name: user.GetName(),
 		},
-		Metadata: &UserLoginMetadata{
+		Metadata: &metaid.UserLoginMetadata{
 			Platform: c.Platform,
 			Cookies:  c,
 		},
@@ -169,7 +169,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	}
 
 	backgroundCtx := ul.Log.WithContext(context.Background())
-	err = ul.Client.(*MetaClient).connectWithTable(backgroundCtx, tbl)
+	err = ul.Client.(*MetaClient).connectWithTable(backgroundCtx, tbl, user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect after login: %w", err)
 	}

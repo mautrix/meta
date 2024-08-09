@@ -82,7 +82,7 @@ func (mc *MessageConverter) ToMeta(
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		if content.Format == event.FormatHTML {
-			mc.parseFormattedBody(ctx, content, task)
+			mc.parseFormattedBody(ctx, content, task, portal)
 		} else {
 			task.Text = content.Body
 		}
@@ -137,22 +137,48 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 	if len(mxid) == 0 || mxid[0] != '@' {
 		return format.DefaultPillConverter(displayname, mxid, eventID, ctx)
 	}
+	var userID int64
+	var username string
 	ghost, err := mc.Bridge.GetGhostByMXID(ctx.Ctx, id.UserID(mxid))
 	if err != nil {
 		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
 		return displayname
+	} else if ghost != nil {
+		username = ghost.Metadata.(*metaid.GhostMetadata).Username
+		if username == "" {
+			username = ghost.Name
+		}
+		userID = metaid.ParseUserID(ghost.ID)
+	} else if user, err := mc.Bridge.GetExistingUserByMXID(ctx.Ctx, id.UserID(mxid)); err != nil {
+		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
+		return displayname
+	} else if user != nil {
+		portal := ctx.ReturnData["portal"].(*bridgev2.Portal)
+		login, _, _ := portal.FindPreferredLogin(ctx.Ctx, user, false)
+		if login == nil {
+			return displayname
+		}
+		userID = metaid.ParseUserLoginID(login.ID)
+		if login.Metadata.(*metaid.UserLoginMetadata).Platform.IsMessenger() || login.RemoteProfile.Username == "" {
+			username = login.RemoteProfile.Name
+		} else {
+			username = login.RemoteProfile.Username
+		}
+	} else {
+		return displayname
 	}
-	mention := NewMetaMention(metaid.ParseUserID(ghost.ID), ghost.Name)
+	mention := NewMetaMention(userID, username)
 	mentions := ctx.ReturnData["mentions"].(*[]*MetaMention)
 	*mentions = append(*mentions, mention)
 	return mention.Locator
 }
 
-func (mc *MessageConverter) parseFormattedBody(ctx context.Context, content *event.MessageEventContent, task *socket.SendMessageTask) {
+func (mc *MessageConverter) parseFormattedBody(ctx context.Context, content *event.MessageEventContent, task *socket.SendMessageTask, portal *bridgev2.Portal) {
 	mentions := make([]*MetaMention, 0)
 
 	parseCtx := format.NewContext(ctx)
 	parseCtx.ReturnData["mentions"] = &mentions
+	parseCtx.ReturnData["portal"] = portal
 	parsed := mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
 
 	var socketMentions socket.Mentions

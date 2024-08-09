@@ -7,9 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/table"
-	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -19,14 +17,14 @@ func (m *MetaConnector) GetDBMetaTypes() database.MetaTypes {
 			return &PortalMetadata{}
 		},
 		Ghost: func() any {
-			return &GhostMetadata{}
+			return &metaid.GhostMetadata{}
 		},
 		Message: func() any {
-			return &MessageMetadata{}
+			return &metaid.MessageMetadata{}
 		},
 		Reaction: nil,
 		UserLogin: func() any {
-			return &UserLoginMetadata{}
+			return &metaid.UserLoginMetadata{}
 		},
 	}
 }
@@ -51,18 +49,4 @@ func (meta *PortalMetadata) JID(id networkid.PortalID) waTypes.JID {
 		}
 	}
 	return jid
-}
-
-type GhostMetadata struct {
-	Username string `json:"username"`
-}
-
-type MessageMetadata struct {
-	EditTimestamp int64 `json:"edit_timestamp,omitempty"`
-}
-
-type UserLoginMetadata struct {
-	Platform   types.Platform   `json:"platform"`
-	Cookies    *cookies.Cookies `json:"cookies"`
-	WADeviceID uint16           `json:"wa_device_id,omitempty"`
 }

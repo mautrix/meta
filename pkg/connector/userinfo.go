@@ -11,6 +11,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/msgconv"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -39,7 +40,7 @@ func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 		Avatar:      avatar,
 		IsBot:       nil, // TODO
 		ExtraUpdates: func(ctx context.Context, ghost *bridgev2.Ghost) (changed bool) {
-			meta := ghost.Metadata.(*GhostMetadata)
+			meta := ghost.Metadata.(*metaid.GhostMetadata)
 			if m.LoginMeta.Platform == types.Instagram && meta.Username != info.GetUsername() {
 				meta.Username = info.GetUsername()
 				changed = true

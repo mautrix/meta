@@ -17,13 +17,14 @@ import (
 
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 type MetaClient struct {
 	Main      *MetaConnector
 	Client    *messagix.Client
-	LoginMeta *UserLoginMetadata
+	LoginMeta *metaid.UserLoginMetadata
 	UserLogin *bridgev2.UserLogin
 	Ghost     *bridgev2.Ghost
 
@@ -40,7 +41,7 @@ type MetaClient struct {
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
-	loginMetadata := login.Metadata.(*UserLoginMetadata)
+	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
 	loginMetadata.Cookies.Platform = loginMetadata.Platform
 	c := &MetaClient{
 		Main:      m,
@@ -58,19 +59,31 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 var _ bridgev2.NetworkAPI = (*MetaClient)(nil)
 
 func (m *MetaClient) Connect(ctx context.Context) error {
-	_, initialTable, err := m.Client.LoadMessagesPage()
+	currentUser, initialTable, err := m.Client.LoadMessagesPage()
 	if err != nil {
 		return fmt.Errorf("failed to load messages page: %w", err)
 	}
-	return m.connectWithTable(ctx, initialTable)
+	return m.connectWithTable(ctx, initialTable, currentUser)
 }
 
-func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable) error {
+func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable, currentUser types.UserInfo) error {
 	go m.handleTableLoop()
+
+	var err error
+	m.Ghost, err = m.Main.Bridge.GetGhostByID(ctx, networkid.UserID(m.UserLogin.ID))
+	if err != nil {
+		return fmt.Errorf("failed to get own ghost: %w", err)
+	}
+	m.Ghost.UpdateInfo(ctx, m.wrapUserInfo(currentUser))
+	m.UserLogin.RemoteProfile.Name = currentUser.GetName()
+	if !m.LoginMeta.Platform.IsMessenger() {
+		m.UserLogin.RemoteProfile.Username = currentUser.GetUsername()
+	}
+	m.UserLogin.RemoteProfile.Avatar = m.Ghost.AvatarMXC
 
 	m.initialTable.Store(initialTable)
 
-	err := m.Client.Connect()
+	err = m.Client.Connect()
 	if err != nil {
 		return err
 	}
