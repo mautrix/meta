@@ -50,7 +50,6 @@ var mediaHTTPClient = http.Client{
 	},
 	Timeout: 120 * time.Second,
 }
-var MediaReferer string
 var BypassOnionForMedia bool
 
 var ErrTooLargeFile = errors.New("too large file")

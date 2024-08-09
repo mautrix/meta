@@ -10,17 +10,18 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.33.0
-	github.com/tidwall/gjson v1.17.2
+	github.com/tidwall/gjson v1.17.3
 	go.mau.fi/libsignal v0.1.1
-	go.mau.fi/util v0.6.1-0.20240719175439-20a6073e1dd4
-	go.mau.fi/whatsmeow v0.0.0-20240726213518-bb5852f056ca
+	go.mau.fi/util v0.6.1-0.20240802175451-b430ebbffc98
+	go.mau.fi/whatsmeow v0.0.0-20240808172654-730b20cc1cfc
 	golang.org/x/crypto v0.25.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/image v0.18.0
 	golang.org/x/net v0.27.0
 	google.golang.org/protobuf v1.34.2
+	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mauflag v1.0.0
-	maunium.net/go/mautrix v0.19.1-0.20240729144154-7a3b919723e9
+	maunium.net/go/mautrix v0.19.1-0.20240808174455-5edfcff2b7b6
 )
 
 require (
@@ -36,6 +37,6 @@ require (
 	github.com/yuin/goldmark v1.7.4 // indirect
 	go.mau.fi/zeroconfig v0.1.3 // indirect
 	golang.org/x/sys v0.22.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

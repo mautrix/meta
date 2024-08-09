@@ -9,55 +9,75 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	//"go.mau.fi/util/exslices"
-
+	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
-
-	//"go.mau.fi/mautrix-meta/messagix/table"
-	"go.mau.fi/mautrix-meta/messagix/types"
-	//"go.mau.fi/mautrix-meta/pkg/store"
 )
 
-const FlowIDFacebookCookies = "cookies-facebook"
-const FlowIDInstagramCookies = "cookies-instagram"
+const (
+	FlowIDFacebookCookies  = "cookies-facebook"
+	FlowIDMessengerCookies = "cookies-messenger"
+	FlowIDInstagramCookies = "cookies-instagram"
+)
 
 func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	if flowID != FlowIDFacebookCookies && flowID != FlowIDInstagramCookies {
+	var plat config.BridgeMode
+	switch flowID {
+	case FlowIDFacebookCookies:
+		plat = config.ModeFacebook
+		if m.Config.Mode == config.ModeFacebookTor {
+			plat = config.ModeFacebookTor
+		}
+	case FlowIDMessengerCookies:
+		plat = config.ModeMessenger
+	case FlowIDInstagramCookies:
+		plat = config.ModeInstagram
+	default:
 		return nil, fmt.Errorf("unknown flow ID %s", flowID)
 	}
 
 	return &MetaCookieLogin{
-		Flow: flowID,
+		Mode: plat,
 		User: user,
 		Main: m,
 	}, nil
 }
 
-func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	facebook := bridgev2.LoginFlow{
-		Name:        "Facebook Cookies",
-		Description: "Login using cookies from Facebook Messenger",
+var (
+	loginFlowFacebook = bridgev2.LoginFlow{
+		Name:        "facebook.com",
+		Description: "Login using cookies from facebook.com",
 		ID:          FlowIDFacebookCookies,
 	}
-	instagram := bridgev2.LoginFlow{
-		Name:        "Instagram Cookies",
-		Description: "Login using cookies from Instagram",
+	loginFlowMessenger = bridgev2.LoginFlow{
+		Name:        "messenger.com",
+		Description: "Login using cookies from messenger.com",
+		ID:          FlowIDMessengerCookies,
+	}
+	loginFlowInstagram = bridgev2.LoginFlow{
+		Name:        "instagram.com",
+		Description: "Login using cookies from instagram.com",
 		ID:          FlowIDInstagramCookies,
 	}
-	if m.Config.Mode == "" {
-		return []bridgev2.LoginFlow{facebook, instagram}
-	} else if m.Config.Mode == "facebook" {
-		return []bridgev2.LoginFlow{facebook}
-	} else if m.Config.Mode == "instagram" {
-		return []bridgev2.LoginFlow{instagram}
-	} else {
-		panic("unknown mode in config") // This should never happen if ValidateConfig is implemented correctly
+)
+
+func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
+	switch m.Config.Mode {
+	case "":
+		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram}
+	case config.ModeFacebook, config.ModeFacebookTor:
+		return []bridgev2.LoginFlow{loginFlowFacebook}
+	case config.ModeMessenger:
+		return []bridgev2.LoginFlow{loginFlowMessenger}
+	case config.ModeInstagram:
+		return []bridgev2.LoginFlow{loginFlowInstagram}
+	default:
+		panic("unknown mode in config")
 	}
 }
 
 type MetaCookieLogin struct {
-	Flow string
+	Mode config.BridgeMode
 	User *bridgev2.User
 	Main *MetaConnector
 }
@@ -82,42 +102,32 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 }
 
 func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
-	if m.Flow == FlowIDFacebookCookies {
-		return &bridgev2.LoginStep{
-			Type:         bridgev2.LoginStepTypeCookies,
-			StepID:       "fi.mau.meta.cookies",
-			Instructions: "Please enter cookies from your browser",
-			CookiesParams: &bridgev2.LoginCookiesParams{
-				URL:       "https://www.facebook.com/",
-				UserAgent: messagix.UserAgent,
-				Fields:    cookieListToFields(cookies.FBRequiredCookies, "www.facebook.com"),
-			},
-		}, nil
-	} else if m.Flow == FlowIDInstagramCookies {
-		return &bridgev2.LoginStep{
-			Type:         bridgev2.LoginStepTypeCookies,
-			StepID:       "fi.mau.meta.cookies",
-			Instructions: "Please enter cookies from your browser",
-			CookiesParams: &bridgev2.LoginCookiesParams{
-				URL:       "https://www.instagram.com/",
-				UserAgent: messagix.UserAgent,
-				Fields:    cookieListToFields(cookies.IGRequiredCookies, "www.instagram.com"),
-			},
-		}, nil
-	} else {
-		return nil, fmt.Errorf("unknown flow ID %s", m.Flow)
+	step := &bridgev2.LoginStep{
+		Type:          bridgev2.LoginStepTypeCookies,
+		StepID:        "fi.mau.meta.cookies",
+		Instructions:  "Please enter cookies from your browser",
+		CookiesParams: &bridgev2.LoginCookiesParams{},
 	}
+	switch m.Mode {
+	case config.ModeFacebook, config.ModeFacebookTor:
+		step.CookiesParams.URL = "https://www.facebook.com/"
+		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "facebook.com")
+	case config.ModeMessenger:
+		step.CookiesParams.URL = "https://www.messenger.com/"
+		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
+	case config.ModeInstagram:
+		step.CookiesParams.URL = "https://www.instagram.com/"
+		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "instagram.com")
+	default:
+		return nil, fmt.Errorf("unknown mode %s", m.Mode)
+	}
+	return step, nil
 }
 
 func (m *MetaCookieLogin) Cancel() {}
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	c := &cookies.Cookies{
-		Platform: types.Instagram,
-	}
-	if m.Flow == FlowIDFacebookCookies {
-		c.Platform = types.Facebook
-	}
+	c := &cookies.Cookies{Platform: m.Mode.ToPlatform()}
 	c.UpdateValues(strCookies)
 
 	if !c.IsLoggedIn() {
@@ -140,40 +150,28 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		}
 	}
 
-	login_id := networkid.UserLoginID(fmt.Sprint(id))
+	loginID := networkid.UserLoginID(fmt.Sprint(id))
 
-	ul, err := m.Main.Bridge.GetExistingUserLoginByID(ctx, login_id)
+	ul, err := m.User.NewLogin(ctx, &database.UserLogin{
+		ID:         loginID,
+		RemoteName: user.GetName(),
+		RemoteProfile: status.RemoteProfile{
+			Username: user.GetUsername(),
+			Name:     user.GetName(),
+		},
+		Metadata: &UserLoginMetadata{
+			Platform: c.Platform,
+			Cookies:  c,
+		},
+	}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get existing login: %w", err)
-	}
-	if ul != nil && ul.UserMXID != m.User.MXID {
-		// TODO: Do we actually want to do this?
-		ul.Delete(ctx, status.BridgeState{StateEvent: status.StateLoggedOut, Error: "overridden-by-another-user"}, false)
-		ul = nil
-	}
-	if ul == nil {
-		ul, err = m.User.NewLogin(ctx, &database.UserLogin{
-			ID: login_id,
-			Metadata: &MetaLoginMetadata{
-				Platform: c.Platform,
-				Cookies:  c,
-			},
-		}, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save new login: %w", err)
-		}
-	} else {
-		ul.RemoteName = user.GetName()
-		err := ul.Save(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update existing login: %w", err)
-		}
+		return nil, fmt.Errorf("failed to save new login: %w", err)
 	}
 
 	backgroundCtx := ul.Log.WithContext(context.Background())
-	err = m.Main.LoadUserLogin(backgroundCtx, ul)
+	err = ul.Client.(*MetaClient).connectWithTable(backgroundCtx, tbl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare connection after login: %w", err)
+		return nil, fmt.Errorf("failed to connect after login: %w", err)
 	}
 
 	return &bridgev2.LoginStep{

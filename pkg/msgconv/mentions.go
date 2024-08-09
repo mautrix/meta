@@ -18,7 +18,6 @@ package msgconv
 
 import (
 	"context"
-	//"log"
 	"strings"
 	"unicode/utf16"
 
@@ -27,7 +26,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/messagix/socket"
-	"go.mau.fi/mautrix-meta/pkg/connector/ids"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 type UTF16String []uint16
@@ -71,13 +70,13 @@ func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, r
 		var mentionLink string
 		switch mention.Type {
 		case socket.MentionTypePerson:
-			info, err := mc.getBasicUserInfo(ctx, portal, ids.MakeUserID(mention.ID))
+			mxid, _, err := mc.getBasicUserInfo(ctx, metaid.MakeUserID(mention.ID))
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to get user info for mention")
 				continue
 			}
-			content.Mentions.Add(info.MXID)
-			mentionLink = info.MXID.URI().MatrixToURL()
+			content.Mentions.Add(mxid)
+			mentionLink = mxid.URI().MatrixToURL()
 		case socket.MentionTypeThread:
 			// TODO: how does one send thread mentions?
 		}

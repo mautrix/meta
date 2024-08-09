@@ -1,4 +1,16 @@
-# Which service is this bridge for? Either "facebook" or "instagram".
-# Remember to change the appservice id, bot profile info and bridge username_template too.
-# Leave blank to allow both services
+# Which service is this bridge for? Available options:
+# * unset - allow users to pick any service when logging in (except facebook-tor)
+# * facebook - connect to FB Messenger via facebook.com
+# * facebook-tor - connect to FB Messenger via facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion
+#                  (note: does not currently proxy media downloads)
+# * messenger - connect to FB Messenger via messenger.com (can be used with the facebook side deactivated)
+# * instagram - connect to Instagram DMs via instagram.com
+#
+# Remember to change the appservice id, bot profile info, bridge username_template and management_room_text too.
 mode:
+
+# Displayname template for FB/IG users. Available variables:
+#  .DisplayName - The display name set by the user.
+#  .Username - The username set by the user.
+#  .ID - The internal user ID of the user.
+displayname_template: '{{or .DisplayName .Username "Unknown user"}}'

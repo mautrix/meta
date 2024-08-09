@@ -1,0 +1,177 @@
+package connector
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/variationselector"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"go.mau.fi/mautrix-meta/messagix/socket"
+	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
+)
+
+var (
+	_ bridgev2.EditHandlingNetworkAPI     = (*MetaClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI = (*MetaClient)(nil)
+)
+
+func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
+	log := zerolog.Ctx(ctx)
+
+	tasks, otid, err := m.Main.MsgConv.ToMeta(ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.OrigSender != nil, msg.Portal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert message: %w", err)
+	}
+
+	log.UpdateContext(func(c zerolog.Context) zerolog.Context {
+		return c.Int64("otid", otid)
+	})
+	log.Debug().Msg("Sending Matrix message to Meta")
+
+	otidStr := strconv.FormatInt(otid, 10)
+
+	var resp *table.LSTable
+
+	retries := 0
+	for retries < 5 {
+		if err = m.Client.WaitUntilCanSendMessages(15 * time.Second); err != nil {
+			log.Err(err).Msg("Error waiting to be able to send messages, retrying")
+		} else {
+			resp, err = m.Client.ExecuteTasks(tasks...)
+			if err == nil {
+				break
+			}
+			log.Err(err).Msg("Failed to send message to Meta, retrying")
+		}
+		retries++
+	}
+
+	log.Trace().Any("response", resp).Msg("Meta send response")
+	var msgID string
+	if resp != nil && err == nil {
+		for _, replace := range resp.LSReplaceOptimsiticMessage {
+			if replace.OfflineThreadingId == otidStr {
+				msgID = replace.MessageId
+			}
+		}
+		if len(msgID) == 0 {
+			for _, failed := range resp.LSMarkOptimisticMessageFailed {
+				if failed.OTID == otidStr {
+					log.Warn().Str("message", failed.Message).Msg("Sending message failed (optimistic)")
+					return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
+				}
+			}
+			for _, failed := range resp.LSHandleFailedTask {
+				if failed.OTID == otidStr {
+					log.Warn().Str("message", failed.Message).Msg("Sending message failed (task)")
+					return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
+				}
+			}
+			log.Warn().Msg("Message send response didn't include message ID")
+		}
+	}
+
+	return &bridgev2.MatrixMessageResponse{
+		DB: &database.Message{
+			ID:        metaid.MakeFBMessageID(msgID),
+			MXID:      msg.Event.ID,
+			Room:      networkid.PortalKey{ID: msg.Portal.ID},
+			SenderID:  networkid.UserID(m.UserLogin.ID),
+			Timestamp: time.Time{},
+		},
+	}, nil
+}
+
+func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
+	resp, err := m.Client.ExecuteTasks(&socket.SendReactionTask{
+		ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
+		TimestampMs:     msg.Event.Timestamp,
+		MessageID:       string(msg.TargetMessage.ID),
+		Reaction:        msg.PreHandleResp.Emoji,
+		ActorID:         metaid.ParseUserID(msg.PreHandleResp.SenderID),
+		SyncGroup:       1,
+		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+	})
+	if err != nil {
+		return nil, err
+	}
+	zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Meta reaction response")
+	return &database.Reaction{}, nil
+}
+
+func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
+	resp, err := m.Client.ExecuteTasks(&socket.SendReactionTask{
+		ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
+		TimestampMs:     msg.Event.Timestamp,
+		MessageID:       string(msg.TargetReaction.MessageID),
+		Reaction:        "",
+		ActorID:         metaid.ParseUserID(msg.TargetReaction.SenderID),
+		SyncGroup:       1,
+		SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
+	})
+	if err != nil {
+		return err
+	}
+	zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Meta reaction remove response")
+	return nil
+}
+
+func (m *MetaClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
+	return bridgev2.MatrixReactionPreResponse{
+		SenderID:     networkid.UserID(m.UserLogin.ID),
+		EmojiID:      "",
+		Emoji:        variationselector.Remove(msg.Content.RelatesTo.Key),
+		MaxReactions: 1,
+	}, nil
+}
+
+func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
+	log := zerolog.Ctx(ctx)
+	fakeSendTasks, _, err := m.Main.MsgConv.ToMeta(ctx, m.Client, edit.Event, edit.Content, nil, false, edit.Portal)
+	if err != nil {
+		return fmt.Errorf("failed to convert message: %w", err)
+	}
+
+	fakeTask := fakeSendTasks[0].(*socket.SendMessageTask)
+
+	editTask := &socket.EditMessageTask{
+		MessageID: string(edit.EditTarget.ID),
+		Text:      fakeTask.Text,
+	}
+
+	newEditCount := int64(edit.EditTarget.EditCount) + 1
+
+	var resp *table.LSTable
+	resp, err = m.Client.ExecuteTasks(editTask)
+	log.Trace().Any("response", resp).Msg("Meta edit response")
+	if err != nil {
+		return fmt.Errorf("failed to send edit to Meta: %w", err)
+	}
+
+	if len(resp.LSEditMessage) > 0 {
+		edit.EditTarget.EditCount = int(resp.LSEditMessage[0].EditCount)
+	}
+
+	if len(resp.LSEditMessage) == 0 {
+		log.Debug().Msg("Edit response didn't contain new edit?")
+	} else if resp.LSEditMessage[0].MessageID != editTask.MessageID {
+		log.Debug().Msg("Edit response contained different message ID")
+	} else if resp.LSEditMessage[0].Text != editTask.Text {
+		log.Warn().Msg("Server returned edit with different text")
+		return fmt.Errorf("edit reverted")
+	} else if resp.LSEditMessage[0].EditCount != newEditCount {
+		log.Warn().
+			Int64("expected_edit_count", newEditCount).
+			Int64("actual_edit_count", resp.LSEditMessage[0].EditCount).
+			Msg("Edit count mismatch")
+	}
+
+	return nil
+}

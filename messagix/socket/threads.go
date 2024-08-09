@@ -117,7 +117,7 @@ func (m Mentions) Swap(i, j int) {
 	m[i], m[j] = m[j], m[i]
 }
 
-func (m Mentions) ToData() MentionData {
+func (m Mentions) ToData() *MentionData {
 	mentionIDs := make([]string, len(m))
 	mentionOffsets := make([]string, len(m))
 	mentionLengths := make([]string, len(m))
@@ -128,7 +128,7 @@ func (m Mentions) ToData() MentionData {
 		mentionLengths[i] = strconv.Itoa(mention.Length)
 		mentionTypes[i] = string(mention.Type)
 	}
-	return MentionData{
+	return &MentionData{
 		MentionIDs:     strings.Join(mentionIDs, ","),
 		MentionOffsets: strings.Join(mentionOffsets, ","),
 		MentionLengths: strings.Join(mentionLengths, ","),
