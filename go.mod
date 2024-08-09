@@ -11,6 +11,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.33.0
 	github.com/tidwall/gjson v1.17.3
+	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.1.1
 	go.mau.fi/util v0.6.1-0.20240809030240-c1b6f86acfc8
 	go.mau.fi/whatsmeow v0.0.0-20240809160754-dcc66fc7e472
