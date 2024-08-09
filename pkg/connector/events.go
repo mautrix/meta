@@ -48,7 +48,10 @@ func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {
 }
 
 func (evt *VerifyThreadExistsEvent) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c.Int64("thread_id", evt.ThreadKey).Int64("thread_type", int64(evt.ThreadType))
+	return c.
+		Int64("thread_id", evt.ThreadKey).
+		Int64("thread_type", int64(evt.ThreadType)).
+		Str("thread_folder", evt.FolderName)
 }
 
 func (evt *VerifyThreadExistsEvent) GetSender() bridgev2.EventSender {
