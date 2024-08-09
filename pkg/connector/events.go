@@ -22,6 +22,9 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
+const folderPending = "pending"
+const folderE2EECutover = "e2ee_cutover"
+
 type VerifyThreadExistsEvent struct {
 	*table.LSVerifyThreadExists
 	m *MetaClient
@@ -37,7 +40,7 @@ func (evt *VerifyThreadExistsEvent) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
-	return true
+	return evt.FolderName != folderPending
 }
 
 func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {

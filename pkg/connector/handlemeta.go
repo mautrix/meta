@@ -193,6 +193,9 @@ func (resync *threadResyncWrapper) compile() bridgev2.RemoteChatResyncWithInfo {
 	} else if resync.Raw.MuteExpireTimeMs > 0 {
 		resync.Info.UserLocal.MutedUntil = ptr.Ptr(time.UnixMilli(resync.Raw.MuteExpireTimeMs))
 	}
+	if resync.Raw.FolderName == folderE2EECutover {
+		resync.Info.ExtraUpdates = bridgev2.MergeExtraUpdaters(resync.Info.ExtraUpdates, markPortalAsEncrypted)
+	}
 	return &simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventChatResync,
@@ -205,7 +208,8 @@ func (resync *threadResyncWrapper) compile() bridgev2.RemoteChatResyncWithInfo {
 						Int64("ig_folder", resync.Raw.IgFolder).
 						Int64("group_notification_settings", resync.Raw.GroupNotificationSettings))
 			},
-			PortalKey: resync.PortalKey,
+			PortalKey:    resync.PortalKey,
+			CreatePortal: resync.Raw.FolderName != folderPending,
 		},
 		ChatInfo: resync.Info,
 	}
