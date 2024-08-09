@@ -22,7 +22,7 @@ var (
 func EncryptPassword(platform int, pubKeyId int, pubKey, password string) (string, error) {
 	pubKeyBytes, err := hex.DecodeString(pubKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to decode pubKey, must be a hex-encoded string: %v", err)
+		return "", fmt.Errorf("failed to decode pubKey, must be a hex-encoded string: %w", err)
 	}
 
 	buf := bytes.NewBuffer(nil)

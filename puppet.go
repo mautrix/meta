@@ -269,7 +269,10 @@ func (puppet *Puppet) UpdateInfo(ctx context.Context, info types.UserInfo) {
 		update = true
 	}
 	update = puppet.updateName(ctx, info.GetName(), puppet.Username) || update
-	update = puppet.updateAvatar(ctx, info.GetAvatarURL()) || update
+	_, isInitialData := info.(*types.CurrentUserInitialData)
+	if !isInitialData {
+		update = puppet.updateAvatar(ctx, info.GetAvatarURL()) || update
+	}
 	if update {
 		puppet.ContactInfoSet = false
 		puppet.UpdateContactInfo(ctx)

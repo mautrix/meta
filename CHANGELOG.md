@@ -1,3 +1,9 @@
+# v0.3.2 (2024-07-16)
+
+* Fixed own ghost user's avatar being reset on bridge restart.
+* Added automatic reconnect on WhatsApp 415 errors.
+* Improved fallback messages for some message types.
+
 # v0.3.1 (2024-05-16)
 
 * Added option to disable fetching XMA media (reels and such) entirely.

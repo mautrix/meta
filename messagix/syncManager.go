@@ -101,7 +101,7 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 
 	jsonPayload, err := json.Marshal(&payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal DatabaseQuery struct into json bytes (databaseId=%d): %v", databaseId, err)
+		return nil, fmt.Errorf("failed to marshal DatabaseQuery struct into json bytes (databaseId=%d): %w", databaseId, err)
 	}
 
 	sm.client.Logger.Trace().
@@ -110,7 +110,7 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 		Msg("Syncing database via socket")
 	resp, err := sm.client.socket.makeLSRequest(jsonPayload, t)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseId=%d): %v", databaseId, err)
+		return nil, fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseId=%d): %w", databaseId, err)
 	}
 
 	resp.Finish()

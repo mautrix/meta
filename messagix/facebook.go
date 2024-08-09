@@ -47,7 +47,7 @@ func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies,
 
 	encryptedPW, err := crypto.EncryptPassword(int(types.Facebook), crypto.FacebookPubKeyId, crypto.FacebookPubKey, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt password for facebook: %v", err)
+		return nil, fmt.Errorf("failed to encrypt password for facebook: %w", err)
 	}
 
 	loginForm.Email = identifier

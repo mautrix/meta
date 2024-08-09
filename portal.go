@@ -624,6 +624,18 @@ func (portal *Portal) handleMatrixMessage(ctx context.Context, sender *User, evt
 				Error:      MetaCookieRemoved,
 			})
 			err = errLoggedOut
+		} else if errors.Is(err, messagix.ErrChallengeRequired) {
+			go sender.DisconnectFromError(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      IGChallengeRequired,
+			})
+			err = errLoggedOut
+		} else if errors.Is(err, messagix.ErrAccountSuspended) {
+			go sender.DisconnectFromError(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      IGAccountSuspended,
+			})
+			err = errLoggedOut
 		}
 	}
 	if err != nil {

@@ -23,17 +23,17 @@ func (m *ModuleParser) HandleRawJSON(data []byte, id string) error {
 		var d types.EnvJSON
 		err = json.Unmarshal(data, &d)
 		if err != nil {
-			return fmt.Errorf("failed to parse data from types.EnvJSON: %v", err)
+			return fmt.Errorf("failed to parse data from types.EnvJSON: %w", err)
 		}
 	case "__eqmc":
 		var d types.Eqmc
 		err = json.Unmarshal(data, &d)
 		if err != nil {
-			return fmt.Errorf("failed to parse data from types.Eqmc: %v", err)
+			return fmt.Errorf("failed to parse data from types.Eqmc: %w", err)
 		}
 		ajaxData, err := d.ParseAjaxURLData()
 		if err != nil {
-			return fmt.Errorf("failed to parse ajax url data from types.Eqmc: %v", err)
+			return fmt.Errorf("failed to parse ajax url data from types.Eqmc: %w", err)
 		}
 		m.client.configs.Jazoest = ajaxData.Jazoest
 		m.client.configs.CometReq = ajaxData.CometReq
@@ -208,7 +208,7 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFun
 	var payload lightspeed.LightSpeedData
 	err := json.Unmarshal([]byte(lsPayloadStr), &payload)
 	if err != nil {
-		return fmt.Errorf("messagix-moduleparser: failed to marshal lsPayloadStr into LightSpeedData: %v", err)
+		return fmt.Errorf("messagix-moduleparser: failed to marshal lsPayloadStr into LightSpeedData: %w", err)
 	}
 
 	decoder := lightspeed.NewLightSpeedDecoder(deps.ToMap(), m.LS)
@@ -335,7 +335,7 @@ func (m *ModuleParser) parseCSRBit(s string) ([]int, error) {
 	for _, b := range splitUp {
 		conv, err := strconv.ParseInt(b, 10, 32)
 		if err != nil {
-			return nil, fmt.Errorf("messagix-moduleparser: failed to parse csrbit: %v", err)
+			return nil, fmt.Errorf("messagix-moduleparser: failed to parse csrbit: %w", err)
 		}
 		if conv == 0 {
 			continue
