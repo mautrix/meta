@@ -215,6 +215,20 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 	}
 }
 
+func (m *MetaClient) messageIDToWAKey(id metaid.ParsedWAMessageID) *waCommon.MessageKey {
+	key := &waCommon.MessageKey{
+		RemoteJID: ptr.Ptr(id.Chat.String()),
+		ID:        ptr.Ptr(id.ID),
+	}
+	if id.Sender.User == string(m.UserLogin.ID) {
+		key.FromMe = ptr.Ptr(true)
+	}
+	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer {
+		key.Participant = ptr.Ptr(id.Sender.String())
+	}
+	return key
+}
+
 func (m *MetaClient) waKeyToMessageID(chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
 	sender = sender.ToNonAD()
 	var err error

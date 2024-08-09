@@ -24,17 +24,7 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 	if !meta.ThreadType.IsWhatsApp() {
 		return nil, fmt.Errorf("getting chat info for non-whatsapp threads is not supported")
 	}
-	jid := metaid.ParseWAPortalID(portal.ID, meta.WhatsAppServer)
-	if jid.Server == "" {
-		switch meta.ThreadType {
-		case table.ENCRYPTED_OVER_WA_GROUP:
-			jid.Server = types.GroupServer
-		//case table.ENCRYPTED_OVER_WA_ONE_TO_ONE:
-		//	jid.Server = types.DefaultUserServer
-		default:
-			jid.Server = types.MessengerServer
-		}
-	}
+	jid := meta.JID(portal.ID)
 	switch jid.Server {
 	case types.GroupServer:
 		groupInfo, err := m.E2EEClient.GetGroupInfo(jid)
