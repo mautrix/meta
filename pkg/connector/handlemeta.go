@@ -250,7 +250,8 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 	handlePortalEvents(params, tbl.LSSyncUpdateThreadName, m.handleUpdateThreadName)
 	handlePortalEvents(params, tbl.LSSetThreadImageURL, m.handleSetThreadImage)
-	handlePortalEvents(params, tbl.LSMarkThreadRead, m.handleMarkThreadRead)
+	handlePortalEvents(params, tbl.LSUpdateReadReceipt, m.handleUpdateReadReceipt)
+	handlePortalEvents(params, tbl.LSMarkThreadReadV2, m.handleMarkThreadRead)
 	handlePortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator)
 	handlePortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage)
 	handlePortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage)
@@ -260,17 +261,34 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	// TODO request more inbox if applicable
 }
 
-func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThreadRead) bridgev2.RemoteEvent {
+func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThreadReadV2) bridgev2.RemoteEvent {
 	return &simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventReadReceipt,
 			LogContext: func(c zerolog.Context) zerolog.Context {
 				return c.Int64("read_up_to", msg.LastReadWatermarkTimestampMs)
 			},
-			PortalKey: tk.Portal,
-			Sender:    m.selfEventSender(),
+			PortalKey:         tk.Portal,
+			UncertainReceiver: tk.UncertainReceiver,
+			Sender:            m.selfEventSender(),
 		},
 		ReadUpTo: time.UnixMilli(msg.LastReadWatermarkTimestampMs),
+	}
+}
+
+func (m *MetaClient) handleUpdateReadReceipt(tk handlerParams, msg *table.LSUpdateReadReceipt) bridgev2.RemoteEvent {
+	return &simplevent.Receipt{
+		EventMeta: simplevent.EventMeta{
+			Type: bridgev2.RemoteEventReadReceipt,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Int64("read_up_to", msg.ReadWatermarkTimestampMs)
+			},
+			PortalKey:         tk.Portal,
+			UncertainReceiver: tk.UncertainReceiver,
+			Sender:            m.makeEventSender(msg.ContactId),
+			Timestamp:         time.UnixMilli(msg.ReadActionTimestampMs),
+		},
+		ReadUpTo: time.UnixMilli(msg.ReadWatermarkTimestampMs),
 	}
 }
 
@@ -282,29 +300,31 @@ func (m *MetaClient) handleTypingIndicator(tk handlerParams, msg *table.LSUpdate
 	}
 	return &simplevent.Typing{
 		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventTyping,
-			PortalKey: tk.Portal,
-			Sender:    m.makeEventSender(msg.SenderId),
+			Type:              bridgev2.RemoteEventTyping,
+			PortalKey:         tk.Portal,
+			UncertainReceiver: tk.UncertainReceiver,
+			Sender:            m.makeEventSender(msg.SenderId),
 		},
 		Timeout: timeout,
 	}
 }
 
-func wrapMessageDelete(portal networkid.PortalKey, messageID string) *simplevent.MessageRemove {
+func wrapMessageDelete(portal networkid.PortalKey, uncertain bool, messageID string) *simplevent.MessageRemove {
 	return &simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventMessageRemove,
 			LogContext: func(c zerolog.Context) zerolog.Context {
 				return c.Str("message_id", messageID)
 			},
-			PortalKey: portal,
+			PortalKey:         portal,
+			UncertainReceiver: uncertain,
 		},
 		TargetMessage: metaid.MakeFBMessageID(messageID),
 	}
 }
 
 func (m *MetaClient) handleDeleteMessage(tk handlerParams, msg *table.LSDeleteMessage) bridgev2.RemoteEvent {
-	return wrapMessageDelete(tk.Portal, msg.MessageId)
+	return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
 }
 
 func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.LSDeleteThenInsertMessage) bridgev2.RemoteEvent {
@@ -315,7 +335,7 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 			Msg("Got unexpected non-unsend DeleteThenInsertMessage command")
 		return nil
 	}
-	return wrapMessageDelete(tk.Portal, msg.MessageId)
+	return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
 }
 
 func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThread) bridgev2.RemoteEvent {
@@ -325,8 +345,9 @@ func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThr
 	delete(tk.vtes, msg.ThreadKey)
 	return &simplevent.ChatDelete{
 		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventChatDelete,
-			PortalKey: tk.Portal,
+			Type:              bridgev2.RemoteEventChatDelete,
+			PortalKey:         tk.Portal,
+			UncertainReceiver: tk.UncertainReceiver,
 		},
 		// TODO can deletes be only for me?
 		OnlyForMe: false,
@@ -354,15 +375,16 @@ func (m *MetaClient) handleMoveThreadToE2EE(tk handlerParams, msg *table.LSMoveT
 	})
 }
 
-func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, sender, timestamp int64, messageID, emoji string) *simplevent.Reaction {
+func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, uncertainReceiver bool, sender, timestamp int64, messageID, emoji string) *simplevent.Reaction {
 	evt := &simplevent.Reaction{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventReaction,
 			LogContext: func(c zerolog.Context) zerolog.Context {
 				return c.Str("target_message_id", messageID).Int64("sender_id", sender)
 			},
-			PortalKey: portalKey,
-			Sender:    m.makeEventSender(sender),
+			PortalKey:         portalKey,
+			UncertainReceiver: uncertainReceiver,
+			Sender:            m.makeEventSender(sender),
 		},
 		TargetMessage: metaid.MakeFBMessageID(messageID),
 		Emoji:         emoji,
@@ -377,11 +399,11 @@ func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, sender, timesta
 }
 
 func (m *MetaClient) handleUpsertReaction(tk handlerParams, evt *table.LSUpsertReaction) bridgev2.RemoteEvent {
-	return m.wrapReaction(tk.Portal, evt.ActorId, evt.TimestampMs, evt.MessageId, evt.Reaction)
+	return m.wrapReaction(tk.Portal, tk.UncertainReceiver, evt.ActorId, evt.TimestampMs, evt.MessageId, evt.Reaction)
 }
 
 func (m *MetaClient) handleDeleteReaction(tk handlerParams, evt *table.LSDeleteReaction) bridgev2.RemoteEvent {
-	return m.wrapReaction(tk.Portal, evt.ActorId, 0, evt.MessageId, "")
+	return m.wrapReaction(tk.Portal, tk.UncertainReceiver, evt.ActorId, 0, evt.MessageId, "")
 }
 
 func (m *MetaClient) handleUpdateThreadName(tk handlerParams, evt *table.LSSyncUpdateThreadName) bridgev2.RemoteEvent {
@@ -455,9 +477,10 @@ func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemo
 
 func (m *MetaClient) handleMessageInsert(tk handlerParams, msg *table.WrappedMessage) bridgev2.RemoteEvent {
 	return &FBMessageEvent{
-		WrappedMessage: msg,
-		portalKey:      tk.Portal,
-		m:              m,
+		WrappedMessage:    msg,
+		portalKey:         tk.Portal,
+		uncertainReceiver: tk.UncertainReceiver,
+		m:                 m,
 	}
 }
 
@@ -469,7 +492,11 @@ func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage) 
 	} else if originalMsg == nil {
 		zerolog.Ctx(ctx).Warn().Str("message_id", edit.MessageID).Msg("Edit target message not found")
 	} else {
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &FBEditEvent{LSEditMessage: edit, orig: originalMsg, m: m})
+		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &FBEditEvent{
+			LSEditMessage: edit,
+			orig:          originalMsg,
+			m:             m,
+		})
 	}
 }
 
@@ -487,10 +514,11 @@ type threadMaps struct {
 type handlerParams struct {
 	ctx context.Context
 
-	ID     int64
-	Type   table.ThreadType
-	Portal networkid.PortalKey
-	Sync   *threadResyncWrapper
+	ID                int64
+	Type              table.ThreadType
+	Portal            networkid.PortalKey
+	UncertainReceiver bool
+	Sync              *threadResyncWrapper
 
 	vtes  map[int64]*table.LSVerifyThreadExists
 	syncs map[int64]*threadResyncWrapper
@@ -505,24 +533,26 @@ func handlePortalEvents[T ThreadKeyable](
 		sync, syncOK := p.syncs[msg.GetThreadKey()]
 		v, ok := p.vtes[msg.GetThreadKey()]
 		var threadType table.ThreadType
+		uncertain := false
 		if ok {
 			threadType = v.ThreadType
 		} else if syncOK {
 			threadType = sync.Raw.ThreadType
 		} else {
-			zerolog.Ctx(p.ctx).Warn().
-				Type("event_type", msg).
-				Int64("thread_id", msg.GetThreadKey()).
-				Msg("No LSVerifyThreadExists found for event")
-			continue
+			uncertain = true
+		}
+		if fn == nil {
+			zerolog.Ctx(p.ctx).Warn().Type("event_type", msg).Msg("No handler for event")
+			return
 		}
 		evt := fn(handlerParams{
 			ctx: p.ctx,
 
-			ID:     msg.GetThreadKey(),
-			Type:   threadType,
-			Portal: p.m.makeFBPortalKey(msg.GetThreadKey(), threadType),
-			Sync:   sync,
+			ID:                msg.GetThreadKey(),
+			Type:              threadType,
+			Portal:            p.m.makeFBPortalKey(msg.GetThreadKey(), threadType),
+			UncertainReceiver: uncertain,
+			Sync:              sync,
 
 			vtes:  p.vtes,
 			syncs: p.syncs,

@@ -59,46 +59,66 @@ func ParseWAPortalID(portal networkid.PortalID, server string) types.JID {
 	}
 }
 
+type ParsedMessageID interface {
+	isParsedMessageID()
+	String() string
+}
+
+type ParsedWAMessageID struct {
+	Chat   types.JID
+	Sender types.JID
+	ID     types.MessageID
+}
+
+func (ParsedWAMessageID) isParsedMessageID() {}
+
+func (p ParsedWAMessageID) String() string {
+	return fmt.Sprintf("%s:%s:%s:%s", MessageIDPrefixWA, p.Chat.String(), p.Sender.ToNonAD().String(), p.ID)
+}
+
+type ParsedFBMessageID struct {
+	ID string
+}
+
+func (ParsedFBMessageID) isParsedMessageID() {}
+
+func (p ParsedFBMessageID) String() string {
+	return fmt.Sprintf("%s:%s", MessageIDPrefixFB, p.ID)
+}
+
+const (
+	MessageIDPrefixFB = "fb"
+	MessageIDPrefixWA = "wa"
+)
+
 func MakeWAMessageID(chat, sender types.JID, id types.MessageID) networkid.MessageID {
-	return networkid.MessageID(fmt.Sprintf("wa:%s:%s:%s", chat.String(), sender.ToNonAD().String(), id))
+	return networkid.MessageID(fmt.Sprintf("%s:%s:%s:%s", MessageIDPrefixWA, chat.String(), sender.ToNonAD().String(), id))
 }
 
 func MakeFBMessageID(messageID string) networkid.MessageID {
-	return networkid.MessageID(fmt.Sprintf("fb:%s", messageID))
+	return networkid.MessageID(fmt.Sprintf("%s:%s", MessageIDPrefixFB, messageID))
 }
 
-func ParseFBMessageID(messageID networkid.MessageID) string {
-	parts := strings.SplitN(string(messageID), ":", 2)
-	if len(parts) != 2 || parts[0] != "fb" {
-		return ""
-	}
-	return parts[1]
+func MakeMessageID(parsed ParsedMessageID) networkid.MessageID {
+	return networkid.MessageID(parsed.String())
 }
 
-func ParseWAMessageID(messageID networkid.MessageID) (chat, sender types.JID, id types.MessageID) {
+func ParseMessageID(messageID networkid.MessageID) ParsedMessageID {
 	parts := strings.SplitN(string(messageID), ":", 4)
-	if len(parts) != 4 || parts[0] != "wa" {
-		return
-	}
-	var err error
-	chat, err = types.ParseJID(parts[1])
-	if err != nil {
-		return
-	}
-	sender, err = types.ParseJID(parts[2])
-	if err != nil {
-		return
-	}
-	id = types.MessageID(parts[3])
-	return
-}
-
-func GetMessageIDKind(messageID networkid.MessageID) string {
-	parts := strings.SplitN(string(messageID), ":", 2)
-	switch parts[0] {
-	case "wa", "fb":
-		return parts[0]
-	default:
-		return ""
+	if len(parts) == 2 && parts[0] == MessageIDPrefixFB {
+		return ParsedFBMessageID{ID: parts[1]}
+	} else if len(parts) == 4 && parts[0] == MessageIDPrefixWA {
+		chat, err := types.ParseJID(parts[1])
+		if err != nil {
+			return nil
+		}
+		sender, err := types.ParseJID(parts[2])
+		if err != nil {
+			return nil
+		}
+		id := types.MessageID(parts[3])
+		return ParsedWAMessageID{Chat: chat, Sender: sender, ID: id}
+	} else {
+		return nil
 	}
 }

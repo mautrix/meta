@@ -456,6 +456,17 @@ func (ls *LSMarkThreadRead) GetThreadKey() int64 {
 	return ls.ThreadKey
 }
 
+type LSMarkThreadReadV2 struct {
+	ThreadKey                    int64 `index:"0" json:",omitempty"`
+	LastReadWatermarkTimestampMs int64 `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSMarkThreadReadV2) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSUpdateParentFolderReadWatermark struct {
 	ThreadKey int64 `index:"0" json:",omitempty"`
 	// ShouldUpdate bool `index:"1" json:",omitempty"` // condition ?

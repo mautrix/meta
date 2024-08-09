@@ -50,7 +50,7 @@ import (
 
 func (mc *MessageConverter) ShouldFetchXMA(ctx context.Context) bool {
 	// TODO implement properly
-	return true
+	return false
 }
 
 func isProbablyURLPreview(xma *table.WrappedXMA) bool {
@@ -666,7 +666,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
 		converted = errorToNotice(err, "XMA")
 	} else {
-		//converted = mc.fetchFullXMA(ctx, att, converted)
+		converted = mc.fetchFullXMA(ctx, att, converted)
 	}
 	_, hasExternalURL := converted.Extra["external_url"]
 	if !hasExternalURL && att.CTA != nil && att.CTA.ActionUrl != "" {

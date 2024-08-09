@@ -19,6 +19,12 @@ type Config struct {
 	Mode   config.BridgeMode `yaml:"mode"`
 	IGE2EE bool              `yaml:"ig_e2ee"`
 
+	Proxy        string `yaml:"proxy"`
+	GetProxyFrom string `yaml:"get_proxy_from"`
+
+	DisableXMABackfill bool `yaml:"disable_xma_backfill"`
+	DisableXMAAlways   bool `yaml:"disable_xma_always"`
+
 	DisplaynameTemplate string             `yaml:"displayname_template"`
 	displaynameTemplate *template.Template `yaml:"-"`
 }
@@ -39,6 +45,14 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 }
 func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "mode")
+	helper.Copy(up.Bool, "ig_e2ee")
+	helper.Copy(up.Str, "displayname_template")
+	helper.Copy(up.Str|up.Null, "proxy")
+	helper.Copy(up.Str|up.Null, "get_proxy_from")
+	helper.Copy(up.Int, "min_full_reconnect_interval_seconds")
+	helper.Copy(up.Int, "force_refresh_interval_seconds")
+	helper.Copy(up.Bool, "disable_xma_backfill")
+	helper.Copy(up.Bool, "disable_xma_always")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {

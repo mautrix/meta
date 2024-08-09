@@ -232,7 +232,8 @@ func (m *MetaClient) wrapChatInfoChange(threadKey, participantID int64, threadTy
 				}
 				return c.Int64("thread_id", threadKey)
 			},
-			PortalKey: m.makeFBPortalKey(threadKey, threadType),
+			PortalKey:         m.makeFBPortalKey(threadKey, threadType),
+			UncertainReceiver: threadType == table.UNKNOWN_THREAD_TYPE,
 		},
 		ChatInfoChange: change,
 	}

@@ -80,13 +80,15 @@ func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bri
 
 type FBMessageEvent struct {
 	*table.WrappedMessage
-	portalKey networkid.PortalKey
-	m         *MetaClient
+	portalKey         networkid.PortalKey
+	uncertainReceiver bool
+	m                 *MetaClient
 }
 
 var (
-	_ bridgev2.RemoteMessage            = (*FBMessageEvent)(nil)
-	_ bridgev2.RemoteEventWithTimestamp = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteMessage                          = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithUncertainPortalReceiver = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithTimestamp               = (*FBMessageEvent)(nil)
 )
 
 func (evt *FBMessageEvent) GetType() bridgev2.RemoteEventType {
@@ -95,6 +97,10 @@ func (evt *FBMessageEvent) GetType() bridgev2.RemoteEventType {
 
 func (evt *FBMessageEvent) GetPortalKey() networkid.PortalKey {
 	return evt.portalKey
+}
+
+func (evt *FBMessageEvent) PortalReceiverIsUncertain() bool {
+	return evt.uncertainReceiver
 }
 
 func (evt *FBMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
@@ -232,6 +238,13 @@ func (m *MetaClient) waKeyToMessageID(chat, sender types.JID, key *waCommon.Mess
 		} else {
 			// TODO log somehow?
 			return ""
+		}
+	}
+	remoteJID, err := types.ParseJID(key.GetRemoteJID())
+	if err == nil && !remoteJID.IsEmpty() {
+		// TODO use remote jid in other cases?
+		if remoteJID.Server == types.GroupServer {
+			chat = remoteJID
 		}
 	}
 	return metaid.MakeWAMessageID(chat, sender, key.GetID())

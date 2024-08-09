@@ -63,12 +63,15 @@ func (mc *MessageConverter) ToMeta(
 		SyncGroup:        1,
 	}
 	if replyTo != nil {
-		task.ReplyMetaData = &socket.ReplyMetaData{
-			ReplyMessageId:  string(replyTo.ID),
-			ReplySourceType: 1,
-			ReplyType:       0,
-			ReplySender:     metaid.ParseUserID(replyTo.SenderID),
-		}
+		msgID, ok := metaid.ParseMessageID(replyTo.ID).(metaid.ParsedFBMessageID)
+		if ok {
+			task.ReplyMetaData = &socket.ReplyMetaData{
+				ReplyMessageId:  msgID.ID,
+				ReplySourceType: 1,
+				ReplyType:       0,
+				ReplySender:     metaid.ParseUserID(replyTo.SenderID),
+			}
+		} // TODO log warning in else case?
 	}
 	if content.MsgType == event.MsgEmote && !relaybotFormatted {
 		content.Body = "/me " + content.Body

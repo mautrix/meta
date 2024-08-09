@@ -46,7 +46,7 @@ func (m *MetaClient) makeWAPortalKey(chatJID types.JID) (key networkid.PortalKey
 
 func (m *MetaClient) makeFBPortalKey(threadID int64, threadType table.ThreadType) networkid.PortalKey {
 	key := networkid.PortalKey{ID: metaid.MakeFBPortalID(threadID)}
-	if threadType.IsOneToOne() {
+	if threadType == table.UNKNOWN_THREAD_TYPE || threadType.IsOneToOne() {
 		key.Receiver = m.UserLogin.ID
 	}
 	return key

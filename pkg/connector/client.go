@@ -66,6 +66,8 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 }
 
 func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable) error {
+	go m.handleTableLoop()
+
 	m.initialTable.Store(initialTable)
 
 	err := m.Client.Connect()

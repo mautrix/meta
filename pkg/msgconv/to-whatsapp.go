@@ -110,13 +110,15 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 	var meta waMsgApplication.MessageApplication_Metadata
 	if replyTo != nil {
-		_, replySender, stanzaID := metaid.ParseWAMessageID(replyTo.ID)
-		meta.QuotedMessage = &waMsgApplication.MessageApplication_Metadata_QuotedMessage{
-			StanzaID: proto.String(stanzaID),
-			// TODO: this is hacky since it hardcodes the server
-			// TODO 2: should this be included for DMs?
-			Participant: proto.String(replySender.String()),
-			Payload:     nil,
+		messageID, ok := metaid.ParseMessageID(replyTo.ID).(metaid.ParsedWAMessageID)
+		if ok {
+			meta.QuotedMessage = &waMsgApplication.MessageApplication_Metadata_QuotedMessage{
+				StanzaID: proto.String(messageID.ID),
+				// TODO: this is hacky since it hardcodes the server
+				// TODO 2: should this be included for DMs?
+				Participant: proto.String(messageID.Sender.String()),
+				Payload:     nil,
+			}
 		}
 	}
 	return &waConsumerApplication.ConsumerApplication{

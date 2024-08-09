@@ -105,7 +105,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	step := &bridgev2.LoginStep{
 		Type:          bridgev2.LoginStepTypeCookies,
 		StepID:        "fi.mau.meta.cookies",
-		Instructions:  "Please enter cookies from your browser",
+		Instructions:  "Enetr a JSON object with your cookies, or a cURL command copied from browser devtools.",
 		CookiesParams: &bridgev2.LoginCookiesParams{},
 	}
 	switch m.Mode {
