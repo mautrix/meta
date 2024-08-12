@@ -58,7 +58,7 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 			return nil
 		}
 		if collector.MaxMessages > 0 {
-			collector.MaxMessages = min(collector.MaxMessages-len(upsert.Messages), 0)
+			collector.MaxMessages = max(collector.MaxMessages-len(upsert.Messages), 0)
 		}
 		collector.UpsertMessages = collector.UpsertMessages.Join(upsert)
 		messageLimitReached := collector.MaxMessages == 0
