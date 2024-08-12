@@ -44,6 +44,12 @@ func main() {
 			true,
 		)
 	}
+	m.PostStart = func() {
+		if m.Matrix.Provisioning != nil {
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/login", legacyProvLogin)
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/logout", legacyProvLogout)
+		}
+	}
 	m.InitVersion(Tag, Commit, BuildTime)
 	m.Run()
 }
