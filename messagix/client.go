@@ -47,6 +47,7 @@ type Client struct {
 	Instagram *InstagramMethods
 	Facebook  *FacebookMethods
 	Logger    zerolog.Logger
+	Platform  types.Platform
 
 	http         *http.Client
 	socket       *Socket
@@ -63,7 +64,6 @@ type Client struct {
 
 	lsRequests      int
 	graphQLRequests int
-	platform        types.Platform
 	endpoints       map[string]string
 	taskMutex       *sync.Mutex
 	activeTasks     []int
@@ -95,7 +95,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		Logger:           logger,
 		lsRequests:       0,
 		graphQLRequests:  1,
-		platform:         cookies.Platform,
+		Platform:         cookies.Platform,
 		activeTasks:      make([]int, 0),
 		taskMutex:        &sync.Mutex{},
 		canSendMessages:  false,
@@ -132,7 +132,7 @@ func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 		return nil, nil, err
 	}
 	var currentUser types.UserInfo
-	if c.platform.IsMessenger() {
+	if c.Platform.IsMessenger() {
 		currentUser = &c.configs.browserConfigTable.CurrentUserInitialData
 	} else {
 		currentUser = &c.configs.browserConfigTable.PolarisViewer
@@ -148,7 +148,7 @@ func (c *Client) loadLoginPage() *ModuleParser {
 
 func (c *Client) configurePlatformClient() {
 	var selectedEndpoints map[string]string
-	switch c.platform {
+	switch c.Platform {
 	case types.Facebook:
 		selectedEndpoints = endpoints.FacebookEndpoints
 		c.Facebook = &FacebookMethods{client: c}
@@ -292,7 +292,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 
-	if c.platform.IsMessenger() {
+	if c.Platform.IsMessenger() {
 		h.Set("sec-fetch-site", "same-origin") // header is required
 		h.Set("sec-fetch-user", "?1")
 		h.Set("host", c.getEndpoint("host"))
@@ -339,7 +339,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		return err
 	}
 
-	if c.platform.IsMessenger() {
+	if c.Platform.IsMessenger() {
 		datr := c.findCookie(req.Cookies(), "datr")
 		if datr == nil {
 			return fmt.Errorf("consenting to facebook cookies failed, could not find datr cookie in set-cookie header")
@@ -364,7 +364,7 @@ func (c *Client) getEndpointForThreadID(threadID int64) string {
 
 func (c *Client) IsAuthenticated() bool {
 	var isAuthenticated bool
-	if c.platform.IsMessenger() {
+	if c.Platform.IsMessenger() {
 		isAuthenticated = c.configs.browserConfigTable.CurrentUserInitialData.AccountID != "0"
 	} else {
 		isAuthenticated = c.configs.browserConfigTable.PolarisViewer.ID != ""
@@ -377,7 +377,7 @@ func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
 		return nil, fmt.Errorf("messagix-client: not yet authenticated")
 	}
 
-	if c.platform.IsMessenger() {
+	if c.Platform.IsMessenger() {
 		return &c.configs.browserConfigTable.CurrentUserInitialData, nil
 	} else {
 		return &c.configs.browserConfigTable.PolarisViewer, nil

@@ -40,11 +40,11 @@ func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
 			c.client.Logger.Trace().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
 			c.client.Logger.Trace().Any("value", c.CsrBitmap.CompressedStr).Msg("Loaded __csr bitmap")
 		}
-		c.client.Logger.Debug().Any("platform", c.client.platform).Msg("Configs loaded, but not yet logged in.")
+		c.client.Logger.Debug().Any("platform", c.client.Platform).Msg("Configs loaded, but not yet logged in.")
 		return ls, nil
 	}
 
-	if c.client.platform == types.Instagram {
+	if c.client.Platform == types.Instagram {
 		c.client.socket.broker = "wss://edge-chat.instagram.com/chat?"
 		c.browserConfigTable.MqttWebConfig.AppID = c.browserConfigTable.MessengerWebInitData.AppID
 	} else {

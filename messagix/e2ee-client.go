@@ -107,7 +107,7 @@ func (c *Client) refreshCAT() error {
 func (c *Client) getClientPayload() *waProto.ClientPayload {
 	userID, _ := strconv.ParseUint(c.device.ID.User, 10, 64)
 	platform := waProto.ClientPayload_UserAgent_BLUE_WEB
-	if !c.platform.IsMessenger() {
+	if !c.Platform.IsMessenger() {
 		platform = waProto.ClientPayload_UserAgent_WEB
 	}
 	return &waProto.ClientPayload{

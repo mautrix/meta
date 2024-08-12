@@ -78,7 +78,7 @@ func (c *Client) NewHttpQuery() *HttpQuery {
 	if c.configs.browserConfigTable.CurrentUserInitialData.UserID != "0" {
 		query.Av = c.configs.browserConfigTable.CurrentUserInitialData.UserID
 	}
-	if c.platform == types.Instagram {
+	if c.Platform == types.Instagram {
 		query.D = "www"
 	}
 	return query
@@ -217,7 +217,7 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 	headers.Set("sec-ch-ua-platform-version", SecCHPlatformVersion)
 
 	c.addFacebookHeaders(&headers)
-	if !c.platform.IsMessenger() {
+	if !c.Platform.IsMessenger() {
 		c.addInstagramHeaders(&headers)
 	}
 
@@ -280,7 +280,7 @@ func (c *Client) sendLoginRequest(form url.Values, loginUrl string) (*http.Respo
 
 func (c *Client) buildLoginHeaders() http.Header {
 	h := c.buildHeaders(true)
-	if c.platform.IsMessenger() {
+	if c.Platform.IsMessenger() {
 		h = c.addLoginFacebookHeaders(h)
 	} else {
 		h = c.addLoginInstagramHeaders(h)

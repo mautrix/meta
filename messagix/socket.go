@@ -421,5 +421,5 @@ func (s *Socket) getConnHeaders() http.Header {
 }
 
 func (s *Socket) getConnectionType() string {
-	return connectionTypes[s.client.platform]
+	return connectionTypes[s.client.Platform]
 }

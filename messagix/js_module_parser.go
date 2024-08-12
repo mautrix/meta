@@ -169,7 +169,7 @@ func (m *ModuleParser) Load(page string) error {
 		}
 	}
 
-	if m.client.platform == types.Instagram {
+	if m.client.Platform == types.Instagram {
 		sharedData := m.client.configs.browserConfigTable.XIGSharedData
 		err = sharedData.ParseRaw()
 		if err != nil {
@@ -185,7 +185,7 @@ func (m *ModuleParser) Load(page string) error {
 
 	formTags := m.findFormTags(doc)
 	m.FormTags = formTags
-	if !authenticated && m.client.platform.IsMessenger() {
+	if !authenticated && m.client.Platform.IsMessenger() {
 		loginNode := m.findNodeByID(doc, "loginform")
 		loginInputs := m.findInputTags(loginNode)
 		m.LoginInputs = loginInputs

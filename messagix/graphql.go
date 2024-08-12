@@ -75,7 +75,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	c.lsRequests++
 
 	var lsRequestQueryName string
-	if c.platform.IsMessenger() {
+	if c.Platform.IsMessenger() {
 		lsRequestQueryName = "LSGraphQLRequest"
 	} else {
 		lsRequestQueryName = "LSGraphQLRequestIG"
