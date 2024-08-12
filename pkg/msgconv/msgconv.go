@@ -64,4 +64,5 @@ const (
 	contextKeyFBClient
 	contextKeyIntent
 	contextKeyPortal
+	contextKeyFetchXMA
 )

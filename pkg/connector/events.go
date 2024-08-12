@@ -130,7 +130,7 @@ func (evt *FBMessageEvent) GetTimestamp() time.Time {
 }
 
 func (evt *FBMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, evt.m.Client, intent, evt.WrappedMessage), nil
+	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, evt.m.Client, intent, evt.WrappedMessage, evt.m.Main.Config.DisableXMAAlways), nil
 }
 
 type FBEditEvent struct {

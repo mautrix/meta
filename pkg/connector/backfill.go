@@ -273,7 +273,7 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		sender := m.makeEventSender(msg.SenderId)
 		intent := portal.GetIntentFor(ctx, sender, m.UserLogin, bridgev2.RemoteEventBackfill)
 		wrappedMessages[i] = &bridgev2.BackfillMessage{
-			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, intent, msg),
+			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, intent, msg, m.Main.Config.DisableXMABackfill || m.Main.Config.DisableXMAAlways),
 			Sender:           sender,
 			ID:               metaid.MakeFBMessageID(msg.MessageId),
 			Timestamp:        time.UnixMilli(msg.TimestampMs),

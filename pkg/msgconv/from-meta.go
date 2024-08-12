@@ -50,8 +50,7 @@ import (
 )
 
 func (mc *MessageConverter) ShouldFetchXMA(ctx context.Context) bool {
-	// TODO implement properly
-	return false
+	return ctx.Value(contextKeyFetchXMA).(bool)
 }
 
 func isProbablyURLPreview(xma *table.WrappedXMA) bool {
@@ -80,10 +79,12 @@ func (mc *MessageConverter) ToMatrix(
 	client *messagix.Client,
 	intent bridgev2.MatrixAPI,
 	msg *table.WrappedMessage,
+	allowXMA bool,
 ) *bridgev2.ConvertedMessage {
 	ctx = context.WithValue(ctx, contextKeyFBClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
+	ctx = context.WithValue(ctx, contextKeyFetchXMA, allowXMA)
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
