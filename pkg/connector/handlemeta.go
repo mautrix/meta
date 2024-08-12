@@ -166,13 +166,13 @@ type threadResyncWrapper struct {
 	Raw       *table.LSDeleteThenInsertThread
 	PortalKey networkid.PortalKey
 	Info      *bridgev2.ChatInfo
-	Members   []bridgev2.ChatMember
+	Members   map[int64]bridgev2.ChatMember
 }
 
 func (resync *threadResyncWrapper) compile() bridgev2.RemoteChatResyncWithInfo {
 	if resync.Members != nil {
 		self := resync.Info.Members.Members[0]
-		resync.Info.Members.Members = resync.Members
+		resync.Info.Members.Members = maps.Values(resync.Members)
 		resync.Info.Members.IsFull = len(resync.Members) == resync.Info.Members.TotalMemberCount
 		hasSelf := false
 		for _, member := range resync.Members {
@@ -240,6 +240,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
 			Info:      m.wrapChatInfo(thread),
 			Raw:       thread,
+			Members:   make(map[int64]bridgev2.ChatMember, thread.MemberCount),
 		}
 	}
 
@@ -470,7 +471,7 @@ func (m *MetaClient) handleUpdateMuteSetting(tk handlerParams, evt *table.LSUpda
 
 func (m *MetaClient) handleAddParticipant(tk handlerParams, evt *table.LSAddParticipantIdToGroupThread) bridgev2.RemoteEvent {
 	if tk.Sync != nil {
-		tk.Sync.Members = append(tk.Sync.Members, m.wrapChatMember(evt))
+		tk.Sync.Members[evt.ContactId] = m.wrapChatMember(evt)
 		return nil
 	}
 	return m.wrapChatInfoChange(evt.ThreadKey, evt.ContactId, tk.Type, &bridgev2.ChatInfoChange{
