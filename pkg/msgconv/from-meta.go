@@ -73,7 +73,13 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid
 	return ghost.Intent.GetMXID(), ghost.Name, nil
 }
 
-func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *messagix.Client, intent bridgev2.MatrixAPI, msg *table.WrappedMessage) *bridgev2.ConvertedMessage {
+func (mc *MessageConverter) ToMatrix(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	client *messagix.Client,
+	intent bridgev2.MatrixAPI,
+	msg *table.WrappedMessage,
+) *bridgev2.ConvertedMessage {
 	ctx = context.WithValue(ctx, contextKeyFBClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)

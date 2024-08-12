@@ -31,6 +31,8 @@ type MetaClient struct {
 	stopHandlingTables atomic.Pointer[context.CancelFunc]
 	initialTable       atomic.Pointer[table.LSTable]
 	incomingTables     chan *table.LSTable
+	backfillCollectors map[int64]*BackfillCollector
+	backfillLock       sync.Mutex
 
 	E2EEClient      *whatsmeow.Client
 	WADevice        *store.Device
@@ -49,7 +51,8 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		LoginMeta: loginMetadata,
 		UserLogin: login,
 
-		incomingTables: make(chan *table.LSTable, 16),
+		incomingTables:     make(chan *table.LSTable, 16),
+		backfillCollectors: make(map[int64]*BackfillCollector),
 	}
 	c.Client.SetEventHandler(c.handleMetaEvent)
 	login.Client = c

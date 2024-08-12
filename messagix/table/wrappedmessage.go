@@ -50,6 +50,12 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 			upsertMsg.MarkRead = upsertMsg.Range.MaxTimestampMs <= read.LastReadWatermarkTimestampMs
 		}
 	}
+	for _, read := range table.LSMarkThreadReadV2 {
+		upsertMsg, ok := upsert[read.ThreadKey]
+		if ok {
+			upsertMsg.MarkRead = upsertMsg.Range.MaxTimestampMs <= read.LastReadWatermarkTimestampMs
+		}
+	}
 	for _, thread := range table.LSDeleteThenInsertThread {
 		upsertMsg, ok := upsert[thread.ThreadKey]
 		if ok {

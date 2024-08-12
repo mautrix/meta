@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/ptr"
 	"golang.org/x/exp/maps"
-
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -162,59 +160,6 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 	ghost.UpdateInfo(ctx, m.wrapUserInfo(info))
 }
 
-type threadResyncWrapper struct {
-	Raw       *table.LSDeleteThenInsertThread
-	PortalKey networkid.PortalKey
-	Info      *bridgev2.ChatInfo
-	Members   map[int64]bridgev2.ChatMember
-}
-
-func (resync *threadResyncWrapper) compile() bridgev2.RemoteChatResyncWithInfo {
-	if resync.Members != nil {
-		self := resync.Info.Members.Members[0]
-		resync.Info.Members.Members = maps.Values(resync.Members)
-		resync.Info.Members.IsFull = len(resync.Members) == resync.Info.Members.TotalMemberCount
-		hasSelf := false
-		for _, member := range resync.Members {
-			if member.IsFromMe {
-				hasSelf = true
-				break
-			}
-		}
-		if !hasSelf {
-			resync.Info.Members.Members = append(resync.Info.Members.Members, self)
-		}
-	}
-	if resync.Info.UserLocal == nil {
-		resync.Info.UserLocal = &bridgev2.UserLocalPortalInfo{}
-	}
-	if resync.Raw.MuteExpireTimeMs < 0 {
-		resync.Info.UserLocal.MutedUntil = ptr.Ptr(event.MutedForever)
-	} else if resync.Raw.MuteExpireTimeMs > 0 {
-		resync.Info.UserLocal.MutedUntil = ptr.Ptr(time.UnixMilli(resync.Raw.MuteExpireTimeMs))
-	}
-	if resync.Raw.FolderName == folderE2EECutover {
-		resync.Info.ExtraUpdates = bridgev2.MergeExtraUpdaters(resync.Info.ExtraUpdates, markPortalAsEncrypted)
-	}
-	return &simplevent.ChatResync{
-		EventMeta: simplevent.EventMeta{
-			Type: bridgev2.RemoteEventChatResync,
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.
-					Int64("thread_id", resync.Raw.ThreadKey).
-					Int("thread_type", int(resync.Raw.ThreadType)).
-					Dict("debug_info", zerolog.Dict().
-						Str("thread_folder", resync.Raw.FolderName).
-						Int64("ig_folder", resync.Raw.IgFolder).
-						Int64("group_notification_settings", resync.Raw.GroupNotificationSettings))
-			},
-			PortalKey:    resync.PortalKey,
-			CreatePortal: resync.Raw.FolderName != folderPending,
-		},
-		ChatInfo: resync.Info,
-	}
-}
-
 func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	for _, contact := range tbl.LSDeleteThenInsertContact {
 		m.syncGhost(ctx, contact)
@@ -224,7 +169,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
-	threadResyncs := make(map[int64]*threadResyncWrapper, len(tbl.LSDeleteThenInsertThread))
+	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
 	params := threadMaps{
 		ctx:   ctx,
 		m:     m,
@@ -236,7 +181,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 		threadExists[thread.ThreadKey] = thread
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
-		threadResyncs[thread.ThreadKey] = &threadResyncWrapper{
+		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
 			Info:      m.wrapChatInfo(thread),
 			Raw:       thread,
@@ -244,15 +189,9 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 		}
 	}
 
-	// Handle events that are merged into thread resyncs before dispatching the resyncs
+	// Deleting a thread will cancel all further events, so handle those first
 	handlePortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread)
-	handlePortalEvents(params, tbl.LSAddParticipantIdToGroupThread, m.handleAddParticipant)
-	handlePortalEvents(params, tbl.LSUpdateThreadMuteSetting, m.handleUpdateMuteSetting)
-	handlePortalEvents(params, tbl.LSMoveThreadToE2EECutoverFolder, m.handleMoveThreadToE2EE)
 
-	for _, resync := range threadResyncs {
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, resync.compile())
-	}
 	for _, verifyExists := range threadExists {
 		if _, resyncing := threadResyncs[verifyExists.ThreadKey]; resyncing {
 			continue
@@ -260,9 +199,18 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &VerifyThreadExistsEvent{LSVerifyThreadExists: verifyExists, m: m})
 	}
 
+	// Handle events that are merged into thread resyncs before dispatching the resyncs
+	handlePortalEvents(params, tbl.LSAddParticipantIdToGroupThread, m.handleAddParticipant)
+	handlePortalEvents(params, tbl.LSUpdateThreadMuteSetting, m.handleUpdateMuteSetting)
+	handlePortalEvents(params, tbl.LSMoveThreadToE2EECutoverFolder, m.handleMoveThreadToE2EE)
 	upsert, insert := tbl.WrapMessages()
-	handlePortalEvents(params, maps.Values(upsert), nil)
-	handlePortalEvents(params, tbl.LSUpdateExistingMessageRange, nil)
+	handlePortalEvents(params, maps.Values(upsert), m.handleUpsertMessages)
+	handlePortalEvents(params, tbl.LSUpdateExistingMessageRange, m.handleUpdateExistingMessageRange)
+
+	for _, resync := range threadResyncs {
+		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, resync)
+	}
+
 	handlePortalEvents(params, insert, m.handleMessageInsert)
 	// Edits are special snowflakes that don't include the thread key
 	for _, edit := range tbl.LSEditMessage {
@@ -528,7 +476,7 @@ type threadMaps struct {
 	ctx   context.Context
 	m     *MetaClient
 	vtes  map[int64]*table.LSVerifyThreadExists
-	syncs map[int64]*threadResyncWrapper
+	syncs map[int64]*FBChatResync
 }
 
 type handlerParams struct {
@@ -538,10 +486,10 @@ type handlerParams struct {
 	Type              table.ThreadType
 	Portal            networkid.PortalKey
 	UncertainReceiver bool
-	Sync              *threadResyncWrapper
+	Sync              *FBChatResync
 
 	vtes  map[int64]*table.LSVerifyThreadExists
-	syncs map[int64]*threadResyncWrapper
+	syncs map[int64]*FBChatResync
 }
 
 func handlePortalEvents[T ThreadKeyable](

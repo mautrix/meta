@@ -12,6 +12,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -22,8 +23,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
-const folderPending = "pending"
-const folderE2EECutover = "e2ee_cutover"
+const (
+	folderInbox       = "inbox"
+	folderPending     = "pending"
+	folderE2EECutover = "e2ee_cutover"
+)
 
 type VerifyThreadExistsEvent struct {
 	*table.LSVerifyThreadExists
@@ -378,4 +382,104 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	return &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{editPart},
 	}, nil
+}
+
+type FBChatResync struct {
+	Raw       *table.LSDeleteThenInsertThread
+	PortalKey networkid.PortalKey
+	Info      *bridgev2.ChatInfo
+	Members   map[int64]bridgev2.ChatMember
+	Backfill  *table.UpsertMessages
+	UpsertID  int64
+
+	filled bool
+}
+
+var (
+	_ bridgev2.RemoteChatResyncWithInfo       = (*FBChatResync)(nil)
+	_ bridgev2.RemoteEventThatMayCreatePortal = (*FBChatResync)(nil)
+	_ bridgev2.RemoteChatResyncBackfillBundle = (*FBChatResync)(nil)
+)
+
+func (r *FBChatResync) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventChatResync
+}
+
+func (r *FBChatResync) GetPortalKey() networkid.PortalKey {
+	return r.PortalKey
+}
+
+func (r *FBChatResync) ShouldCreatePortal() bool {
+	if r.Raw == nil {
+		return false
+	}
+	return r.Raw.FolderName != folderPending
+}
+
+func (r *FBChatResync) AddLogContext(c zerolog.Context) zerolog.Context {
+	if r.UpsertID != 0 {
+		c = c.Int64("global_upsert_counter", r.UpsertID)
+	}
+	if r.Raw == nil {
+		return c
+	}
+	c = c.
+		Int64("thread_id", r.Raw.ThreadKey).
+		Int("thread_type", int(r.Raw.ThreadType)).
+		Dict("debug_info", zerolog.Dict().
+			Str("thread_folder", r.Raw.FolderName).
+			Int64("ig_folder", r.Raw.IgFolder).
+			Int64("group_notification_settings", r.Raw.GroupNotificationSettings))
+	return c
+}
+
+func (r *FBChatResync) GetSender() bridgev2.EventSender {
+	return bridgev2.EventSender{}
+}
+
+func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	if r.Raw == nil {
+		return nil, nil
+	}
+	if r.Members != nil && !r.filled {
+		self := r.Info.Members.Members[0]
+		r.Info.Members.Members = maps.Values(r.Members)
+		r.Info.Members.IsFull = len(r.Members) == r.Info.Members.TotalMemberCount
+		hasSelf := false
+		for _, member := range r.Members {
+			if member.IsFromMe {
+				hasSelf = true
+				break
+			}
+		}
+		if !hasSelf && self.IsFromMe {
+			r.Info.Members.Members = append(r.Info.Members.Members, self)
+		}
+		r.filled = true
+	}
+	return r.Info, nil
+}
+
+func (r *FBChatResync) CheckNeedsBackfill(ctx context.Context, lastMessage *database.Message) (bool, error) {
+	if r.Backfill == nil {
+		return false, nil
+	} else if lastMessage == nil {
+		return true, nil
+	} else if metaid.MakeFBMessageID(r.Backfill.Range.MaxMessageId) == lastMessage.ID {
+		return false, nil
+	} else if r.Backfill.Range.MaxTimestampMs > lastMessage.Timestamp.UnixMilli() {
+		return true, nil
+	} else {
+		zerolog.Ctx(ctx).Debug().
+			Int64("last_message_ts", lastMessage.Timestamp.UnixMilli()).
+			Str("last_message_id", string(lastMessage.ID)).
+			Int64("upsert_max_ts", r.Backfill.Range.MaxTimestampMs).
+			Str("upsert_max_id", r.Backfill.Range.MaxMessageId).
+			Msg("Ignoring unrequested upsert before last message")
+		return false, nil
+	}
+}
+
+func (r *FBChatResync) GetBundledBackfillData() any {
+	return r.Backfill
 }

@@ -93,12 +93,13 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		}
 	}
 	return &bridgev2.ChatInfo{
-		Name:      ptr.Ptr(chatInfo.Name),
-		Topic:     ptr.Ptr(chatInfo.Topic),
-		Avatar:    avatar,
-		Members:   ml,
-		Type:      ptr.Ptr(database.RoomTypeDefault),
-		Disappear: &disappear,
+		Name:        ptr.Ptr(chatInfo.Name),
+		Topic:       ptr.Ptr(chatInfo.Topic),
+		Avatar:      avatar,
+		Members:     ml,
+		Type:        ptr.Ptr(database.RoomTypeDefault),
+		Disappear:   &disappear,
+		CanBackfill: false,
 	}
 }
 
@@ -123,8 +124,9 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 		}
 	}
 	return &bridgev2.ChatInfo{
-		Members: members,
-		Type:    &roomType,
+		Members:     members,
+		Type:        &roomType,
+		CanBackfill: !threadType.IsWhatsApp(),
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*PortalMetadata)
 			if meta.ThreadType != threadType && !meta.ThreadType.IsWhatsApp() {
@@ -156,6 +158,7 @@ func (m *MetaClient) makeWADirectChatInfo(recipient types.JID) *bridgev2.ChatInf
 		Members:      members,
 		Type:         ptr.Ptr(database.RoomTypeDM),
 		ExtraUpdates: markPortalAsEncrypted,
+		CanBackfill:  false,
 	}
 }
 
@@ -169,9 +172,20 @@ func (m *MetaClient) wrapChatInfo(tbl table.ThreadInfo) *bridgev2.ChatInfo {
 			chatInfo.Avatar = wrapAvatar(tbl.GetThreadPictureUrl())
 		}
 	}
+	if chatInfo.UserLocal == nil {
+		chatInfo.UserLocal = &bridgev2.UserLocalPortalInfo{}
+	}
+	if tbl.GetFolderName() == folderE2EECutover {
+		chatInfo.ExtraUpdates = bridgev2.MergeExtraUpdaters(chatInfo.ExtraUpdates, markPortalAsEncrypted)
+	}
 	dtit, ok := tbl.(*table.LSDeleteThenInsertThread)
 	if ok {
 		chatInfo.Members.TotalMemberCount = int(dtit.MemberCount)
+		if dtit.MuteExpireTimeMs < 0 {
+			chatInfo.UserLocal.MutedUntil = ptr.Ptr(event.MutedForever)
+		} else if dtit.MuteExpireTimeMs > 0 {
+			chatInfo.UserLocal.MutedUntil = ptr.Ptr(time.UnixMilli(dtit.MuteExpireTimeMs))
+		}
 	}
 	return chatInfo
 }
