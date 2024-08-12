@@ -109,6 +109,7 @@ func (m *MetaClient) handleUpdateExistingMessageRange(tk handlerParams, rng *tab
 	} else {
 		if len(collector.Messages) == 0 {
 			logEvt.Msg("Update existing range marked backfill as done, no messages found")
+			collector.Range.HasMoreBefore = false
 		} else {
 			logEvt.Msg("Update existing range marked backfill as done, processing collected history now")
 			if rng.UnknownBool2 && !rng.UnknownBool3 {
