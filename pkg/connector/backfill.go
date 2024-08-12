@@ -243,14 +243,16 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		}
 		return false
 	})
-	if forward {
-		upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
-			return message.TimestampMs <= anchor.Timestamp.UnixMilli()
-		})
-	} else {
-		upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
-			return message.TimestampMs >= anchor.Timestamp.UnixMilli()
-		})
+	if anchor != nil {
+		if forward {
+			upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
+				return message.TimestampMs <= anchor.Timestamp.UnixMilli()
+			})
+		} else {
+			upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
+				return message.TimestampMs >= anchor.Timestamp.UnixMilli()
+			})
+		}
 	}
 	wrappedMessages := make([]*bridgev2.BackfillMessage, len(upsert.Messages))
 	for i, msg := range upsert.Messages {
