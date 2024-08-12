@@ -1,0 +1,34 @@
+# Which service is this bridge for? Available options:
+# * unset - allow users to pick any service when logging in (except facebook-tor)
+# * facebook - connect to FB Messenger via facebook.com
+# * facebook-tor - connect to FB Messenger via facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion
+#                  (note: does not currently proxy media downloads)
+# * messenger - connect to FB Messenger via messenger.com (can be used with the facebook side deactivated)
+# * instagram - connect to Instagram DMs via instagram.com
+#
+# Remember to change the appservice id, bot profile info, bridge username_template and management_room_text too.
+mode:
+
+# When in Instagram mode, should the bridge connect to WhatsApp servers for encrypted chats?
+# In FB/Messenger mode encryption is always enabled, this option only affects Instagram mode.
+ig_e2ee: false
+
+# Displayname template for FB/IG users. Available variables:
+#  .DisplayName - The display name set by the user.
+#  .Username - The username set by the user.
+#  .ID - The internal user ID of the user.
+displayname_template: '{{or .DisplayName .Username "Unknown user"}}'
+
+# Static proxy address (HTTP or SOCKS5) for connecting to Meta.
+proxy:
+# HTTP endpoint to request new proxy address from, for dynamically assigned proxies.
+# The endpoint must return a JSON body with a string field called proxy_url.
+get_proxy_from:
+# Minimum interval between full reconnects in seconds, default is 1 hour
+min_full_reconnect_interval_seconds: 3600
+# Interval to force refresh the connection (full reconnect), default is 20 hours. Set 0 to disable force refreshes.
+force_refresh_interval_seconds: 72000
+# Disable fetching XMA media (reels, stories, etc) when backfilling.
+disable_xma_backfill: true
+# Disable fetching XMA media entirely.
+disable_xma_always: false

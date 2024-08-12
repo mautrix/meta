@@ -54,6 +54,15 @@ type Cookies struct {
 	IGWWWClaim string
 }
 
+func (c *Cookies) UpdateValues(newValues map[string]string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.values = make(map[MetaCookieName]string)
+	for k, v := range newValues {
+		c.values[MetaCookieName(k)] = v
+	}
+}
+
 func (c *Cookies) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.values)
 }

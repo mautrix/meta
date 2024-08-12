@@ -91,6 +91,7 @@ type LSTable struct {
 	LSDeleteThenInsertContactPresence             []*LSDeleteThenInsertContactPresence             `json:",omitempty"`
 	LSTruncatePresenceDatabase                    []*LSTruncatePresenceDatabase                    `json:",omitempty"`
 	LSMarkThreadRead                              []*LSMarkThreadRead                              `json:",omitempty"`
+	LSMarkThreadReadV2                            []*LSMarkThreadReadV2                            `json:",omitempty"`
 	LSUpdateParentFolderReadWatermark             []*LSUpdateParentFolderReadWatermark             `json:",omitempty"`
 	LSInsertAttachmentItem                        []*LSInsertAttachmentItem                        `json:",omitempty"`
 	LSGetFirstAvailableAttachmentCTAID            []*LSGetFirstAvailableAttachmentCTAID            `json:",omitempty"`
@@ -166,6 +167,7 @@ var SPTable = map[string]string{
 	"insertAttachmentItem":                        "LSInsertAttachmentItem",
 	"updateParentFolderReadWatermark":             "LSUpdateParentFolderReadWatermark",
 	"markThreadRead":                              "LSMarkThreadRead",
+	"markThreadReadV2":                            "LSMarkThreadReadV2",
 	"truncatePresenceDatabase":                    "LSTruncatePresenceDatabase",
 	"deleteThenInsertContactPresence":             "LSDeleteThenInsertContactPresence",
 	"deleteThenInsertIgThreadInfo":                "LSDeleteThenInsertIgThreadInfo",

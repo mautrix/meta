@@ -13,6 +13,7 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/cookies"
 	"go.mau.fi/mautrix-meta/messagix/crypto"
 	"go.mau.fi/mautrix-meta/messagix/data/responses"
+	"go.mau.fi/mautrix-meta/messagix/table"
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
@@ -226,4 +227,38 @@ func (ig *InstagramMethods) RegisterPushNotifications(endpoint string) error {
 	}
 
 	return nil
+}
+
+func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.LSTable) (int64, error) {
+	var newFBID int64
+
+	for _, row := range tbl.LSVerifyContactRowExists {
+		if row.IsSelf && row.ContactId != newFBID {
+			if newFBID != 0 {
+				// Hopefully this won't happen
+				ig.client.Logger.Warn().Int64("prev_fbid", newFBID).Int64("new_fbid", row.ContactId).Msg("Got multiple fbids for self")
+			} else {
+				ig.client.Logger.Debug().Int64("fbid", row.ContactId).Msg("Found own fbid")
+			}
+			newFBID = row.ContactId
+		}
+	}
+	if newFBID == 0 {
+		newFBID = currentUser.GetFBID()
+		cuid := ig.client.configs.browserConfigTable.CurrentUserInitialData
+		if strconv.FormatInt(newFBID, 10) == cuid.NonFacebookUserID && cuid.IGUserEIMU != "" {
+			newFBID, _ = strconv.ParseInt(cuid.IGUserEIMU, 10, 64)
+		}
+		ig.client.Logger.Debug().
+			Int64("fbid", newFBID).
+			Str("non_facebook_user_id", cuid.NonFacebookUserID).
+			Str("ig_user_eimu", cuid.IGUserEIMU).
+			Str("init_data_user_id", ig.client.configs.browserConfigTable.MessengerWebInitData.UserID.String()).
+			Msg("Own contact entry not found, falling back to fbid in current user object")
+	}
+	if newFBID == 0 {
+		return 0, fmt.Errorf("failed to extract fbid")
+	}
+
+	return newFBID, nil
 }

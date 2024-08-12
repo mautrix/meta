@@ -19,6 +19,8 @@ package config
 import (
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type BridgeMode string
@@ -40,6 +42,21 @@ func (bm BridgeMode) IsMessenger() bool {
 
 func (bm BridgeMode) IsInstagram() bool {
 	return bm == ModeInstagram
+}
+
+func (bm BridgeMode) ToPlatform() types.Platform {
+	switch bm {
+	case ModeInstagram:
+		return types.Instagram
+	case ModeFacebook:
+		return types.Facebook
+	case ModeFacebookTor:
+		return types.FacebookTor
+	case ModeMessenger:
+		return types.Messenger
+	default:
+		return types.Unset
+	}
 }
 
 type Config struct {

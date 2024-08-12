@@ -1,0 +1,124 @@
+package metaid
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"go.mau.fi/whatsmeow/types"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+)
+
+func MakeWAUserID(jid types.JID) networkid.UserID {
+	return networkid.UserID(strconv.Itoa(int(jid.UserInt())))
+}
+
+func MakeUserID(user int64) networkid.UserID {
+	return networkid.UserID(strconv.Itoa(int(user)))
+}
+
+func ParseIDFromString(id string) (int64, error) {
+	i, err := strconv.Atoi(id)
+	if err != nil {
+		return 0, err
+	}
+	return int64(i), nil
+}
+
+func MakeUserLoginID(user int64) networkid.UserLoginID {
+	return networkid.UserLoginID(MakeUserID(user))
+}
+
+func MakeWAPortalID(jid types.JID) networkid.PortalID {
+	return networkid.PortalID(jid.User)
+}
+
+func MakeFBPortalID(portal int64) networkid.PortalID {
+	return networkid.PortalID(strconv.Itoa(int(portal)))
+}
+
+func ParseUserID(user networkid.UserID) int64 {
+	i, _ := strconv.Atoi(string(user))
+	return int64(i)
+}
+
+func ParseUserLoginID(user networkid.UserLoginID) int64 {
+	i, _ := strconv.Atoi(string(user))
+	return int64(i)
+}
+
+func ParseFBPortalID(portal networkid.PortalID) int64 {
+	i, _ := strconv.Atoi(string(portal))
+	return int64(i)
+}
+
+func ParseWAPortalID(portal networkid.PortalID, server string) types.JID {
+	return types.JID{
+		User:   string(portal),
+		Server: server,
+	}
+}
+
+type ParsedMessageID interface {
+	isParsedMessageID()
+	String() string
+}
+
+type ParsedWAMessageID struct {
+	Chat   types.JID
+	Sender types.JID
+	ID     types.MessageID
+}
+
+func (ParsedWAMessageID) isParsedMessageID() {}
+
+func (p ParsedWAMessageID) String() string {
+	return fmt.Sprintf("%s:%s:%s:%s", MessageIDPrefixWA, p.Chat.String(), p.Sender.ToNonAD().String(), p.ID)
+}
+
+type ParsedFBMessageID struct {
+	ID string
+}
+
+func (ParsedFBMessageID) isParsedMessageID() {}
+
+func (p ParsedFBMessageID) String() string {
+	return fmt.Sprintf("%s:%s", MessageIDPrefixFB, p.ID)
+}
+
+const (
+	MessageIDPrefixFB = "fb"
+	MessageIDPrefixWA = "wa"
+)
+
+func MakeWAMessageID(chat, sender types.JID, id types.MessageID) networkid.MessageID {
+	return networkid.MessageID(fmt.Sprintf("%s:%s:%s:%s", MessageIDPrefixWA, chat.String(), sender.ToNonAD().String(), id))
+}
+
+func MakeFBMessageID(messageID string) networkid.MessageID {
+	return networkid.MessageID(fmt.Sprintf("%s:%s", MessageIDPrefixFB, messageID))
+}
+
+func MakeMessageID(parsed ParsedMessageID) networkid.MessageID {
+	return networkid.MessageID(parsed.String())
+}
+
+func ParseMessageID(messageID networkid.MessageID) ParsedMessageID {
+	parts := strings.SplitN(string(messageID), ":", 4)
+	if len(parts) == 2 && parts[0] == MessageIDPrefixFB {
+		return ParsedFBMessageID{ID: parts[1]}
+	} else if len(parts) == 4 && parts[0] == MessageIDPrefixWA {
+		chat, err := types.ParseJID(parts[1])
+		if err != nil {
+			return nil
+		}
+		sender, err := types.ParseJID(parts[2])
+		if err != nil {
+			return nil
+		}
+		id := types.MessageID(parts[3])
+		return ParsedWAMessageID{Chat: chat, Sender: sender, ID: id}
+	} else {
+		return nil
+	}
+}
