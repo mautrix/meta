@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
 	"go.mau.fi/mautrix-meta/pkg/connector"
@@ -27,6 +28,7 @@ var m = mxmain.BridgeMain{
 }
 
 func main() {
+	bridgeconfig.HackyMigrateLegacyNetworkConfig = migrateLegacyConfig
 	m.PostInit = func() {
 		copyData := strings.ReplaceAll(
 			legacyMigrateCopyData,
