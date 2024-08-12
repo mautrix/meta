@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
@@ -16,7 +17,13 @@ import (
 var (
 	_ bridgev2.IdentifierResolvingNetworkAPI = (*MetaClient)(nil)
 	_ bridgev2.UserSearchingNetworkAPI       = (*MetaClient)(nil)
+	_ bridgev2.IdentifierValidatingNetwork   = (*MetaConnector)(nil)
 )
+
+func (m *MetaConnector) ValidateUserID(id networkid.UserID) bool {
+	parsed := metaid.ParseUserID(id)
+	return parsed > 0
+}
 
 func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 	log := zerolog.Ctx(ctx)

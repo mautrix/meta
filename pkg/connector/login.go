@@ -2,7 +2,9 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
@@ -19,6 +21,9 @@ const (
 	FlowIDFacebookCookies  = "cookies-facebook"
 	FlowIDMessengerCookies = "cookies-messenger"
 	FlowIDInstagramCookies = "cookies-instagram"
+
+	LoginStepIDCookies  = "fi.mau.meta.cookies"
+	LoginStepIDComplete = "fi.mau.meta.complete"
 )
 
 func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
@@ -105,7 +110,7 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	step := &bridgev2.LoginStep{
 		Type:          bridgev2.LoginStepTypeCookies,
-		StepID:        "fi.mau.meta.cookies",
+		StepID:        LoginStepIDCookies,
 		Instructions:  "Enetr a JSON object with your cookies, or a cURL command copied from browser devtools.",
 		CookiesParams: &bridgev2.LoginCookiesParams{},
 	}
@@ -127,12 +132,26 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaCookieLogin) Cancel() {}
 
+var (
+	ErrLoginMissingCookies   = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Missing cookies", StatusCode: http.StatusBadRequest}
+	ErrLoginChallenge        = bridgev2.RespError{ErrCode: "FI.MAU.META_CHALLENGE_ERROR", Err: "Challenge required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
+	ErrLoginConsent          = bridgev2.RespError{ErrCode: "FI.MAU.META_CONSENT_ERROR", Err: "Consent required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
+	ErrLoginTokenInvalidated = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_ERROR", Err: "Got logged out immediately", StatusCode: http.StatusBadRequest}
+	ErrLoginUnknown          = bridgev2.RespError{ErrCode: "M_UNKNOWN", Err: "Internal error logging in", StatusCode: http.StatusInternalServerError}
+)
+
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: m.Mode.ToPlatform()}
 	c.UpdateValues(strCookies)
 
-	if !c.IsLoggedIn() {
-		return nil, fmt.Errorf("invalid cookies")
+	missingCookies := c.GetMissingCookieNames()
+	if len(missingCookies) > 0 {
+		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
+	}
+
+	err := c.GeneratePushKeys()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate push keys: %w", err)
 	}
 
 	log := m.User.Log.With().Str("component", "messagix").Logger()
@@ -140,7 +159,16 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 
 	user, tbl, err := client.LoadMessagesPage()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load messages page: %w", err)
+		log.Err(err).Msg("Failed to load messages page for login")
+		if errors.Is(err, messagix.ErrChallengeRequired) {
+			return nil, ErrLoginChallenge
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			return nil, ErrLoginConsent
+		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+			return nil, ErrLoginTokenInvalidated
+		} else {
+			return nil, fmt.Errorf("%w: %w", ErrLoginUnknown, err)
+		}
 	}
 
 	id := user.GetFBID()
@@ -176,7 +204,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
-		StepID:       "fi.mau.meta.complete",
+		StepID:       LoginStepIDComplete,
 		Instructions: fmt.Sprintf("Logged in as %s (%d)", user.GetName(), id),
 	}, nil
 }
