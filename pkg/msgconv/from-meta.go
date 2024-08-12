@@ -45,6 +45,7 @@ import (
 	"go.mau.fi/mautrix-meta/messagix/data/responses"
 	"go.mau.fi/mautrix-meta/messagix/socket"
 	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -182,29 +183,27 @@ func (mc *MessageConverter) ToMatrix(
 		cm.ReplyTo = &networkid.MessageOptionalPartID{MessageID: metaid.MakeFBMessageID(msg.ReplySourceId)}
 	}
 
-	for _, part := range cm.Parts {
+	for i, part := range cm.Parts {
+		part.ID = metaid.MakeMessagePartID(i)
 		_, hasExternalURL := part.Extra["external_url"]
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
 		if unsupported && !hasExternalURL {
-			//_, threadURL := mc.GetThreadURL(ctx)
-			panic("GetThreadURL not implemented")
-			// if threadURL != "" {
-			// 	part.Extra["external_url"] = threadURL
-			// 	part.Content.EnsureHasHTML()
-			// 	var protocolName string
-			// 	switch {
-			// 	case strings.HasPrefix(threadURL, "https://www.instagram.com"):
-			// 		protocolName = "Instagram"
-			// 	case strings.HasPrefix(threadURL, "https://www.facebook.com"):
-			// 		protocolName = "Facebook"
-			// 	case strings.HasPrefix(threadURL, "https://www.messenger.com"):
-			// 		protocolName = "Messenger"
-			// 	default:
-			// 		protocolName = "native app"
-			// 	}
-			// 	part.Content.Body = fmt.Sprintf("%s\n\nOpen in %s: %s", part.Content.Body, protocolName, threadURL)
-			// 	part.Content.FormattedBody = fmt.Sprintf("%s<br><br><a href=\"%s\">Click here to open in %s</a>", part.Content.FormattedBody, threadURL, protocolName)
-			// }
+			var threadURL, protocolName string
+			switch client.Platform {
+			case types.Instagram:
+				threadURL = fmt.Sprintf("https://www.instagram.com/direct/t/%s/", portal.ID)
+				protocolName = "Instagram"
+			case types.Facebook, types.FacebookTor:
+				threadURL = fmt.Sprintf("https://www.facebook.com/messages/t/%s/", portal.ID)
+				protocolName = "Facebook"
+			case types.Messenger:
+				threadURL = fmt.Sprintf("https://www.messenger.com/t/%s/", portal.ID)
+				protocolName = "Messenger"
+			}
+			if threadURL != "" {
+				part.Content.Body = fmt.Sprintf("%s\n\nOpen in %s: %s", part.Content.Body, protocolName, threadURL)
+				part.Content.FormattedBody = fmt.Sprintf("%s<br><br><a href=\"%s\">Click here to open in %s</a>", part.Content.FormattedBody, threadURL, protocolName)
+			}
 		}
 		if part.Content.Mentions == nil {
 			part.Content.Mentions = &event.Mentions{}

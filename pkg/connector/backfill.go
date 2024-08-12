@@ -196,6 +196,19 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 			}
 			oldestMessageID = parsedID.ID
 			oldestMessageTS = params.AnchorMessage.Timestamp.UnixMilli()
+			upsert = &table.UpsertMessages{
+				Range: &table.LSInsertNewMessageRange{
+					ThreadKey:              threadID,
+					MinTimestampMsTemplate: oldestMessageTS,
+					MaxTimestampMsTemplate: oldestMessageTS,
+					MinMessageId:           oldestMessageID,
+					MaxMessageId:           oldestMessageID,
+					MinTimestampMs:         oldestMessageTS,
+					MaxTimestampMs:         oldestMessageTS,
+					HasMoreBefore:          true,
+					HasMoreAfter:           true,
+				},
+			}
 		}
 		doneCh := make(chan struct{})
 		collector := &BackfillCollector{

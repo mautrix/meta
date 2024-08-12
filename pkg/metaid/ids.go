@@ -99,6 +99,13 @@ func MakeFBMessageID(messageID string) networkid.MessageID {
 	return networkid.MessageID(fmt.Sprintf("%s:%s", MessageIDPrefixFB, messageID))
 }
 
+func MakeMessagePartID(i int) networkid.PartID {
+	if i == 0 {
+		return ""
+	}
+	return networkid.PartID(strconv.Itoa(i))
+}
+
 func MakeMessageID(parsed ParsedMessageID) networkid.MessageID {
 	return networkid.MessageID(parsed.String())
 }

@@ -494,7 +494,8 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, portal *bridge
 			MessageID: metaid.MakeWAMessageID(evt.Info.Chat, pcp, qm.GetStanzaID()),
 		}
 	}
-	for _, part := range cm.Parts {
+	for i, part := range cm.Parts {
+		part.ID = metaid.MakeMessagePartID(i)
 		if part.Content.Mentions == nil {
 			part.Content.Mentions = &event.Mentions{}
 		}
