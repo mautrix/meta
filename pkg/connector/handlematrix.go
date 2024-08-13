@@ -30,6 +30,13 @@ var (
 	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
 )
 
+var (
+	ErrServerRejectedMessage = bridgev2.WrapErrorInStatus(errors.New("server rejected message")).WithErrorAsMessage().WithSendNotice(true)
+	ErrNotConnected          = bridgev2.WrapErrorInStatus(errors.New("not connected")).WithErrorAsMessage().WithSendNotice(true)
+)
+
+const ConnectWaitTimeout = 1 * time.Minute
+
 func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	log := zerolog.Ctx(ctx)
 
@@ -37,6 +44,10 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 	switch portalMeta.ThreadType {
 	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE, table.ENCRYPTED_OVER_WA_GROUP:
+		if !m.e2eeConnectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return nil, ErrNotConnected
+		}
+
 		waMsg, waMeta, err := m.Main.MsgConv.ToWhatsApp(ctx, msg.Event, msg.Content, msg.Portal, m.E2EEClient, msg.OrigSender != nil, msg.ReplyTo)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert message: %w", err)
@@ -58,6 +69,10 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			},
 		}, nil
 	default:
+		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return nil, ErrNotConnected
+		}
+
 		tasks, otid, err := m.Main.MsgConv.ToMeta(ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.OrigSender != nil, msg.Portal)
 		if errors.Is(err, types.ErrPleaseReloadPage) {
 			// TODO handle properly
@@ -180,6 +195,9 @@ func wrapRevoke(message *waConsumerApplication.ConsumerApplication_RevokeMessage
 func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
 	switch messageID := metaid.ParseMessageID(msg.TargetMessage.ID).(type) {
 	case metaid.ParsedFBMessageID:
+		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return nil, ErrNotConnected
+		}
 		resp, err := m.Client.ExecuteTasks(&socket.SendReactionTask{
 			ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
 			TimestampMs:     msg.Event.Timestamp,
@@ -196,6 +214,9 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Meta reaction response")
 		return &database.Reaction{}, nil
 	case metaid.ParsedWAMessageID:
+		if !m.e2eeConnectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return nil, ErrNotConnected
+		}
 		consumerMsg := wrapReaction(&waConsumerApplication.ConsumerApplication_ReactionMessage{
 			Key:               m.messageIDToWAKey(messageID),
 			Text:              ptr.Ptr(msg.PreHandleResp.Emoji),
@@ -213,6 +234,9 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
 	switch messageID := metaid.ParseMessageID(msg.TargetReaction.MessageID).(type) {
 	case metaid.ParsedFBMessageID:
+		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return ErrNotConnected
+		}
 		resp, err := m.Client.ExecuteTasks(&socket.SendReactionTask{
 			ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
 			TimestampMs:     msg.Event.Timestamp,
@@ -228,6 +252,9 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Meta reaction remove response")
 		return nil
 	case metaid.ParsedWAMessageID:
+		if !m.e2eeConnectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return ErrNotConnected
+		}
 		consumerMsg := wrapReaction(&waConsumerApplication.ConsumerApplication_ReactionMessage{
 			Key:               m.messageIDToWAKey(messageID),
 			Text:              ptr.Ptr(""),
@@ -246,6 +273,9 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 	log := zerolog.Ctx(ctx)
 	switch messageID := metaid.ParseMessageID(edit.EditTarget.ID).(type) {
 	case metaid.ParsedFBMessageID:
+		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return ErrNotConnected
+		}
 		fakeSendTasks, _, err := m.Main.MsgConv.ToMeta(ctx, m.Client, edit.Event, edit.Content, nil, false, edit.Portal)
 		if err != nil {
 			return fmt.Errorf("failed to convert message: %w", err)
@@ -287,6 +317,9 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 
 		return nil
 	case metaid.ParsedWAMessageID:
+		if !m.e2eeConnectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return ErrNotConnected
+		}
 		consumerMsg := wrapEdit(&waConsumerApplication.ConsumerApplication_EditMessage{
 			Key:         m.messageIDToWAKey(messageID),
 			Message:     m.Main.MsgConv.TextToWhatsApp(edit.Content),
@@ -305,11 +338,17 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 	log := zerolog.Ctx(ctx)
 	switch messageID := metaid.ParseMessageID(msg.TargetMessage.ID).(type) {
 	case metaid.ParsedFBMessageID:
+		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return ErrNotConnected
+		}
 		resp, err := m.Client.ExecuteTasks(&socket.DeleteMessageTask{MessageId: messageID.ID})
 		// TODO does the response data need to be checked?
 		log.Trace().Any("response", resp).Msg("Meta delete response")
 		return err
 	case metaid.ParsedWAMessageID:
+		if !m.e2eeConnectWaiter.WaitTimeout(ConnectWaitTimeout) {
+			return ErrNotConnected
+		}
 		consumerMsg := wrapRevoke(&waConsumerApplication.ConsumerApplication_RevokeMessage{
 			Key: m.messageIDToWAKey(messageID),
 		})

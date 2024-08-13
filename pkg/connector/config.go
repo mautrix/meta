@@ -25,6 +25,9 @@ type Config struct {
 	DisableXMABackfill bool `yaml:"disable_xma_backfill"`
 	DisableXMAAlways   bool `yaml:"disable_xma_always"`
 
+	MinFullReconnectIntervalSeconds int `yaml:"min_full_reconnect_interval_seconds"`
+	ForceRefreshIntervalSeconds     int `yaml:"force_refresh_interval_seconds"`
+
 	DisplaynameTemplate string             `yaml:"displayname_template"`
 	displaynameTemplate *template.Template `yaml:"-"`
 }

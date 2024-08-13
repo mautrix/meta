@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
@@ -34,6 +36,11 @@ type MetaClient struct {
 	backfillCollectors map[int64]*BackfillCollector
 	backfillLock       sync.Mutex
 
+	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
+	lastFullReconnect     time.Time
+	connectWaiter         *exsync.Event
+	e2eeConnectWaiter     *exsync.Event
+
 	E2EEClient      *whatsmeow.Client
 	WADevice        *store.Device
 	e2eeConnectLock sync.Mutex
@@ -53,6 +60,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 		incomingTables:     make(chan *table.LSTable, 16),
 		backfillCollectors: make(map[int64]*BackfillCollector),
+
+		connectWaiter:     exsync.NewEvent(),
+		e2eeConnectWaiter: exsync.NewEvent(),
 	}
 	c.Client.SetEventHandler(c.handleMetaEvent)
 	login.Client = c
@@ -64,7 +74,51 @@ var _ bridgev2.NetworkAPI = (*MetaClient)(nil)
 func (m *MetaClient) Connect(ctx context.Context) error {
 	currentUser, initialTable, err := m.Client.LoadMessagesPage()
 	if err != nil {
-		return fmt.Errorf("failed to load messages page: %w", err)
+		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
+			(*stopPeriodicReconnect)()
+		}
+		if errors.Is(err, messagix.ErrTokenInvalidated) {
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      MetaCookieRemoved,
+			})
+			// TODO clear cookies?
+		} else if errors.Is(err, messagix.ErrChallengeRequired) {
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      IGChallengeRequired,
+			})
+		} else if errors.Is(err, messagix.ErrAccountSuspended) {
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      IGAccountSuspended,
+			})
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			code := IGConsentRequired
+			if m.LoginMeta.Platform.IsMessenger() {
+				code = FBConsentRequired
+			}
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      code,
+			})
+		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
+			stateEvt := status.StateUnknownError
+			if lsErr.ErrorCode == 1357053 {
+				stateEvt = status.StateBadCredentials
+			}
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: stateEvt,
+				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
+				Message:    lsErr.Error(),
+			})
+		} else {
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      MetaConnectError,
+			})
+		}
+		return nil
 	}
 	return m.connectWithTable(ctx, initialTable, currentUser)
 }
@@ -91,7 +145,33 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 		return err
 	}
 
+	go m.periodicReconnect()
+
 	return nil
+}
+
+func (m *MetaClient) periodicReconnect() {
+	if m.Main.Config.ForceRefreshIntervalSeconds <= 0 {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if oldCancel := m.stopPeriodicReconnect.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	interval := time.Duration(m.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	m.UserLogin.Log.Info().Stringer("interval", interval).Msg("Starting periodic reconnect loop")
+	for {
+		select {
+		case <-timer.C:
+			m.UserLogin.Log.Info().Msg("Doing periodic reconnect")
+			m.FullReconnect()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (m *MetaClient) connectE2EE() error {
@@ -155,8 +235,11 @@ func (m *MetaClient) Disconnect() {
 	}
 	m.metaState = status.BridgeState{}
 	m.waState = status.BridgeState{}
-	if stopTableLoop := m.stopHandlingTables.Load(); stopTableLoop != nil {
+	if stopTableLoop := m.stopHandlingTables.Swap(nil); stopTableLoop != nil {
 		(*stopTableLoop)()
+	}
+	if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
+		(*stopPeriodicReconnect)()
 	}
 }
 
@@ -177,8 +260,6 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	return metaCaps
 }
 
-var ErrServerRejectedMessage = bridgev2.WrapErrorInStatus(errors.New("server rejected message")).WithErrorAsMessage().WithSendNotice(true)
-
 func (m *MetaClient) IsLoggedIn() bool {
 	return m.Client != nil
 }
@@ -188,16 +269,27 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
-	panic("unimplemented")
+	m.Disconnect()
+	err := m.WADevice.Delete()
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to delete device from store")
+	}
+	m.resetWADevice()
 }
 
 func (m *MetaClient) canReconnect() bool {
-	//return time.Since(user.lastFullReconnect) > time.Duration(user.bridge.Config.Meta.MinFullReconnectIntervalSeconds)*time.Second
-	return false
+	return time.Since(m.lastFullReconnect) > time.Duration(m.Main.Config.MinFullReconnectIntervalSeconds)*time.Second
 }
 
 func (m *MetaClient) FullReconnect() {
-	panic("unimplemented")
+	ctx := m.UserLogin.Log.WithContext(context.TODO())
+	m.connectWaiter.Clear()
+	m.e2eeConnectWaiter.Clear()
+	m.Disconnect()
+	err := m.Connect(ctx)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to reconnect")
+	}
 }
 
 func (m *MetaClient) resetWADevice() {

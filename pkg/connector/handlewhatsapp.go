@@ -97,6 +97,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 		})
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
+		m.connectWaiter.Set()
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.waState)
 	case *events.Disconnected:
@@ -129,14 +130,22 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 			}
 		case *events.ConnectFailure:
 			if e.Reason == events.ConnectFailureNotFound {
-				if m.E2EEClient != nil {
-					m.E2EEClient.Disconnect()
-					m.WADevice.Delete()
+				if cli := m.E2EEClient; cli != nil {
+					cli.Disconnect()
+					err := m.WADevice.Delete()
+					if err != nil {
+						log.Err(err).Msg("Failed to delete WhatsApp device after 415 error")
+					}
 					m.resetWADevice()
 					m.E2EEClient = nil
 				}
 				log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
-				go m.connectE2EE()
+				go func() {
+					err := m.connectE2EE()
+					if err != nil {
+						log.Err(err).Msg("Error connecting to e2ee after 415 error")
+					}
+				}()
 			}
 		}
 

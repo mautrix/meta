@@ -68,6 +68,7 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 		}
 	case *messagix.Event_Ready:
 		log.Debug().Msg("Initial connect to Meta socket completed")
+		m.connectWaiter.Set()
 		if tbl := m.initialTable.Swap(nil); tbl != nil {
 			log.Debug().Msg("Sending cached initial table to handler")
 			m.incomingTables <- tbl
@@ -91,6 +92,7 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 		m.UserLogin.BridgeState.Send(m.metaState)
 	case *messagix.Event_Reconnected:
 		log.Debug().Msg("Reconnected to Meta socket")
+		m.connectWaiter.Set()
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.metaState)
 	case *messagix.Event_PermanentError:
@@ -123,9 +125,9 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 			}
 		}
 		m.UserLogin.BridgeState.Send(m.metaState)
-		//if user.forceRefreshTimer != nil {
-		//	user.forceRefreshTimer.Stop()
-		//}
+		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
+			(*stopPeriodicReconnect)()
+		}
 	default:
 		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
