@@ -12,6 +12,7 @@ import (
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
+	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -361,6 +362,67 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 	}
 }
 
-func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, msg *bridgev2.MatrixReadReceipt) error {
+func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) error {
+	if !receipt.ReadUpTo.After(receipt.LastRead) {
+		return nil
+	}
+	if receipt.LastRead.IsZero() {
+		receipt.LastRead = receipt.ReadUpTo.Add(-5 * time.Second)
+	}
+	messages, err := receipt.Portal.Bridge.DB.Message.GetMessagesBetweenTimeQuery(ctx, receipt.Portal.PortalKey, receipt.LastRead, receipt.ReadUpTo)
+	if err != nil {
+		return fmt.Errorf("failed to get messages to mark as read: %w", err)
+	} else if len(messages) == 0 {
+		return nil
+	}
+	log := zerolog.Ctx(ctx)
+	log.Trace().
+		Time("last_read", receipt.LastRead).
+		Time("read_up_to", receipt.ReadUpTo).
+		Int("message_count", len(messages)).
+		Msg("Handling read receipt")
+	waMessagesToRead := make(map[waTypes.JID][]string)
+	var fbMessageToReadTS time.Time
+	for _, msg := range messages {
+		switch messageID := metaid.ParseMessageID(msg.ID).(type) {
+		case metaid.ParsedFBMessageID:
+			if fbMessageToReadTS.Before(msg.Timestamp) {
+				fbMessageToReadTS = msg.Timestamp
+			}
+		case metaid.ParsedWAMessageID:
+			if msg.SenderID == networkid.UserID(m.UserLogin.ID) {
+				continue
+			}
+			var key waTypes.JID
+			// In group chats, group receipts by sender. In DMs, just use blank key (no participant field).
+			if messageID.Sender != messageID.Chat {
+				key = messageID.Sender
+			}
+			waMessagesToRead[key] = append(waMessagesToRead[key], messageID.ID)
+		}
+	}
+	threadID := metaid.ParseFBPortalID(receipt.Portal.ID)
+	if !fbMessageToReadTS.IsZero() && threadID != 0 {
+		resp, err := m.Client.ExecuteTasks(&socket.ThreadMarkReadTask{
+			ThreadId:            threadID,
+			LastReadWatermarkTs: fbMessageToReadTS.UnixMilli(),
+			SyncGroup:           1,
+		})
+		log.Trace().Any("response", resp).Msg("Read receipt send response")
+		if err != nil {
+			log.Err(err).Time("read_watermark", fbMessageToReadTS).Msg("Failed to send read receipt")
+		} else {
+			log.Debug().Time("read_watermark", fbMessageToReadTS).Msg("Read receipt sent")
+		}
+	}
+	portalJID := receipt.Portal.Metadata.(*PortalMetadata).JID(receipt.Portal.ID)
+	if len(waMessagesToRead) > 0 && !portalJID.IsEmpty() {
+		for messageSender, ids := range waMessagesToRead {
+			err = m.E2EEClient.MarkRead(ids, receipt.Receipt.Timestamp, portalJID, messageSender)
+			if err != nil {
+				log.Err(err).Strs("ids", ids).Msg("Failed to mark messages as read")
+			}
+		}
+	}
 	return nil
 }
