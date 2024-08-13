@@ -2,8 +2,11 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +16,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -71,7 +75,49 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 var _ bridgev2.NetworkAPI = (*MetaClient)(nil)
 
+type respGetProxy struct {
+	ProxyURL string `json:"proxy_url"`
+}
+
+// TODO this should be moved into mautrix-go
+
+func (m *MetaClient) getProxy(reason string) (string, error) {
+	if m.Main.Config.GetProxyFrom == "" {
+		return m.Main.Config.Proxy, nil
+	}
+	parsed, err := url.Parse(m.Main.Config.GetProxyFrom)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse address: %w", err)
+	}
+	q := parsed.Query()
+	q.Set("reason", reason)
+	parsed.RawQuery = q.Encode()
+	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to prepare request: %w", err)
+	}
+	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+	var respData respGetProxy
+	err = json.NewDecoder(resp.Body).Decode(&respData)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+	return respData.ProxyURL, nil
+}
+
 func (m *MetaClient) Connect(ctx context.Context) error {
+	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
+		m.Client.GetNewProxy = m.getProxy
+		if !m.Client.UpdateProxy("connect") {
+			return fmt.Errorf("failed to update proxy")
+		}
+	}
 	currentUser, initialTable, err := m.Client.LoadMessagesPage()
 	if err != nil {
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
