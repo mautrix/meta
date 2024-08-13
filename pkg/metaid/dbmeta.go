@@ -10,7 +10,7 @@ type MessageMetadata struct {
 }
 
 type GhostMetadata struct {
-	Username string `json:"username"`
+	Username string `json:"username,omitempty"`
 }
 
 type UserLoginMetadata struct {
