@@ -73,7 +73,10 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 	return nil
 }
 
-var _ bridgev2.NetworkAPI = (*MetaClient)(nil)
+var (
+	_ bridgev2.NetworkAPI                      = (*MetaClient)(nil)
+	_ status.StandaloneCustomBridgeStateFiller = (*MetaClient)(nil)
+)
 
 type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
@@ -178,6 +181,7 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 		return fmt.Errorf("failed to get own ghost: %w", err)
 	}
 	m.Ghost.UpdateInfo(ctx, m.wrapUserInfo(currentUser))
+	m.UserLogin.RemoteName = currentUser.GetName()
 	m.UserLogin.RemoteProfile.Name = currentUser.GetName()
 	if !m.LoginMeta.Platform.IsMessenger() {
 		m.UserLogin.RemoteProfile.Username = currentUser.GetUsername()
@@ -341,4 +345,22 @@ func (m *MetaClient) FullReconnect() {
 func (m *MetaClient) resetWADevice() {
 	m.WADevice = nil
 	m.LoginMeta.WADeviceID = 0
+}
+
+func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeState {
+	if state.StateEvent == status.StateConnected {
+		var copyFrom *status.BridgeState
+		if m.waState.StateEvent != "" && m.waState.StateEvent != status.StateConnected {
+			copyFrom = &m.waState
+		}
+		if m.metaState.StateEvent != "" && m.metaState.StateEvent != status.StateConnected {
+			copyFrom = &m.metaState
+		}
+		if copyFrom != nil {
+			state.StateEvent = copyFrom.StateEvent
+			state.Error = copyFrom.Error
+			state.Message = copyFrom.Message
+		}
+	}
+	return state
 }
