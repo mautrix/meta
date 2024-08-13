@@ -97,7 +97,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 		})
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
-		m.connectWaiter.Set()
+		m.e2eeConnectWaiter.Set()
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.waState)
 	case *events.Disconnected:
