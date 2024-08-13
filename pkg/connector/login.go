@@ -196,8 +196,14 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		return nil, fmt.Errorf("failed to save new login: %w", err)
 	}
 
+	metaClient := ul.Client.(*MetaClient)
+	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
+	client.Logger = metaClient.Client.Logger
+	client.SetEventHandler(metaClient.handleMetaEvent)
+	metaClient.Client = client
+
 	backgroundCtx := ul.Log.WithContext(context.Background())
-	err = ul.Client.(*MetaClient).connectWithTable(backgroundCtx, tbl, user)
+	err = metaClient.connectWithTable(backgroundCtx, tbl, user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect after login: %w", err)
 	}
