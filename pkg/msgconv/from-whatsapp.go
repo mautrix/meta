@@ -23,7 +23,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -41,7 +40,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -478,9 +476,6 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, portal *bridge
 			},
 		}}
 	}
-
-	var sender id.UserID
-	var replyTo id.EventID
 	if qm := evt.Application.GetMetadata().GetQuotedMessage(); qm != nil {
 		pcp, _ := types.ParseJID(qm.GetParticipant())
 		// TODO what if participant is not set?
@@ -498,12 +493,6 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, portal *bridge
 		part.ID = metaid.MakeMessagePartID(i)
 		if part.Content.Mentions == nil {
 			part.Content.Mentions = &event.Mentions{}
-		}
-		if replyTo != "" {
-			part.Content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(replyTo)
-			if !slices.Contains(part.Content.Mentions.UserIDs, sender) {
-				part.Content.Mentions.UserIDs = append(part.Content.Mentions.UserIDs, sender)
-			}
 		}
 	}
 	return cm
