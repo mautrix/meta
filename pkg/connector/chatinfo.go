@@ -58,7 +58,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		IsFull:           true,
 		TotalMemberCount: len(chatInfo.Participants),
 		Members:          make([]bridgev2.ChatMember, len(chatInfo.Participants)),
-		PowerLevels: &bridgev2.PowerLevelChanges{
+		PowerLevels: &bridgev2.PowerLevelOverrides{
 			Events: map[event.Type]int{
 				event.StateRoomName:   powerDefault,
 				event.StateRoomAvatar: powerDefault,
@@ -93,13 +93,29 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		}
 	}
 	return &bridgev2.ChatInfo{
-		Name:        ptr.Ptr(chatInfo.Name),
-		Topic:       ptr.Ptr(chatInfo.Topic),
-		Avatar:      avatar,
-		Members:     ml,
-		Type:        ptr.Ptr(database.RoomTypeDefault),
-		Disappear:   &disappear,
-		CanBackfill: false,
+		Name:         ptr.Ptr(chatInfo.Name),
+		Topic:        ptr.Ptr(chatInfo.Topic),
+		Avatar:       avatar,
+		Members:      ml,
+		Type:         ptr.Ptr(database.RoomTypeDefault),
+		Disappear:    &disappear,
+		CanBackfill:  false,
+		ExtraUpdates: updateServerAndThreadType(chatInfo.JID, table.ENCRYPTED_OVER_WA_GROUP),
+	}
+}
+
+func updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(context.Context, *bridgev2.Portal) bool {
+	return func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
+		meta := portal.Metadata.(*PortalMetadata)
+		if meta.WhatsAppServer != jid.Server {
+			meta.WhatsAppServer = jid.Server
+			changed = true
+		}
+		if meta.ThreadType != threadType {
+			meta.ThreadType = threadType
+			changed = true
+		}
+		return
 	}
 }
 
@@ -157,7 +173,7 @@ func (m *MetaClient) makeWADirectChatInfo(recipient types.JID) *bridgev2.ChatInf
 	return &bridgev2.ChatInfo{
 		Members:      members,
 		Type:         ptr.Ptr(database.RoomTypeDM),
-		ExtraUpdates: markPortalAsEncrypted,
+		ExtraUpdates: updateServerAndThreadType(recipient, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
 		CanBackfill:  false,
 	}
 }

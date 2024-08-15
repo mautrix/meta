@@ -181,21 +181,77 @@ func (evt *FBEditEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal
 	}, nil
 }
 
-type WAMessageEvent struct {
-	*events.FBMessage
-	evtType   bridgev2.RemoteEventType
-	portalKey networkid.PortalKey
-	m         *MetaClient
+type EnsureWAChatStateEvent struct {
+	JID types.JID
+	m   *MetaClient
 }
 
 var (
-	_ bridgev2.RemoteMessage                  = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteEdit                     = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteEventWithTimestamp       = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteEventThatMayCreatePortal = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteReaction                 = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteReactionRemove           = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteMessageRemove            = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteChatResyncWithInfo       = (*EnsureWAChatStateEvent)(nil)
+	_ bridgev2.RemoteEventThatMayCreatePortal = (*EnsureWAChatStateEvent)(nil)
+)
+
+func (evt *EnsureWAChatStateEvent) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventChatResync
+}
+
+func (evt *EnsureWAChatStateEvent) GetPortalKey() networkid.PortalKey {
+	return evt.m.makeWAPortalKey(evt.JID)
+}
+
+func (evt *EnsureWAChatStateEvent) ShouldCreatePortal() bool {
+	return true
+}
+
+func (evt *EnsureWAChatStateEvent) AddLogContext(c zerolog.Context) zerolog.Context {
+	return c
+}
+
+func (evt *EnsureWAChatStateEvent) GetSender() bridgev2.EventSender {
+	return bridgev2.EventSender{}
+}
+
+func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	switch evt.JID.Server {
+	case types.GroupServer:
+		if portal.MXID != "" {
+			return &bridgev2.ChatInfo{
+				Type:         ptr.Ptr(database.RoomTypeDefault),
+				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_GROUP),
+			}, nil
+		}
+		groupInfo, err := evt.m.E2EEClient.GetGroupInfo(evt.JID)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to fetch WhatsApp group info")
+			return nil, err
+		}
+		return evt.m.wrapWAGroupInfo(groupInfo), nil
+	case types.MessengerServer, types.DefaultUserServer:
+		if portal.MXID != "" {
+			return &bridgev2.ChatInfo{
+				Type:         ptr.Ptr(database.RoomTypeDM),
+				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
+			}, nil
+		}
+		return evt.m.makeWADirectChatInfo(evt.JID), nil
+	default:
+		return nil, fmt.Errorf("unknown WhatsApp server %s", evt.JID.Server)
+	}
+}
+
+type WAMessageEvent struct {
+	*events.FBMessage
+	evtType bridgev2.RemoteEventType
+	m       *MetaClient
+}
+
+var (
+	_ bridgev2.RemoteMessage            = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEdit               = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithTimestamp = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteReaction           = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteReactionRemove     = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteMessageRemove      = (*WAMessageEvent)(nil)
 )
 
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
@@ -334,12 +390,8 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	return bridgev2.RemoteEventUnknown
 }
 
-func (evt *WAMessageEvent) ShouldCreatePortal() bool {
-	return true
-}
-
 func (evt *WAMessageEvent) GetPortalKey() networkid.PortalKey {
-	return evt.portalKey
+	return evt.m.makeWAPortalKey(evt.Info.Chat)
 }
 
 func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {

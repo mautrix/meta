@@ -29,19 +29,14 @@ func (m *MetaClient) makeWAEventSender(sender types.JID) bridgev2.EventSender {
 	return m.makeEventSender(int64(sender.UserInt()))
 }
 
-func (m *MetaClient) makeWAPortalKey(chatJID types.JID) (key networkid.PortalKey, threadType table.ThreadType, ok bool) {
-	key.ID = metaid.MakeWAPortalID(chatJID)
-	switch chatJID.Server {
-	case types.MessengerServer, types.DefaultUserServer:
-		threadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
-		key.Receiver = m.UserLogin.ID
-	case types.GroupServer:
-		threadType = table.ENCRYPTED_OVER_WA_GROUP
-	default:
-		return
+func (m *MetaClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey {
+	key := networkid.PortalKey{
+		ID: metaid.MakeWAPortalID(chatJID),
 	}
-	ok = true
-	return
+	if chatJID.Server == types.MessengerServer || chatJID.Server == types.DefaultUserServer {
+		key.Receiver = m.UserLogin.ID
+	}
+	return key
 }
 
 func (m *MetaClient) makeFBPortalKey(threadID int64, threadType table.ThreadType) networkid.PortalKey {
