@@ -10,9 +10,9 @@
       * [x] Images
       * [ ] Locations
       * [ ] Polls
-    * [ ] Formatting (Messenger only)
+    * [x] Formatting (Messenger only)
     * [x] Replies
-    * [ ] Mentions
+    * [x] Mentions
   * [x] Message redactions
   * [x] Message reactions
   * [x] Message edits
