@@ -24,9 +24,29 @@ import (
 )
 
 const (
-	folderInbox       = "inbox"
-	folderPending     = "pending"
-	folderE2EECutover = "e2ee_cutover"
+	folderInbox                     = "inbox"
+	folderOther                     = "other"
+	folderSpam                      = "spam"
+	folderPending                   = "pending"
+	folderMontage                   = "montage"
+	folderHidden                    = "hidden"
+	folderLegacy                    = "legacy"
+	folderDisabled                  = "disabled"
+	folderPageBackground            = "page_background"
+	folderPageDone                  = "page_done"
+	folderBlocked                   = "blocked"
+	folderCommunity                 = "community"
+	folderRestricted                = "restricted"
+	folderBCPartnership             = "bc_partnership"
+	folderE2EECutover               = "e2ee_cutover"
+	folderE2EECutoverArchived       = "e2ee_cutover_archived"
+	folderE2EECutoverPending        = "e2ee_cutover_pending"
+	folderE2EECutoverOther          = "e2ee_cutover_other"
+	folderInterop                   = "interop"
+	folderArchived                  = "archived"
+	folderAIActive                  = "ai_active"
+	folderSalsaRestricted           = "salsa_restricted"
+	folderMessengerMarketingMessage = "messenger_marketing_message"
 )
 
 type VerifyThreadExistsEvent struct {
@@ -44,7 +64,7 @@ func (evt *VerifyThreadExistsEvent) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
-	return evt.FolderName != folderPending
+	return evt.FolderName != folderPending && evt.FolderName != folderSpam
 }
 
 func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {
@@ -465,7 +485,7 @@ func (r *FBChatResync) ShouldCreatePortal() bool {
 	if r.Raw == nil {
 		return false
 	}
-	return r.Raw.FolderName != folderPending
+	return r.Raw.FolderName != folderPending && r.Raw.FolderName != folderSpam
 }
 
 func (r *FBChatResync) AddLogContext(c zerolog.Context) zerolog.Context {
