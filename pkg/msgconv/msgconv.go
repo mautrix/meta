@@ -20,14 +20,14 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/format"
 
-	"go.mau.fi/mautrix-meta/config"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 type MessageConverter struct {
 	Bridge      *bridgev2.Bridge
 	MaxFileSize int64
 	AsyncFiles  bool
-	BridgeMode  config.BridgeMode
+	BridgeMode  types.Platform
 	HTMLParser  *format.HTMLParser
 }
 

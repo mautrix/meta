@@ -9,15 +9,16 @@ import (
 	up "go.mau.fi/util/configupgrade"
 	"gopkg.in/yaml.v3"
 
-	"go.mau.fi/mautrix-meta/config"
+	"go.mau.fi/mautrix-meta/messagix/types"
 )
 
 //go:embed example-config.yaml
 var ExampleConfig string
 
 type Config struct {
-	Mode   config.BridgeMode `yaml:"mode"`
-	IGE2EE bool              `yaml:"ig_e2ee"`
+	RawMode string         `yaml:"mode"`
+	Mode    types.Platform `yaml:"-"`
+	IGE2EE  bool           `yaml:"ig_e2ee"`
 
 	Proxy        string `yaml:"proxy"`
 	GetProxyFrom string `yaml:"get_proxy_from"`
@@ -44,6 +45,9 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return err
 	}
+
+	c.Mode = types.PlatformFromString(c.RawMode)
+
 	return nil
 }
 func upgradeConfig(helper up.Helper) {
@@ -63,8 +67,8 @@ func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
 }
 
 func (m *MetaConnector) ValidateConfig() error {
-	if !m.Config.Mode.IsValid() {
-		return fmt.Errorf("invalid mode %q", m.Config.Mode)
+	if m.Config.Mode == types.Unset && m.Config.RawMode != "" {
+		return fmt.Errorf("invalid mode %q", m.Config.RawMode)
 	}
 	return nil
 }

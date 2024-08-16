@@ -1,12 +1,12 @@
 package main
 
 import (
-	"strconv"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
+	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/connector"
 )
 
@@ -32,10 +32,10 @@ func main() {
 	m.PostInit = func() {
 		copyData := strings.ReplaceAll(
 			legacyMigrateCopyData,
-			"'hacky platform placeholder'",
-			strconv.Itoa(int(c.Config.Mode.ToPlatform())),
+			"hacky platform placeholder",
+			c.Config.Mode.String(),
 		)
-		if c.Config.Mode == "" {
+		if c.Config.Mode == types.Unset {
 			copyData = "can't migrate;"
 		}
 		m.CheckLegacyDB(

@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"go.mau.fi/mautrix-meta/config"
+	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/connector"
 )
 
@@ -30,13 +30,13 @@ type Response struct {
 	Status  string `json:"status"`
 }
 
-func modeToLoginFlowID(mode config.BridgeMode) string {
+func modeToLoginFlowID(mode types.Platform) string {
 	switch mode {
-	case config.ModeFacebook, config.ModeFacebookTor:
+	case types.Facebook, types.FacebookTor:
 		return connector.FlowIDFacebookCookies
-	case config.ModeMessenger:
+	case types.Messenger:
 		return connector.FlowIDMessengerCookies
-	case config.ModeInstagram:
+	case types.Instagram:
 		return connector.FlowIDInstagramCookies
 	default:
 		return ""

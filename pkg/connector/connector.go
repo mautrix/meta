@@ -7,7 +7,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"go.mau.fi/mautrix-meta/config"
+	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 )
 
@@ -56,7 +56,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 
 func (m *MetaConnector) GetName() bridgev2.BridgeName {
 	switch m.Config.Mode {
-	case config.ModeFacebook, config.ModeFacebookTor, config.ModeMessenger:
+	case types.Facebook, types.FacebookTor, types.Messenger:
 		return bridgev2.BridgeName{
 			DisplayName:      "Facebook Messenger",
 			NetworkURL:       "https://www.facebook.com/messenger",
@@ -65,7 +65,7 @@ func (m *MetaConnector) GetName() bridgev2.BridgeName {
 			BeeperBridgeType: "facebookgo",
 			DefaultPort:      29319,
 		}
-	case config.ModeInstagram:
+	case types.Instagram:
 		return bridgev2.BridgeName{
 			DisplayName:      "Instagram",
 			NetworkURL:       "https://instagram.com",

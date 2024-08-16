@@ -41,7 +41,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"go.mau.fi/mautrix-meta/config"
+	metaTypes "go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -299,7 +299,7 @@ func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, rawContent
 }
 
 func (mc *MessageConverter) appName() string {
-	if mc.BridgeMode == config.ModeInstagram {
+	if mc.BridgeMode == metaTypes.Instagram {
 		return "Instagram app"
 	} else {
 		return "Messenger app"

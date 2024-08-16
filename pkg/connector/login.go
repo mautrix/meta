@@ -11,9 +11,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"go.mau.fi/mautrix-meta/config"
 	"go.mau.fi/mautrix-meta/messagix"
 	"go.mau.fi/mautrix-meta/messagix/cookies"
+	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -27,17 +27,17 @@ const (
 )
 
 func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	var plat config.BridgeMode
+	var plat types.Platform
 	switch flowID {
 	case FlowIDFacebookCookies:
-		plat = config.ModeFacebook
-		if m.Config.Mode == config.ModeFacebookTor {
-			plat = config.ModeFacebookTor
+		plat = types.Facebook
+		if m.Config.Mode == types.FacebookTor {
+			plat = types.FacebookTor
 		}
 	case FlowIDMessengerCookies:
-		plat = config.ModeMessenger
+		plat = types.Messenger
 	case FlowIDInstagramCookies:
-		plat = config.ModeInstagram
+		plat = types.Instagram
 	default:
 		return nil, fmt.Errorf("unknown flow ID %s", flowID)
 	}
@@ -69,13 +69,13 @@ var (
 
 func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	switch m.Config.Mode {
-	case "":
+	case types.Unset:
 		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram}
-	case config.ModeFacebook, config.ModeFacebookTor:
+	case types.Facebook, types.FacebookTor:
 		return []bridgev2.LoginFlow{loginFlowFacebook}
-	case config.ModeMessenger:
+	case types.Messenger:
 		return []bridgev2.LoginFlow{loginFlowMessenger}
-	case config.ModeInstagram:
+	case types.Instagram:
 		return []bridgev2.LoginFlow{loginFlowInstagram}
 	default:
 		panic("unknown mode in config")
@@ -83,7 +83,7 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 }
 
 type MetaCookieLogin struct {
-	Mode config.BridgeMode
+	Mode types.Platform
 	User *bridgev2.User
 	Main *MetaConnector
 }
@@ -115,13 +115,13 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		CookiesParams: &bridgev2.LoginCookiesParams{},
 	}
 	switch m.Mode {
-	case config.ModeFacebook, config.ModeFacebookTor:
+	case types.Facebook, types.FacebookTor:
 		step.CookiesParams.URL = "https://www.facebook.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "facebook.com")
-	case config.ModeMessenger:
+	case types.Messenger:
 		step.CookiesParams.URL = "https://www.messenger.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
-	case config.ModeInstagram:
+	case types.Instagram:
 		step.CookiesParams.URL = "https://www.instagram.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "instagram.com")
 	default:
@@ -141,7 +141,7 @@ var (
 )
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	c := &cookies.Cookies{Platform: m.Mode.ToPlatform()}
+	c := &cookies.Cookies{Platform: m.Mode}
 	c.UpdateValues(strCookies)
 
 	missingCookies := c.GetMissingCookieNames()
