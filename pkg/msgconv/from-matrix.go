@@ -212,6 +212,9 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 		fileName = content.FileName
 	}
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+	}
 	if mime == "" {
 		mime = http.DetectContentType(data)
 	}

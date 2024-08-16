@@ -35,7 +35,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/libsignal/ecc"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waArmadilloICDC"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
@@ -158,6 +158,9 @@ func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 		return fmt.Errorf("failed to fetch ICDC metadata: %w", err)
 	}
 	deviceIdentities, err := icdcMeta.DeviceIdentityBytes()
+	if err != nil {
+		return fmt.Errorf("failed to decode device identities: %w", err)
+	}
 	ownIdentityIndex := slices.Index(deviceIdentities, *c.device.IdentityKey.Pub)
 	if ownIdentityIndex == -1 {
 		ownIdentityIndex = len(deviceIdentities)
@@ -212,7 +215,7 @@ func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 		Server: types.MessengerServer,
 	}
 	// This is a hack since currently whatsmeow requires it to be set
-	c.device.Account = &waProto.ADVSignedDeviceIdentity{
+	c.device.Account = &waAdv.ADVSignedDeviceIdentity{
 		Details:             make([]byte, 0),
 		AccountSignatureKey: make([]byte, 32),
 		AccountSignature:    make([]byte, 64),

@@ -77,6 +77,10 @@ func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCo
 				continue
 			}
 			mxid, displayname, err := mc.getBasicUserInfo(ctx, metaid.MakeWAUserID(parsed))
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to get user info for mentioned JID")
+				continue
+			}
 			if !silent {
 				content.Mentions.UserIDs = append(content.Mentions.UserIDs, mxid)
 			}

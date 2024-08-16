@@ -23,11 +23,10 @@ import (
 	"strconv"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waWa6"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/mautrix-meta/messagix/types"
 )
@@ -104,26 +103,26 @@ func (c *Client) refreshCAT() error {
 	return nil
 }
 
-func (c *Client) getClientPayload() *waProto.ClientPayload {
+func (c *Client) getClientPayload() *waWa6.ClientPayload {
 	userID, _ := strconv.ParseUint(c.device.ID.User, 10, 64)
-	platform := waProto.ClientPayload_UserAgent_BLUE_WEB
+	platform := waWa6.ClientPayload_UserAgent_BLUE_WEB
 	if !c.Platform.IsMessenger() {
-		platform = waProto.ClientPayload_UserAgent_WEB
+		platform = waWa6.ClientPayload_UserAgent_WEB
 	}
-	return &waProto.ClientPayload{
+	return &waWa6.ClientPayload{
 		Device:      proto.Uint32(uint32(c.device.ID.Device)),
 		FbCat:       []byte(c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat),
 		FbUserAgent: []byte(UserAgent),
-		Product:     waProto.ClientPayload_MESSENGER.Enum(),
+		Product:     waWa6.ClientPayload_MESSENGER.Enum(),
 		Username:    proto.Uint64(userID),
 
-		ConnectReason: waProto.ClientPayload_USER_ACTIVATED.Enum(),
-		ConnectType:   waProto.ClientPayload_WIFI_UNKNOWN.Enum(),
+		ConnectReason: waWa6.ClientPayload_USER_ACTIVATED.Enum(),
+		ConnectType:   waWa6.ClientPayload_WIFI_UNKNOWN.Enum(),
 		Passive:       proto.Bool(false),
 		Pull:          proto.Bool(true),
-		UserAgent: &waProto.ClientPayload_UserAgent{
+		UserAgent: &waWa6.ClientPayload_UserAgent{
 			Device: proto.String(BrowserName),
-			AppVersion: &waProto.ClientPayload_UserAgent_AppVersion{
+			AppVersion: &waWa6.ClientPayload_UserAgent_AppVersion{
 				Primary:   proto.Uint32(301),
 				Secondary: proto.Uint32(0),
 				Tertiary:  proto.Uint32(2),
@@ -140,7 +139,7 @@ func (c *Client) getClientPayload() *waProto.ClientPayload {
 			//SimMnc: proto.String("000"),
 
 			Platform:       platform.Enum(),
-			ReleaseChannel: waProto.ClientPayload_UserAgent_DEBUG.Enum(),
+			ReleaseChannel: waWa6.ClientPayload_UserAgent_DEBUG.Enum(),
 		},
 	}
 }

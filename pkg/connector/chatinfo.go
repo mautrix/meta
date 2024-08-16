@@ -206,25 +206,6 @@ func (m *MetaClient) wrapChatInfo(tbl table.ThreadInfo) *bridgev2.ChatInfo {
 	return chatInfo
 }
 
-func (m *MetaClient) addMembersToChatInfo(chatInfo *bridgev2.ChatInfo, members []*table.LSAddParticipantIdToGroupThread) {
-	chatInfo.Members.Members = make([]bridgev2.ChatMember, 0, len(members))
-	hasSelf := false
-	for _, member := range members {
-		wrappedMember := m.wrapChatMember(member)
-		chatInfo.Members.Members = append(chatInfo.Members.Members, wrappedMember)
-		if wrappedMember.EventSender.IsFromMe {
-			hasSelf = true
-		}
-	}
-	if !hasSelf {
-		chatInfo.Members.Members = append(chatInfo.Members.Members, bridgev2.ChatMember{
-			EventSender: m.selfEventSender(),
-			Membership:  event.MembershipJoin,
-		})
-	}
-	chatInfo.Members.IsFull = chatInfo.Members.TotalMemberCount == len(members)
-}
-
 func (m *MetaClient) wrapChatMember(tbl *table.LSAddParticipantIdToGroupThread) bridgev2.ChatMember {
 	var power int
 	if tbl.IsSuperAdmin {

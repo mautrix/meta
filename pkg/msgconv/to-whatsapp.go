@@ -191,6 +191,9 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 		fileName = content.Body
 	}
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+	}
 	if mimeType == "" {
 		mimeType = http.DetectContentType(data)
 	}

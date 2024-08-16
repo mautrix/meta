@@ -36,10 +36,14 @@ var (
 	ErrSocketAlreadyOpen = errors.New("messagix-socket: socket is already open")
 	ErrNotAuthenticated  = errors.New("messagix-socket: client has not been authenticated successfully yet")
 
+	//lint:ignore U1000 - alternatives for minimal*Sync
 	igReconnectSync = []int64{1, 2, 16}
+	//lint:ignore U1000 - alternatives for minimal*Sync
 	fbReconnectSync = []int64{1, 2, 5, 16, 95, 104}
-	igInitialSync   = []int64{1, 2, 6, 7, 16, 28, 198}
-	fbInitialSync   = []int64{1, 2, 5, 16, 26, 28, 95, 104, 120, 140, 141, 142, 143, 196, 198}
+	//lint:ignore U1000 - alternatives for minimal*Sync
+	igInitialSync = []int64{1, 2, 6, 7, 16, 28, 198}
+	//lint:ignore U1000 - alternatives for minimal*Sync
+	fbInitialSync = []int64{1, 2, 5, 16, 26, 28, 95, 104, 120, 140, 141, 142, 143, 196, 198}
 
 	minimalReconnectSync = []int64{1, 2}
 	minimalInitialSync   = []int64{1}
@@ -313,7 +317,7 @@ func (s *Socket) SafePacketId() uint16 {
 	defer s.mu.Unlock()
 
 	s.packetsSent++
-	if s.packetsSent == 0 || s.packetsSent > 65535 {
+	if s.packetsSent == 0 {
 		s.packetsSent = 1
 	}
 	return s.packetsSent

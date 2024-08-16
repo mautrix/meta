@@ -33,6 +33,7 @@ func (tm *TaskManager) FinalizePayload() ([]byte, error) {
 	return json.Marshal(p)
 }
 
+//lint:ignore U1000 -
 func (tm *TaskManager) setTraceId(traceId string) {
 	tm.traceId = traceId
 }

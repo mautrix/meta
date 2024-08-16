@@ -86,5 +86,5 @@ type EnumMarker interface {
 }
 
 func (b *byter) isEnum(field reflect.Value) bool {
-	return field.CanInterface() && reflect.PtrTo(field.Type()).Implements(reflect.TypeOf((*EnumMarker)(nil)).Elem())
+	return field.CanInterface() && reflect.PointerTo(field.Type()).Implements(reflect.TypeOf((*EnumMarker)(nil)).Elem())
 }

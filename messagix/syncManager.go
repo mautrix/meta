@@ -65,7 +65,6 @@ func (sm *SyncManager) syncSocketData(db int64, cb func()) {
 	} else {
 		sm.client.Logger.Debug().Any("database_id", db).Any("database", database).Msg("Synced database")
 	}
-	return
 }
 
 func (sm *SyncManager) EnsureSyncedSocket(databases []int64) error {

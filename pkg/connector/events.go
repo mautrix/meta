@@ -261,8 +261,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 
 type WAMessageEvent struct {
 	*events.FBMessage
-	evtType bridgev2.RemoteEventType
-	m       *MetaClient
+	m *MetaClient
 }
 
 var (

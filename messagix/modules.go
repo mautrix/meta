@@ -216,6 +216,7 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFun
 	return nil
 }
 
+//lint:ignore U1000 lots of unused code
 func (m *ModuleParser) handleGraphQLData(name string, data json.RawMessage) {
 	reflectedMs := reflect.ValueOf(m.client.configs.graphqlConfigTable).Elem()
 	dataField := reflectedMs.FieldByName(name)

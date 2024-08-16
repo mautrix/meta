@@ -180,11 +180,8 @@ func (c *Client) SetProxy(proxyAddr string) error {
 		if err != nil {
 			return err
 		}
-		c.http.Transport.(*http.Transport).Dial = c.socksProxy.Dial
-		contextDialer, ok := c.socksProxy.(proxy.ContextDialer)
-		if ok {
-			c.http.Transport.(*http.Transport).DialContext = contextDialer.DialContext
-		}
+		contextDialer := c.socksProxy.(proxy.ContextDialer)
+		c.http.Transport.(*http.Transport).DialContext = contextDialer.DialContext
 	}
 
 	c.Logger.Debug().
