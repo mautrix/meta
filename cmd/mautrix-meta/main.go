@@ -6,8 +6,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
-	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/connector"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 // Information to find out exactly which commit the bridge was built from.

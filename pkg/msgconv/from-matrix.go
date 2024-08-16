@@ -32,11 +32,11 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
-	"go.mau.fi/mautrix-meta/messagix"
-	"go.mau.fi/mautrix-meta/messagix/methods"
-	"go.mau.fi/mautrix-meta/messagix/socket"
-	"go.mau.fi/mautrix-meta/messagix/table"
-	"go.mau.fi/mautrix-meta/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 

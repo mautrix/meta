@@ -1,8 +1,8 @@
 package metaid
 
 import (
-	"go.mau.fi/mautrix-meta/messagix/cookies"
-	"go.mau.fi/mautrix-meta/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 type MessageMetadata struct {

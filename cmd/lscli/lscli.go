@@ -15,10 +15,10 @@ import (
 	"github.com/zyedidia/clipboard"
 	"go.mau.fi/util/exerrors"
 
-	"go.mau.fi/mautrix-meta/messagix"
-	"go.mau.fi/mautrix-meta/messagix/lightspeed"
-	"go.mau.fi/mautrix-meta/messagix/socket"
-	"go.mau.fi/mautrix-meta/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 )
 
 var taskNames = make(map[string]string)

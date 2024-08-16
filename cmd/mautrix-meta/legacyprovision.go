@@ -9,8 +9,8 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"go.mau.fi/mautrix-meta/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/connector"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 func jsonResponse(w http.ResponseWriter, status int, response any) {

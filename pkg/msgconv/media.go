@@ -32,7 +32,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"
 
-	"go.mau.fi/mautrix-meta/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix"
 )
 
 var mediaHTTPClient = http.Client{
