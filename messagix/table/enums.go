@@ -234,7 +234,7 @@ type ThreadType int64
 
 func (tt ThreadType) IsOneToOne() bool {
 	switch tt {
-	case ONE_TO_ONE, ENCRYPTED_ONE_TO_ONE, CARRIER_MESSAGING_ONE_TO_ONE, ENCRYPTED_ONE_TO_ONE_DISAPPEARING, ENCRYPTED_OVER_WA_ONE_TO_ONE:
+	case ONE_TO_ONE, TINCAN_ONE_TO_ONE, CARRIER_MESSAGING_ONE_TO_ONE, TINCAN_ONE_TO_ONE_DISAPPEARING, ENCRYPTED_OVER_WA_ONE_TO_ONE, AI_BOT:
 		return true
 	default:
 		return false
@@ -251,21 +251,41 @@ func (tt ThreadType) IsWhatsApp() bool {
 }
 
 const (
-	UNKNOWN_THREAD_TYPE               ThreadType = 0
-	ONE_TO_ONE                        ThreadType = 1
-	GROUP_THREAD                      ThreadType = 2
-	ROOM                              ThreadType = 3
-	MONTAGE                           ThreadType = 4
-	MARKETPLACE                       ThreadType = 5
-	FOLDER                            ThreadType = 6
-	ENCRYPTED_ONE_TO_ONE              ThreadType = 7
-	ENCRYPTED_GROUP_DISAPPEARING      ThreadType = 8
-	CARRIER_MESSAGING_ONE_TO_ONE      ThreadType = 10
-	CARRIER_MESSAGING_GROUP           ThreadType = 11
-	ENCRYPTED_ONE_TO_ONE_DISAPPEARING ThreadType = 13
-	ENCRYPTED_OVER_WA_ONE_TO_ONE      ThreadType = 15
-	ENCRYPTED_OVER_WA_GROUP           ThreadType = 16
-	COMMUNITY_GROUP                   ThreadType = 18
+	UNKNOWN_THREAD_TYPE                         ThreadType = 0
+	ONE_TO_ONE                                  ThreadType = 1
+	GROUP_THREAD                                ThreadType = 2
+	ROOM                                        ThreadType = 3
+	MONTAGE                                     ThreadType = 4
+	MARKETPLACE                                 ThreadType = 5
+	FOLDER                                      ThreadType = 6
+	TINCAN_ONE_TO_ONE                           ThreadType = 7
+	TINCAN_GROUP_DISAPPEARING                   ThreadType = 8
+	CARRIER_MESSAGING_ONE_TO_ONE                ThreadType = 10
+	CARRIER_MESSAGING_GROUP                     ThreadType = 11
+	TINCAN_ONE_TO_ONE_DISAPPEARING              ThreadType = 13
+	PAGE_FOLLOW_UP                              ThreadType = 14
+	ENCRYPTED_OVER_WA_ONE_TO_ONE                ThreadType = 15
+	ENCRYPTED_OVER_WA_GROUP                     ThreadType = 16
+	COMMUNITY_FOLDER                            ThreadType = 17
+	COMMUNITY_GROUP                             ThreadType = 18
+	COMMUNITY_GROUP_UNJOINED                    ThreadType = 19
+	COMMUNITY_CHANNEL_CATEGORY                  ThreadType = 20
+	COMMUNITY_PRIVATE_HIDDEN_JOINED_THREAD      ThreadType = 21
+	COMMUNITY_PRIVATE_HIDDEN_UNJOINED_THREAD    ThreadType = 22
+	COMMUNITY_BROADCAST_JOINED_THREAD           ThreadType = 23
+	COMMUNITY_BROADCAST_UNJOINED_THREAD         ThreadType = 24
+	COMMUNITY_GROUP_INVITED_UNJOINED            ThreadType = 25
+	COMMUNITY_SUB_THREAD                        ThreadType = 26
+	PINNED                                      ThreadType = 101
+	LWG                                         ThreadType = 102
+	DISCOVERABLE_PUBLIC_CHAT                    ThreadType = 150
+	DISCOVERABLE_PUBLIC_CHAT_UNJOINED           ThreadType = 151
+	DISCOVERABLE_PUBLIC_BROADCAST_CHAT          ThreadType = 152
+	DISCOVERABLE_PUBLIC_BROADCAST_CHAT_UNJOINED ThreadType = 153
+	DISCOVERABLE_PUBLIC_CHAT_V2                 ThreadType = 154
+	DISCOVERABLE_PUBLIC_CHAT_V2_UNJOINED        ThreadType = 155
+	XAC_GROUP                                   ThreadType = 200
+	AI_BOT                                      ThreadType = 201
 )
 
 type FolderType int64
