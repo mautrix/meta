@@ -37,7 +37,10 @@ func New(br *bridgev2.Bridge) *MessageConverter {
 		MaxFileSize: 50 * 1024 * 1024,
 	}
 	mc.HTMLParser = &format.HTMLParser{
-		PillConverter: mc.convertPill,
+		TabsToSpaces:   4,
+		Newline:        "\n",
+		HorizontalLine: "\n---\n",
+		PillConverter:  mc.convertPill,
 		BoldConverter: func(text string, ctx format.Context) string {
 			return "*" + text + "*"
 		},
