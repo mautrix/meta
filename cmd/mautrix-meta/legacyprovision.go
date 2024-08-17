@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/connector"
@@ -76,6 +78,16 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 			Success: true,
 			Status:  "logged_in",
 		})
+		go handleLoginComplete(ctx, user, finalStep.CompleteParams.UserLogin)
+	}
+}
+
+func handleLoginComplete(ctx context.Context, user *bridgev2.User, newLogin *bridgev2.UserLogin) {
+	allLogins := user.GetCachedUserLogins()
+	for _, login := range allLogins {
+		if login.ID != newLogin.ID {
+			login.Delete(ctx, status.BridgeState{StateEvent: status.StateLoggedOut, Reason: "LOGIN_OVERRIDDEN"}, bridgev2.DeleteOpts{})
+		}
 	}
 }
 
