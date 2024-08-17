@@ -6,6 +6,7 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
@@ -31,6 +32,7 @@ func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
 		m.Bridge.DB.Dialect.String(),
 		waLog.Zerolog(m.Bridge.Log.With().Str("db_section", "whatsmeow").Logger()),
 	)
+	m.Bridge.Commands.(*commands.Processor).AddHandlers(cmdToggleEncryption)
 }
 
 func (m *MetaConnector) Start(ctx context.Context) error {
