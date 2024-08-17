@@ -1,3 +1,11 @@
+# v0.4.0 (unreleased)
+
+* Bumped minimum Go version to 1.22.
+* Rewrote bridge using bridgev2 architecture.
+  * It is recommended to check the config file after upgrading. If you have
+    prevented the bridge from writing to the config, you should update it
+    manually.
+
 # v0.3.2 (2024-07-16)
 
 * Fixed own ghost user's avatar being reset on bridge restart.
