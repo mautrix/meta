@@ -721,7 +721,6 @@ func (mc *MessageConverter) reuploadAttachment(
 		mimeType = http.DetectContentType(data)
 	}
 	content := &event.MessageEventContent{
-		Body: fileName,
 		Info: &event.FileInfo{
 			Size: len(data),
 		},
@@ -752,6 +751,8 @@ func (mc *MessageConverter) reuploadAttachment(
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
+	content.Body = fileName
+	content.Info.MimeType = mimeType
 	content.Info.Duration = duration
 	content.Info.Width = width
 	content.Info.Height = height
