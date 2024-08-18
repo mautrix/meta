@@ -212,5 +212,9 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
 		Instructions: fmt.Sprintf("Logged in as %s (%d)", user.GetName(), id),
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: ul.ID,
+			UserLogin:   ul,
+		},
 	}, nil
 }
