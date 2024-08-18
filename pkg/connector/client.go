@@ -320,9 +320,11 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	m.Disconnect()
-	err := m.WADevice.Delete()
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to delete device from store")
+	if dev := m.WADevice; dev != nil {
+		err := dev.Delete()
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to delete device from store")
+		}
 	}
 	m.resetWADevice()
 }
