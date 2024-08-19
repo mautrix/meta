@@ -139,7 +139,7 @@ SELECT
     '', -- bridge_id
     CAST(portal_id AS TEXT), -- portal_id
     CASE WHEN portal_receiver<>0 THEN CAST(portal_receiver AS TEXT) ELSE '' END, -- portal_receiver
-    (SELECT id FROM user_login WHERE user_mxid=backfill_task_old.user_mxid), -- user_login_id
+    user_login.id, -- user_login_id
     page_count, -- batch_count
     finished, -- is_done
     '', -- cursor
@@ -148,6 +148,7 @@ SELECT
     completed_at * 1000000, -- completed_at
     cooldown_until * 1000000 -- next_dispatch_min_ts
 FROM backfill_task_old
+INNER JOIN user_login ON user_login.user_mxid=backfill_task_old.user_mxid
 WHERE true
 ON CONFLICT DO NOTHING;
 
