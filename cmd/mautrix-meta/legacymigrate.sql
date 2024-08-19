@@ -77,14 +77,15 @@ FROM portal_old;
 INSERT INTO user_portal (bridge_id, user_mxid, login_id, portal_id, portal_receiver, in_space, preferred, last_read)
 SELECT
     '', -- bridge_id
-    user_mxid,
-    (SELECT id FROM user_login WHERE user_mxid=user_portal_old.user_mxid), -- login_id
+    user_portal_old.user_mxid,
+    user_login.id, -- login_id
     CAST(portal_thread_id AS TEXT), -- portal_id,
     CASE WHEN portal_receiver<>0 THEN CAST(portal_receiver AS TEXT) ELSE '' END, -- portal_receiver
     in_space,
     false, -- preferred
     last_read_ts * 1000000
-FROM user_portal_old;
+FROM user_portal_old
+INNER JOIN user_login ON user_login.user_mxid=user_portal_old.user_mxid;
 
 ALTER TABLE message_old ADD COLUMN new_id TEXT;
 
