@@ -527,6 +527,9 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 			r.Info.Members.Members = append(r.Info.Members.Members, self)
 		}
 		r.filled = true
+		if len(r.Info.Members.Members) == 1 && portal.OtherUserID == networkid.UserID(portal.Receiver) {
+			r.Info.Members.Members = makeNoteToSelfMembers(portal.OtherUserID, r.Info.Members.Members[0].UserInfo)
+		}
 	}
 	return r.Info, nil
 }

@@ -137,6 +137,8 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 				EventSender: m.makeEventSender(threadID),
 				Membership:  event.MembershipJoin,
 			})
+		} else {
+			members.Members = makeNoteToSelfMembers(members.OtherUserID, nil)
 		}
 	}
 	return &bridgev2.ChatInfo{
@@ -154,21 +156,28 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 	}
 }
 
+func makeNoteToSelfMembers(otherUserID networkid.UserID, info *bridgev2.UserInfo) []bridgev2.ChatMember {
+	// For note to self chats, force the user's ghost to be present by having two members
+	// where one only has FromMe and the other only has Sender.
+	return []bridgev2.ChatMember{
+		{EventSender: bridgev2.EventSender{IsFromMe: true}},
+		{EventSender: bridgev2.EventSender{Sender: otherUserID}, UserInfo: info},
+	}
+}
+
 func (m *MetaClient) makeWADirectChatInfo(recipient types.JID) *bridgev2.ChatInfo {
 	members := &bridgev2.ChatMemberList{
-		Members: []bridgev2.ChatMember{{
-			EventSender: m.selfEventSender(),
-			Membership:  event.MembershipJoin,
-		}},
+		OtherUserID: metaid.MakeWAUserID(recipient),
+		IsFull:      true,
 	}
 
-	members.OtherUserID = metaid.MakeWAUserID(recipient)
-	members.IsFull = true
 	if networkid.UserLoginID(recipient.User) != m.UserLogin.ID {
-		members.Members = append(members.Members, bridgev2.ChatMember{
-			EventSender: m.makeWAEventSender(recipient),
-			Membership:  event.MembershipJoin,
-		})
+		members.Members = []bridgev2.ChatMember{
+			{EventSender: m.selfEventSender()},
+			{EventSender: m.makeWAEventSender(recipient)},
+		}
+	} else {
+		members.Members = makeNoteToSelfMembers(members.OtherUserID, nil)
 	}
 	return &bridgev2.ChatInfo{
 		Members:      members,
