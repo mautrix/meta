@@ -123,6 +123,7 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 	}
 	currentUser, initialTable, err := m.Client.LoadMessagesPage()
 	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to load messages page")
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 			(*stopPeriodicReconnect)()
 		}
