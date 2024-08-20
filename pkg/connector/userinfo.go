@@ -59,7 +59,7 @@ func wrapAvatar(avatarURL string) *bridgev2.Avatar {
 	return &bridgev2.Avatar{
 		ID: networkid.AvatarID(avatarID),
 		Get: func(ctx context.Context) ([]byte, error) {
-			return msgconv.DownloadMedia(ctx, "image/*", avatarURL, 5*1024*1024)
+			return msgconv.DownloadAvatar(ctx, avatarURL)
 		},
 	}
 }

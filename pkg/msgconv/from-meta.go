@@ -17,7 +17,6 @@
 package msgconv
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -26,12 +25,14 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"net/http"
+	"io"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/gabriel-vasile/mimetype"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
@@ -713,44 +714,79 @@ func (mc *MessageConverter) reuploadAttachment(
 	if url == "" {
 		return nil, ErrURLNotFound
 	}
-	data, err := DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
+	size, reader, err := DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download attachment: %w", err)
-	}
-	if mimeType == "" {
-		mimeType = http.DetectContentType(data)
+		if errors.Is(err, ErrTooLargeFile) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
 	content := &event.MessageEventContent{
 		Info: &event.FileInfo{
-			Size: len(data),
+			Size: int(size),
 		},
 	}
-	extra := map[string]any{}
-	if attachmentType == table.AttachmentTypeAudio && ffmpeg.Supported() {
-		data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-c:a", "libopus"}, mimeType)
-		if err != nil {
-			return nil, fmt.Errorf("%w (audio to ogg/opus): %w", bridgev2.ErrMediaConvertFailed, err)
-		}
-		fileName += ".ogg"
-		mimeType = "audio/ogg"
-		content.MSC3245Voice = &event.MSC3245Voice{}
-		content.MSC1767Audio = &event.MSC1767Audio{
-			Duration: duration,
-			Waveform: []int{},
-		}
-	}
-	if (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0) {
-		config, _, err := image.DecodeConfig(bytes.NewReader(data))
-		if err == nil {
-			width, height = config.Width, config.Height
-		}
-	}
+	needVoiceConvert := attachmentType == table.AttachmentTypeAudio && ffmpeg.Supported()
+	needMime := mimeType == ""
+	needImageSize := (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0)
+	requireFile := needVoiceConvert || needMime || needImageSize
 	intent := ctx.Value(contextKeyIntent).(bridgev2.MatrixAPI)
 	portal := ctx.Value(contextKeyPortal).(*bridgev2.Portal)
-	content.URL, content.File, err = intent.UploadMedia(ctx, portal.MXID, data, fileName, mimeType)
+	content.URL, content.File, err = intent.UploadMediaStream(ctx, portal.MXID, size, requireFile, func(dest io.Writer) (*bridgev2.FileStreamResult, error) {
+		_, err := io.Copy(dest, reader)
+		if err != nil {
+			return nil, err
+		}
+		if needMime {
+			destRS := dest.(io.ReadSeeker)
+			var mime *mimetype.MIME
+			mime, err = mimetype.DetectReader(destRS)
+			if err != nil {
+				return nil, err
+			}
+			mimeType = mime.String()
+			_, err = destRS.Seek(0, io.SeekStart)
+			if err != nil {
+				return nil, err
+			}
+		}
+		var replPath string
+		if needVoiceConvert {
+			destFile := dest.(*os.File)
+			_ = destFile.Close()
+			sourceFileName := destFile.Name() + exmime.ExtensionFromMimetype(mimeType)
+			err = os.Rename(destFile.Name(), sourceFileName)
+			if err != nil {
+				return nil, err
+			}
+			replPath, err = ffmpeg.ConvertPath(ctx, sourceFileName, ".ogg", []string{}, []string{"-c:a", "libopus"}, true)
+			if err != nil {
+				return nil, fmt.Errorf("%w (audio to ogg/opus): %w", bridgev2.ErrMediaConvertFailed, err)
+			}
+			fileName += ".ogg"
+			mimeType = "audio/ogg"
+			content.MSC3245Voice = &event.MSC3245Voice{}
+			content.MSC1767Audio = &event.MSC1767Audio{
+				Duration: duration,
+				Waveform: []int{},
+			}
+		} else if needImageSize {
+			destRS := dest.(io.ReadSeeker)
+			config, _, err := image.DecodeConfig(destRS)
+			if err == nil {
+				width, height = config.Width, config.Height
+			}
+		}
+		return &bridgev2.FileStreamResult{
+			ReplacementFile: replPath,
+			FileName:        fileName,
+			MimeType:        mimeType,
+		}, nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+		return nil, err
 	}
+	extra := map[string]any{}
 	content.Body = fileName
 	content.Info.MimeType = mimeType
 	content.Info.Duration = duration

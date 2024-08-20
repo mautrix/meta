@@ -3,6 +3,7 @@ module go.mau.fi/mautrix-meta
 go 1.22
 
 require (
+	github.com/gabriel-vasile/mimetype v1.4.5
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.0
@@ -11,7 +12,7 @@ require (
 	github.com/tidwall/gjson v1.17.3
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.1.1
-	go.mau.fi/util v0.7.0
+	go.mau.fi/util v0.7.1-0.20240819192113-aa3f73c811cd
 	go.mau.fi/whatsmeow v0.0.0-20240811142232-82a29759f1fc
 	golang.org/x/crypto v0.26.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
@@ -19,7 +20,7 @@ require (
 	golang.org/x/net v0.28.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.20.1-0.20240820132941-4b7fa711cedb
+	maunium.net/go/mautrix v0.20.1-0.20240820221055-f99fb60f13a6
 )
 
 require (

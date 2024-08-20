@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 )
@@ -48,7 +50,8 @@ var mediaHTTPClient = http.Client{
 }
 var BypassOnionForMedia bool
 
-var ErrTooLargeFile = errors.New("too large file")
+var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
+	WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
 
 func addDownloadHeaders(hdr http.Header, mime string) {
 	hdr.Set("Accept", "*/*")
@@ -72,58 +75,26 @@ func addDownloadHeaders(hdr http.Header, mime string) {
 	hdr.Set("sec-ch-ua-platform", messagix.SecCHPlatform)
 }
 
-func downloadChunkedVideo(ctx context.Context, mime, url string, maxSize int64) ([]byte, error) {
-	log := zerolog.Ctx(ctx)
-	log.Trace().Str("url", url).Msg("Downloading video in chunks")
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+func DownloadAvatar(ctx context.Context, url string) ([]byte, error) {
+	_, resp, err := downloadMedia(ctx, "image/*", url, 5*1024*1024, "", false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare request: %w", err)
+		return nil, err
 	}
-	addDownloadHeaders(req.Header, mime)
-	resp, err := mediaHTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send HEAD request: %w", err)
-	} else if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code %d for HEAD request", resp.StatusCode)
-	} else if resp.Header.Get("Accept-Ranges") != "bytes" {
-		return nil, fmt.Errorf("server does not support byte range requests")
-	} else if resp.ContentLength <= 0 {
-		return nil, fmt.Errorf("server didn't return media size")
-	} else if resp.ContentLength > maxSize {
-		return nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
-	}
-	log.Debug().Int64("content_length", resp.ContentLength).Msg("Found video size to download in chunks")
-
-	const chunkSize = 1 * 1024 * 1024
-	fullData := make([]byte, resp.ContentLength)
-	for i := int64(0); i < resp.ContentLength; i += chunkSize {
-		end := i + chunkSize - 1
-		if end > resp.ContentLength {
-			end = resp.ContentLength - 1
-		}
-		byteRange := fmt.Sprintf("bytes=%d-%d", i, end)
-		log.Debug().Str("range", byteRange).Msg("Downloading chunk")
-		_, err = downloadMedia(ctx, mime, url, maxSize, byteRange, false, fullData[i:end+1])
-		if err != nil {
-			return nil, fmt.Errorf("failed to download chunk %d-%d: %w", i, end, err)
-		}
-	}
-	log.Debug().Int("data_length", len(fullData)).Msg("Download complete")
-	return fullData, nil
+	return io.ReadAll(resp)
 }
 
-func DownloadMedia(ctx context.Context, mime, url string, maxSize int64) ([]byte, error) {
-	return downloadMedia(ctx, mime, url, maxSize, "", true, nil)
+func DownloadMedia(ctx context.Context, mime, url string, maxSize int64) (int64, io.ReadCloser, error) {
+	return downloadMedia(ctx, mime, url, maxSize, "", true)
 }
 
-func downloadMedia(ctx context.Context, mime, url string, maxSize int64, byteRange string, switchToChunked bool, readInto []byte) ([]byte, error) {
+func downloadMedia(ctx context.Context, mime, url string, maxSize int64, byteRange string, switchToChunked bool) (int64, io.ReadCloser, error) {
 	zerolog.Ctx(ctx).Trace().Str("url", url).Msg("Downloading media")
 	if BypassOnionForMedia {
 		url = strings.ReplaceAll(url, "facebookcooa4ldbat4g7iacswl3p2zrf5nuylvnhxn6kqolvojixwid.onion", "fbcdn.net")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare request: %w", err)
+		return 0, nil, fmt.Errorf("failed to prepare request: %w", err)
 	}
 	addDownloadHeaders(req.Header, mime)
 	if byteRange != "" {
@@ -131,40 +102,91 @@ func downloadMedia(ctx context.Context, mime, url string, maxSize int64, byteRan
 	}
 
 	resp, err := mediaHTTPClient.Do(req)
-	defer func() {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-	}()
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return 0, nil, fmt.Errorf("failed to send request: %w", err)
 	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		_ = resp.Body.Close()
 		if resp.StatusCode == 302 && switchToChunked {
 			loc, _ := resp.Location()
 			if loc != nil && loc.Hostname() == "video.xx.fbcdn.net" {
 				return downloadChunkedVideo(ctx, mime, loc.String(), maxSize)
 			}
 		}
-		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+		return 0, nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	} else if resp.ContentLength > maxSize {
-		return nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
+		_ = resp.Body.Close()
+		return resp.ContentLength, nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
 	}
-	zerolog.Ctx(ctx).Debug().Int64("content_length", resp.ContentLength).Msg("Got media response, reading data")
-	if readInto != nil {
-		if resp.ContentLength != int64(len(readInto)) {
-			return nil, fmt.Errorf("buffer size (%d) does not match content length (%d)", len(readInto), resp.ContentLength)
+	zerolog.Ctx(ctx).Debug().Int64("content_length", resp.ContentLength).Msg("Got media response")
+	return resp.ContentLength, resp.Body, nil
+}
+
+type chunkedVideoDownloader struct {
+	ctx             context.Context
+	mime            string
+	url             string
+	offset          int64
+	totalSize       int64
+	inFlightRequest io.ReadCloser
+}
+
+const chunkSize = 1 * 1024 * 1024
+
+func (cvd *chunkedVideoDownloader) Read(p []byte) (n int, err error) {
+	if cvd.inFlightRequest == nil {
+		end := cvd.offset + chunkSize - 1
+		if end > cvd.totalSize {
+			end = cvd.totalSize - 1
 		}
-		_, err = io.ReadFull(resp.Body, readInto)
+		byteRange := fmt.Sprintf("bytes=%d-%d", cvd.offset, end)
+		zerolog.Ctx(cvd.ctx).Debug().Str("range", byteRange).Msg("Downloading chunk")
+		_, cvd.inFlightRequest, err = downloadMedia(cvd.ctx, cvd.mime, cvd.url, cvd.totalSize, byteRange, false)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read response data into buffer: %w", err)
+			err = fmt.Errorf("failed to start download for chunk %d-%d: %w", cvd.offset, end, err)
+			return
 		}
-		return readInto, nil
-	} else if respData, err := io.ReadAll(io.LimitReader(resp.Body, maxSize+2)); err != nil {
-		return nil, fmt.Errorf("failed to read response data: %w", err)
-	} else if int64(len(respData)) > maxSize {
-		return nil, ErrTooLargeFile
-	} else {
-		zerolog.Ctx(ctx).Debug().Int("data_length", len(respData)).Msg("Media download complete")
-		return respData, nil
+		cvd.offset = end + 1
 	}
+	n, err = cvd.inFlightRequest.Read(p)
+	if errors.Is(err, io.EOF) {
+		_ = cvd.inFlightRequest.Close()
+		cvd.inFlightRequest = nil
+	}
+	return
+}
+
+func (cvd *chunkedVideoDownloader) Close() error {
+	if cvd.inFlightRequest != nil {
+		return cvd.inFlightRequest.Close()
+	}
+	return nil
+}
+
+func downloadChunkedVideo(ctx context.Context, mime, url string, maxSize int64) (int64, io.ReadCloser, error) {
+	log := zerolog.Ctx(ctx)
+	log.Trace().Str("url", url).Msg("Downloading video in chunks")
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to prepare request: %w", err)
+	}
+	addDownloadHeaders(req.Header, mime)
+	resp, err := mediaHTTPClient.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to send HEAD request: %w", err)
+	} else if resp.StatusCode != http.StatusOK {
+		return 0, nil, fmt.Errorf("unexpected status code %d for HEAD request", resp.StatusCode)
+	} else if resp.Header.Get("Accept-Ranges") != "bytes" {
+		return 0, nil, fmt.Errorf("server does not support byte range requests")
+	} else if resp.ContentLength <= 0 {
+		return 0, nil, fmt.Errorf("server didn't return media size")
+	} else if resp.ContentLength > maxSize {
+		return resp.ContentLength, nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
+	}
+	log.Debug().Int64("content_length", resp.ContentLength).Msg("Found video size to download in chunks")
+	return resp.ContentLength, &chunkedVideoDownloader{
+		ctx:       ctx,
+		mime:      mime,
+		url:       url,
+		totalSize: resp.ContentLength,
+	}, nil
 }
