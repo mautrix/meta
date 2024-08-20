@@ -110,8 +110,16 @@ SELECT
     CAST(msg_sender AS TEXT), -- sender_id
     '', -- sender_mxid
     timestamp * 1000000, -- timestamp
-    edit_count, -- edit_count
-    '{}' -- metadata
+    CASE WHEN edit_count < 10000 THEN edit_count ELSE 0 END, -- edit_count
+    CASE WHEN edit_count > 1000000000000 THEN
+        -- only: postgres
+        jsonb_build_object
+        -- only: sqlite (line commented)
+--      json_object
+        (
+            'edit_timestamp', edit_count
+        )
+    ELSE '{}' END -- metadata
 FROM message_old;
 
 INSERT INTO reaction (
