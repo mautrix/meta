@@ -99,8 +99,9 @@ type CurrentUserInitialData struct {
 	IGUserEIMU                string `json:"IG_USER_EIMU,omitempty"`
 	IsInstagramUser           int    `json:"IS_INSTAGRAM_USER,omitempty"`
 	IsInstagramBusinessPerson bool   `json:"IS_INSTAGRAM_BUSINESS_PERSON,omitempty"`
-	IsEmployee                bool   `json:"IS_EMPLOYEE,omitempty"`
-	IsTestUser                bool   `json:"IS_TEST_USER,omitempty"`
+	// may be int?
+	//IsEmployee                bool   `json:"IS_EMPLOYEE,omitempty"`
+	//IsTestUser                bool   `json:"IS_TEST_USER,omitempty"`
 }
 
 func (c *CurrentUserInitialData) GetBusinessEmail() string {
