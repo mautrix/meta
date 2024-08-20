@@ -504,16 +504,16 @@ type LSUpdateOrInsertThread struct {
 	DisappearingSettingUpdatedBy           int64      `index:"30" json:",omitempty"`
 	OngoingCallState                       int64      `index:"32" json:",omitempty"`
 	CannotReplyReason                      int64      `index:"33" json:",omitempty"`
-	CustomEmoji                            int64      `index:"34" json:",omitempty"`
-	CustomEmojiImageUrl                    int64      `index:"35" json:",omitempty"`
+	CustomEmoji                            string     `index:"34" json:",omitempty"`
+	CustomEmojiImageUrl                    string     `index:"35" json:",omitempty"`
 	OutgoingBubbleColor                    int64      `index:"36" json:",omitempty"`
 	ThemeFbid                              int64      `index:"37" json:",omitempty"`
 	ParentThreadKey                        int64      `index:"38" json:",omitempty"`
-	NullstateDescriptionText1              int64      `index:"39" json:",omitempty"`
+	NullstateDescriptionText1              string     `index:"39" json:",omitempty"`
 	NullstateDescriptionType1              int64      `index:"40" json:",omitempty"`
-	NullstateDescriptionText2              int64      `index:"41" json:",omitempty"`
+	NullstateDescriptionText2              string     `index:"41" json:",omitempty"`
 	NullstateDescriptionType2              int64      `index:"42" json:",omitempty"`
-	NullstateDescriptionText3              int64      `index:"43" json:",omitempty"`
+	NullstateDescriptionText3              string     `index:"43" json:",omitempty"`
 	NullstateDescriptionType3              int64      `index:"44" json:",omitempty"`
 	SnippetHasEmoji                        bool       `index:"45" json:",omitempty"`
 	HasPersistentMenu                      bool       `index:"46" json:",omitempty"`

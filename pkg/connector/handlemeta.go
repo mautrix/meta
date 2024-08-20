@@ -190,6 +190,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			Members:   make(map[int64]bridgev2.ChatMember, thread.MemberCount),
 		}
 	}
+	// TODO resync threads with LSUpdateOrInsertThread?
 
 	// Deleting a thread will cancel all further events, so handle those first
 	handlePortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread)
