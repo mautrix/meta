@@ -339,6 +339,8 @@ func (m *MetaClient) FullReconnect() {
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.Disconnect()
+	m.Client = messagix.NewClient(m.LoginMeta.Cookies, m.UserLogin.Log.With().Str("component", "messagix").Logger())
+	m.Client.SetEventHandler(m.handleMetaEvent)
 	err := m.Connect(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to reconnect")
