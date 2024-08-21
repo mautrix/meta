@@ -120,7 +120,8 @@ SELECT
             'edit_timestamp', edit_count
         )
     ELSE '{}' END -- metadata
-FROM message_old;
+FROM message_old
+WHERE timestamp >= 0;
 
 INSERT INTO reaction (
     bridge_id, message_id, message_part_id, sender_id, emoji_id, room_id, room_receiver, mxid, timestamp, emoji, metadata
