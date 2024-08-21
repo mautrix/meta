@@ -739,20 +739,24 @@ func (mc *MessageConverter) reuploadAttachment(
 		}
 		if needMime {
 			destRS := dest.(io.ReadSeeker)
+			_, err = destRS.Seek(0, io.SeekStart)
+			if err != nil {
+				return nil, err
+			}
 			var mime *mimetype.MIME
 			mime, err = mimetype.DetectReader(destRS)
 			if err != nil {
 				return nil, err
 			}
 			mimeType = mime.String()
-			_, err = destRS.Seek(0, io.SeekStart)
-			if err != nil {
-				return nil, err
-			}
 		}
 		var replPath string
 		if needVoiceConvert {
 			destFile := dest.(*os.File)
+			_, err = destFile.Seek(0, io.SeekStart)
+			if err != nil {
+				return nil, err
+			}
 			_ = destFile.Close()
 			sourceFileName := destFile.Name() + exmime.ExtensionFromMimetype(mimeType)
 			err = os.Rename(destFile.Name(), sourceFileName)
@@ -772,6 +776,10 @@ func (mc *MessageConverter) reuploadAttachment(
 			}
 		} else if needImageSize {
 			destRS := dest.(io.ReadSeeker)
+			_, err = destRS.Seek(0, io.SeekStart)
+			if err != nil {
+				return nil, err
+			}
 			config, _, err := image.DecodeConfig(destRS)
 			if err == nil {
 				width, height = config.Width, config.Height
