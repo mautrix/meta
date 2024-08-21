@@ -828,6 +828,8 @@ func (mc *MessageConverter) reuploadAttachment(
 	}
 	if content.Body == "" {
 		content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
+	} else if content.MsgType != "" && !strings.ContainsRune(content.Body, '.') {
+		content.Body += exmime.ExtensionFromMimetype(mimeType)
 	}
 	return &bridgev2.ConvertedMessagePart{
 		Type:    eventType,
