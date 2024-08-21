@@ -111,7 +111,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	step := &bridgev2.LoginStep{
 		Type:          bridgev2.LoginStepTypeCookies,
 		StepID:        LoginStepIDCookies,
-		Instructions:  "Enetr a JSON object with your cookies, or a cURL command copied from browser devtools.",
+		Instructions:  "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
 		CookiesParams: &bridgev2.LoginCookiesParams{},
 	}
 	switch m.Mode {
