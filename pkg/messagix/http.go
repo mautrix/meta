@@ -101,7 +101,8 @@ func isPermanentRequestError(err error) bool {
 	return errors.Is(err, ErrTokenInvalidated) ||
 		errors.Is(err, ErrChallengeRequired) ||
 		errors.Is(err, ErrConsentRequired) ||
-		errors.Is(err, ErrAccountSuspended)
+		errors.Is(err, ErrAccountSuspended) ||
+		errors.Is(err, ErrTooManyRedirects)
 }
 
 func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error {
