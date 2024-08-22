@@ -94,6 +94,7 @@ var (
 	ErrRequestFailed      = errors.New("failed to send request")
 	ErrResponseReadFailed = errors.New("failed to read response body")
 	ErrMaxRetriesReached  = errors.New("maximum retries reached")
+	ErrTooManyRedirects   = errors.New("too many redirects")
 )
 
 func isPermanentRequestError(err error) bool {
@@ -106,6 +107,9 @@ func isPermanentRequestError(err error) bool {
 func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error {
 	if req.Response == nil {
 		return nil
+	}
+	if len(via) > 5 {
+		return ErrTooManyRedirects
 	}
 	if !strings.HasSuffix(req.URL.Hostname(), "fbcdn.net") && !strings.HasSuffix(req.URL.Hostname(), "facebookcooa4ldbat4g7iacswl3p2zrf5nuylvnhxn6kqolvojixwid.onion") {
 		var prevURL string
