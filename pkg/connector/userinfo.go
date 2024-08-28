@@ -30,7 +30,8 @@ func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 	})
 	var avatar *bridgev2.Avatar
 	_, isInitialData := info.(*types.CurrentUserInitialData)
-	if !isInitialData {
+	_, isPolarisViewer := info.(*types.PolarisViewer)
+	if !isInitialData && !isPolarisViewer {
 		avatar = wrapAvatar(info.GetAvatarURL())
 	}
 
