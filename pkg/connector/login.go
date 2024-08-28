@@ -123,7 +123,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
 	case types.Instagram:
 		step.CookiesParams.URL = "https://www.instagram.com/"
-		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "instagram.com")
+		step.CookiesParams.Fields = cookieListToFields(cookies.IGRequiredCookies, "instagram.com")
 	default:
 		return nil, fmt.Errorf("unknown mode %s", m.Mode)
 	}
