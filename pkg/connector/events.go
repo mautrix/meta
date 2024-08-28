@@ -12,7 +12,6 @@ import (
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -462,6 +461,7 @@ type FBChatResync struct {
 	Members   map[int64]bridgev2.ChatMember
 	Backfill  *table.UpsertMessages
 	UpsertID  int64
+	m         *MetaClient
 
 	filled bool
 }
@@ -513,8 +513,11 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 		return nil, nil
 	}
 	if r.Members != nil && !r.filled {
-		self := r.Info.Members.Members[0]
-		r.Info.Members.Members = maps.Values(r.Members)
+		self := r.Info.Members.MemberMap[networkid.UserID(r.m.UserLogin.ID)]
+		r.Info.Members.MemberMap = make(map[networkid.UserID]bridgev2.ChatMember, len(r.Members))
+		for id, member := range r.Members {
+			r.Info.Members.MemberMap[metaid.MakeUserID(id)] = member
+		}
 		r.Info.Members.IsFull = len(r.Members) == r.Info.Members.TotalMemberCount
 		hasSelf := false
 		for _, member := range r.Members {
@@ -524,11 +527,11 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 			}
 		}
 		if !hasSelf && self.IsFromMe {
-			r.Info.Members.Members = append(r.Info.Members.Members, self)
+			r.Info.Members.MemberMap[self.Sender] = self
 		}
 		r.filled = true
-		if len(r.Info.Members.Members) == 1 && portal.OtherUserID == networkid.UserID(portal.Receiver) {
-			r.Info.Members.Members = makeNoteToSelfMembers(portal.OtherUserID, r.Info.Members.Members[0].UserInfo)
+		if len(r.Info.Members.MemberMap) == 1 && portal.OtherUserID == networkid.UserID(portal.Receiver) {
+			r.Info.Members.MemberMap = makeNoteToSelfMembers(portal.OtherUserID, r.Info.Members.MemberMap[portal.OtherUserID].UserInfo)
 		}
 	}
 	return r.Info, nil

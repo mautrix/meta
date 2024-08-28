@@ -188,6 +188,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 			Info:      m.wrapChatInfo(thread),
 			Raw:       thread,
 			Members:   make(map[int64]bridgev2.ChatMember, thread.MemberCount),
+			m:         m,
 		}
 	}
 	// TODO resync threads with LSUpdateOrInsertThread?

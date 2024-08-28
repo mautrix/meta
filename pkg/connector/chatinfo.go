@@ -57,7 +57,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 	ml := &bridgev2.ChatMemberList{
 		IsFull:           true,
 		TotalMemberCount: len(chatInfo.Participants),
-		Members:          make([]bridgev2.ChatMember, len(chatInfo.Participants)),
+		MemberMap:        make(map[networkid.UserID]bridgev2.ChatMember, len(chatInfo.Participants)),
 		PowerLevels: &bridgev2.PowerLevelOverrides{
 			Events: map[event.Type]int{
 				event.StateRoomName:   powerDefault,
@@ -78,7 +78,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 	if chatInfo.IsAnnounce {
 		ml.PowerLevels.EventsDefault = ptr.Ptr(powerAdmin)
 	}
-	for i, member := range chatInfo.Participants {
+	for _, member := range chatInfo.Participants {
 		pl := powerDefault
 		if member.IsAdmin {
 			pl = powerAdmin
@@ -86,8 +86,9 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		if member.IsSuperAdmin {
 			pl = powerSuperAdmin
 		}
-		ml.Members[i] = bridgev2.ChatMember{
-			EventSender: m.makeWAEventSender(member.JID),
+		evtSender := m.makeWAEventSender(member.JID)
+		ml.MemberMap[evtSender.Sender] = bridgev2.ChatMember{
+			EventSender: evtSender,
 			Membership:  event.MembershipJoin,
 			PowerLevel:  &pl,
 		}
@@ -120,9 +121,10 @@ func updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(
 }
 
 func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.ThreadType) *bridgev2.ChatInfo {
+	selfEvtSender := m.selfEventSender()
 	members := &bridgev2.ChatMemberList{
-		Members: []bridgev2.ChatMember{{
-			EventSender: m.selfEventSender(),
+		MemberMap: map[networkid.UserID]bridgev2.ChatMember{selfEvtSender.Sender: {
+			EventSender: selfEvtSender,
 			Membership:  event.MembershipJoin,
 		}},
 	}
@@ -133,12 +135,12 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 		members.OtherUserID = metaid.MakeUserID(threadID)
 		members.IsFull = true
 		if metaid.MakeUserLoginID(threadID) != m.UserLogin.ID {
-			members.Members = append(members.Members, bridgev2.ChatMember{
+			members.MemberMap[members.OtherUserID] = bridgev2.ChatMember{
 				EventSender: m.makeEventSender(threadID),
 				Membership:  event.MembershipJoin,
-			})
+			}
 		} else {
-			members.Members = makeNoteToSelfMembers(members.OtherUserID, nil)
+			members.MemberMap = makeNoteToSelfMembers(members.OtherUserID, nil)
 		}
 	}
 	return &bridgev2.ChatInfo{
@@ -156,12 +158,12 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 	}
 }
 
-func makeNoteToSelfMembers(otherUserID networkid.UserID, info *bridgev2.UserInfo) []bridgev2.ChatMember {
+func makeNoteToSelfMembers(otherUserID networkid.UserID, info *bridgev2.UserInfo) map[networkid.UserID]bridgev2.ChatMember {
 	// For note to self chats, force the user's ghost to be present by having two members
 	// where one only has FromMe and the other only has Sender.
-	return []bridgev2.ChatMember{
-		{EventSender: bridgev2.EventSender{IsFromMe: true}},
-		{EventSender: bridgev2.EventSender{Sender: otherUserID}, UserInfo: info},
+	return map[networkid.UserID]bridgev2.ChatMember{
+		"":          {EventSender: bridgev2.EventSender{IsFromMe: true}},
+		otherUserID: {EventSender: bridgev2.EventSender{Sender: otherUserID}, UserInfo: info},
 	}
 }
 
@@ -172,12 +174,13 @@ func (m *MetaClient) makeWADirectChatInfo(recipient types.JID) *bridgev2.ChatInf
 	}
 
 	if networkid.UserLoginID(recipient.User) != m.UserLogin.ID {
-		members.Members = []bridgev2.ChatMember{
-			{EventSender: m.selfEventSender()},
-			{EventSender: m.makeWAEventSender(recipient)},
+		selfEvtSender := m.selfEventSender()
+		members.MemberMap = map[networkid.UserID]bridgev2.ChatMember{
+			selfEvtSender.Sender: {EventSender: selfEvtSender},
+			members.OtherUserID:  {EventSender: m.makeWAEventSender(recipient)},
 		}
 	} else {
-		members.Members = makeNoteToSelfMembers(members.OtherUserID, nil)
+		members.MemberMap = makeNoteToSelfMembers(members.OtherUserID, nil)
 	}
 	return &bridgev2.ChatInfo{
 		Members:      members,

@@ -12,7 +12,7 @@ require (
 	github.com/tidwall/gjson v1.17.3
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.1.1
-	go.mau.fi/util v0.7.1-0.20240819192113-aa3f73c811cd
+	go.mau.fi/util v0.7.1-0.20240827112829-84c63841c264
 	go.mau.fi/whatsmeow v0.0.0-20240821100609-c9ed95da83cd
 	golang.org/x/crypto v0.26.0
 	golang.org/x/exp v0.0.0-20240808152545-0cdaa3abc0fa
@@ -20,7 +20,7 @@ require (
 	golang.org/x/net v0.28.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.20.1-0.20240821074635-edef968c642d
+	maunium.net/go/mautrix v0.20.1-0.20240827191023-f56905a27645
 )
 
 require (
@@ -44,5 +44,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
-
-//replace maunium.net/go/mautrix => ../mautrix-go

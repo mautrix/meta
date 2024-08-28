@@ -88,6 +88,7 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 			PortalKey: tk.Portal,
 			Backfill:  upsert,
 			UpsertID:  upsertID,
+			m:         m,
 		}
 	}
 }

@@ -83,7 +83,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLoginComplete(ctx context.Context, user *bridgev2.User, newLogin *bridgev2.UserLogin) {
-	allLogins := user.GetCachedUserLogins()
+	allLogins := user.GetUserLogins()
 	for _, login := range allLogins {
 		if login.ID != newLogin.ID {
 			login.Delete(ctx, status.BridgeState{StateEvent: status.StateLoggedOut, Reason: "LOGIN_OVERRIDDEN"}, bridgev2.DeleteOpts{})
@@ -93,7 +93,7 @@ func handleLoginComplete(ctx context.Context, user *bridgev2.User, newLogin *bri
 
 func legacyProvLogout(w http.ResponseWriter, r *http.Request) {
 	user := m.Matrix.Provisioning.GetUser(r)
-	logins := user.GetCachedUserLogins()
+	logins := user.GetUserLogins()
 	for _, login := range logins {
 		login.Logout(r.Context())
 	}
