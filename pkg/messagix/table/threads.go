@@ -699,3 +699,20 @@ type LSUpdateThreadMuteSetting struct {
 func (ls *LSUpdateThreadMuteSetting) GetThreadKey() int64 {
 	return ls.ThreadKey
 }
+
+type LSVerifyHybridThreadExists struct {
+	ThreadKey                    int64      `index:"0" json:",omitempty"`
+	ThreadJID                    int64      `index:"1" json:",omitempty"`
+	ThreadType                   ThreadType `index:"2" json:",omitempty"`
+	IsGroupThread                bool       `index:"5" json:",omitempty"`
+	LastActivityTimestampMS      int64      `index:"6" json:",omitempty"`
+	LastReadWatermarkTimestampMS int64      `index:"7" json:",omitempty"`
+	// 8 = unknown bool (true)
+	// 9 = unknown int64 (0)
+	// 10 = unknown bool (false)
+}
+
+type LSUpdateThreadAuthorityAndMappingWithOTIDFromJID struct {
+	ThreadJID int64 `index:"0" json:",omitempty"`
+	ThreadKey int64 `index:"1" json:",omitempty"`
+}
