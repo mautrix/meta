@@ -3,6 +3,7 @@ package messagix
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
@@ -87,7 +88,7 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 	var t int
 	payload := &socket.DatabaseQuery{
 		Database: databaseId,
-		Version:  sm.client.configs.VersionId,
+		Version:  json.Number(strconv.FormatInt(sm.client.configs.VersionId, 10)),
 		EpochId:  methods.GenerateEpochId(),
 	}
 

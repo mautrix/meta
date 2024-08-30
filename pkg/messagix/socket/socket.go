@@ -1,5 +1,9 @@
 package socket
 
+import (
+	"encoding/json"
+)
+
 type TaskPayload struct {
 	EpochId     int64      `json:"epoch_id"`
 	DataTraceId string     `json:"data_trace_id,omitempty"`
@@ -13,7 +17,7 @@ type DatabaseQuery struct {
 	SyncParams        *string     `json:"sync_params"`
 	EpochId           int64       `json:"epoch_id"`
 	DataTraceId       string      `json:"data_trace_id,omitempty"`
-	Version           int64       `json:"version"`
+	Version           json.Number `json:"version"`
 	FailureCount      interface{} `json:"failure_count"`
 }
 

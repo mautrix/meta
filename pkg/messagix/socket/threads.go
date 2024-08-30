@@ -407,3 +407,33 @@ func (t *FetchAdditionalThreadData) GetLabel() string {
 func (t *FetchAdditionalThreadData) Create() (any, any, bool) {
 	return t, fmt.Sprintf("fetch_additional_thread_data_%d", t.ThreadKey), false
 }
+
+type CreateCommunitySubThread struct {
+	ClientMutationID int64  `json:"client_mutation_id"`
+	CommunityID      int64  `json:"community_id"`
+	ParentMessageID  string `json:"parent_message_id"`
+	ParentThreadID   int64  `json:"parent_thread_id"`
+}
+
+func (t *CreateCommunitySubThread) GetLabel() string {
+	return TaskLabels["CreateCommunitySubThread"]
+}
+
+func (t *CreateCommunitySubThread) Create() (any, any, bool) {
+	return t, fmt.Sprintf("create_community_sub_thread_%d", t.ParentThreadID), false
+}
+
+type CommunityThreadHoleDetection struct {
+	ThreadID        int64 `json:"thread_id"`
+	PreviousTQSeqID int64 `json:"previous_tq_seq_id"`
+	CurrentTQSeqID  int64 `json:"current_tq_seq_id"`
+	DeltaType       int64 `json:"delta_type"`
+}
+
+func (t *CommunityThreadHoleDetection) GetLabel() string {
+	return TaskLabels["CommunityThreadHoleDetection"]
+}
+
+func (t *CommunityThreadHoleDetection) Create() (any, any, bool) {
+	return t, fmt.Sprintf("cm_thread_hole_detection%d", t.ThreadID), false
+}
