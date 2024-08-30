@@ -512,13 +512,15 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 	if r.Raw == nil {
 		return nil, nil
 	}
-	if r.Members != nil && !r.filled {
+	if len(r.Members) > 0 && !r.filled {
 		self := r.Info.Members.MemberMap[networkid.UserID(r.m.UserLogin.ID)]
 		r.Info.Members.MemberMap = make(map[networkid.UserID]bridgev2.ChatMember, len(r.Members))
 		for id, member := range r.Members {
 			r.Info.Members.MemberMap[metaid.MakeUserID(id)] = member
 		}
-		r.Info.Members.IsFull = len(r.Members) == r.Info.Members.TotalMemberCount
+		if r.Info.Members.TotalMemberCount > 0 {
+			r.Info.Members.IsFull = len(r.Members) == r.Info.Members.TotalMemberCount
+		}
 		hasSelf := false
 		for _, member := range r.Members {
 			if member.IsFromMe {
@@ -530,7 +532,7 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 			r.Info.Members.MemberMap[self.Sender] = self
 		}
 		r.filled = true
-		if len(r.Info.Members.MemberMap) == 1 && portal.OtherUserID == networkid.UserID(portal.Receiver) {
+		if len(r.Info.Members.MemberMap) == 1 && portal.OtherUserID != "" && portal.OtherUserID == networkid.UserID(portal.Receiver) {
 			r.Info.Members.MemberMap = makeNoteToSelfMembers(portal.OtherUserID, r.Info.Members.MemberMap[portal.OtherUserID].UserInfo)
 		}
 	}
