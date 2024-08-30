@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
@@ -23,23 +24,16 @@ func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 	if m.LoginMeta.Platform == types.Instagram {
 		identifiers = append(identifiers, fmt.Sprintf("instagram:%s", info.GetUsername()))
 	}
-	name := m.Main.Config.FormatDisplayname(DisplaynameParams{
-		DisplayName: info.GetName(),
-		Username:    info.GetUsername(),
-		ID:          info.GetFBID(),
-	})
-	var avatar *bridgev2.Avatar
-	_, isInitialData := info.(*types.CurrentUserInitialData)
-	_, isPolarisViewer := info.(*types.PolarisViewer)
-	if !isInitialData && !isPolarisViewer {
-		avatar = wrapAvatar(info.GetAvatarURL())
-	}
 
 	return &bridgev2.UserInfo{
 		Identifiers: identifiers,
-		Name:        &name,
-		Avatar:      avatar,
-		IsBot:       nil, // TODO
+		Name: ptr.Ptr(m.Main.Config.FormatDisplayname(DisplaynameParams{
+			DisplayName: info.GetName(),
+			Username:    info.GetUsername(),
+			ID:          info.GetFBID(),
+		})),
+		Avatar: wrapAvatar(info.GetAvatarURL()),
+		IsBot:  nil, // TODO
 		ExtraUpdates: func(ctx context.Context, ghost *bridgev2.Ghost) (changed bool) {
 			meta := ghost.Metadata.(*metaid.GhostMetadata)
 			if m.LoginMeta.Platform == types.Instagram && meta.Username != info.GetUsername() {

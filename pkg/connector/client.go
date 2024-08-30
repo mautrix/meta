@@ -181,7 +181,6 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 	if err != nil {
 		return fmt.Errorf("failed to get own ghost: %w", err)
 	}
-	m.Ghost.UpdateInfo(ctx, m.wrapUserInfo(currentUser))
 	m.UserLogin.RemoteName = currentUser.GetName()
 	m.UserLogin.RemoteProfile.Name = currentUser.GetName()
 	if !m.LoginMeta.Platform.IsMessenger() {
