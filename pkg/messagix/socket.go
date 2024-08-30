@@ -43,28 +43,31 @@ var (
 	//lint:ignore U1000 - alternatives for minimal*Sync
 	igInitialSync = []int64{1, 2, 6, 7, 16, 28, 198}
 	//lint:ignore U1000 - alternatives for minimal*Sync
-	fbInitialSync = []int64{1, 2, 5, 16, 26, 28, 95, 104, 120, 140, 141, 142, 143, 196, 198}
+	fbInitialSync = []int64{1, 2 /*5,*/, 16, 26, 28, 89, 95, 104, 120, 140, 141, 142, 143, 145, 196, 197, 198, 202}
 
-	minimalReconnectSync = []int64{1, 2}
-	minimalInitialSync   = []int64{1}
+	minimalReconnectSync   = []int64{1, 2}
+	minimalInitialSync     = []int64{1}
+	minimalFBInitialSync   = []int64{1, 104}
+	minimalFBReconnectSync = []int64{1, 2, 104}
 
 	initialSync = map[types.Platform][]int64{
-		types.Instagram:   minimalInitialSync, // igInitialSync,
-		types.Facebook:    minimalInitialSync, // fbInitialSync,
-		types.Messenger:   minimalInitialSync, // fbInitialSync,
-		types.FacebookTor: minimalInitialSync, // fbInitialSync,
+		types.Instagram:   minimalInitialSync,   // igInitialSync,
+		types.Facebook:    minimalFBInitialSync, // fbInitialSync,
+		types.Messenger:   minimalFBInitialSync, // fbInitialSync,
+		types.FacebookTor: minimalFBInitialSync, // fbInitialSync,
 	}
 	reconnectSync = map[types.Platform][]int64{
-		types.Instagram:   minimalReconnectSync, // igReconnectSync,
-		types.Facebook:    minimalReconnectSync, // fbReconnectSync,
-		types.Messenger:   minimalReconnectSync, // fbReconnectSync,
-		types.FacebookTor: minimalReconnectSync, // fbReconnectSync,
+		types.Instagram:   minimalReconnectSync,   // igReconnectSync,
+		types.Facebook:    minimalFBReconnectSync, // fbReconnectSync,
+		types.Messenger:   minimalFBReconnectSync, // fbReconnectSync,
+		types.FacebookTor: minimalFBReconnectSync, // fbReconnectSync,
 	}
 
 	shouldRecurseDatabase = map[int64]bool{
-		1:  true,
-		2:  true,
-		95: true,
+		1:   true,
+		2:   true,
+		95:  true,
+		104: true,
 	}
 )
 
