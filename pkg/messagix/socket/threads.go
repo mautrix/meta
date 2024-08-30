@@ -374,3 +374,36 @@ func (t *CreateWhatsAppThreadTask) GetLabel() string {
 func (t *CreateWhatsAppThreadTask) Create() (any, any, bool) {
 	return t, strconv.FormatInt(t.OfflineThreadKey, 10), false
 }
+
+type FetchCommunityMemberList struct {
+	CommunityID     int64   `json:"community_id"`
+	Roles           []int   `json:"roles"`             // [0]
+	FetchAdminsOnly int     `json:"fetch_admins_only"` // 0
+	Cursor          string  `json:"cursor"`
+	Source          int     `json:"source"` // 7
+	ThreadKey       int64   `json:"thread_key"`
+	SearchText      *string `json:"search_text"`     // null
+	ThreadRoles     []int   `json:"thread_roles"`    // []
+	GroupThreadID   *int64  `json:"group_thread_id"` // null
+	RequestID       int64   `json:"request_id"`      // inbox_info_member_list_<random string?>
+}
+
+func (t *FetchCommunityMemberList) GetLabel() string {
+	return TaskLabels["FetchCommunityMemberList"]
+}
+
+func (t *FetchCommunityMemberList) Create() (any, any, bool) {
+	return t, "fetch_community_member_list", false
+}
+
+type FetchAdditionalThreadData struct {
+	ThreadKey int64 `json:"thread_key"`
+}
+
+func (t *FetchAdditionalThreadData) GetLabel() string {
+	return TaskLabels["FetchAdditionalThreadData"]
+}
+
+func (t *FetchAdditionalThreadData) Create() (any, any, bool) {
+	return t, fmt.Sprintf("fetch_additional_thread_data_%d", t.ThreadKey), false
+}

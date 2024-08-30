@@ -710,9 +710,13 @@ type LSVerifyHybridThreadExists struct {
 	// 8 = unknown bool (true)
 	// 9 = unknown int64 (0)
 	// 10 = unknown bool (false)
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSUpdateThreadAuthorityAndMappingWithOTIDFromJID struct {
 	ThreadJID int64 `index:"0" json:",omitempty"`
 	ThreadKey int64 `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }

@@ -143,6 +143,11 @@ type LSTable struct {
 	LSUpdateOrInsertEditMessageHistory               []*LSUpdateOrInsertEditMessageHistory               `json:",omitempty"`
 	LSVerifyHybridThreadExists                       []*LSVerifyHybridThreadExists                       `json:",omitempty"`
 	LSUpdateThreadAuthorityAndMappingWithOTIDFromJID []*LSUpdateThreadAuthorityAndMappingWithOTIDFromJID `json:",omitempty"`
+	LSVerifyContactParticipantExist                  []*LSVerifyContactParticipantExist                  `json:",omitempty"`
+	LSVerifyCommunityMemberContextualProfileExists   []*LSVerifyCommunityMemberContextualProfileExists   `json:",omitempty"`
+	LSInsertCommunityMember                          []*LSInsertCommunityMember                          `json:",omitempty"`
+	LSUpdateOrInsertCommunityMember                  []*LSUpdateOrInsertCommunityMember                  `json:",omitempty"`
+	LSUpsertCommunityMemberRanges                    []*LSUpsertCommunityMemberRanges                    `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -278,6 +283,11 @@ var SPTable = map[string]string{
 	"updateOrInsertEditMessageHistory":               "LSUpdateOrInsertEditMessageHistory",
 	"verifyHybridThreadExists":                       "LSVerifyHybridThreadExists",
 	"updateThreadAuthorityAndMappingWithOTIDFromJID": "LSUpdateThreadAuthorityAndMappingWithOTIDFromJID",
+	"verifyContactParticipantExist":                  "LSVerifyContactParticipantExist",
+	"verifyCommunityMemberContextualProfileExists":   "LSVerifyCommunityMemberContextualProfileExists",
+	"insertCommunityMember":                          "LSInsertCommunityMember",
+	"updateOrInsertCommunityMember":                  "LSUpdateOrInsertCommunityMember",
+	"upsertCommunityMemberRanges":                    "LSUpsertCommunityMemberRanges",
 }
 
 func SPToDepMap(sp []string) map[string]string {

@@ -131,3 +131,78 @@ type LSDeleteThenInsertIGContactInfo struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSVerifyContactParticipantExist struct {
+	ContactID int64  `index:"0" json:",omitempty"`
+	ThreadKey int64  `index:"1" json:",omitempty"`
+	Name      string `index:"2" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSVerifyCommunityMemberContextualProfileExists struct {
+	ContactID   int64 `index:"0" json:",omitempty"`
+	CommunityID int64 `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSInsertCommunityMember struct {
+	CommunityID                            int64  `index:"0" json:",omitempty"`
+	ContactID                              int64  `index:"1" json:",omitempty"`
+	Name                                   string `index:"2" json:",omitempty"`
+	ProfilePictureURL                      string `index:"3" json:",omitempty"`
+	IsAdmin                                bool   `index:"4" json:",omitempty"`
+	IsBlocked                              bool   `index:"5" json:",omitempty"`
+	ProfilePictureURLFallback              string `index:"6" json:",omitempty"`
+	ProfilePictureURLExpirationTimestampMS int64  `index:"7" json:",omitempty"`
+	FirstName                              string `index:"8" json:",omitempty"`
+	IsModerator                            bool   `index:"9" json:",omitempty"`
+	IsMuted                                bool   `index:"10" json:",omitempty"`
+	IsBlockedFromCommunity                 bool   `index:"11" json:",omitempty"`
+	Source                                 int64  `index:"12" json:",omitempty"`
+	Subtitle                               string `index:"13" json:",omitempty"`
+	IsEligibleForCMInvite                  bool   `index:"14" json:",omitempty"`
+	Nickname                               string `index:"15" json:",omitempty"`
+	ThreadRole                             int64  `index:"16" json:",omitempty"`
+	ContactCapabilities                    int64  `index:"17" json:",omitempty"`
+	ThreadRoles                            int64  `index:"18" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSUpdateOrInsertCommunityMember struct {
+	CommunityID                            int64  `index:"0" json:",omitempty"`
+	ContactID                              int64  `index:"1" json:",omitempty"`
+	Name                                   string `index:"2" json:",omitempty"`
+	FirstName                              string `index:"3" json:",omitempty"`
+	ProfilePictureURL                      string `index:"4" json:",omitempty"`
+	ProfilePictureURLExpirationTimestampMS int64  `index:"5" json:",omitempty"`
+	ProfilePictureURLFallback              string `index:"6" json:",omitempty"`
+	IsBlocked                              bool   `index:"7" json:",omitempty"`
+	IsAdmin                                bool   `index:"8" json:",omitempty"`
+	IsBlockedFromCommunity                 bool   `index:"9" json:",omitempty"`
+	IsMuted                                bool   `index:"10" json:",omitempty"`
+	IsCommunityMember                      bool   `index:"11" json:",omitempty"`
+	IsModerator                            bool   `index:"13" json:",omitempty"`
+	FetchingInfoTaskID                     int64  `index:"14" json:",omitempty"`
+	AdminActions                           int64  `index:"15" json:",omitempty"`
+	Source                                 int64  `index:"16" json:",omitempty"`
+	Nickname                               string `index:"17" json:",omitempty"`
+	ContactCapabilities                    int64  `index:"18" json:",omitempty"`
+	ThreadRoles                            int64  `index:"19" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSUpsertCommunityMemberRanges struct {
+	CommunityID int64 `index:"0" json:",omitempty"`
+	//IsAdmin    int64  `index:"1" json:",omitempty"`
+	HasMoreAfter   bool   `index:"3" json:",omitempty"`
+	IsLoadingAfter bool   `index:"4" json:",omitempty"`
+	NextPageCursor string `index:"5" json:",omitempty"`
+	MaxName        string `index:"6" json:",omitempty"`
+	Source         int64  `index:"7" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
