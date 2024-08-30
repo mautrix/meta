@@ -69,8 +69,9 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 		if !ok {
 			badGlobalLog.Warn().
 				Int64("thread_id", msg.ThreadKey).
+				Str("message_id", msg.MessageId).
 				Msg("Got upsert message for thread without corresponding message range")
-			upsert[msg.ThreadKey] = &UpsertMessages{Messages: []*WrappedMessage{wrapped}}
+			//upsert[msg.ThreadKey] = &UpsertMessages{Messages: []*WrappedMessage{wrapped}}
 		} else {
 			chatUpsert.Messages = append(chatUpsert.Messages, wrapped)
 		}
