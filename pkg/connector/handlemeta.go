@@ -466,6 +466,7 @@ func (m *MetaClient) handleSubthread(ctx context.Context, msg *table.WrappedMess
 			return
 		}
 		msg.XMAAttachments = nil
+		msg.Text = xma.TitleText
 		msg.IsSubthreadStart = true
 		err = m.Main.DB.PutThread(ctx, msg.ThreadKey, xma.TargetId, msg.ReplySourceId)
 		if err != nil {
