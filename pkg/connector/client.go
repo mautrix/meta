@@ -315,10 +315,8 @@ func init() {
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
-	// TODO normal group threads can't have subthreads, but some community groups seem to use the group thread type
-	//      maybe there's some way this can be made more accurate?
-	switch portal.Metadata.(*PortalMetadata).ThreadType {
-	case table.GROUP_THREAD, table.COMMUNITY_GROUP:
+	switch portal.Metadata.(*metaid.PortalMetadata).ThreadType {
+	case table.COMMUNITY_GROUP:
 		return metaCapsWithThreads
 	}
 	return metaCaps

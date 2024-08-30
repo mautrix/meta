@@ -46,6 +46,7 @@ func (mc *MessageConverter) ToMeta(
 	evt *event.Event,
 	content *event.MessageEventContent,
 	replyTo *database.Message,
+	threadRoot *database.Message,
 	relaybotFormatted bool,
 	portal *bridgev2.Portal,
 ) ([]socket.Task, int64, error) {
@@ -61,6 +62,31 @@ func (mc *MessageConverter) ToMeta(
 		InitiatingSource: table.FACEBOOK_INBOX,
 		SendType:         table.TEXT,
 		SyncGroup:        1,
+	}
+	if portal.Metadata.(*metaid.PortalMetadata).ThreadType == table.COMMUNITY_GROUP {
+		task.SyncGroup = 104
+		if threadRoot != nil {
+			parsed, _ := metaid.ParseMessageID(threadRoot.ID).(metaid.ParsedFBMessageID)
+			thread, err := mc.DB.GetThreadByMessage(ctx, parsed.ID)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).
+					Stringer("thread_root_mxid", threadRoot.MXID).
+					Str("thread_root_parsed_id", parsed.ID).
+					Msg("Failed to get thread by message")
+			} else if thread == 0 {
+				zerolog.Ctx(ctx).Warn().
+					Stringer("thread_root_mxid", threadRoot.MXID).
+					Str("thread_root_parsed_id", parsed.ID).
+					Msg("Thread not found")
+			} else {
+				zerolog.Ctx(ctx).Trace().
+					Stringer("thread_root_mxid", threadRoot.MXID).
+					Str("thread_root_parsed_id", parsed.ID).
+					Int64("subthread_key", thread).
+					Msg("Thread found")
+				task.ThreadId = thread
+			}
+		}
 	}
 	if replyTo != nil {
 		msgID, ok := metaid.ParseMessageID(replyTo.ID).(metaid.ParsedFBMessageID)

@@ -151,6 +151,8 @@ type LSTable struct {
 	LSInsertCommunityMember                          []*LSInsertCommunityMember                          `json:",omitempty"`
 	LSUpdateOrInsertCommunityMember                  []*LSUpdateOrInsertCommunityMember                  `json:",omitempty"`
 	LSUpsertCommunityMemberRanges                    []*LSUpsertCommunityMemberRanges                    `json:",omitempty"`
+	LSUpdateSubThreadXMA                             []*LSUpdateSubThreadXMA                             `json:",omitempty"`
+	LSSetNumUnreadSubthreads                         []*LSSetNumUnreadSubthreads                         `json:",omitempty"`
 }
 
 // TODO replace SPTable with struct tags
@@ -294,6 +296,8 @@ var SPTable = map[string]string{
 	"insertCommunityMember":                          "LSInsertCommunityMember",
 	"updateOrInsertCommunityMember":                  "LSUpdateOrInsertCommunityMember",
 	"upsertCommunityMemberRanges":                    "LSUpsertCommunityMemberRanges",
+	"updateSubThreadXMA":                             "LSUpdateSubThreadXMA",
+	"setNumUnreadSubthreads":                         "LSSetNumUnreadSubthreads",
 }
 
 func SPToDepMap(sp []string) map[string]string {

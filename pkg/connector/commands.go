@@ -39,7 +39,7 @@ func fnToggleEncryption(ce *commands.Event) {
 		return
 	}
 	cli := login.Client.(*MetaClient)
-	meta := ce.Portal.Metadata.(*PortalMetadata)
+	meta := ce.Portal.Metadata.(*metaid.PortalMetadata)
 	if meta.ThreadType.IsWhatsApp() {
 		meta.ThreadType = table.ONE_TO_ONE
 		ce.Reply("Messages in this room will now be sent unencrypted over Messenger")

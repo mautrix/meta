@@ -83,7 +83,7 @@ func (evt *VerifyThreadExistsEvent) GetSender() bridgev2.EventSender {
 
 func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if portal.MXID == "" {
-		if portal.Metadata.(*PortalMetadata).fetchAttempted.Swap(true) {
+		if portal.Metadata.(*metaid.PortalMetadata).FetchAttempted.Swap(true) {
 			zerolog.Ctx(ctx).Warn().Msg("Not resending create request for thread that was already requested")
 			return nil, fmt.Errorf("thread resync was already requested")
 		}

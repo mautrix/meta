@@ -588,3 +588,14 @@ type LSUpdateSubscriptErrorMessage struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSUpdateSubThreadXMA struct {
+	ParentThreadKey int64 `index:"0" json:",omitempty"`
+	ThreadKey       int64 `index:"1" json:",omitempty"`
+	ReplyCount      int64 `index:"2" json:",omitempty"`
+}
+
+type LSSetNumUnreadSubthreads struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+	NumUnread int64 `index:"1" json:",omitempty"`
+}

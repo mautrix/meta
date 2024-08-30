@@ -328,7 +328,7 @@ func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThr
 }
 
 func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
-	meta := portal.Metadata.(*PortalMetadata)
+	meta := portal.Metadata.(*metaid.PortalMetadata)
 	if meta.ThreadType == table.ONE_TO_ONE {
 		meta.ThreadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
 		return true

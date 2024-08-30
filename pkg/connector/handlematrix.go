@@ -41,7 +41,7 @@ const ConnectWaitTimeout = 1 * time.Minute
 func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	log := zerolog.Ctx(ctx)
 
-	portalMeta := msg.Portal.Metadata.(*PortalMetadata)
+	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
 
 	switch portalMeta.ThreadType {
 	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE, table.ENCRYPTED_OVER_WA_GROUP:
@@ -74,7 +74,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			return nil, ErrNotConnected
 		}
 
-		tasks, otid, err := m.Main.MsgConv.ToMeta(ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.OrigSender != nil, msg.Portal)
+		tasks, otid, err := m.Main.MsgConv.ToMeta(ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, msg.OrigSender != nil, msg.Portal)
 		if errors.Is(err, types.ErrPleaseReloadPage) {
 			// TODO handle properly
 			return nil, err
@@ -223,7 +223,7 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 			Text:              ptr.Ptr(msg.PreHandleResp.Emoji),
 			SenderTimestampMS: ptr.Ptr(msg.Event.Timestamp),
 		})
-		portalJID := msg.Portal.Metadata.(*PortalMetadata).JID(msg.Portal.ID)
+		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil)
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 		return nil, err
@@ -261,7 +261,7 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 			Text:              ptr.Ptr(""),
 			SenderTimestampMS: ptr.Ptr(msg.Event.Timestamp),
 		})
-		portalJID := msg.Portal.Metadata.(*PortalMetadata).JID(msg.Portal.ID)
+		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil)
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 		return err
@@ -277,7 +277,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
 			return ErrNotConnected
 		}
-		fakeSendTasks, _, err := m.Main.MsgConv.ToMeta(ctx, m.Client, edit.Event, edit.Content, nil, false, edit.Portal)
+		fakeSendTasks, _, err := m.Main.MsgConv.ToMeta(ctx, m.Client, edit.Event, edit.Content, nil, nil, false, edit.Portal)
 		if err != nil {
 			return fmt.Errorf("failed to convert message: %w", err)
 		}
@@ -326,7 +326,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 			Message:     m.Main.MsgConv.TextToWhatsApp(edit.Content),
 			TimestampMS: ptr.Ptr(edit.Event.Timestamp),
 		})
-		portalJID := edit.Portal.Metadata.(*PortalMetadata).JID(edit.Portal.ID)
+		portalJID := edit.Portal.Metadata.(*metaid.PortalMetadata).JID(edit.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil)
 		log.Trace().Any("response", resp).Msg("WhatsApp edit response")
 		return err
@@ -353,7 +353,7 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 		consumerMsg := wrapRevoke(&waConsumerApplication.ConsumerApplication_RevokeMessage{
 			Key: m.messageIDToWAKey(messageID),
 		})
-		portalJID := msg.Portal.Metadata.(*PortalMetadata).JID(msg.Portal.ID)
+		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil)
 		log.Trace().Any("response", resp).Msg("WhatsApp delete response")
 		return err
@@ -417,7 +417,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 			log.Debug().Time("read_watermark", fbMessageToReadTS).Msg("Read receipt sent")
 		}
 	}
-	portalJID := receipt.Portal.Metadata.(*PortalMetadata).JID(receipt.Portal.ID)
+	portalJID := receipt.Portal.Metadata.(*metaid.PortalMetadata).JID(receipt.Portal.ID)
 	if len(waMessagesToRead) > 0 && !portalJID.IsEmpty() {
 		for messageSender, ids := range waMessagesToRead {
 			err = m.E2EEClient.MarkRead(ids, receipt.Receipt.Timestamp, portalJID, messageSender)

@@ -20,7 +20,7 @@ import (
 )
 
 func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	meta := portal.Metadata.(*PortalMetadata)
+	meta := portal.Metadata.(*metaid.PortalMetadata)
 	if !meta.ThreadType.IsWhatsApp() {
 		return nil, fmt.Errorf("getting chat info for non-whatsapp threads is not supported")
 	}
@@ -107,7 +107,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 
 func updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(context.Context, *bridgev2.Portal) bool {
 	return func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
-		meta := portal.Metadata.(*PortalMetadata)
+		meta := portal.Metadata.(*metaid.PortalMetadata)
 		if meta.WhatsAppServer != jid.Server {
 			meta.WhatsAppServer = jid.Server
 			changed = true
@@ -148,7 +148,11 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 		Type:        &roomType,
 		CanBackfill: !threadType.IsWhatsApp(),
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
-			meta := portal.Metadata.(*PortalMetadata)
+			meta := portal.Metadata.(*metaid.PortalMetadata)
+			if threadType == table.GROUP_THREAD && meta.ThreadType > 15 {
+				// Don't trust changing more specific group types into the generic type
+				return
+			}
 			if meta.ThreadType != threadType && !meta.ThreadType.IsWhatsApp() {
 				meta.ThreadType = threadType
 				changed = true

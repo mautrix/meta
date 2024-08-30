@@ -66,7 +66,7 @@ func (db *MetaDB) GetThreadByKey(ctx context.Context, threadKey int64) (parentKe
 
 func (db *MetaDB) GetThreadByMessage(ctx context.Context, messageID string) (threadKey int64, err error) {
 	err = db.QueryRow(ctx, "SELECT thread_key FROM meta_thread WHERE message_id = $1", messageID).
-		Scan(&messageID)
+		Scan(&threadKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
 	}

@@ -172,7 +172,7 @@ func (m *MetaClient) removeBackfillCollector(threadID int64, collector *Backfill
 }
 
 func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
-	if params.Portal.Metadata.(*PortalMetadata).ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
+	if params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
 		return nil, nil
 	}
 	threadID := metaid.ParseFBPortalID(params.Portal.ID)
