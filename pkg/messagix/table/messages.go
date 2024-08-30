@@ -317,11 +317,12 @@ type LSInsertMessage struct {
 	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
 	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
 	BotResponseID                   int64                      `index:"64" json:",omitempty"`
-	EditCount                       int64                      `index:"65" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"66" json:",omitempty"`
-	AdminSignatureName              string                     `index:"67" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"68" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"69" json:",omitempty"`
+	MetadataDataclass               string                     `index:"65" json:",omitempty"`
+	EditCount                       int64                      `index:"66" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"67" json:",omitempty"`
+	AdminSignatureName              string                     `index:"68" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"69" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"70" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -343,6 +344,54 @@ type LSUpsertReaction struct {
 
 func (ls *LSUpsertReaction) GetThreadKey() int64 {
 	return ls.ThreadKey
+}
+
+type LSUpdateOrInsertReactionV2 struct {
+	ThreadKey                 int64  `index:"0" json:",omitempty"`
+	MessageID                 string `index:"1" json:",omitempty"`
+	ReactionFBID              int64  `index:"2" json:",omitempty"`
+	ReactionLiteral           string `index:"3" json:",omitempty"`
+	Count                     int64  `index:"4" json:",omitempty"`
+	AuthorityLevel            int64  `index:"5" json:",omitempty"`
+	ViewerIsReactor           bool   `index:"6" json:",omitempty"`
+	ViewerReactionTimestampMS int64  `index:"7" json:",omitempty"`
+	LastUpdatedTimestampMS    int64  `index:"8" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSUpdateOrInsertReactionV2) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
+type LSDeleteReactionV2 struct {
+	ThreadKey              int64  `index:"0" json:",omitempty"`
+	MessageID              string `index:"1" json:",omitempty"`
+	ReactionFBID           int64  `index:"2" json:",omitempty"`
+	LastUpdatedTimestampMS int64  `index:"3" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSDeleteReactionV2) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
+type LSDeleteThenInsertReactionsV2Detail struct {
+	ThreadID                               int64  `index:"0" json:",omitempty"`
+	MessageID                              string `index:"1" json:",omitempty"`
+	ReactorID                              int64  `index:"2" json:",omitempty"`
+	ReactionFBID                           int64  `index:"3" json:",omitempty"`
+	FullName                               string `index:"4" json:",omitempty"`
+	ProfilePictureURL                      string `index:"5" json:",omitempty"`
+	ProfilePictureFallbackURL              string `index:"6" json:",omitempty"`
+	ProfilePictureURLExpirationTimestampMS int64  `index:"7" json:",omitempty"`
+	TimestampMS                            int64  `index:"8" json:",omitempty"`
+	SecondaryName                          string `index:"9" json:",omitempty"`
+}
+
+func (ls *LSDeleteThenInsertReactionsV2Detail) GetThreadKey() int64 {
+	return ls.ThreadID
 }
 
 type LSDeleteReaction struct {
@@ -458,11 +507,12 @@ type LSDeleteThenInsertMessage struct {
 	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
 	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
 	BotResponseID                   int64                      `index:"64" json:",omitempty"`
-	EditCount                       int64                      `index:"65" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"66" json:",omitempty"`
-	AdminSignatureName              string                     `index:"67" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"68" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"69" json:",omitempty"`
+	MetadataDataclass               string                     `index:"65" json:",omitempty"`
+	EditCount                       int64                      `index:"66" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"67" json:",omitempty"`
+	AdminSignatureName              string                     `index:"68" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"69" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"70" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

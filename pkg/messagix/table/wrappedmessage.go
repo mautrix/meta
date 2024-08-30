@@ -155,6 +155,9 @@ type WrappedMessage struct {
 	XMAAttachments  []*WrappedXMA
 	Stickers        []*LSInsertStickerAttachment
 	Reactions       []*LSUpsertReaction
+
+	ThreadID         string
+	IsSubthreadStart bool
 }
 
 type WrappedXMA struct {

@@ -36,6 +36,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
+	"go.mau.fi/util/ptr"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -183,6 +184,13 @@ func (mc *MessageConverter) ToMatrix(
 	}
 	if msg.ReplySourceId != "" {
 		cm.ReplyTo = &networkid.MessageOptionalPartID{MessageID: metaid.MakeFBMessageID(msg.ReplySourceId)}
+		if msg.IsSubthreadStart {
+			cm.ThreadRoot = &cm.ReplyTo.MessageID
+			cm.ReplyTo = nil
+		}
+	}
+	if msg.ThreadID != "" {
+		cm.ThreadRoot = ptr.Ptr(metaid.MakeFBMessageID(msg.ThreadID))
 	}
 
 	for i, part := range cm.Parts {

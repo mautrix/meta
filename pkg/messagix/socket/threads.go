@@ -423,6 +423,20 @@ func (t *CreateCommunitySubThread) Create() (any, any, bool) {
 	return t, fmt.Sprintf("create_community_sub_thread_%d", t.ParentThreadID), false
 }
 
+type DeleteCommunitySubThread struct {
+	ThreadKey int64 `json:"thread_key"`
+	ActorID   int64 `json:"actor_id"`
+	SyncGroup int   `json:"sync_group"`
+}
+
+func (t *DeleteCommunitySubThread) GetLabel() string {
+	return TaskLabels["DeleteCommunitySubThread"]
+}
+
+func (t *DeleteCommunitySubThread) Create() (any, any, bool) {
+	return t, strconv.FormatInt(t.ThreadKey, 10), false
+}
+
 type CommunityThreadHoleDetection struct {
 	ThreadID        int64 `json:"thread_id"`
 	PreviousTQSeqID int64 `json:"previous_tq_seq_id"`

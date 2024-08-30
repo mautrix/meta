@@ -403,10 +403,12 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 	}
 	threadID := metaid.ParseFBPortalID(receipt.Portal.ID)
 	if !fbMessageToReadTS.IsZero() && threadID != 0 {
+		var syncGroup int64 = 1
+		// TODO set sync group to 104 for community groups?
 		resp, err := m.Client.ExecuteTasks(&socket.ThreadMarkReadTask{
 			ThreadId:            threadID,
 			LastReadWatermarkTs: fbMessageToReadTS.UnixMilli(),
-			SyncGroup:           1,
+			SyncGroup:           syncGroup,
 		})
 		log.Trace().Any("response", resp).Msg("Read receipt send response")
 		if err != nil {

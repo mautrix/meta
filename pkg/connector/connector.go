@@ -9,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 )
 
@@ -17,6 +18,7 @@ type MetaConnector struct {
 	Config      Config
 	MsgConv     *msgconv.MessageConverter
 	DeviceStore *sqlstore.Container
+	DB          *metadb.MetaDB
 }
 
 var (
@@ -26,19 +28,24 @@ var (
 
 func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
 	m.Bridge = bridge
-	m.MsgConv = msgconv.New(bridge)
 	m.DeviceStore = sqlstore.NewWithDB(
 		m.Bridge.DB.RawDB,
 		m.Bridge.DB.Dialect.String(),
 		waLog.Zerolog(m.Bridge.Log.With().Str("db_section", "whatsmeow").Logger()),
 	)
 	m.Bridge.Commands.(*commands.Processor).AddHandlers(cmdToggleEncryption)
+	m.DB = metadb.New(bridge.DB.Database, m.Bridge.Log.With().Str("db_section", "meta").Logger())
+	m.MsgConv = msgconv.New(bridge, m.DB)
 }
 
 func (m *MetaConnector) Start(ctx context.Context) error {
 	err := m.DeviceStore.Upgrade()
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}
+	}
+	err = m.DB.Upgrade(ctx)
+	if err != nil {
+		return bridgev2.DBUpgradeError{Err: err, Section: "meta"}
 	}
 	return nil
 }

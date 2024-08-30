@@ -21,6 +21,7 @@ import (
 	"maunium.net/go/mautrix/format"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/metadb"
 )
 
 type MessageConverter struct {
@@ -29,12 +30,14 @@ type MessageConverter struct {
 	AsyncFiles  bool
 	BridgeMode  types.Platform
 	HTMLParser  *format.HTMLParser
+	DB          *metadb.MetaDB
 }
 
-func New(br *bridgev2.Bridge) *MessageConverter {
+func New(br *bridgev2.Bridge, db *metadb.MetaDB) *MessageConverter {
 	mc := &MessageConverter{
 		Bridge:      br,
 		MaxFileSize: 50 * 1024 * 1024,
+		DB:          db,
 	}
 	mc.HTMLParser = &format.HTMLParser{
 		TabsToSpaces:   4,

@@ -52,6 +52,9 @@ type LSTable struct {
 	LSInsertStickerAttachment                        []*LSInsertStickerAttachment                        `json:",omitempty"`
 	LSUpsertReaction                                 []*LSUpsertReaction                                 `json:",omitempty"`
 	LSDeleteReaction                                 []*LSDeleteReaction                                 `json:",omitempty"`
+	LSUpdateOrInsertReactionV2                       []*LSUpdateOrInsertReactionV2                       `json:",omitempty"`
+	LSDeleteReactionV2                               []*LSDeleteReactionV2                               `json:",omitempty"`
+	LSDeleteThenInsertReactionsV2Detail              []*LSDeleteThenInsertReactionsV2Detail              `json:",omitempty"`
 	LSHandleRepliesOnUnsend                          []*LSHandleRepliesOnUnsend                          `json:",omitempty"`
 	LSInsertXmaAttachment                            []*LSInsertXmaAttachment                            `json:",omitempty"`
 	LSUpdateUnsentMessageCollapsedStatus             []*LSUpdateUnsentMessageCollapsedStatus             `json:",omitempty"`
@@ -244,6 +247,9 @@ var SPTable = map[string]string{
 	"updateReadReceipt":                              "LSUpdateReadReceipt",
 	"setForwardScore":                                "LSSetForwardScore",
 	"upsertReaction":                                 "LSUpsertReaction",
+	"updateOrInsertReactionV2":                       "LSUpdateOrInsertReactionV2",
+	"deleteReactionV2":                               "LSDeleteReactionV2",
+	"deleteThenInsertReactionsV2Detail":              "LSDeleteThenInsertReactionsV2Detail",
 	"bumpThread":                                     "LSBumpThread",
 	"updateParticipantLastMessageSendTimestamp":      "LSUpdateParticipantLastMessageSendTimestamp",
 	"insertMessage":                                  "LSInsertMessage",

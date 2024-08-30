@@ -13,6 +13,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
@@ -306,7 +307,20 @@ var metaCaps = &bridgev2.NetworkRoomCapabilities{
 	Captions:         true,
 }
 
+var metaCapsWithThreads *bridgev2.NetworkRoomCapabilities
+
+func init() {
+	metaCapsWithThreads = ptr.Clone(metaCaps)
+	metaCapsWithThreads.Threads = true
+}
+
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
+	// TODO normal group threads can't have subthreads, but some community groups seem to use the group thread type
+	//      maybe there's some way this can be made more accurate?
+	switch portal.Metadata.(*PortalMetadata).ThreadType {
+	case table.GROUP_THREAD, table.COMMUNITY_GROUP:
+		return metaCapsWithThreads
+	}
 	return metaCaps
 }
 

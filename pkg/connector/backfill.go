@@ -271,6 +271,7 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 	}
 	wrappedMessages := make([]*bridgev2.BackfillMessage, len(upsert.Messages))
 	for i, msg := range upsert.Messages {
+		m.handleSubthread(ctx, msg)
 		log := zerolog.Ctx(ctx).With().Str("message_id", msg.MessageId).Logger()
 		ctx := log.WithContext(ctx)
 		sender := m.makeEventSender(msg.SenderId)
@@ -281,6 +282,8 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 			ID:               metaid.MakeFBMessageID(msg.MessageId),
 			Timestamp:        time.UnixMilli(msg.TimestampMs),
 			Reactions:        make([]*bridgev2.BackfillReaction, len(msg.Reactions)),
+
+			//ShouldBackfillThread: msg.SubthreadKey != 0,
 		}
 		for j, reaction := range msg.Reactions {
 			wrappedMessages[i].Reactions[j] = &bridgev2.BackfillReaction{

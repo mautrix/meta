@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"errors"
+	"net/url"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -447,7 +448,41 @@ func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemo
 	})
 }
 
+func (m *MetaClient) handleSubthread(ctx context.Context, msg *table.WrappedMessage) {
+	if msg.SubthreadKey != 0 {
+		err := m.Main.DB.PutThread(ctx, msg.ThreadKey, msg.SubthreadKey, msg.MessageId)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().
+				Err(err).
+				Int64("thread_key", msg.ThreadKey).
+				Int64("subthread_key", msg.SubthreadKey).
+				Str("message_id", msg.MessageId).
+				Msg("Failed to insert subthread")
+		}
+	} else if len(msg.XMAAttachments) == 1 {
+		xma := msg.XMAAttachments[0]
+		parsedURL, err := url.Parse(xma.ActionUrl)
+		if err != nil || parsedURL.Scheme != "fb-messenger" || parsedURL.Host != "community_subthread" {
+			return
+		}
+		msg.XMAAttachments = nil
+		msg.IsSubthreadStart = true
+		err = m.Main.DB.PutThread(ctx, msg.ThreadKey, xma.TargetId, msg.ReplySourceId)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().
+				Err(err).
+				Str("xma_url", xma.ActionUrl).
+				Int64("thread_key", msg.ThreadKey).
+				Int64("subthread_key", xma.TargetId).
+				Str("message_id", msg.ReplySourceId).
+				Msg("Failed to insert subthread")
+		}
+	}
+}
+
 func (m *MetaClient) handleMessageInsert(tk handlerParams, msg *table.WrappedMessage) bridgev2.RemoteEvent {
+	m.handleSubthread(tk.ctx, msg)
+	msg.ThreadID = tk.ThreadMsgID
 	return &FBMessageEvent{
 		WrappedMessage:    msg,
 		portalKey:         tk.Portal,
@@ -492,6 +527,8 @@ type handlerParams struct {
 	UncertainReceiver bool
 	Sync              *FBChatResync
 
+	ThreadMsgID string
+
 	vtes  map[int64]*table.LSVerifyThreadExists
 	syncs map[int64]*FBChatResync
 }
@@ -502,8 +539,9 @@ func handlePortalEvents[T ThreadKeyable](
 	fn func(tk handlerParams, msg T) bridgev2.RemoteEvent,
 ) {
 	for _, msg := range msgs {
-		sync, syncOK := p.syncs[msg.GetThreadKey()]
-		v, ok := p.vtes[msg.GetThreadKey()]
+		threadKey := msg.GetThreadKey()
+		sync, syncOK := p.syncs[threadKey]
+		v, ok := p.vtes[threadKey]
 		var threadType table.ThreadType
 		uncertain := false
 		if ok {
@@ -513,6 +551,15 @@ func handlePortalEvents[T ThreadKeyable](
 		} else {
 			uncertain = true
 		}
+		// TODO this check isn't needed for all types
+		parentKey, threadMsgID, err := p.m.Main.DB.GetThreadByKey(p.ctx, threadKey)
+		if err != nil {
+			zerolog.Ctx(p.ctx).Warn().Err(err).Int64("thread_key", threadKey).Msg("Failed to get subthread key")
+		} else if threadMsgID != "" {
+			threadType = table.UNKNOWN_THREAD_TYPE
+			uncertain = true
+			threadKey = parentKey
+		}
 		if fn == nil {
 			zerolog.Ctx(p.ctx).Warn().Type("event_type", msg).Msg("No handler for event")
 			return
@@ -520,11 +567,12 @@ func handlePortalEvents[T ThreadKeyable](
 		evt := fn(handlerParams{
 			ctx: p.ctx,
 
-			ID:                msg.GetThreadKey(),
+			ID:                threadKey,
 			Type:              threadType,
-			Portal:            p.m.makeFBPortalKey(msg.GetThreadKey(), threadType),
+			Portal:            p.m.makeFBPortalKey(threadKey, threadType),
 			UncertainReceiver: uncertain,
 			Sync:              sync,
+			ThreadMsgID:       threadMsgID,
 
 			vtes:  p.vtes,
 			syncs: p.syncs,
