@@ -246,6 +246,7 @@ type LSVerifyThreadExists struct {
 	FolderName      string     `index:"2" json:",omitempty"`
 	ParentThreadKey int64      `index:"3" json:",omitempty"`
 	AuthorityLevel  int64      `index:"4" json:",omitempty"`
+	SyncGroup       int64      `index:"5" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

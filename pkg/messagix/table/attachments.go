@@ -286,16 +286,19 @@ type LSInsertXmaAttachment struct {
 	XMATypeTwo                                 string         `index:"111" json:",omitempty"`
 	AttachmentLoggingType                      int64          `index:"112" json:",omitempty"`
 	PreviewUrlLarge                            string         `index:"114" json:",omitempty"`
-	GatingType                                 int64          `index:"115" json:",omitempty"`
-	GatingTitle                                string         `index:"116" json:",omitempty"`
-	TargetExpiryTimestampMs                    int64          `index:"117" json:",omitempty"`
-	CountdownTimestampMs                       int64          `index:"118" json:",omitempty"`
-	ShouldBlurSubattachments                   int64          `index:"119" json:",omitempty"`
-	VerifiedType                               int64          `index:"120" json:",omitempty"`
-	CaptionBodyText                            string         `index:"121" json:",omitempty"`
-	IsPublicXma                                bool           `index:"122" json:",omitempty"`
-	ReplyCount                                 int64          `index:"123" json:",omitempty"`
-	AuthorityLevel                             int64          `index:"124" json:",omitempty"`
+	BodyText                                   string         `index:"115" json:",omitempty"`
+	GatingType                                 int64          `index:"116" json:",omitempty"`
+	GatingTitle                                string         `index:"117" json:",omitempty"`
+	TargetExpiryTimestampMs                    int64          `index:"118" json:",omitempty"`
+	CountdownTimestampMs                       int64          `index:"119" json:",omitempty"`
+	ShouldBlurSubattachments                   int64          `index:"120" json:",omitempty"`
+	VerifiedType                               int64          `index:"121" json:",omitempty"`
+	CaptionBodyText                            string         `index:"122" json:",omitempty"`
+	IsPublicXma                                bool           `index:"123" json:",omitempty"`
+	ReplyCount                                 int64          `index:"124" json:",omitempty"`
+	XmaDataclass                               string         `index:"125" json:",omitempty"`
+	PreviewOverlayCountdownExpiry              int64          `index:"126" json:",omitempty"`
+	AuthorityLevel                             int64          `index:"127" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -393,41 +396,41 @@ type LSInsertAttachmentItem struct {
 	OriginalPageSenderId             int64  `index:"7" json:",omitempty"`
 	TitleText                        string `index:"8" json:",omitempty"`
 	SubtitleText                     string `index:"9" json:",omitempty"`
-	PlayableUrl                      string `index:"12" json:",omitempty"`
-	PlayableUrlFallback              string `index:"13" json:",omitempty"`
-	PlayableUrlExpirationTimestampMs int64  `index:"14" json:",omitempty"`
-	PlayableUrlMimeType              string `index:"15" json:",omitempty"`
-	DashManifest                     string `index:"16" json:",omitempty"`
-	PreviewUrl                       string `index:"17" json:",omitempty"`
-	PreviewUrlFallback               string `index:"18" json:",omitempty"`
-	PreviewUrlExpirationTimestampMs  int64  `index:"19" json:",omitempty"`
-	PreviewUrlMimeType               string `index:"20" json:",omitempty"`
-	PreviewWidth                     int64  `index:"21" json:",omitempty"`
-	PreviewHeight                    int64  `index:"22" json:",omitempty"`
-	ImageUrl                         string `index:"23" json:",omitempty"`
-	DefaultCtaId                     int64  `index:"24" json:",omitempty"`
-	DefaultCtaTitle                  string `index:"25" json:",omitempty"`
-	DefaultCtaType                   int64  `index:"26" json:",omitempty"`
-	DefaultButtonType                int64  `index:"28" json:",omitempty"`
-	DefaultActionUrl                 string `index:"29" json:",omitempty"`
-	DefaultActionEnableExtensions    bool   `index:"30" json:",omitempty"`
-	DefaultWebviewHeightRatio        int64  `index:"32" json:",omitempty"`
-	AttachmentCta1Id                 int64  `index:"34" json:",omitempty"`
-	Cta1Title                        string `index:"35" json:",omitempty"`
-	Cta1IconType                     int64  `index:"36" json:",omitempty"`
-	Cta1Type                         string `index:"37" json:",omitempty"`
-	AttachmentCta2Id                 int64  `index:"39" json:",omitempty"`
-	Cta2Title                        string `index:"40" json:",omitempty"`
-	Cta2IconType                     int64  `index:"41" json:",omitempty"`
-	Cta2Type                         string `index:"42" json:",omitempty"`
-	AttachmentCta3Id                 int64  `index:"44" json:",omitempty"`
-	Cta3Title                        string `index:"45" json:",omitempty"`
-	Cta3IconType                     int64  `index:"46" json:",omitempty"`
-	Cta3Type                         string `index:"47" json:",omitempty"`
-	FaviconUrl                       string `index:"48" json:",omitempty"`
-	FaviconUrlFallback               string `index:"49" json:",omitempty"`
-	FaviconUrlExpirationTimestampMs  int64  `index:"50" json:",omitempty"`
-	PreviewUrlLarge                  string `index:"51" json:",omitempty"`
+	PlayableUrl                      string `index:"13" json:",omitempty"`
+	PlayableUrlFallback              string `index:"14" json:",omitempty"`
+	PlayableUrlExpirationTimestampMs int64  `index:"15" json:",omitempty"`
+	PlayableUrlMimeType              string `index:"16" json:",omitempty"`
+	DashManifest                     string `index:"17" json:",omitempty"`
+	PreviewUrl                       string `index:"18" json:",omitempty"`
+	PreviewUrlFallback               string `index:"19" json:",omitempty"`
+	PreviewUrlExpirationTimestampMs  int64  `index:"20" json:",omitempty"`
+	PreviewUrlMimeType               string `index:"21" json:",omitempty"`
+	PreviewWidth                     int64  `index:"22" json:",omitempty"`
+	PreviewHeight                    int64  `index:"23" json:",omitempty"`
+	ImageUrl                         string `index:"24" json:",omitempty"`
+	DefaultCtaId                     int64  `index:"25" json:",omitempty"`
+	DefaultCtaTitle                  string `index:"26" json:",omitempty"`
+	DefaultCtaType                   int64  `index:"27" json:",omitempty"`
+	DefaultButtonType                int64  `index:"29" json:",omitempty"`
+	DefaultActionUrl                 string `index:"30" json:",omitempty"`
+	DefaultActionEnableExtensions    bool   `index:"31" json:",omitempty"`
+	DefaultWebviewHeightRatio        int64  `index:"33" json:",omitempty"`
+	AttachmentCta1Id                 int64  `index:"35" json:",omitempty"`
+	Cta1Title                        string `index:"36" json:",omitempty"`
+	Cta1IconType                     int64  `index:"37" json:",omitempty"`
+	Cta1Type                         string `index:"38" json:",omitempty"`
+	AttachmentCta2Id                 int64  `index:"40" json:",omitempty"`
+	Cta2Title                        string `index:"41" json:",omitempty"`
+	Cta2IconType                     int64  `index:"42" json:",omitempty"`
+	Cta2Type                         string `index:"43" json:",omitempty"`
+	AttachmentCta3Id                 int64  `index:"45" json:",omitempty"`
+	Cta3Title                        string `index:"46" json:",omitempty"`
+	Cta3IconType                     int64  `index:"47" json:",omitempty"`
+	Cta3Type                         string `index:"48" json:",omitempty"`
+	FaviconUrl                       string `index:"49" json:",omitempty"`
+	FaviconUrlFallback               string `index:"50" json:",omitempty"`
+	FaviconUrlExpirationTimestampMs  int64  `index:"51" json:",omitempty"`
+	PreviewUrlLarge                  string `index:"52" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
