@@ -172,6 +172,9 @@ func (m *MetaClient) removeBackfillCollector(threadID int64, collector *Backfill
 }
 
 func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+	if m.Client == nil || m.Client.SyncManager == nil {
+		return nil, bridgev2.ErrNotLoggedIn
+	}
 	if params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
 		return nil, nil
 	}
