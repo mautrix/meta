@@ -29,8 +29,8 @@ type Config struct {
 	MinFullReconnectIntervalSeconds int `yaml:"min_full_reconnect_interval_seconds"`
 	ForceRefreshIntervalSeconds     int `yaml:"force_refresh_interval_seconds"`
 
-	DisplaynameTemplate string             `yaml:"displayname_template"`
-	displaynameTemplate *template.Template `yaml:"-"`
+	DisplaynameTemplateStr string             `yaml:"displayname_template"`
+	DisplaynameTemplate    *template.Template `yaml:"-"`
 }
 
 type umConfig Config
@@ -41,7 +41,7 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 
-	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
+	c.DisplaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplateStr)
 	if err != nil {
 		return err
 	}
@@ -81,6 +81,6 @@ type DisplaynameParams struct {
 
 func (c *Config) FormatDisplayname(params DisplaynameParams) string {
 	var buffer strings.Builder
-	_ = c.displaynameTemplate.Execute(&buffer, params)
+	_ = c.DisplaynameTemplate.Execute(&buffer, params)
 	return buffer.String()
 }
