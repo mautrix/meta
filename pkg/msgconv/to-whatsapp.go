@@ -257,7 +257,6 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 			ObjectID: &uploaded.ObjectID,
 		},
 	}
-	fmt.Printf("Uploaded media transport: %+v\n", mediaTransport)
 	return mediaTransport, fileName, nil
 }
 
