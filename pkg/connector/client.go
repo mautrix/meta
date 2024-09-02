@@ -56,10 +56,14 @@ type MetaClient struct {
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
-	loginMetadata.Cookies.Platform = loginMetadata.Platform
+	var messagixClient *messagix.Client
+	if loginMetadata.Cookies != nil {
+		loginMetadata.Cookies.Platform = loginMetadata.Platform
+		messagixClient = messagix.NewClient(loginMetadata.Cookies, login.Log.With().Str("component", "messagix").Logger())
+	}
 	c := &MetaClient{
 		Main:      m,
-		Client:    messagix.NewClient(loginMetadata.Cookies, login.Log.With().Str("component", "messagix").Logger()),
+		Client:    messagixClient,
 		LoginMeta: loginMetadata,
 		UserLogin: login,
 
@@ -69,7 +73,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		connectWaiter:     exsync.NewEvent(),
 		e2eeConnectWaiter: exsync.NewEvent(),
 	}
-	c.Client.SetEventHandler(c.handleMetaEvent)
+	if messagixClient != nil {
+		messagixClient.SetEventHandler(c.handleMetaEvent)
+	}
 	login.Client = c
 	return nil
 }
@@ -116,6 +122,13 @@ func (m *MetaClient) getProxy(reason string) (string, error) {
 }
 
 func (m *MetaClient) Connect(ctx context.Context) error {
+	if m.Client == nil {
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      MetaNotLoggedIn,
+		})
+		return nil
+	}
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
 		m.Client.GetNewProxy = m.getProxy
 		if !m.Client.UpdateProxy("connect") {
@@ -133,7 +146,12 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 				StateEvent: status.StateBadCredentials,
 				Error:      MetaCookieRemoved,
 			})
-			// TODO clear cookies?
+			m.Client = nil
+			m.LoginMeta.Cookies = nil
+			err = m.UserLogin.Save(ctx)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after clearing cookies")
+			}
 		} else if errors.Is(err, messagix.ErrChallengeRequired) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
@@ -323,7 +341,7 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 }
 
 func (m *MetaClient) IsLoggedIn() bool {
-	return m.Client != nil
+	return m.Client != nil && m.Client.SyncManager != nil
 }
 
 func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
@@ -342,10 +360,13 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 }
 
 func (m *MetaClient) canReconnect() bool {
-	return time.Since(m.lastFullReconnect) > time.Duration(m.Main.Config.MinFullReconnectIntervalSeconds)*time.Second
+	return time.Since(m.lastFullReconnect) > time.Duration(m.Main.Config.MinFullReconnectIntervalSeconds)*time.Second && m.LoginMeta.Cookies != nil
 }
 
 func (m *MetaClient) FullReconnect() {
+	if m.LoginMeta.Cookies == nil {
+		return
+	}
 	ctx := m.UserLogin.Log.WithContext(context.TODO())
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()

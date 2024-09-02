@@ -27,6 +27,9 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 	jid := meta.JID(portal.ID)
 	switch jid.Server {
 	case types.GroupServer:
+		if m.E2EEClient == nil {
+			return nil, ErrNotConnected
+		}
 		groupInfo, err := m.E2EEClient.GetGroupInfo(jid)
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch WhatsApp group info")

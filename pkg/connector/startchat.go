@@ -26,6 +26,11 @@ func (m *MetaConnector) ValidateUserID(id networkid.UserID) bool {
 }
 
 func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if m.LoginMeta.Cookies == nil {
+		return nil, bridgev2.ErrNotLoggedIn
+	} else if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+		return nil, ErrNotConnected
+	}
 	log := zerolog.Ctx(ctx)
 
 	id, err := metaid.ParseIDFromString(identifier)
@@ -59,6 +64,11 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 }
 
 func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	if m.LoginMeta.Cookies == nil {
+		return nil, bridgev2.ErrNotLoggedIn
+	} else if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+		return nil, ErrNotConnected
+	}
 	log := zerolog.Ctx(ctx)
 
 	task := &socket.SearchUserTask{

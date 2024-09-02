@@ -39,6 +39,9 @@ var (
 const ConnectWaitTimeout = 1 * time.Minute
 
 func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
+	if m.LoginMeta.Cookies == nil {
+		return nil, bridgev2.ErrNotLoggedIn
+	}
 	log := zerolog.Ctx(ctx)
 
 	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
@@ -194,6 +197,9 @@ func wrapRevoke(message *waConsumerApplication.ConsumerApplication_RevokeMessage
 }
 
 func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
+	if m.LoginMeta.Cookies == nil {
+		return nil, bridgev2.ErrNotLoggedIn
+	}
 	switch messageID := metaid.ParseMessageID(msg.TargetMessage.ID).(type) {
 	case metaid.ParsedFBMessageID:
 		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
@@ -233,6 +239,9 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 }
 
 func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
+	if m.LoginMeta.Cookies == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
 	switch messageID := metaid.ParseMessageID(msg.TargetReaction.MessageID).(type) {
 	case metaid.ParsedFBMessageID:
 		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
@@ -271,6 +280,9 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 }
 
 func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
+	if m.LoginMeta.Cookies == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
 	log := zerolog.Ctx(ctx)
 	switch messageID := metaid.ParseMessageID(edit.EditTarget.ID).(type) {
 	case metaid.ParsedFBMessageID:
@@ -336,6 +348,9 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 }
 
 func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	if m.LoginMeta.Cookies == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
 	log := zerolog.Ctx(ctx)
 	switch messageID := metaid.ParseMessageID(msg.TargetMessage.ID).(type) {
 	case metaid.ParsedFBMessageID:
@@ -363,6 +378,9 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 }
 
 func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) error {
+	if m.LoginMeta.Cookies == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
 	if !receipt.ReadUpTo.After(receipt.LastRead) {
 		return nil
 	}
