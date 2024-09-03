@@ -94,7 +94,8 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 	fields := make([]bridgev2.LoginCookieField, len(cookies))
 	for i, cookie := range cookies {
 		fields[i] = bridgev2.LoginCookieField{
-			ID: string(cookie),
+			ID:       string(cookie),
+			Required: true,
 			Sources: []bridgev2.LoginCookieFieldSource{
 				{
 					Type:         bridgev2.LoginCookieTypeCookie,
