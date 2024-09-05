@@ -214,6 +214,9 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 					HasMoreAfter:           true,
 				},
 			}
+		} else {
+			zerolog.Ctx(ctx).Warn().Msg("Can't backfill chat with no messages")
+			return nil, nil
 		}
 		doneCh := make(chan struct{})
 		collector := &BackfillCollector{
