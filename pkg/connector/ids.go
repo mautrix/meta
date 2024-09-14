@@ -33,7 +33,7 @@ func (m *MetaClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey {
 	key := networkid.PortalKey{
 		ID: metaid.MakeWAPortalID(chatJID),
 	}
-	if chatJID.Server == types.MessengerServer || chatJID.Server == types.DefaultUserServer {
+	if m.Main.Bridge.Config.SplitPortals || chatJID.Server == types.MessengerServer || chatJID.Server == types.DefaultUserServer {
 		key.Receiver = m.UserLogin.ID
 	}
 	return key
@@ -41,7 +41,7 @@ func (m *MetaClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey {
 
 func (m *MetaClient) makeFBPortalKey(threadID int64, threadType table.ThreadType) networkid.PortalKey {
 	key := networkid.PortalKey{ID: metaid.MakeFBPortalID(threadID)}
-	if threadType == table.UNKNOWN_THREAD_TYPE || threadType.IsOneToOne() {
+	if m.Main.Bridge.Config.SplitPortals || threadType == table.UNKNOWN_THREAD_TYPE || threadType.IsOneToOne() {
 		key.Receiver = m.UserLogin.ID
 	}
 	return key
