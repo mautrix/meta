@@ -151,6 +151,9 @@ func (cvd *chunkedVideoDownloader) Read(p []byte) (n int, err error) {
 	if errors.Is(err, io.EOF) {
 		_ = cvd.inFlightRequest.Close()
 		cvd.inFlightRequest = nil
+		if cvd.offset < cvd.totalSize {
+			err = nil
+		}
 	}
 	return
 }
