@@ -443,7 +443,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		zerolog.Ctx(ctx).Warn().Msg("Got edit to message with multiple parts")
 	}
 	editMsg := evt.GetConsumerApplication().GetPayload().GetContent().GetEditMessage()
-	if existing[0].Metadata.(*metaid.MessageMetadata).EditTimestamp <= editMsg.GetTimestampMS() {
+	if existing[0].Metadata.(*metaid.MessageMetadata).EditTimestamp >= editMsg.GetTimestampMS() {
 		return nil, fmt.Errorf("%w: duplicate edit", bridgev2.ErrIgnoringRemoteEvent)
 	}
 	converted := evt.m.Main.MsgConv.WhatsAppTextToMatrix(ctx, editMsg.GetMessage())

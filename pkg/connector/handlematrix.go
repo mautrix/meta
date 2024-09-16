@@ -338,6 +338,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 			Message:     m.Main.MsgConv.TextToWhatsApp(edit.Content),
 			TimestampMS: ptr.Ptr(edit.Event.Timestamp),
 		})
+		edit.EditTarget.Metadata.(*metaid.MessageMetadata).EditTimestamp = edit.Event.Timestamp
 		portalJID := edit.Portal.Metadata.(*metaid.PortalMetadata).JID(edit.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil)
 		log.Trace().Any("response", resp).Msg("WhatsApp edit response")
