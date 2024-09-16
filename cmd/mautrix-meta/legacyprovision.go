@@ -95,7 +95,8 @@ func legacyProvLogout(w http.ResponseWriter, r *http.Request) {
 	user := m.Matrix.Provisioning.GetUser(r)
 	logins := user.GetUserLogins()
 	for _, login := range logins {
-		login.Logout(r.Context())
+		// Intentionally don't delete the user login, only disconnect the client
+		login.Client.(*connector.MetaClient).LogoutRemote(r.Context())
 	}
 	jsonResponse(w, http.StatusOK, Response{
 		Success: true,

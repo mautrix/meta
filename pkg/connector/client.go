@@ -357,6 +357,7 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 		}
 	}
 	m.resetWADevice()
+	m.LoginMeta.Cookies = nil
 }
 
 func (m *MetaClient) canReconnect() bool {
