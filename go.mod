@@ -15,14 +15,14 @@ require (
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.1.1
 	go.mau.fi/util v0.8.0
-	go.mau.fi/whatsmeow v0.0.0-20240911102933-bb3364aa3986
+	go.mau.fi/whatsmeow v0.0.0-20240924123543-d5cecea9882e
 	golang.org/x/crypto v0.27.0
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 	golang.org/x/image v0.20.0
 	golang.org/x/net v0.29.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.21.0
+	maunium.net/go/mautrix v0.21.1-0.20240924105536-5a8f566c3cca
 )
 
 require (
