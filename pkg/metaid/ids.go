@@ -10,19 +10,19 @@ import (
 )
 
 func MakeWAUserID(jid types.JID) networkid.UserID {
-	return networkid.UserID(strconv.Itoa(int(jid.UserInt())))
+	return networkid.UserID(strconv.FormatUint(jid.UserInt(), 10))
 }
 
 func MakeUserID(user int64) networkid.UserID {
-	return networkid.UserID(strconv.Itoa(int(user)))
+	return networkid.UserID(strconv.FormatInt(user, 10))
 }
 
 func ParseIDFromString(id string) (int64, error) {
-	i, err := strconv.Atoi(id)
+	i, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return 0, err
 	}
-	return int64(i), nil
+	return i, nil
 }
 
 func MakeUserLoginID(user int64) networkid.UserLoginID {
@@ -34,22 +34,22 @@ func MakeWAPortalID(jid types.JID) networkid.PortalID {
 }
 
 func MakeFBPortalID(portal int64) networkid.PortalID {
-	return networkid.PortalID(strconv.Itoa(int(portal)))
+	return networkid.PortalID(strconv.FormatInt(portal, 10))
 }
 
 func ParseUserID(user networkid.UserID) int64 {
-	i, _ := strconv.Atoi(string(user))
-	return int64(i)
+	i, _ := strconv.ParseInt(string(user), 10, 64)
+	return i
 }
 
 func ParseUserLoginID(user networkid.UserLoginID) int64 {
-	i, _ := strconv.Atoi(string(user))
-	return int64(i)
+	i, _ := strconv.ParseInt(string(user), 10, 64)
+	return i
 }
 
 func ParseFBPortalID(portal networkid.PortalID) int64 {
-	i, _ := strconv.Atoi(string(portal))
-	return int64(i)
+	i, _ := strconv.ParseInt(string(portal), 10, 64)
+	return i
 }
 
 func ParseWAPortalID(portal networkid.PortalID, server string) types.JID {
