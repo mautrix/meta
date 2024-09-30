@@ -78,7 +78,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 			Success: true,
 			Status:  "logged_in",
 		})
-		go handleLoginComplete(ctx, user, finalStep.CompleteParams.UserLogin)
+		go handleLoginComplete(context.WithoutCancel(ctx), user, finalStep.CompleteParams.UserLogin)
 	}
 }
 
