@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	FlowIDFacebookCookies  = "cookies-facebook"
-	FlowIDMessengerCookies = "cookies-messenger"
-	FlowIDInstagramCookies = "cookies-instagram"
+	FlowIDFacebookCookies  = "facebook"
+	FlowIDMessengerCookies = "messenger"
+	FlowIDInstagramCookies = "instagram"
 
 	LoginStepIDCookies  = "fi.mau.meta.cookies"
 	LoginStepIDComplete = "fi.mau.meta.complete"
