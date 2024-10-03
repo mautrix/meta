@@ -50,7 +50,6 @@ type Cookies struct {
 	values   map[MetaCookieName]string
 	lock     sync.RWMutex
 
-	PushKeys   *PushKeys
 	IGWWWClaim string
 }
 
@@ -89,17 +88,6 @@ func (c *Cookies) GetViewports() (width, height string) {
 		return "1920", "1003"
 	}
 	return pxs[0], pxs[1]
-}
-
-func (c *Cookies) GeneratePushKeys() error {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	pushKeys, err := generatePushKeys()
-	if err != nil {
-		return err
-	}
-	c.PushKeys = pushKeys
-	return nil
 }
 
 func (c *Cookies) GetMissingCookieNames() []MetaCookieName {

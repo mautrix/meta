@@ -1,8 +1,12 @@
 package metaid
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
 	"sync/atomic"
 
+	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/random"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
@@ -23,6 +27,22 @@ type UserLoginMetadata struct {
 	Platform   types.Platform   `json:"platform"`
 	Cookies    *cookies.Cookies `json:"cookies"`
 	WADeviceID uint16           `json:"wa_device_id,omitempty"`
+	PushKeys   *PushKeys        `json:"push_keys,omitempty"`
+}
+
+type PushKeys struct {
+	P256DH  []byte `json:"p256dh"`
+	Auth    []byte `json:"auth"`
+	Private []byte `json:"private"`
+}
+
+func (m *UserLoginMetadata) GeneratePushKeys() {
+	privateKey := exerrors.Must(ecdh.P256().GenerateKey(rand.Reader))
+	m.PushKeys = &PushKeys{
+		P256DH:  privateKey.Public().(*ecdh.PublicKey).Bytes(),
+		Auth:    random.Bytes(16),
+		Private: privateKey.Bytes(),
+	}
 }
 
 type PortalMetadata struct {

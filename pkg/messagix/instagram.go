@@ -182,10 +182,10 @@ func (ig *InstagramMethods) FetchHighlights(highlightIds []string) (*responses.R
 	return ig.FetchReel(highlightIds, "")
 }
 
-func (ig *InstagramMethods) RegisterPushNotifications(endpoint string) error {
+func (ig *InstagramMethods) RegisterPushNotifications(endpoint string, keys PushKeys) error {
 	c := ig.client
 
-	jsonKeys, err := json.Marshal(c.cookies.PushKeys.Public)
+	jsonKeys, err := json.Marshal(&keys)
 	if err != nil {
 		c.Logger.Err(err).Msg("failed to encode push keys to json")
 		return err

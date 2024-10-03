@@ -150,11 +150,6 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
 	}
 
-	err := c.GeneratePushKeys()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate push keys: %w", err)
-	}
-
 	log := m.User.Log.With().Str("component", "messagix").Logger()
 	client := messagix.NewClient(c, log)
 

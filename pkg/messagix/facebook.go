@@ -1,12 +1,12 @@
 package messagix
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/google/go-querystring/query"
 
@@ -76,9 +76,14 @@ func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies,
 	return fb.client.cookies, nil
 }
 
-func (fb *FacebookMethods) RegisterPushNotifications(endpoint string) error {
+type PushKeys struct {
+	P256DH []byte `json:"p256dh"`
+	Auth   []byte `json:"auth"`
+}
+
+func (fb *FacebookMethods) RegisterPushNotifications(endpoint string, keys PushKeys) error {
 	c := fb.client
-	jsonKeys, err := json.Marshal(c.cookies.PushKeys.Public)
+	jsonKeys, err := json.Marshal(&keys)
 	if err != nil {
 		c.Logger.Err(err).Msg("failed to encode push keys to json")
 		return err
@@ -111,14 +116,12 @@ func (fb *FacebookMethods) RegisterPushNotifications(endpoint string) error {
 		return fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
-	bodyStr := string(body)
-	jsonStr := strings.TrimPrefix(bodyStr, "for (;;);")
-	jsonBytes := []byte(jsonStr)
+	body = bytes.TrimPrefix(body, antiJSPrefix)
 
 	var r pushNotificationsResponse
-	err = json.Unmarshal(jsonBytes, &r)
+	err = json.Unmarshal(body, &r)
 	if err != nil {
-		c.Logger.Err(err).Str("body", bodyStr).Msg("failed to unmarshal response")
+		c.Logger.Err(err).Bytes("body", body).Msg("failed to unmarshal response")
 		return err
 	}
 
