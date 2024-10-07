@@ -83,15 +83,15 @@ func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, r
 		if mentionLink == "" {
 			continue
 		}
-		output.WriteString(utf16Text[prevEnd:mention.Offset].String())
+		output.WriteString(event.TextToHTML(utf16Text[prevEnd:mention.Offset].String()))
 		output.WriteString(`<a href="`)
 		output.WriteString(mentionLink)
 		output.WriteString(`">`)
-		output.WriteString(utf16Text[mention.Offset:end].String())
+		output.WriteString(event.TextToHTML(utf16Text[mention.Offset:end].String()))
 		output.WriteString(`</a>`)
 		prevEnd = end
 	}
-	output.WriteString(utf16Text[prevEnd:].String())
+	output.WriteString(event.TextToHTML(utf16Text[prevEnd:].String()))
 	content.Format = event.FormatHTML
 	content.FormattedBody = output.String()
 	return content
