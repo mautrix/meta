@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -131,6 +132,11 @@ func (s *Socket) Connect() error {
 		contextDialer, ok := s.client.socksProxy.(proxy.ContextDialer)
 		if ok {
 			dialer.NetDialContext = contextDialer.DialContext
+		}
+	}
+	if DisableTLSVerification {
+		dialer.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
 		}
 	}
 

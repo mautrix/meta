@@ -36,6 +36,9 @@ func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
 	m.Bridge.Commands.(*commands.Processor).AddHandlers(cmdToggleEncryption)
 	m.DB = metadb.New(bridge.DB.Database, m.Bridge.Log.With().Str("db_section", "meta").Logger())
 	m.MsgConv = msgconv.New(bridge, m.DB)
+	if m.Config.ProxyMedia {
+		msgconv.SetProxy(m.Config.Proxy)
+	}
 }
 
 func (m *MetaConnector) Start(ctx context.Context) error {

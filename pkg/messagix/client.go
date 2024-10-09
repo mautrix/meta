@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,6 +78,8 @@ type Client struct {
 	sendMessagesCond *sync.Cond
 }
 
+var DisableTLSVerification = false
+
 func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 	if cookies.Platform == types.Unset {
 		panic("messagix: platform must be set in cookies")
@@ -100,6 +103,11 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		taskMutex:        &sync.Mutex{},
 		canSendMessages:  false,
 		sendMessagesCond: sync.NewCond(&sync.Mutex{}),
+	}
+	if DisableTLSVerification {
+		cli.http.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
 	}
 	cli.http.CheckRedirect = cli.checkHTTPRedirect
 

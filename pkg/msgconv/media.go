@@ -23,10 +23,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
@@ -49,6 +51,11 @@ var mediaHTTPClient = http.Client{
 	Timeout: 120 * time.Second,
 }
 var BypassOnionForMedia bool
+
+func SetProxy(proxy string) {
+	parsedURL := exerrors.Must(url.Parse(proxy))
+	mediaHTTPClient.Transport.(*http.Transport).Proxy = http.ProxyURL(parsedURL)
+}
 
 var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
 	WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
