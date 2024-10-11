@@ -126,7 +126,7 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 		return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
 	} else if req.URL.Path == "/accounts/suspended/" {
 		return fmt.Errorf("%w: redirected to %s", ErrAccountSuspended, req.URL.String())
-	} else if req.URL.Path == "/consent/" || req.URL.Path == "/privacy/consent/" {
+	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
 		return fmt.Errorf("%w: redirected to %s", ErrConsentRequired, req.URL.String())
 	}
 	respCookies := req.Response.Cookies()
