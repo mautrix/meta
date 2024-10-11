@@ -207,7 +207,7 @@ func (c *Client) makeRequestDirect(url string, method string, headers http.Heade
 	return response, responseBody, nil
 }
 
-func (c *Client) buildHeaders(withCookies bool) http.Header {
+func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header {
 	headers := http.Header{}
 	headers.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 	headers.Set("accept-language", "en-US,en;q=0.9")
@@ -221,9 +221,17 @@ func (c *Client) buildHeaders(withCookies bool) http.Header {
 	headers.Set("sec-ch-ua-model", SecCHModel)
 	headers.Set("sec-ch-ua-platform-version", SecCHPlatformVersion)
 
-	c.addFacebookHeaders(&headers)
-	if !c.Platform.IsMessenger() {
-		c.addInstagramHeaders(&headers)
+	if isSecFetchDocument {
+		headers.Set("sec-fetch-dest", "document")
+		headers.Set("sec-fetch-mode", "navigate")
+		headers.Set("sec-fetch-site", "none") // header is required, otherwise they dont send the csr bitmap data in the response. lets also include the other headers to be sure
+		headers.Set("sec-fetch-user", "?1")
+		headers.Set("upgrade-insecure-requests", "1")
+	} else {
+		c.addFacebookHeaders(&headers)
+		if !c.Platform.IsMessenger() {
+			c.addInstagramHeaders(&headers)
+		}
 	}
 
 	if c.cookies != nil && withCookies {
@@ -284,7 +292,7 @@ func (c *Client) sendLoginRequest(form url.Values, loginUrl string) (*http.Respo
 }
 
 func (c *Client) buildLoginHeaders() http.Header {
-	h := c.buildHeaders(true)
+	h := c.buildHeaders(true, false)
 	if c.Platform.IsMessenger() {
 		h = c.addLoginFacebookHeaders(h)
 	} else {

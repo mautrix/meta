@@ -41,7 +41,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 
 	payloadBytes := []byte(form.Encode())
 
-	headers := c.buildHeaders(true)
+	headers := c.buildHeaders(true, false)
 	headers.Set("x-fb-friendly-name", graphQLDoc.FriendlyName)
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")

@@ -83,14 +83,8 @@ func (m *ModuleParser) SetClientInstance(cli *Client) {
 }
 
 func (m *ModuleParser) fetchPageData(page string) ([]byte, error) { // just log.fatal if theres an error because the library should not be able to continue then
-	headers := m.client.buildHeaders(true)
-	headers.Set("connection", "keep-alive")
+	headers := m.client.buildHeaders(true, true)
 	//headers.Set("host", m.client.getEndpoint("host"))
-	headers.Set("sec-fetch-dest", "document")
-	headers.Set("sec-fetch-mode", "navigate")
-	headers.Set("sec-fetch-site", "none") // header is required, otherwise they dont send the csr bitmap data in the response. lets also include the other headers to be sure
-	headers.Set("sec-fetch-user", "?1")
-	headers.Set("upgrade-insecure-requests", "1")
 	_, responseBody, err := m.client.MakeRequest(page, "GET", headers, nil, types.NONE)
 	return responseBody, err
 }

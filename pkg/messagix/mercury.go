@@ -43,7 +43,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	if err != nil {
 		return nil, err
 	}
-	h := c.buildHeaders(true)
+	h := c.buildHeaders(true, false)
 	h.Set("accept", "*/*")
 	h.Set("content-type", contentType)
 	h.Set("origin", c.getEndpoint("base_url"))

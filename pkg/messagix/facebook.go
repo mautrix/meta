@@ -101,7 +101,7 @@ func (fb *FacebookMethods) RegisterPushNotifications(endpoint string, keys PushK
 
 	payloadBytes := []byte(form.Encode())
 
-	headers := c.buildHeaders(true)
+	headers := c.buildHeaders(true, false)
 	headers.Set("Referer", c.getEndpoint("host"))
 	headers.Set("Sec-fetch-site", "same-origin")
 

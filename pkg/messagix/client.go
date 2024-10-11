@@ -40,7 +40,7 @@ const OSVersion = "6.8.0"
 const SecCHPlatform = `"` + OSName + `"`
 const SecCHPlatformVersion = `"` + OSVersion + `"`
 const SecCHMobile = "?0"
-const SecCHModel = ""
+const SecCHModel = `""`
 const SecCHPrefersColorScheme = "light"
 
 type EventHandler func(evt interface{})
@@ -293,7 +293,7 @@ func (c *Client) IsConnected() bool {
 func (c *Client) sendCookieConsent(jsDatr string) error {
 
 	var payloadQuery interface{}
-	h := c.buildHeaders(false)
+	h := c.buildHeaders(false, false)
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 
@@ -319,7 +319,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 			IgDid:                   c.cookies.Get("ig_did"),
 			ThirdPartyTrackingOptIn: true,
 			Input: struct {
-				ClientMutationID int "json:\"client_mutation_id,omitempty\""
+				ClientMutationID int `json:"client_mutation_id,omitempty"`
 			}{0},
 		})
 		h.Del("x-csrftoken")

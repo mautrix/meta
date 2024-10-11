@@ -42,7 +42,7 @@ var (
 	//lint:ignore U1000 - alternatives for minimal*Sync
 	fbReconnectSync = []int64{1, 2, 5, 16, 95, 104}
 	//lint:ignore U1000 - alternatives for minimal*Sync
-	igInitialSync = []int64{1, 2, 6, 7, 16, 28, 198}
+	igInitialSync = []int64{1, 2, 6, 7, 16 /*28,*/, 89, 197, 198}
 	//lint:ignore U1000 - alternatives for minimal*Sync
 	fbInitialSync = []int64{1, 2 /*5,*/, 16, 26, 28, 89, 95, 104, 120, 140, 141, 142, 143, 145, 196, 197, 198, 202}
 
@@ -163,12 +163,12 @@ func (s *Socket) Connect() error {
 
 func (s *Socket) BuildBrokerUrl() string {
 	query := &url.Values{}
-	query.Add("cid", s.client.configs.browserConfigTable.MqttWebDeviceID.ClientID)
 	query.Add("sid", strconv.FormatInt(s.sessionId, 10))
+	query.Add("cid", s.client.configs.browserConfigTable.MqttWebDeviceID.ClientID)
 
 	encodedQuery := query.Encode()
-	if !strings.HasSuffix(s.broker, "=") {
-		return s.broker + "&" + encodedQuery
+	if strings.HasSuffix(s.broker, "?") {
+		return s.broker + encodedQuery
 	} else {
 		return s.broker + "&" + encodedQuery
 	}

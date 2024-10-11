@@ -27,15 +27,15 @@ func (c *Client) NewSyncManager() *SyncManager {
 		client: c,
 		store: map[int64]*socket.QueryMetadata{
 			1: {SendSyncParams: false, SyncChannel: socket.MailBox},
-			2: {SendSyncParams: true, SyncChannel: socket.Contact}, // FB sync params (previously null?: {"locale": "en_US"}
+			2: {SendSyncParams: true, SyncChannel: socket.Contact}, // FB/IG sync params (previously null?): {"locale": "en_US"}
 			//2:   {SendSyncParams: false, SyncChannel: socket.Contact},
 			5:   {SendSyncParams: true}, // FB sync params: {"locale": "en_US"} TODO may be removed
 			6:   {SendSyncParams: true}, // IG sync params: {"locale": "en_US"}
 			7:   {SendSyncParams: true}, // IG sync params: {"mnet_rank_types": [44]}
 			16:  {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 			26:  {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
-			28:  {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
-			89:  {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			28:  {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			89:  {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 			95:  {SendSyncParams: false, SyncChannel: socket.Contact},
 			104: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
 			120: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
@@ -45,7 +45,7 @@ func (c *Client) NewSyncManager() *SyncManager {
 			143: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
 			145: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
 			196: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
-			197: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			197: {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 			198: {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 			202: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
 		},

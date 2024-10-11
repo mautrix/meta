@@ -27,7 +27,7 @@ func (ig *InstagramMethods) Login(identifier, password string) (*cookies.Cookies
 	if _, err := ig.client.configs.SetupConfigs(nil); err != nil {
 		return nil, err
 	}
-	h := ig.client.buildHeaders(false)
+	h := ig.client.buildHeaders(false, false)
 	h.Set("x-web-device-id", ig.client.cookies.Get(cookies.IGCookieDeviceID))
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
@@ -97,7 +97,7 @@ func (ig *InstagramMethods) Login(identifier, password string) (*cookies.Cookies
 }
 
 func (ig *InstagramMethods) FetchProfile(username string) (*responses.ProfileInfoResponse, error) {
-	h := ig.client.buildHeaders(true)
+	h := ig.client.buildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	h.Set("referer", ig.client.getEndpoint("base_url")+username+"/")
 	reqUrl := ig.client.getEndpoint("web_profile_info") + "username=" + username
@@ -119,7 +119,7 @@ func (ig *InstagramMethods) FetchProfile(username string) (*responses.ProfileInf
 }
 
 func (ig *InstagramMethods) FetchMedia(mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
-	h := ig.client.buildHeaders(true)
+	h := ig.client.buildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	referer := ig.client.getEndpoint("base_url")
 	if mediaShortcode != "" {
@@ -146,7 +146,7 @@ func (ig *InstagramMethods) FetchMedia(mediaID, mediaShortcode string) (*respons
 }
 
 func (ig *InstagramMethods) FetchReel(reelIds []string, mediaID string) (*responses.ReelInfoResponse, error) {
-	h := ig.client.buildHeaders(true)
+	h := ig.client.buildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	h.Set("referer", ig.client.getEndpoint("base_url"))
 	h.Set("Accept", "*/*")
@@ -205,7 +205,7 @@ func (ig *InstagramMethods) RegisterPushNotifications(endpoint string, keys Push
 
 	payloadBytes := []byte(form.Encode())
 
-	headers := c.buildHeaders(true)
+	headers := c.buildHeaders(true, false)
 	headers.Set("x-requested-with", "XMLHttpRequest")
 	headers.Set("Referer", c.getEndpoint("host"))
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
