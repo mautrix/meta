@@ -48,6 +48,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	h.Set("content-type", contentType)
 	h.Set("origin", c.getEndpoint("base_url"))
 	h.Set("referer", c.getEndpointForThreadID(threadID))
+	h.Set("priority", "u=1, i")
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin") // header is required

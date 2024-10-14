@@ -49,6 +49,7 @@ type HttpQuery struct {
 	DeviceToken          string `url:"device_token,omitempty"`      // not required
 	DeviceType           string `url:"device_type,omitempty"`       // not required
 	Mid                  string `url:"mid,omitempty"`               // not required
+	Aaid                 string `url:"__aaid,omitempty"`
 }
 
 func (c *Client) NewHttpQuery() *HttpQuery {
@@ -58,7 +59,7 @@ func (c *Client) NewHttpQuery() *HttpQuery {
 	query := &HttpQuery{
 		User:     c.configs.browserConfigTable.CurrentUserInitialData.UserID,
 		A:        "1",
-		Req:      strconv.Itoa(c.graphQLRequests),
+		Req:      strconv.FormatInt(int64(c.graphQLRequests), 36),
 		Hs:       siteConfig.HasteSession,
 		Dpr:      dpr,
 		Ccg:      c.configs.browserConfigTable.WebConnectionClassServerGuess.ConnectionClass,
@@ -75,11 +76,14 @@ func (c *Client) NewHttpQuery() *HttpQuery {
 		SpinB:    siteConfig.SpinB,
 		SpinT:    strconv.Itoa(siteConfig.SpinT),
 	}
-	if c.configs.browserConfigTable.CurrentUserInitialData.UserID != "0" {
+	/*if c.configs.browserConfigTable.CurrentUserInitialData.UserID != "0" {
 		query.Av = c.configs.browserConfigTable.CurrentUserInitialData.UserID
-	}
+	}*/
 	if c.Platform == types.Instagram {
 		query.D = "www"
+		query.Jssesw = "1"
+	} else {
+		query.Aaid = "0"
 	}
 	return query
 }
