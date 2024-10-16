@@ -1,3 +1,8 @@
+# v0.4.1 (2024-10-16)
+
+* Fixed bridging newlines in messages from Meta that include user mentions.
+* Added option to apply proxy settings to media downloads.
+
 # v0.4.0 (2024-09-16)
 
 * Bumped minimum Go version to 1.22.
