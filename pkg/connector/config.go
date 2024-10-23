@@ -41,16 +41,15 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-
-	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
-	if err != nil {
-		return err
-	}
-
-	c.Mode = types.PlatformFromString(c.RawMode)
-
-	return nil
+	return c.PostProcess()
 }
+
+func (c *Config) PostProcess() (err error) {
+	c.Mode = types.PlatformFromString(c.RawMode)
+	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
+	return err
+}
+
 func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "mode")
 	helper.Copy(up.Bool, "ig_e2ee")
