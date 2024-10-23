@@ -9,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -175,7 +174,11 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		}
 	}
 
-	loginID := networkid.UserLoginID(fmt.Sprint(id))
+	loginID := metaid.MakeUserLoginID(id)
+	var loginUA string
+	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {
+		loginUA = req.Header.Get("User-Agent")
+	}
 
 	ul, err := m.User.NewLogin(ctx, &database.UserLogin{
 		ID:         loginID,
@@ -186,6 +189,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		Metadata: &metaid.UserLoginMetadata{
 			Platform: c.Platform,
 			Cookies:  c,
+			LoginUA:  loginUA,
 		},
 	}, nil)
 	if err != nil {

@@ -28,6 +28,7 @@ type UserLoginMetadata struct {
 	Cookies    *cookies.Cookies `json:"cookies"`
 	WADeviceID uint16           `json:"wa_device_id,omitempty"`
 	PushKeys   *PushKeys        `json:"push_keys,omitempty"`
+	LoginUA    string           `json:"login_ua,omitempty"`
 }
 
 type PushKeys struct {

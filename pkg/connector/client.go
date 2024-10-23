@@ -400,5 +400,11 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 			state.Message = copyFrom.Message
 		}
 	}
+	if m.LoginMeta.LoginUA != "" {
+		if state.Info == nil {
+			state.Info = make(map[string]any)
+		}
+		state.Info["login_user_agent"] = m.LoginMeta.LoginUA
+	}
 	return state
 }
