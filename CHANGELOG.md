@@ -1,3 +1,7 @@
+# v0.4.2 (2024-11-16)
+
+* No notable changes
+
 # v0.4.1 (2024-10-16)
 
 * Fixed bridging newlines in messages from Meta that include user mentions.
