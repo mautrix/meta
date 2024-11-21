@@ -38,7 +38,7 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 	case FlowIDInstagramCookies:
 		plat = types.Instagram
 	default:
-		return nil, fmt.Errorf("unknown flow ID %s", flowID)
+		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
 
 	return &MetaCookieLogin{
