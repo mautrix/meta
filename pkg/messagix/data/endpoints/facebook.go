@@ -23,6 +23,7 @@ func makeFacebookEndpoints(host string) map[string]string {
 		"media_upload":   baseURL + "/ajax/mercury/upload.php?",
 		"web_push":       baseURL + "/push/register/service_worker/",
 
+		"e2ee_ws_url":   "wss://web-chat-e2ee.facebook.com/ws/chat",
 		"icdc_fetch":    "https://reg-e2ee.facebook.com/v2/fb_icdc_fetch",
 		"icdc_register": "https://reg-e2ee.facebook.com/v2/fb_register_v2",
 	}

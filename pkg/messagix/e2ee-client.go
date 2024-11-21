@@ -38,8 +38,9 @@ func (c *Client) PrepareE2EEClient() *whatsmeow.Client {
 	e2eeClient := whatsmeow.NewClient(c.device, waLog.Zerolog(c.Logger.With().Str("component", "whatsmeow").Logger()))
 	e2eeClient.GetClientPayload = c.getClientPayload
 	e2eeClient.MessengerConfig = &whatsmeow.MessengerConfig{
-		UserAgent: UserAgent,
-		BaseURL:   c.getEndpoint("base_url"),
+		UserAgent:    UserAgent,
+		BaseURL:      c.getEndpoint("base_url"),
+		WebsocketURL: c.getEndpoint("e2ee_ws_url"),
 	}
 	e2eeClient.RefreshCAT = c.refreshCAT
 	return e2eeClient

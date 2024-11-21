@@ -17,6 +17,7 @@ var InstagramEndpoints = map[string]string{
 	"cookie_consent":  "https://graphql.instagram.com/graphql/",
 	"default_graphql": "https://graphql.instagram.com/graphql/",
 
+	"e2ee_ws_url":   "wss://web-chat-e2ee.instagram.com/ws/chat",
 	"icdc_fetch":    "https://reg-e2ee.instagram.com/v2/fb_icdc_fetch",
 	"icdc_register": "https://reg-e2ee.instagram.com/v2/fb_register_v2",
 

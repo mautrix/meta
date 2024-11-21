@@ -426,9 +426,9 @@ func (s *Socket) getConnHeaders() http.Header {
 	h.Set("cookie", s.client.cookies.String())
 	h.Set("user-agent", UserAgent)
 	h.Set("origin", s.client.getEndpoint("base_url"))
-	h.Set("Sec-Fetch-Dest", "empty")
-	h.Set("Sec-Fetch-Mode", "websocket")
-	h.Set("Sec-Fetch-Site", "same-site")
+	//h.Set("Sec-Fetch-Dest", "empty")
+	//h.Set("Sec-Fetch-Mode", "websocket")
+	//h.Set("Sec-Fetch-Site", "same-site")
 
 	return h
 }
