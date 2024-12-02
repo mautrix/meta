@@ -203,11 +203,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	metaClient.Client = client
 
 	backgroundCtx := ul.Log.WithContext(context.Background())
-	err = metaClient.connectWithTable(backgroundCtx, tbl, user)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect after login: %w", err)
-	}
-
+	go metaClient.connectWithTable(backgroundCtx, tbl, user)
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,

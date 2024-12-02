@@ -121,18 +121,22 @@ func (m *MetaClient) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
-func (m *MetaClient) Connect(ctx context.Context) error {
+func (m *MetaClient) Connect(ctx context.Context) {
 	if m.Client == nil {
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      MetaNotLoggedIn,
 		})
-		return nil
+		return
 	}
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
 		m.Client.GetNewProxy = m.getProxy
 		if !m.Client.UpdateProxy("connect") {
-			return fmt.Errorf("failed to update proxy")
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      MetaProxyUpdateFail,
+			})
+			return
 		}
 	}
 	currentUser, initialTable, err := m.Client.LoadMessagesPage()
@@ -187,18 +191,23 @@ func (m *MetaClient) Connect(ctx context.Context) error {
 				Error:      MetaConnectError,
 			})
 		}
-		return nil
+		return
 	}
-	return m.connectWithTable(ctx, initialTable, currentUser)
+	m.connectWithTable(ctx, initialTable, currentUser)
 }
 
-func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable, currentUser types.UserInfo) error {
+func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable, currentUser types.UserInfo) {
 	go m.handleTableLoop()
 
 	var err error
 	m.Ghost, err = m.Main.Bridge.GetGhostByID(ctx, networkid.UserID(m.UserLogin.ID))
 	if err != nil {
-		return fmt.Errorf("failed to get own ghost: %w", err)
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get own ghost")
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      MetaConnectError,
+		})
+		return
 	}
 	m.UserLogin.RemoteName = currentUser.GetName()
 	m.UserLogin.RemoteProfile.Name = currentUser.GetName()
@@ -211,12 +220,15 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 
 	err = m.Client.Connect()
 	if err != nil {
-		return err
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      MetaConnectError,
+		})
+		return
 	}
 
 	go m.periodicReconnect()
-
-	return nil
 }
 
 func (m *MetaClient) periodicReconnect() {
@@ -374,10 +386,7 @@ func (m *MetaClient) FullReconnect() {
 	m.Disconnect()
 	m.Client = messagix.NewClient(m.LoginMeta.Cookies, m.UserLogin.Log.With().Str("component", "messagix").Logger())
 	m.Client.SetEventHandler(m.handleMetaEvent)
-	err := m.Connect(ctx)
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to reconnect")
-	}
+	m.Connect(ctx)
 }
 
 func (m *MetaClient) resetWADevice() {
