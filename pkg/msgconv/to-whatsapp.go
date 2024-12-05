@@ -21,11 +21,15 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
 	armadillo "go.mau.fi/whatsmeow/proto"
@@ -184,6 +188,24 @@ func clampTo400(w, h int) (int, int) {
 	return w, h
 }
 
+func reencodeNRGBA(ctx context.Context, data []byte) []byte {
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode png for re-encoding")
+		return data
+	}
+	b := img.Bounds()
+	nrgba := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(nrgba, nrgba.Bounds(), img, b.Min, draw.Src)
+	var buf bytes.Buffer
+	if err = png.Encode(&buf, img); err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to re-encode png")
+		return data
+	}
+	zerolog.Ctx(ctx).Debug().Msg("Re-encoded non-NRGBA png")
+	return buf.Bytes()
+}
+
 func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, error) {
 	mimeType := content.Info.MimeType
 	fileName := content.FileName
@@ -221,6 +243,18 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 			evt.Content.Raw["info"] = customInfo
 		}
 		customInfo["fi.mau.gif"] = true
+	}
+	if content.MsgType == event.MsgImage && mimeType == "image/png" {
+		cfg, err := png.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode png config")
+		} else if cfg.ColorModel != color.NRGBAModel {
+			// Messenger gets angry about certain color models in PNGs
+			data = reencodeNRGBA(ctx, data)
+		}
+		if content.Info.Width == 0 {
+			content.Info.Width, content.Info.Height = cfg.Width, cfg.Height
+		}
 	}
 	if content.MsgType == event.MsgImage && content.Info.Width == 0 {
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
