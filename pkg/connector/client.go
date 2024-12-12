@@ -255,6 +255,27 @@ func (m *MetaClient) periodicReconnect() {
 	}
 }
 
+func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
+	err := m.connectE2EE()
+	if err != nil {
+		if m.waState.StateEvent != status.StateBadCredentials && m.waState.StateEvent != status.StateUnknownError {
+			m.waState = status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      WAConnectError,
+				Info: map[string]any{
+					"go_error": err.Error(),
+				},
+			}
+			m.UserLogin.BridgeState.Send(m.waState)
+		}
+		if fromConnectFailure {
+			m.UserLogin.Log.Err(err).Msg("Failed to connect to e2ee after 415 error")
+		} else {
+			m.UserLogin.Log.Err(err).Msg("Failed to connect to e2ee")
+		}
+	}
+}
+
 func (m *MetaClient) connectE2EE() error {
 	m.e2eeConnectLock.Lock()
 	defer m.e2eeConnectLock.Unlock()
@@ -407,6 +428,7 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 			state.StateEvent = copyFrom.StateEvent
 			state.Error = copyFrom.Error
 			state.Message = copyFrom.Message
+			state.Info = copyFrom.Info
 		}
 	}
 	if m.LoginMeta.LoginUA != "" {

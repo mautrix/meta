@@ -24,6 +24,7 @@ const (
 	WADisconnected             status.BridgeStateErrorCode = "wa-transient-disconnect"
 	WAPermanentError           status.BridgeStateErrorCode = "wa-unknown-permanent-error"
 	WACATError                 status.BridgeStateErrorCode = "wa-cat-refresh-error"
+	WAConnectError             status.BridgeStateErrorCode = "wa-unknown-connect-error"
 	MetaConnectionUnauthorized status.BridgeStateErrorCode = "meta-connection-unauthorized"
 	MetaPermanentError         status.BridgeStateErrorCode = "meta-unknown-permanent-error"
 	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"
@@ -79,12 +80,7 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 			m.incomingTables <- tbl
 		}
 		if m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE {
-			go func() {
-				err := m.connectE2EE()
-				if err != nil {
-					log.Err(err).Msg("Error connecting to e2ee")
-				}
-			}()
+			go m.tryConnectE2EE(false)
 		}
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.metaState)

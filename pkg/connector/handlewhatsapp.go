@@ -94,12 +94,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 					m.E2EEClient = nil
 				}
 				log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
-				go func() {
-					err := m.connectE2EE()
-					if err != nil {
-						log.Err(err).Msg("Error connecting to e2ee after 415 error")
-					}
-				}()
+				go m.tryConnectE2EE(true)
 			}
 		}
 
