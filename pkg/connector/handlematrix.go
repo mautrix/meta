@@ -97,8 +97,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 		var resp *table.LSTable
 
-		retries := 0
-		for retries < 5 {
+		for retries := 0; retries < 5; retries++ {
 			if err = m.Client.WaitUntilCanSendMessages(15 * time.Second); err != nil {
 				log.Err(err).Msg("Error waiting to be able to send messages, retrying")
 			} else {
@@ -108,12 +107,14 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				}
 				log.Err(err).Msg("Failed to send message to Meta, retrying")
 			}
-			retries++
+		}
+		if err != nil {
+			return nil, err
 		}
 
 		log.Trace().Any("response", resp).Msg("Meta send response")
 		var msgID string
-		if resp != nil && err == nil {
+		if resp != nil {
 			for _, replace := range resp.LSReplaceOptimsiticMessage {
 				if replace.OfflineThreadingId == otidStr {
 					msgID = replace.MessageId
