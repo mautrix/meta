@@ -1,3 +1,10 @@
+# v0.4.3 (2024-12-16)
+
+* Fixed PNGs with certain color models failing to render on native apps
+  (by automatically converting all PNGs to NRGBA).
+* Fixed failed message sends not triggering an error message in certain cases.
+* Updated Docker image to Alpine 3.21.
+
 # v0.4.2 (2024-11-16)
 
 * No notable changes
