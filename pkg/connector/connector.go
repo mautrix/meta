@@ -57,15 +57,6 @@ func (m *MetaConnector) SetMaxFileSize(maxSize int64) {
 	m.MsgConv.MaxFileSize = maxSize
 }
 
-var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
-	DisappearingMessages: false,
-	AggressiveUpdateInfo: false,
-}
-
-func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return metaGeneralCaps
-}
-
 func (m *MetaConnector) GetName() bridgev2.BridgeName {
 	switch m.Config.Mode {
 	case types.Facebook, types.FacebookTor, types.Messenger:

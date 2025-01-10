@@ -13,7 +13,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
-	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
@@ -343,34 +342,6 @@ func (m *MetaClient) Disconnect() {
 	if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 		(*stopPeriodicReconnect)()
 	}
-}
-
-var metaCaps = &bridgev2.NetworkRoomCapabilities{
-	FormattedText:    true,
-	UserMentions:     true,
-	Replies:          true,
-	Edits:            true,
-	EditMaxCount:     10,
-	EditMaxAge:       24 * time.Hour,
-	Reactions:        true,
-	ReactionCount:    1,
-	LocationMessages: true,
-	Captions:         true,
-}
-
-var metaCapsWithThreads *bridgev2.NetworkRoomCapabilities
-
-func init() {
-	metaCapsWithThreads = ptr.Clone(metaCaps)
-	metaCapsWithThreads.Threads = true
-}
-
-func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
-	switch portal.Metadata.(*metaid.PortalMetadata).ThreadType {
-	case table.COMMUNITY_GROUP:
-		return metaCapsWithThreads
-	}
-	return metaCaps
 }
 
 func (m *MetaClient) IsLoggedIn() bool {
