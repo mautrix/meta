@@ -92,10 +92,10 @@ var metaCaps = &event.RoomFeatures{
 		},
 		event.MsgAudio: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
-				"audio/m4a": event.CapLevelFullySupported,
-				"audio/mp3": event.CapLevelFullySupported,
-				"audio/mp4": event.CapLevelFullySupported,
-				"audio/wav": event.CapLevelFullySupported,
+				"audio/m4a":  event.CapLevelFullySupported,
+				"audio/mpeg": event.CapLevelFullySupported,
+				"audio/mp4":  event.CapLevelFullySupported,
+				"audio/wav":  event.CapLevelFullySupported,
 			},
 			Caption: event.CapLevelDropped,
 			MaxSize: MaxFileSize,
