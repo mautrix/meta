@@ -55,7 +55,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_01_10"
+	base := "fi.mau.meta.capabilities.2025_01_29"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
