@@ -67,7 +67,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to log in")
 		var respErr bridgev2.RespError
 		if errors.As(err, &respErr) {
-			jsonResponse(w, respErr.StatusCode, &respErr)
+			respErr.Write(w)
 		} else {
 			jsonResponse(w, http.StatusInternalServerError, Error{ErrCode: "M_UNKNOWN", Error: "Internal error logging in"})
 		}
