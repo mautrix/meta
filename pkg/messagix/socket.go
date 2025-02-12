@@ -347,7 +347,7 @@ func (s *Socket) sendConnectPacket() error {
 }
 
 func (s *Socket) sendSubscribePacket(topic Topic, qos packets.QoS, wait bool) (*Event_SubscribeACK, error) {
-	subscribeRequestPayload, packetId, err := s.client.NewSubscribeRequest(topic, qos)
+	subscribeRequestPayload, packetId, err := s.client.newSubscribeRequest(topic, qos)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +372,7 @@ func (s *Socket) sendSubscribePacket(topic Topic, qos packets.QoS, wait bool) (*
 }
 
 func (s *Socket) sendPublishPacket(topic Topic, jsonData string, packet *packets.PublishPacket, packetId uint16) (uint16, error) {
-	publishRequestPayload, packetId, err := s.client.NewPublishRequest(topic, jsonData, packet.Compress(), packetId)
+	publishRequestPayload, packetId, err := s.client.newPublishRequest(topic, jsonData, packet.Compress(), packetId)
 	if err != nil {
 		return packetId, err
 	}

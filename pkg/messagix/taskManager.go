@@ -14,7 +14,7 @@ type TaskManager struct {
 	traceId   string
 }
 
-func (c *Client) NewTaskManager() *TaskManager {
+func (c *Client) newTaskManager() *TaskManager {
 	return &TaskManager{
 		client:    c,
 		currTasks: make([]socket.TaskData, 0),
@@ -62,13 +62,13 @@ func (tm *TaskManager) AddNewTask(task socket.Task) {
 		Label:        label,
 		Payload:      string(payloadMarshalled),
 		QueueName:    queueName,
-		TaskId:       tm.GetTaskId(),
+		TaskId:       tm.GetTaskID(),
 	}
 	tm.client.Logger.Trace().Any("label", label).Any("payload", payload).Any("queueName", queueName).Any("taskId", taskData.TaskId).Msg("Creating task")
 
 	tm.currTasks = append(tm.currTasks, taskData)
 }
 
-func (tm *TaskManager) GetTaskId() int64 {
-	return int64(tm.client.GetTaskId())
+func (tm *TaskManager) GetTaskID() int64 {
+	return int64(tm.client.getTaskID())
 }

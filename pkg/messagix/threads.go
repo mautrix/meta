@@ -8,7 +8,10 @@ import (
 )
 
 func (c *Client) ExecuteTasks(tasks ...socket.Task) (*table.LSTable, error) {
-	tskm := c.NewTaskManager()
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
+	tskm := c.newTaskManager()
 	for _, task := range tasks {
 		tskm.AddNewTask(task)
 	}

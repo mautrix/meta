@@ -359,7 +359,10 @@ func (m *MetaClient) connectE2EE() error {
 			return fmt.Errorf("failed to save device ID to user login: %w", err)
 		}
 	}
-	m.E2EEClient = m.Client.PrepareE2EEClient()
+	m.E2EEClient, err = m.Client.PrepareE2EEClient()
+	if err != nil {
+		return fmt.Errorf("failed to prepare e2ee client: %w", err)
+	}
 	m.E2EEClient.AddEventHandler(m.e2eeEventHandler)
 	err = m.E2EEClient.Connect()
 	if err != nil {
@@ -373,10 +376,12 @@ func (m *MetaClient) Disconnect() {
 		(*stopConnectAttempt)()
 	}
 	if cli := m.Client; cli != nil {
+		cli.SetEventHandler(nil)
 		cli.Disconnect()
 		m.Client = nil
 	}
 	if ecli := m.E2EEClient; ecli != nil {
+		ecli.RemoveEventHandlers()
 		ecli.Disconnect()
 		m.E2EEClient = nil
 	}
@@ -391,7 +396,7 @@ func (m *MetaClient) Disconnect() {
 }
 
 func (m *MetaClient) IsLoggedIn() bool {
-	return m.Client != nil && m.Client.SyncManager != nil
+	return m.Client.IsAuthenticated()
 }
 
 func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {

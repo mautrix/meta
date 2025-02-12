@@ -192,7 +192,7 @@ func (ig *InstagramMethods) RegisterPushNotifications(endpoint string, keys Push
 	}
 
 	u := uuid.New()
-	payload := c.NewHttpQuery()
+	payload := c.newHTTPQuery()
 	payload.Mid = u.String()
 	payload.DeviceType = "web_vapid"
 	payload.DeviceToken = endpoint

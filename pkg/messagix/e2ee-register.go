@@ -143,11 +143,15 @@ func sliceifyIdentities(identities [][32]byte) [][]byte {
 }
 
 func (c *Client) SetDevice(dev *store.Device) {
-	c.device = dev
+	if c != nil {
+		c.device = dev
+	}
 }
 
 func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
-	if c.device == nil {
+	if c == nil {
+		return ErrClientIsNil
+	} else if c.device == nil {
 		return fmt.Errorf("cannot register for E2EE without a device")
 	}
 	if c.device.FacebookUUID == uuid.Nil {

@@ -52,7 +52,7 @@ type HttpQuery struct {
 	Aaid                 string `url:"__aaid,omitempty"`
 }
 
-func (c *Client) NewHttpQuery() *HttpQuery {
+func (c *Client) newHTTPQuery() *HttpQuery {
 	c.graphQLRequests++
 	siteConfig := c.configs.browserConfigTable.SiteData
 	dpr := strconv.FormatFloat(siteConfig.Pr, 'g', 4, 64)
@@ -143,6 +143,9 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 }
 
 func (c *Client) MakeRequest(url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+	if c == nil {
+		return nil, nil, ErrClientIsNil
+	}
 	var attempts int
 	for {
 		attempts++

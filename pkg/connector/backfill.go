@@ -132,7 +132,7 @@ func (m *MetaClient) requestMoreHistory(ctx context.Context, threadID, minTimest
 		ReferenceTimestampMs: minTimestampMS,
 		ReferenceMessageId:   minMessageID,
 		SyncGroup:            1,
-		Cursor:               m.Client.SyncManager.GetCursor(1),
+		Cursor:               m.Client.GetCursor(1),
 	})
 	zerolog.Ctx(ctx).Trace().
 		Int64("thread_id", threadID).
@@ -172,7 +172,7 @@ func (m *MetaClient) removeBackfillCollector(threadID int64, collector *Backfill
 }
 
 func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
-	if m.Client == nil || m.Client.SyncManager == nil {
+	if m.Client == nil {
 		return nil, bridgev2.ErrNotLoggedIn
 	}
 	if params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
@@ -231,7 +231,10 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		if !m.addBackfillCollector(threadID, collector) {
 			return nil, fmt.Errorf("backfill collector already exists for thread %d", threadID)
 		}
-		m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID)
+		if !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
+			m.removeBackfillCollector(threadID, collector)
+			return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
+		}
 		select {
 		case <-doneCh:
 			upsert = collector.UpsertMessages

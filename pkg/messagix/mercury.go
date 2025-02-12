@@ -31,7 +31,10 @@ type WaveformData struct {
 }
 
 func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, media *MercuryUploadMedia) (*types.MercuryUploadResponse, error) {
-	urlQueries := c.NewHttpQuery()
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
+	urlQueries := c.newHTTPQuery()
 	queryValues, err := query.Values(urlQueries)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %w", err)
@@ -39,7 +42,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 
 	payloadQuery := queryValues.Encode()
 	url := c.getEndpoint("media_upload") + payloadQuery
-	payload, contentType, err := c.NewMercuryMediaPayload(media)
+	payload, contentType, err := c.newMercuryMediaPayload(media)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +134,7 @@ func (c *Client) parseMetadata(response *types.MercuryUploadResponse) error {
 }
 
 // returns payloadBytes, multipart content-type header
-func (c *Client) NewMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, string, error) {
+func (c *Client) newMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, string, error) {
 	var mercuryPayload bytes.Buffer
 	writer := multipart.NewWriter(&mercuryPayload)
 

@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"strconv"
 	"sync"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	"golang.org/x/net/proxy"
 
@@ -43,6 +43,8 @@ const SecCHMobile = "?0"
 const SecCHModel = `""`
 const SecCHPrefersColorScheme = "light"
 
+var ErrClientIsNil = whatsmeow.ErrClientIsNil
+
 type EventHandler func(evt interface{})
 type Client struct {
 	Instagram *InstagramMethods
@@ -54,7 +56,7 @@ type Client struct {
 	socket       *Socket
 	eventHandler EventHandler
 	configs      *Configs
-	SyncManager  *SyncManager
+	syncManager  *SyncManager
 
 	cookies     *cookies.Cookies
 	httpProxy   func(*http.Request) (*url.URL, error)
@@ -124,7 +126,9 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 }
 
 func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
-	if !c.cookies.IsLoggedIn() {
+	if c == nil {
+		return nil, nil, ErrClientIsNil
+	} else if !c.cookies.IsLoggedIn() {
 		return nil, nil, fmt.Errorf("can't load messages page without being authenticated")
 	}
 
@@ -134,7 +138,7 @@ func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
 	}
 
-	c.SyncManager = c.NewSyncManager()
+	c.syncManager = c.newSyncManager()
 	ls, err := c.configs.SetupConfigs(moduleLoader.LS)
 	if err != nil {
 		return nil, nil, err
@@ -175,6 +179,9 @@ func (c *Client) configurePlatformClient() {
 }
 
 func (c *Client) SetProxy(proxyAddr string) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
 	proxyParsed, err := url.Parse(proxyAddr)
 	if err != nil {
 		return err
@@ -203,8 +210,14 @@ func (c *Client) SetEventHandler(handler EventHandler) {
 	c.eventHandler = handler
 }
 
+func (c *Client) handleEvent(evt any) {
+	if c.eventHandler != nil {
+		c.eventHandler(evt)
+	}
+}
+
 func (c *Client) UpdateProxy(reason string) bool {
-	if c.GetNewProxy == nil {
+	if c == nil || c.GetNewProxy == nil {
 		return true
 	}
 	if proxyAddr, err := c.GetNewProxy(reason); err != nil {
@@ -218,7 +231,9 @@ func (c *Client) UpdateProxy(reason string) bool {
 }
 
 func (c *Client) Connect() error {
-	if err := c.socket.CanConnect(); err != nil {
+	if c == nil {
+		return ErrClientIsNil
+	} else if err := c.socket.CanConnect(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -241,11 +256,11 @@ func (c *Client) Connect() error {
 				errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) ||
 				// TODO server unavailable may mean a challenge state, should be checked somehow
 				errors.Is(err, CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
-				c.eventHandler(&Event_PermanentError{Err: err})
+				c.handleEvent(&Event_PermanentError{Err: err})
 				return
 			}
 			connectionAttempts += 1
-			c.eventHandler(&Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
+			c.handleEvent(&Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
 			if time.Since(connectStart) > 2*time.Minute {
 				reconnectIn = 2 * time.Second
 			} else {
@@ -271,23 +286,17 @@ func (c *Client) Connect() error {
 }
 
 func (c *Client) Disconnect() {
+	if c == nil {
+		return
+	}
 	if fn := c.stopCurrentConnection.Load(); fn != nil {
 		(*fn)()
 	}
 	c.socket.Disconnect()
 }
 
-func (c *Client) SaveSession(path string) error {
-	jsonBytes, err := json.Marshal(c.cookies)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(path, jsonBytes, os.ModePerm)
-}
-
 func (c *Client) IsConnected() bool {
-	return c.socket.conn != nil
+	return c != nil && c.socket.conn != nil
 }
 
 func (c *Client) sendCookieConsent(jsDatr string) error {
@@ -305,7 +314,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		h.Set("origin", c.getEndpoint("base_url"))
 		h.Set("cookie", "_js_datr="+jsDatr)
 		h.Set("referer", c.getEndpoint("login_page"))
-		q := c.NewHttpQuery()
+		q := c.newHTTPQuery()
 		q.AcceptOnlyEssential = "false"
 		payloadQuery = q
 	} else {
@@ -368,17 +377,22 @@ func (c *Client) getEndpointForThreadID(threadID int64) string {
 }
 
 func (c *Client) IsAuthenticated() bool {
+	if c == nil {
+		return false
+	}
 	var isAuthenticated bool
 	if c.Platform.IsMessenger() {
 		isAuthenticated = c.configs.browserConfigTable.CurrentUserInitialData.AccountID != "0"
 	} else {
 		isAuthenticated = c.configs.browserConfigTable.PolarisViewer.ID != ""
 	}
-	return isAuthenticated
+	return isAuthenticated && c.syncManager != nil
 }
 
 func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
-	if !c.IsAuthenticated() {
+	if c == nil {
+		return nil, ErrClientIsNil
+	} else if !c.IsAuthenticated() {
 		return nil, fmt.Errorf("messagix-client: not yet authenticated")
 	}
 
@@ -389,7 +403,7 @@ func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
 	}
 }
 
-func (c *Client) GetTaskId() int {
+func (c *Client) getTaskID() int {
 	c.taskMutex.Lock()
 	defer c.taskMutex.Unlock()
 	id := 0
@@ -402,6 +416,9 @@ func (c *Client) GetTaskId() int {
 }
 
 func (c *Client) EnableSendingMessages() {
+	if c == nil {
+		return
+	}
 	c.sendMessagesCond.L.Lock()
 	c.canSendMessages = true
 	c.sendMessagesCond.Broadcast()
@@ -409,12 +426,18 @@ func (c *Client) EnableSendingMessages() {
 }
 
 func (c *Client) disableSendingMessages() {
+	if c == nil {
+		return
+	}
 	c.sendMessagesCond.L.Lock()
 	c.canSendMessages = false
 	c.sendMessagesCond.L.Unlock()
 }
 
 func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 

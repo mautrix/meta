@@ -22,7 +22,7 @@ type SyncManager struct {
 	syncParams *types.LSPlatformMessengerSyncParams
 }
 
-func (c *Client) NewSyncManager() *SyncManager {
+func (c *Client) newSyncManager() *SyncManager {
 	return &SyncManager{
 		client: c,
 		store: map[int64]*socket.QueryMetadata{
@@ -249,6 +249,13 @@ func (sm *SyncManager) GetCursor(db int64) string {
 		return ""
 	}
 	return *database.LastAppliedCursor
+}
+
+func (c *Client) GetCursor(db int64) string {
+	if c == nil || c.syncManager == nil {
+		return ""
+	}
+	return c.syncManager.GetCursor(db)
 }
 
 func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThreadsRange) error {

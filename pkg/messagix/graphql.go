@@ -26,7 +26,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 		return nil, nil, fmt.Errorf("failed to marshal graphql variables to json string: %w", err)
 	}
 
-	payload := c.NewHttpQuery()
+	payload := c.newHTTPQuery()
 	payload.FbAPICallerClass = graphQLDoc.CallerClass
 	payload.FbAPIReqFriendlyName = graphQLDoc.FriendlyName
 	payload.Variables = string(vBytes)

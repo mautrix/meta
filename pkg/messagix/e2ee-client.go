@@ -31,9 +31,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-func (c *Client) PrepareE2EEClient() *whatsmeow.Client {
-	if c.device == nil {
-		panic("PrepareE2EEClient called without device")
+func (c *Client) PrepareE2EEClient() (*whatsmeow.Client, error) {
+	if c == nil {
+		return nil, ErrClientIsNil
+	} else if c.device == nil {
+		return nil, fmt.Errorf("PrepareE2EEClient called without device")
 	}
 	e2eeClient := whatsmeow.NewClient(c.device, waLog.Zerolog(c.Logger.With().Str("component", "whatsmeow").Logger()))
 	e2eeClient.GetClientPayload = c.getClientPayload
@@ -43,7 +45,7 @@ func (c *Client) PrepareE2EEClient() *whatsmeow.Client {
 		WebsocketURL: c.getEndpoint("e2ee_ws_url"),
 	}
 	e2eeClient.RefreshCAT = c.refreshCAT
-	return e2eeClient
+	return e2eeClient, nil
 }
 
 type refreshCATResponseGraphQL struct {
@@ -60,6 +62,9 @@ type refreshCATResponseGraphQL struct {
 }
 
 func (c *Client) refreshCAT() error {
+	if c == nil {
+		return ErrClientIsNil
+	}
 	c.catRefreshLock.Lock()
 	defer c.catRefreshLock.Unlock()
 	currentExpiration := time.Unix(c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken.ExpirationTimeInSeconds, 0)

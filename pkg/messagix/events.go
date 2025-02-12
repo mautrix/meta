@@ -18,11 +18,11 @@ import (
 func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	if s.previouslyConnected {
 		s.client.EnableSendingMessages()
-		err := s.client.SyncManager.EnsureSyncedSocket(reconnectSync[s.client.Platform])
+		err := s.client.syncManager.EnsureSyncedSocket(reconnectSync[s.client.Platform])
 		if err != nil {
 			return fmt.Errorf("failed to sync after reconnect: %w", err)
 		}
-		s.client.eventHandler(&Event_Reconnected{})
+		s.client.handleEvent(&Event_Reconnected{})
 		return nil
 	}
 	appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionId)
@@ -47,14 +47,14 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 
 	s.client.EnableSendingMessages()
 
-	tskm := s.client.NewTaskManager()
+	tskm := s.client.newTaskManager()
 	tskm.AddNewTask(&socket.FetchThreadsTask{
 		IsAfter:                    0,
 		ParentThreadKey:            -1,
 		ReferenceThreadKey:         0,
 		ReferenceActivityTimestamp: 9999999999999,
 		AdditionalPagesToFetch:     0,
-		Cursor:                     s.client.SyncManager.GetCursor(1),
+		Cursor:                     s.client.syncManager.GetCursor(1),
 		SyncGroup:                  1,
 	})
 	tskm.AddNewTask(&socket.FetchThreadsTask{
@@ -66,16 +66,16 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		SyncGroup:                  95,
 	})
 
-	syncGroupKeyStore1 := s.client.SyncManager.getSyncGroupKeyStore(1)
+	syncGroupKeyStore1 := s.client.syncManager.getSyncGroupKeyStore(1)
 	if syncGroupKeyStore1 != nil {
-		//  syncGroupKeyStore95 := s.client.SyncManager.getSyncGroupKeyStore(95)
+		//  syncGroupKeyStore95 := s.client.syncManager.getSyncGroupKeyStore(95)
 		tskm.AddNewTask(&socket.FetchThreadsTask{
 			IsAfter:                    0,
 			ParentThreadKey:            syncGroupKeyStore1.ParentThreadKey,
 			ReferenceThreadKey:         syncGroupKeyStore1.MinThreadKey,
 			ReferenceActivityTimestamp: syncGroupKeyStore1.MinLastActivityTimestampMs,
 			AdditionalPagesToFetch:     0,
-			Cursor:                     s.client.SyncManager.GetCursor(1),
+			Cursor:                     s.client.syncManager.GetCursor(1),
 			SyncGroup:                  1,
 		})
 		tskm.AddNewTask(&socket.FetchThreadsTask{
@@ -104,13 +104,13 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		return fmt.Errorf("failed to report app state: %w", err)
 	}
 
-	err = s.client.SyncManager.EnsureSyncedSocket(initialSync[s.client.Platform])
+	err = s.client.syncManager.EnsureSyncedSocket(initialSync[s.client.Platform])
 	if err != nil {
 		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
 	}
 
 	data.client = s.client
-	s.client.eventHandler(data.Finish())
+	s.client.handleEvent(data.Finish())
 	s.previouslyConnected = true
 
 	return nil
@@ -141,13 +141,13 @@ func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse, qos pac
 					Any("LSExecuteFirstBlockForSyncTransaction", resp.Table.LSExecuteFirstBlockForSyncTransaction).
 					Any("LSUpsertSyncGroupThreadsRange", resp.Table.LSUpsertSyncGroupThreadsRange).
 					Msg("Updating sync groups")
-				//err := s.client.SyncManager.SyncTransactions(transactions)
-				err := s.client.SyncManager.updateSyncGroupCursors(resp.Table)
+				//err := s.client.syncManager.SyncTransactions(transactions)
+				err := s.client.syncManager.updateSyncGroupCursors(resp.Table)
 				if err != nil {
 					s.client.Logger.Err(err).Msg("Failed to sync transactions from publish response event")
 				}
 			}
-			s.client.eventHandler(resp)
+			s.client.handleEvent(resp)
 		} else {
 			s.client.Logger.Debug().Int64("packet_id", packetId).Msg("Got unexpected lightspeed publish response")
 		}

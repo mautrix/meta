@@ -49,7 +49,7 @@ func (pb *PublishPayload) Write() ([]byte, error) {
 	return byter.NewWriter().WriteFromStruct(pb)
 }
 
-func (c *Client) NewPublishRequest(topic Topic, jsonData string, packetByte byte, packetId uint16) ([]byte, uint16, error) {
+func (c *Client) newPublishRequest(topic Topic, jsonData string, packetByte byte, packetId uint16) ([]byte, uint16, error) {
 	payload := &PublishPayload{
 		Topic:    topic,
 		PacketId: packetId,
@@ -81,7 +81,7 @@ func (sb *SubscribePayload) Write() ([]byte, error) {
 	return byter.NewWriter().WriteFromStruct(sb)
 }
 
-func (c *Client) NewSubscribeRequest(topic Topic, qos packets.QoS) ([]byte, uint16, error) {
+func (c *Client) newSubscribeRequest(topic Topic, qos packets.QoS) ([]byte, uint16, error) {
 	packetByte := &packets.SubscribePacket{}
 	packetId := c.socket.SafePacketId()
 	c.socket.responseHandler.addPacketChannel(packetId)

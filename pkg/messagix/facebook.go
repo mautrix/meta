@@ -89,7 +89,7 @@ func (fb *FacebookMethods) RegisterPushNotifications(endpoint string, keys PushK
 		return err
 	}
 
-	payload := c.NewHttpQuery()
+	payload := c.newHTTPQuery()
 	payload.AppID = "1443096165982425"
 	payload.PushEndpoint = endpoint
 	payload.SubscriptionKeys = string(jsonKeys)

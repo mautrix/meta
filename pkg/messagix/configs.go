@@ -50,10 +50,10 @@ func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
 	} else {
 		c.client.socket.broker = c.browserConfigTable.MqttWebConfig.Endpoint
 	}
-	c.client.SyncManager.syncParams = &c.browserConfigTable.LSPlatformMessengerSyncParams
+	c.client.syncManager.syncParams = &c.browserConfigTable.LSPlatformMessengerSyncParams
 	if len(ls.LSExecuteFinallyBlockForSyncTransaction) == 0 {
 		c.client.Logger.Warn().Msg("Syncing initial data via graphql")
-		err := c.client.SyncManager.UpdateDatabaseSyncParams(
+		err := c.client.syncManager.UpdateDatabaseSyncParams(
 			[]*socket.QueryMetadata{
 				{DatabaseId: 1, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.MailBox},
 				{DatabaseId: 2, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
@@ -64,18 +64,18 @@ func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
 			return ls, fmt.Errorf("failed to update sync params for databases: 1, 2, 95: %w", err)
 		}
 
-		ls, err = c.client.SyncManager.SyncDataGraphQL([]int64{1, 2, 95})
+		ls, err = c.client.syncManager.SyncDataGraphQL([]int64{1, 2, 95})
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95: %w", err)
 		}
 	} else {
 		if len(ls.LSUpsertSyncGroupThreadsRange) > 0 {
-			err := c.client.SyncManager.updateThreadRanges(ls.LSUpsertSyncGroupThreadsRange)
+			err := c.client.syncManager.updateThreadRanges(ls.LSUpsertSyncGroupThreadsRange)
 			if err != nil {
 				return ls, fmt.Errorf("failed to update thread ranges from js module data: %w", err)
 			}
 		}
-		err := c.client.SyncManager.SyncTransactions(ls.LSExecuteFirstBlockForSyncTransaction)
+		err := c.client.syncManager.SyncTransactions(ls.LSExecuteFirstBlockForSyncTransaction)
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
 		}
