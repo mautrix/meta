@@ -13,14 +13,14 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/zyedidia/clipboard v1.0.4
-	go.mau.fi/libsignal v0.1.1
+	go.mau.fi/libsignal v0.1.2
 	go.mau.fi/util v0.8.5-0.20250212114338-06310c7133a5
-	go.mau.fi/whatsmeow v0.0.0-20250210124836-838d5eeaf73e
-	golang.org/x/crypto v0.32.0
-	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
-	golang.org/x/image v0.23.0
-	golang.org/x/net v0.34.0
-	google.golang.org/protobuf v1.36.4
+	go.mau.fi/whatsmeow v0.0.0-20250212143635-53482eea9bc9
+	golang.org/x/crypto v0.33.0
+	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
+	golang.org/x/image v0.24.0
+	golang.org/x/net v0.35.0
+	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.23.1-0.20250212114424-aaad5119e01e
 )
@@ -40,9 +40,9 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	go.mau.fi/zeroconfig v0.1.3 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
