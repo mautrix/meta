@@ -1,3 +1,11 @@
+# v0.4.4 (unreleased)
+
+* Bumped minimum Go version to 1.23.
+* Added support for signaling supported features to clients using the
+  `com.beeper.room_features` state event.
+* Added auto-reconnect for certain uncommon error cases.
+* Fixed replies with images including an extra blank message.
+
 # v0.4.3 (2024-12-16)
 
 * Fixed PNGs with certain color models failing to render on native apps
