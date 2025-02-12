@@ -114,7 +114,8 @@ func (mc *MessageConverter) ToMatrix(
 	for _, sticker := range msg.Stickers {
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
 	}
-	if msg.Text != "" || msg.ReplySnippet != "" || len(urlPreviews) > 0 {
+	hasRelationSnippet := msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews)
+	if msg.Text != "" || hasRelationSnippet || len(urlPreviews) > 0 {
 		mentions := &socket.MentionData{
 			MentionIDs:     msg.MentionIds,
 			MentionOffsets: msg.MentionOffsets,
@@ -138,7 +139,7 @@ func (mc *MessageConverter) ToMatrix(
 			}
 		}
 		extra := make(map[string]any)
-		if msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews) {
+		if hasRelationSnippet {
 			extra["com.beeper.relation_snippet"] = msg.ReplySnippet
 			// This is extremely hacky
 			isReaction := strings.Contains(msg.ReplySnippet, "Reacted")
