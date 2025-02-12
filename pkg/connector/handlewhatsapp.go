@@ -73,6 +73,9 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 			Message:    evt.PermanentDisconnectDescription(),
 		}
 		m.UserLogin.BridgeState.Send(m.waState)
+		if m.canReconnect() {
+			go m.FullReconnect()
+		}
 		//go m.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
 		switch e := evt.(type) {

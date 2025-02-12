@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
@@ -200,6 +201,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
 	client.Logger = metaClient.Client.Logger
 	client.SetEventHandler(metaClient.handleMetaEvent)
+	metaClient.lastFullReconnect = time.Time{}
 	metaClient.Client = client
 
 	backgroundCtx := ul.Log.WithContext(context.Background())

@@ -39,6 +39,8 @@ type MetaClient struct {
 	incomingTables     chan *table.LSTable
 	backfillCollectors map[int64]*BackfillCollector
 	backfillLock       sync.Mutex
+	connectLock        sync.Mutex
+	stopConnectAttempt atomic.Pointer[context.CancelFunc]
 
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	lastFullReconnect     time.Time
@@ -121,12 +123,38 @@ func (m *MetaClient) getProxy(reason string) (string, error) {
 }
 
 func (m *MetaClient) Connect(ctx context.Context) {
+	if !m.connectLock.TryLock() {
+		zerolog.Ctx(ctx).Error().Msg("Connect called multiple times in parallel")
+		return
+	}
+	defer m.connectLock.Unlock()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if oldCancel := m.stopConnectAttempt.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	m.connectWithRetry(ctx, 0)
+}
+
+const MaxConnectRetries = 10
+
+func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 	if m.Client == nil {
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      MetaNotLoggedIn,
 		})
 		return
+	}
+	if attempts > 0 {
+		retryIn := time.Duration(1<<attempts) * time.Second
+		zerolog.Ctx(ctx).Debug().Stringer("retry_in", retryIn).Msg("Sleeping before retrying connection")
+		select {
+		case <-time.After(retryIn):
+		case <-ctx.Done():
+			zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled during sleep")
+			return
+		}
 	}
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
 		m.Client.GetNewProxy = m.getProxy
@@ -178,18 +206,33 @@ func (m *MetaClient) Connect(ctx context.Context) {
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {
 				stateEvt = status.StateBadCredentials
+			} else if attempts < MaxConnectRetries {
+				stateEvt = status.StateTransientDisconnect
 			}
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
 				Message:    lsErr.Error(),
 			})
+			if stateEvt == status.StateTransientDisconnect {
+				m.connectWithRetry(ctx, attempts+1)
+			}
+		} else if attempts < MaxConnectRetries {
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateTransientDisconnect,
+				Error:      MetaConnectError,
+			})
+			m.connectWithRetry(ctx, attempts+1)
 		} else {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaConnectError,
 			})
 		}
+		return
+	}
+	if ctx.Err() != nil {
+		zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled")
 		return
 	}
 	m.connectWithTable(ctx, initialTable, currentUser)
@@ -326,6 +369,9 @@ func (m *MetaClient) connectE2EE() error {
 }
 
 func (m *MetaClient) Disconnect() {
+	if stopConnectAttempt := m.stopConnectAttempt.Swap(nil); stopConnectAttempt != nil {
+		(*stopConnectAttempt)()
+	}
 	if cli := m.Client; cli != nil {
 		cli.Disconnect()
 		m.Client = nil
@@ -362,6 +408,7 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	}
 	m.resetWADevice()
 	m.LoginMeta.Cookies = nil
+	m.lastFullReconnect = time.Time{}
 }
 
 func (m *MetaClient) canReconnect() bool {
@@ -379,6 +426,7 @@ func (m *MetaClient) FullReconnect() {
 	m.Client = messagix.NewClient(m.LoginMeta.Cookies, m.UserLogin.Log.With().Str("component", "messagix").Logger())
 	m.Client.SetEventHandler(m.handleMetaEvent)
 	m.Connect(ctx)
+	m.lastFullReconnect = time.Now()
 }
 
 func (m *MetaClient) resetWADevice() {
