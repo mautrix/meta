@@ -396,7 +396,7 @@ func (m *MetaClient) Disconnect() {
 }
 
 func (m *MetaClient) IsLoggedIn() bool {
-	return m.Client.IsAuthenticated()
+	return m.Client.IsAuthenticatedAndLoaded()
 }
 
 func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {

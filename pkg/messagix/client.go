@@ -386,7 +386,11 @@ func (c *Client) IsAuthenticated() bool {
 	} else {
 		isAuthenticated = c.configs.browserConfigTable.PolarisViewer.ID != ""
 	}
-	return isAuthenticated && c.syncManager != nil
+	return isAuthenticated
+}
+
+func (c *Client) IsAuthenticatedAndLoaded() bool {
+	return c.IsAuthenticated() && c.syncManager != nil
 }
 
 func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
