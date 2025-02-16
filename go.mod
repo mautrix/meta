@@ -14,15 +14,15 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.1.2
-	go.mau.fi/util v0.8.5-0.20250212114338-06310c7133a5
-	go.mau.fi/whatsmeow v0.0.0-20250212143635-53482eea9bc9
+	go.mau.fi/util v0.8.5
+	go.mau.fi/whatsmeow v0.0.0-20250216151842-97deed8f95f7
 	golang.org/x/crypto v0.33.0
-	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
+	golang.org/x/exp v0.0.0-20250215185904-eff6e970281f
 	golang.org/x/image v0.24.0
 	golang.org/x/net v0.35.0
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.23.1-0.20250212114424-aaad5119e01e
+	maunium.net/go/mautrix v0.23.1
 )
 
 require (
@@ -32,7 +32,7 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v1.14.24 // indirect
-	github.com/petermattis/goid v0.0.0-20241211131331-93ee7e083c43 // indirect
+	github.com/petermattis/goid v0.0.0-20250211185408-f2b9d978cd7a // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tidwall/match v1.1.1 // indirect
