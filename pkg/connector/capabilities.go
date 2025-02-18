@@ -18,6 +18,7 @@ package connector
 
 import (
 	"context"
+	"maps"
 	"time"
 
 	"go.mau.fi/util/ffmpeg"
@@ -27,6 +28,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -40,7 +42,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 2
+	return 1, 3
 }
 
 const MaxTextLength = 20000
@@ -55,7 +57,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_01_29"
+	base := "fi.mau.meta.capabilities.2025_02_18"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -155,14 +157,18 @@ func init() {
 	metaCapsWithThreads.Thread = event.CapLevelFullySupported
 
 	igCaps = ptr.Clone(metaCaps)
-	igCaps.ID += "+instagram"
+	igCaps.File = maps.Clone(igCaps.File)
 	delete(igCaps.File, event.MsgFile)
+	igCaps.ID += "+instagram"
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	switch portal.Metadata.(*metaid.PortalMetadata).ThreadType {
 	case table.COMMUNITY_GROUP:
 		return metaCapsWithThreads
+	}
+	if m.Client.Platform == types.Instagram {
+		return igCaps
 	}
 	return metaCaps
 }
