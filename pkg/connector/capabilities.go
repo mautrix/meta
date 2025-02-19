@@ -167,7 +167,7 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	case table.COMMUNITY_GROUP:
 		return metaCapsWithThreads
 	}
-	if m.Client.Platform == types.Instagram {
+	if (m.Client != nil && m.Client.Platform == types.Instagram) || m.Main.Config.Mode == types.Instagram {
 		return igCaps
 	}
 	return metaCaps
