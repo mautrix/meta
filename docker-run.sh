@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
 if [[ -z "$GID" ]]; then
 	GID="$UID"
@@ -33,4 +33,4 @@ fi
 
 cd /data
 fixperms
-exec su-exec $UID:$GID /usr/bin/mautrix-meta
+exec su-exec $UID:$GID /usr/bin/mautrix-meta $@
