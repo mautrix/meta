@@ -122,6 +122,8 @@ func (m *MetaClient) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
+var ConnectRetries = 3
+
 func (m *MetaClient) Connect(ctx context.Context) {
 	if !m.connectLock.TryLock() {
 		zerolog.Ctx(ctx).Error().Msg("Connect called multiple times in parallel")
@@ -166,7 +168,7 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 			return
 		}
 	}
-	currentUser, initialTable, err := m.Client.LoadMessagesPage()
+	currentUser, initialTable, err := m.Client.LoadMessagesPageWithRetries(ConnectRetries)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load messages page")
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {

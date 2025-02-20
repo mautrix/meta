@@ -125,6 +125,18 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 	return cli
 }
 
+func (c *Client) LoadMessagesPageWithRetries(retries int) (info types.UserInfo, table *table.LSTable, err error) {
+	for i := range retries {
+		info, table, err = c.LoadMessagesPage()
+		if err == nil {
+			return
+		}
+		c.Logger.Warn().Err(err).Msgf("Failed to load messages page, retrying in %ds", retries)
+		time.Sleep(time.Second * time.Duration(i))
+	}
+	return
+}
+
 func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 	if c == nil {
 		return nil, nil, ErrClientIsNil
