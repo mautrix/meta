@@ -98,6 +98,10 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 				}
 				log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
 				go m.tryConnectE2EE(true)
+			} else if e.Reason == events.ConnectFailureClientUnknown {
+				m.resetWADevice()
+				log.Debug().Msg("Doing full reconnect after WhatsApp 418 error")
+				go m.FullReconnect()
 			}
 		}
 
