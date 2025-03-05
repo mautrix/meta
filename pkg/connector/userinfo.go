@@ -17,6 +17,20 @@ import (
 )
 
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+	if ghost.Name == "" {
+		contactID := metaid.ParseUserID(ghost.ID)
+		resp, err := m.Client.ExecuteTasks(&socket.GetContactsFullTask{
+			ContactID: contactID,
+		})
+		log := m.UserLogin.Log
+		if err != nil {
+			log.Trace().Any("ContactID", contactID).Any("err", err).Msg("GetContactsFullTask failed")
+			return nil, err
+		}
+		if len(resp.LSDeleteThenInsertContact) > 0 {
+			return m.wrapUserInfo(resp.LSDeleteThenInsertContact[0]), nil
+		}
+	}
 	return nil, fmt.Errorf("getting user info is not supported")
 }
 
@@ -26,24 +40,10 @@ func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 		identifiers = append(identifiers, fmt.Sprintf("instagram:%s", info.GetUsername()))
 	}
 
-	name := info.GetName()
-	if name == "" {
-		resp, err := m.Client.ExecuteTasks(&socket.GetContactsFullTask{
-			ContactID: info.GetFBID(),
-		})
-		log := m.UserLogin.Log
-		if err != nil {
-			log.Trace().Any("ContactID", info.GetFBID()).Any("err", err).Msg("GetContactsFullTask failed")
-		}
-		if len(resp.LSDeleteThenInsertContact) > 0 {
-			name = resp.LSDeleteThenInsertContact[0].Name
-		}
-	}
-
 	return &bridgev2.UserInfo{
 		Identifiers: identifiers,
 		Name: ptr.Ptr(m.Main.Config.FormatDisplayname(DisplaynameParams{
-			DisplayName: name,
+			DisplayName: info.GetName(),
 			Username:    info.GetUsername(),
 			ID:          info.GetFBID(),
 		})),
