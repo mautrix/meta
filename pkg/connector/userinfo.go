@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
@@ -25,10 +26,24 @@ func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 		identifiers = append(identifiers, fmt.Sprintf("instagram:%s", info.GetUsername()))
 	}
 
+	name := info.GetName()
+	if name == "" {
+		resp, err := m.Client.ExecuteTasks(&socket.GetContactsFullTask{
+			ContactID: info.GetFBID(),
+		})
+		log := m.UserLogin.Log
+		if err != nil {
+			log.Trace().Any("ContactID", info.GetFBID()).Any("err", err).Msg("GetContactsFullTask failed")
+		}
+		if len(resp.LSDeleteThenInsertContact) > 0 {
+			name = resp.LSDeleteThenInsertContact[0].Name
+		}
+	}
+
 	return &bridgev2.UserInfo{
 		Identifiers: identifiers,
 		Name: ptr.Ptr(m.Main.Config.FormatDisplayname(DisplaynameParams{
-			DisplayName: info.GetName(),
+			DisplayName: name,
 			Username:    info.GetUsername(),
 			ID:          info.GetFBID(),
 		})),
