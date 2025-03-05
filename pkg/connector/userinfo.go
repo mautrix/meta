@@ -10,13 +10,28 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 )
 
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	return nil, fmt.Errorf("getting user info is not supported")
+	if ghost.Name == "" {
+		contactID := metaid.ParseUserID(ghost.ID)
+		resp, err := m.Client.ExecuteTasks(&socket.GetContactsFullTask{
+			ContactID: contactID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(resp.LSDeleteThenInsertContact) > 0 {
+			return m.wrapUserInfo(resp.LSDeleteThenInsertContact[0]), nil
+		} else {
+			return nil, fmt.Errorf("user info not found via GetContactsFullTask")
+		}
+	}
+	return nil, nil
 }
 
 func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
