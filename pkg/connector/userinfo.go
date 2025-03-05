@@ -22,16 +22,16 @@ func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*b
 		resp, err := m.Client.ExecuteTasks(&socket.GetContactsFullTask{
 			ContactID: contactID,
 		})
-		log := m.UserLogin.Log
 		if err != nil {
-			log.Trace().Any("ContactID", contactID).Any("err", err).Msg("GetContactsFullTask failed")
 			return nil, err
 		}
 		if len(resp.LSDeleteThenInsertContact) > 0 {
 			return m.wrapUserInfo(resp.LSDeleteThenInsertContact[0]), nil
+		} else {
+			return nil, fmt.Errorf("user info not found via GetContactsFullTask")
 		}
 	}
-	return nil, fmt.Errorf("getting user info is not supported")
+	return nil, nil
 }
 
 func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
