@@ -418,10 +418,15 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 			}
 		}
 	}
+	msgtype := event.MsgText
+	if body == "" {
+		body = fmt.Sprintf("Unsupported message\n\nPlease open in %s", mc.appName())
+		msgtype = event.MsgNotice
+	}
 	return []*bridgev2.ConvertedMessagePart{{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
-			MsgType: event.MsgText,
+			MsgType: msgtype,
 			Body:    body,
 		},
 		Extra: map[string]any{
