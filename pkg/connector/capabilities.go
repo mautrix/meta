@@ -42,7 +42,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 3
+	return 1, 4
 }
 
 const MaxTextLength = 20000
@@ -159,7 +159,11 @@ func init() {
 	igCaps = ptr.Clone(metaCaps)
 	igCaps.File = maps.Clone(igCaps.File)
 	delete(igCaps.File, event.MsgFile)
-	igCaps.ID += "+instagram"
+	for key, value := range igCaps.File {
+		igCaps.File[key] = ptr.Clone(value)
+		igCaps.File[key].Caption = event.CapLevelDropped
+	}
+	igCaps.ID += "+instagram-p2"
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
