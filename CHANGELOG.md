@@ -1,3 +1,8 @@
+# v0.4.5 (2025-03-16)
+
+* Added experimental fix for fetching missing names in encrypted chats.
+* Added fallback for unsupported encrypted messages.
+
 # v0.4.4 (2025-02-16)
 
 * Bumped minimum Go version to 1.23.
