@@ -42,11 +42,12 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 4
+	return 1, 5
 }
 
 const MaxTextLength = 20000
 const MaxFileSize = 25 * 1000 * 1000
+const MaxFileSizeWithE2E = 100 * 1000 * 1000
 const MaxImageSize = 8 * 1000 * 1000
 
 func supportedIfFFmpeg() event.CapabilitySupportLevel {
@@ -149,12 +150,21 @@ var metaCaps = &event.RoomFeatures{
 }
 
 var metaCapsWithThreads *event.RoomFeatures
+var metaCapsWithE2E *event.RoomFeatures
 var igCaps *event.RoomFeatures
 
 func init() {
 	metaCapsWithThreads = ptr.Clone(metaCaps)
 	metaCapsWithThreads.ID += "+communitygroup"
 	metaCapsWithThreads.Thread = event.CapLevelFullySupported
+
+	metaCapsWithE2E = ptr.Clone(metaCaps)
+	metaCapsWithE2E.ID += "+e2e"
+	metaCapsWithE2E.File = maps.Clone(metaCapsWithE2E.File)
+	for key, value := range metaCapsWithE2E.File {
+		metaCapsWithE2E.File[key] = ptr.Clone(value)
+		metaCapsWithE2E.File[key].MaxSize = MaxFileSizeWithE2E
+	}
 
 	igCaps = ptr.Clone(metaCaps)
 	igCaps.File = maps.Clone(igCaps.File)
@@ -170,6 +180,8 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	switch portal.Metadata.(*metaid.PortalMetadata).ThreadType {
 	case table.COMMUNITY_GROUP:
 		return metaCapsWithThreads
+	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE, table.ENCRYPTED_OVER_WA_GROUP:
+		return metaCapsWithE2E
 	}
 	if (m.Client != nil && m.Client.Platform == types.Instagram) || m.Main.Config.Mode == types.Instagram {
 		return igCaps
