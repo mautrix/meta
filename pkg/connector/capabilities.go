@@ -160,10 +160,11 @@ func init() {
 
 	metaCapsWithE2E = ptr.Clone(metaCaps)
 	metaCapsWithE2E.ID += "+e2e"
-	metaCapsWithE2E.File[event.MsgVideo].MaxSize = MaxFileSizeWithE2E
-	metaCapsWithE2E.File[event.MsgAudio].MaxSize = MaxFileSizeWithE2E
-	metaCapsWithE2E.File[event.MsgFile].MaxSize = MaxFileSizeWithE2E
-	metaCapsWithE2E.File[event.CapMsgVoice].MaxSize = MaxFileSizeWithE2E
+	metaCapsWithE2E.File = maps.Clone(metaCapsWithE2E.File)
+	for key, value := range metaCapsWithE2E.File {
+		metaCapsWithE2E.File[key] = ptr.Clone(value)
+		metaCapsWithE2E.File[key].MaxSize = MaxFileSizeWithE2E
+	}
 
 	igCaps = ptr.Clone(metaCaps)
 	igCaps.File = maps.Clone(igCaps.File)
