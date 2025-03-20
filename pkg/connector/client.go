@@ -82,8 +82,8 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 }
 
 var (
-	_ bridgev2.NetworkAPI                      = (*MetaClient)(nil)
-	_ status.StandaloneCustomBridgeStateFiller = (*MetaClient)(nil)
+	_ bridgev2.NetworkAPI      = (*MetaClient)(nil)
+	_ status.BridgeStateFiller = (*MetaClient)(nil)
 )
 
 type respGetProxy struct {
