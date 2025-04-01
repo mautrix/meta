@@ -92,11 +92,11 @@ type respGetProxy struct {
 
 // TODO this should be moved into mautrix-go
 
-func (m *MetaClient) getProxy(reason string) (string, error) {
-	if m.Main.Config.GetProxyFrom == "" {
-		return m.Main.Config.Proxy, nil
+func (m *MetaConnector) getProxy(reason string) (string, error) {
+	if m.Config.GetProxyFrom == "" {
+		return m.Config.Proxy, nil
 	}
-	parsed, err := url.Parse(m.Main.Config.GetProxyFrom)
+	parsed, err := url.Parse(m.Config.GetProxyFrom)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse address: %w", err)
 	}
@@ -157,7 +157,7 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 		}
 	}
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
-		m.Client.GetNewProxy = m.getProxy
+		m.Client.GetNewProxy = m.Main.getProxy
 		if !m.Client.UpdateProxy("connect") {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,

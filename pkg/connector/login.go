@@ -152,6 +152,12 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 
 	log := m.User.Log.With().Str("component", "messagix").Logger()
 	client := messagix.NewClient(c, log)
+	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
+		client.GetNewProxy = m.Main.getProxy
+		if !client.UpdateProxy("login") {
+			return nil, fmt.Errorf("failed to update proxy")
+		}
+	}
 
 	user, tbl, err := client.LoadMessagesPage()
 	if err != nil {
