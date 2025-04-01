@@ -2,7 +2,9 @@ package methods
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -31,7 +33,7 @@ func GenerateEpochId() int64 {
 	epochMutex.Lock()
 	defer epochMutex.Unlock()
 
-	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
+	timestamp := time.Now().UnixMilli()
 	if timestamp == lastTimestamp {
 		counter++
 	} else {
@@ -91,4 +93,22 @@ func PreprocessJSObject(s string) string {
 func NeedUpdateSyncGroups(data *table.LSTable) bool {
 	return len(data.LSExecuteFirstBlockForSyncTransaction) > 0 ||
 		len(data.LSUpsertSyncGroupThreadsRange) > 0
+}
+
+const MetaEpochMS = 1072915200000
+
+func ParseMessageID(messageID string) (int64, error) {
+	if !strings.HasPrefix(messageID, "mid.$") || len(messageID) < 10 {
+		return 0, fmt.Errorf("invalid message ID prefix")
+	}
+	rawMessageID, err := base64.RawURLEncoding.DecodeString(messageID[len("mid.$c"):])
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode message ID: %w", err)
+	} else if len(rawMessageID) != 21 {
+		return 0, fmt.Errorf("unexpected decoded length %d", len(rawMessageID))
+	}
+	timestampBuf := make([]byte, 8)
+	copy(timestampBuf[3:], rawMessageID[8:13])
+	timestamp := binary.BigEndian.Uint64(timestampBuf)
+	return int64(timestamp) + MetaEpochMS, nil
 }

@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -118,6 +119,7 @@ var (
 	_ bridgev2.RemoteMessage                          = (*FBMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithUncertainPortalReceiver = (*FBMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithTimestamp               = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithStreamOrder             = (*FBMessageEvent)(nil)
 )
 
 func (evt *FBMessageEvent) GetType() bridgev2.RemoteEventType {
@@ -146,6 +148,20 @@ func (evt *FBMessageEvent) GetID() networkid.MessageID {
 
 func (evt *FBMessageEvent) GetTimestamp() time.Time {
 	return time.UnixMilli(evt.TimestampMs)
+}
+
+func (evt *FBMessageEvent) GetStreamOrder() int64 {
+	parsedTS, err := methods.ParseMessageID(evt.MessageId)
+	if err != nil {
+		evt.m.UserLogin.Log.Warn().Err(err).Str("message_id", evt.MessageId).Msg("Failed to parse message ID")
+	} else if parsedTS != evt.TimestampMs {
+		evt.m.UserLogin.Log.Warn().
+			Int64("parsed_ts", parsedTS).
+			Int64("timestamp_ms", evt.TimestampMs).
+			Str("message_id", evt.MessageId).
+			Msg("Message ID timestamp mismatch")
+	}
+	return evt.TimestampMs
 }
 
 func (evt *FBMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
@@ -264,12 +280,13 @@ type WAMessageEvent struct {
 }
 
 var (
-	_ bridgev2.RemoteMessage            = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteEdit               = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteEventWithTimestamp = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteReaction           = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteReactionRemove     = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteMessageRemove      = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteMessage              = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEdit                 = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithTimestamp   = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteReaction             = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteReactionRemove       = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteMessageRemove        = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithStreamOrder = (*WAMessageEvent)(nil)
 )
 
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
@@ -432,6 +449,11 @@ func (evt *WAMessageEvent) GetTimestamp() time.Time {
 		return time.UnixMilli(editTS)
 	}
 	return evt.Info.Timestamp
+}
+
+func (evt *WAMessageEvent) GetStreamOrder() int64 {
+	// Note: WhatsApp timestamps are seconds, but we use unix millis in order to match FB stream orders.
+	return evt.GetTimestamp().UnixMilli()
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {

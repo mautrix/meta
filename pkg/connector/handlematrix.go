@@ -18,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -71,6 +72,8 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				SenderID:  networkid.UserID(m.UserLogin.ID),
 				Timestamp: resp.Timestamp,
 			},
+			// Note: WhatsApp timestamps are seconds, but we use unix millis in order to match FB stream orders.
+			StreamOrder: resp.Timestamp.UnixMilli(),
 		}, nil
 	default:
 		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
@@ -136,12 +139,36 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				log.Warn().Msg("Message send response didn't include message ID")
 			}
 		}
+		var parsedTSTime time.Time
+		parsedTS, err := methods.ParseMessageID(msgID)
+		if err != nil {
+			log.Warn().Err(err).Str("message_id", msgID).Msg("Failed to parse message ID")
+		} else {
+			parsedTSTime = time.UnixMilli(parsedTS)
+			if parsedTSTime.Before(time.Now().Add(-1 * time.Hour)) {
+				log.Warn().
+					Time("parsed_ts", parsedTSTime).
+					Str("message_id", msgID).
+					Msg("Message ID timestamp is too far in the past")
+				parsedTSTime = time.Time{}
+				parsedTS = 0
+			} else if parsedTSTime.After(time.Now().Add(1 * time.Hour)) {
+				log.Warn().
+					Time("parsed_ts", parsedTSTime).
+					Str("message_id", msgID).
+					Msg("Message ID timestamp is too far in the future")
+				parsedTSTime = time.Time{}
+				parsedTS = 0
+			}
+		}
 
 		return &bridgev2.MatrixMessageResponse{
 			DB: &database.Message{
-				ID:       metaid.MakeFBMessageID(msgID),
-				SenderID: networkid.UserID(m.UserLogin.ID),
+				ID:        metaid.MakeFBMessageID(msgID),
+				SenderID:  networkid.UserID(m.UserLogin.ID),
+				Timestamp: parsedTSTime,
 			},
+			StreamOrder: parsedTS,
 		}, nil
 	}
 }
