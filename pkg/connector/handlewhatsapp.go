@@ -7,10 +7,12 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 func (m *MetaClient) e2eeEventHandler(rawEvt any) {
@@ -33,6 +35,14 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 		case waTypes.ReceiptTypeDelivered:
 			evtType = bridgev2.RemoteEventDeliveryReceipt
 		}
+		targets := make([]networkid.MessageID, len(evt.MessageIDs))
+		messageSender := *m.WADevice.ID
+		if !evt.MessageSender.IsEmpty() {
+			messageSender = evt.MessageSender
+		}
+		for i, id := range evt.MessageIDs {
+			targets[i] = metaid.MakeWAMessageID(evt.Chat, messageSender, id)
+		}
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.Receipt{
 			EventMeta: simplevent.EventMeta{
 				Type:       evtType,
@@ -41,7 +51,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 				Sender:     m.makeWAEventSender(evt.Sender),
 				Timestamp:  evt.Timestamp,
 			},
-			ReadUpTo: evt.Timestamp,
+			Targets: targets,
 		})
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
