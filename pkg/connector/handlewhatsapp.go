@@ -36,8 +36,12 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 			evtType = bridgev2.RemoteEventDeliveryReceipt
 		}
 		targets := make([]networkid.MessageID, len(evt.MessageIDs))
+		messageSender := *m.WADevice.ID
+		if !evt.MessageSender.IsEmpty() {
+			messageSender = evt.MessageSender
+		}
 		for i, id := range evt.MessageIDs {
-			targets[i] = metaid.MakeWAMessageID(evt.Chat, *m.WADevice.ID, id)
+			targets[i] = metaid.MakeWAMessageID(evt.Chat, messageSender, id)
 		}
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.Receipt{
 			EventMeta: simplevent.EventMeta{
