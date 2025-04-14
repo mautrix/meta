@@ -34,6 +34,11 @@ func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*b
 	return nil, nil
 }
 
+const (
+	MetaAIInstagramID = 656175869434325
+	MetaAIMessengerID = 156025504001094
+)
+
 func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 	var identifiers []string
 	if m.LoginMeta.Platform == types.Instagram {
@@ -48,7 +53,7 @@ func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 			ID:          info.GetFBID(),
 		})),
 		Avatar: wrapAvatar(info.GetAvatarURL()),
-		IsBot:  nil, // TODO
+		IsBot:  ptr.Ptr(info.GetFBID() == MetaAIInstagramID || info.GetFBID() == MetaAIMessengerID), // TODO do this in a less hardcoded way?
 		ExtraUpdates: func(ctx context.Context, ghost *bridgev2.Ghost) (changed bool) {
 			meta := ghost.Metadata.(*metaid.GhostMetadata)
 			if m.LoginMeta.Platform == types.Instagram && meta.Username != info.GetUsername() {
