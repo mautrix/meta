@@ -42,7 +42,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 5
+	return 1, 6
 }
 
 const MaxTextLength = 20000
@@ -58,7 +58,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_02_18"
+	base := "fi.mau.meta.capabilities.2025_04_15"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -115,7 +115,7 @@ var metaCaps = &event.RoomFeatures{
 			MimeTypes: map[string]event.CapabilitySupportLevel{
 				"image/gif": event.CapLevelFullySupported,
 			},
-			Caption:          event.CapLevelFullySupported,
+			Caption:          event.CapLevelDropped,
 			MaxCaptionLength: MaxTextLength,
 			MaxSize:          MaxImageSize,
 		},
@@ -164,6 +164,9 @@ func init() {
 	for key, value := range metaCapsWithE2E.File {
 		metaCapsWithE2E.File[key] = ptr.Clone(value)
 		metaCapsWithE2E.File[key].MaxSize = MaxFileSizeWithE2E
+		// Messenger Web doesn't render captions on images in e2ee chats 3:<
+		// (works fine on Messenger iOS and Android though)
+		metaCapsWithE2E.File[key].Caption = event.CapLevelDropped
 	}
 
 	igCaps = ptr.Clone(metaCaps)
