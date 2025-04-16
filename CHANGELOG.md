@@ -1,3 +1,8 @@
+# v0.4.6 (2025-04-16)
+
+* Fixed bridging own read status in encrypted chats.
+* Fixed proxy not being used during login.
+
 # v0.4.5 (2025-03-16)
 
 * Added experimental fix for fetching missing names in encrypted chats.
