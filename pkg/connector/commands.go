@@ -48,7 +48,7 @@ func fnToggleEncryption(ce *commands.Event) {
 			threadID := metaid.ParseFBPortalID(ce.Portal.ID)
 			resp, err := cli.Client.ExecuteTasks(&socket.CreateWhatsAppThreadTask{
 				WAJID:            threadID,
-				OfflineThreadKey: methods.GenerateEpochId(),
+				OfflineThreadKey: methods.GenerateEpochID(),
 				ThreadType:       table.ENCRYPTED_OVER_WA_ONE_TO_ONE,
 				FolderType:       table.INBOX,
 				BumpTimestampMS:  time.Now().UnixMilli(),

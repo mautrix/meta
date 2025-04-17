@@ -89,7 +89,7 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 	payload := &socket.DatabaseQuery{
 		Database: databaseId,
 		Version:  json.Number(strconv.FormatInt(sm.client.configs.VersionId, 10)),
-		EpochId:  methods.GenerateEpochId(),
+		EpochId:  methods.GenerateEpochID(),
 	}
 
 	var prevCursor string

@@ -24,7 +24,7 @@ func (c *Client) newTaskManager() *TaskManager {
 
 func (tm *TaskManager) FinalizePayload() ([]byte, error) {
 	p := &socket.TaskPayload{
-		EpochId:     methods.GenerateEpochId(),
+		EpochId:     methods.GenerateEpochID(),
 		Tasks:       tm.currTasks,
 		DataTraceId: tm.traceId,
 		VersionId:   strconv.FormatInt(tm.client.configs.VersionId, 10),

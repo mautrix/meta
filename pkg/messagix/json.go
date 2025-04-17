@@ -42,7 +42,7 @@ type Connect struct {
 func (s *Socket) newConnectJSON() (string, error) {
 	payload := &Connect{
 		AccountId:          s.client.configs.browserConfigTable.CurrentUserInitialData.AccountID,
-		SessionId:          s.client.socket.sessionId,
+		SessionId:          s.client.socket.sessionID,
 		ClientCapabilities: s.client.configs.browserConfigTable.MqttWebConfig.ClientCapabilities,
 		Capabilities:       s.client.configs.browserConfigTable.MqttWebConfig.Capabilities,
 		ChatOn:             s.client.configs.browserConfigTable.MqttWebConfig.ChatVisibility,

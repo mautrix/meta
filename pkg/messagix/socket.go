@@ -78,7 +78,7 @@ type Socket struct {
 	responseHandler *ResponseHandler
 	mu              *sync.Mutex
 	packetsSent     uint16
-	sessionId       int64
+	sessionID       int64
 	broker          string
 
 	previouslyConnected bool
@@ -95,7 +95,7 @@ func (c *Client) newSocketClient() *Socket {
 		},
 		mu:          &sync.Mutex{},
 		packetsSent: 0,
-		sessionId:   methods.GenerateSessionId(),
+		sessionID:   methods.GenerateSessionID(),
 	}
 }
 
@@ -121,7 +121,7 @@ func (s *Socket) Connect() error {
 	}
 
 	headers := s.getConnHeaders()
-	brokerUrl := s.BuildBrokerUrl()
+	brokerUrl := s.BuildBrokerURL()
 
 	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
 	if s.client.httpProxy != nil {
@@ -161,9 +161,9 @@ func (s *Socket) Connect() error {
 	return nil
 }
 
-func (s *Socket) BuildBrokerUrl() string {
+func (s *Socket) BuildBrokerURL() string {
 	query := &url.Values{}
-	query.Add("sid", strconv.FormatInt(s.sessionId, 10))
+	query.Add("sid", strconv.FormatInt(s.sessionID, 10))
 	query.Add("cid", s.client.configs.browserConfigTable.MqttWebDeviceID.ClientID)
 
 	encodedQuery := query.Encode()

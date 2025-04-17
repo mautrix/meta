@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/random"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -138,7 +138,7 @@ func (c *Client) newMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, stri
 	var mercuryPayload bytes.Buffer
 	writer := multipart.NewWriter(&mercuryPayload)
 
-	err := writer.SetBoundary("----WebKitFormBoundary" + methods.RandStr(16))
+	err := writer.SetBoundary("----WebKitFormBoundary" + random.String(16))
 	if err != nil {
 		return nil, "", fmt.Errorf("messagix-mercury: Failed to set boundary (%w)", err)
 	}

@@ -57,7 +57,7 @@ func (mc *MessageConverter) ToMeta(
 	threadID := metaid.ParseFBPortalID(portal.ID)
 	task := &socket.SendMessageTask{
 		ThreadId:         threadID,
-		Otid:             methods.GenerateEpochId(),
+		Otid:             methods.GenerateEpochID(),
 		Source:           table.MESSENGER_INBOX_IN_THREAD,
 		InitiatingSource: table.FACEBOOK_INBOX,
 		SendType:         table.TEXT,

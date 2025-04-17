@@ -173,7 +173,7 @@ func (m *ModuleParser) Load(page string) error {
 		if !authenticated && err == nil {
 			m.client.cookies.Set(cookies.IGCookieCSRFToken, sharedData.ConfigData.Config.CsrfToken)
 			m.client.cookies.Set(cookies.IGCookieDeviceID, sharedData.Native.DeviceID)
-			m.client.cookies.Set(cookies.IGCookieMachineID, methods.GenerateMachineId())
+			m.client.cookies.Set(cookies.IGCookieMachineID, methods.GenerateMachineID())
 		}
 	}
 

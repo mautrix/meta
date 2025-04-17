@@ -15,7 +15,7 @@ func (c *Client) ExecuteTasks(tasks ...socket.Task) (*table.LSTable, error) {
 	for _, task := range tasks {
 		tskm.AddNewTask(task)
 	}
-	//tskm.setTraceId(methods.GenerateTraceId())
+	//tskm.setTraceId(methods.GenerateTraceID())
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
