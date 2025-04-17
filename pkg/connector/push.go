@@ -18,8 +18,10 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
@@ -34,6 +36,11 @@ var pushCfg = &bridgev2.PushConfig{
 
 func (m *MetaClient) GetPushConfigs() *bridgev2.PushConfig {
 	return pushCfg
+}
+
+type DoubleToken struct {
+	Unencrypted string `json:"unencrypted"`
+	Encrypted   string `json:"encrypted"`
 }
 
 func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
@@ -51,6 +58,26 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 	keys := messagix.PushKeys{
 		P256DH: meta.PushKeys.P256DH,
 		Auth:   meta.PushKeys.Auth,
+	}
+	var encToken string
+	if token[0] == '{' && token[len(token)-1] == '}' {
+		var dt DoubleToken
+		err := json.Unmarshal([]byte(token), &dt)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal double token: %w", err)
+		}
+		token = dt.Unencrypted
+		encToken = dt.Encrypted
+	}
+	if encToken != "" {
+		err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
+			Endpoint: encToken,
+			Auth:     meta.PushKeys.Auth,
+			P256DH:   meta.PushKeys.P256DH,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to register e2ee notifications: %w", err)
+		}
 	}
 	if m.Client.Platform.IsMessenger() {
 		return m.Client.Facebook.RegisterPushNotifications(token, keys)
