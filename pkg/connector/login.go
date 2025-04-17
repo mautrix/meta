@@ -110,10 +110,12 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 
 func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	step := &bridgev2.LoginStep{
-		Type:          bridgev2.LoginStepTypeCookies,
-		StepID:        LoginStepIDCookies,
-		Instructions:  "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
-		CookiesParams: &bridgev2.LoginCookiesParams{},
+		Type:         bridgev2.LoginStepTypeCookies,
+		StepID:       LoginStepIDCookies,
+		Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
+		CookiesParams: &bridgev2.LoginCookiesParams{
+			UserAgent: messagix.UserAgent,
+		},
 	}
 	switch m.Mode {
 	case types.Facebook, types.FacebookTor:

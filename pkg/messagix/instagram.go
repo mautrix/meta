@@ -207,7 +207,7 @@ func (ig *InstagramMethods) RegisterPushNotifications(endpoint string, keys Push
 
 	headers := c.buildHeaders(true, false)
 	headers.Set("x-requested-with", "XMLHttpRequest")
-	headers.Set("Referer", c.getEndpoint("host"))
+	headers.Set("Referer", c.getEndpoint("base_url"))
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
 	url := c.getEndpoint("web_push")

@@ -42,7 +42,7 @@ const (
 	IGCookieDeviceID  MetaCookieName = "ig_did"
 )
 
-var FBRequiredCookies = []MetaCookieName{FBCookieXS, FBCookieCUser}
+var FBRequiredCookies = []MetaCookieName{FBCookieXS, FBCookieCUser, MetaCookieDatr}
 var IGRequiredCookies = []MetaCookieName{IGCookieSessionID, IGCookieCSRFToken, IGCookieDSUserID, IGCookieMachineID, IGCookieDeviceID}
 
 type Cookies struct {

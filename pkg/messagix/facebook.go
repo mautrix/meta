@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/google/go-querystring/query"
+	"go.mau.fi/util/jsonbytes"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -77,8 +78,8 @@ func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies,
 }
 
 type PushKeys struct {
-	P256DH []byte `json:"p256dh"`
-	Auth   []byte `json:"auth"`
+	P256DH jsonbytes.UnpaddedURLBytes `json:"p256dh"`
+	Auth   jsonbytes.UnpaddedURLBytes `json:"auth"`
 }
 
 func (fb *FacebookMethods) RegisterPushNotifications(endpoint string, keys PushKeys) error {
@@ -102,8 +103,9 @@ func (fb *FacebookMethods) RegisterPushNotifications(endpoint string, keys PushK
 	payloadBytes := []byte(form.Encode())
 
 	headers := c.buildHeaders(true, false)
-	headers.Set("Referer", c.getEndpoint("host"))
+	headers.Set("Referer", c.getEndpoint("base_url"))
 	headers.Set("Sec-fetch-site", "same-origin")
+	headers.Set("Accept", "*/*")
 
 	url := c.getEndpoint("web_push")
 
