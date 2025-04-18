@@ -564,7 +564,7 @@ type LSUpdateOrInsertThread struct {
 	ThreadStatus                           int64      `index:"104" json:",omitempty"`
 	ThreadSubtype                          int64      `index:"105" json:",omitempty"`
 	PauseThreadTimestamp                   int64      `index:"106" json:",omitempty"`
-	Capabilities4                          int64      `index:"107" json:",omitempty"`
+	Capabilities4                          string     `index:"107" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

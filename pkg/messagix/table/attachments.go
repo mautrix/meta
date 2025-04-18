@@ -111,16 +111,17 @@ type LSInsertAttachment struct {
 	EphemeralMediaState                        EphemeralMediaState    `index:"114" json:",omitempty"`
 	EphemeralMediaViewMode                     EphemeralMediaViewMode `index:"115" json:",omitempty"`
 	ViewerSeenTimestampMs                      int64                  `index:"116" json:",omitempty"`
-	GatingType                                 int64                  `index:"117" json:",omitempty"`
-	GatingTitle                                string                 `index:"118" json:",omitempty"`
-	TargetExpiryTimestampMs                    int64                  `index:"119" json:",omitempty"`
-	CountdownTimestampMs                       int64                  `index:"120" json:",omitempty"`
-	ShouldBlurSubattachments                   bool                   `index:"121" json:",omitempty"`
-	VerifiedType                               int64                  `index:"122" json:",omitempty"`
-	IgStoryReplyType                           int64                  `index:"123" json:",omitempty"`
-	IsAttachmentConsumed                       bool                   `index:"124" json:",omitempty"`
-	AuthorityLevel                             int64                  `index:"125" json:",omitempty"`
-	UnknownInt64_126                           int64                  `index:"126" json:",omitempty"`
+	BodyText                                   string                 `index:"117" json:",omitempty"`
+	GatingType                                 int64                  `index:"118" json:",omitempty"`
+	GatingTitle                                string                 `index:"119" json:",omitempty"`
+	TargetExpiryTimestampMs                    int64                  `index:"120" json:",omitempty"`
+	CountdownTimestampMs                       int64                  `index:"121" json:",omitempty"`
+	ShouldBlurSubattachments                   bool                   `index:"122" json:",omitempty"`
+	VerifiedType                               int64                  `index:"123" json:",omitempty"`
+	IgStoryReplyType                           int64                  `index:"124" json:",omitempty"`
+	IsAttachmentConsumed                       bool                   `index:"125" json:",omitempty"`
+	StickerType                                any                    `index:"126" json:",omitempty"`
+	AuthorityLevel                             int64                  `index:"127" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -298,7 +299,8 @@ type LSInsertXmaAttachment struct {
 	ReplyCount                                 int64          `index:"124" json:",omitempty"`
 	XmaDataclass                               string         `index:"125" json:",omitempty"`
 	PreviewOverlayCountdownExpiry              int64          `index:"126" json:",omitempty"`
-	AuthorityLevel                             int64          `index:"127" json:",omitempty"`
+	StickerType                                any            `index:"127" json:",omitempty"`
+	AuthorityLevel                             int64          `index:"128" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

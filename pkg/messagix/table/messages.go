@@ -80,6 +80,11 @@ type LSUpsertMessage struct {
 	AdminSignatureName              string                     `index:"69" json:",omitempty"`
 	AdminSignatureProfileURL        string                     `index:"70" json:",omitempty"`
 	AdminSignatureCreatorType       any                        `index:"71" json:",omitempty"`
+	TranslatedText                  string                     `index:"72" json:",omitempty"`
+	TextDialect                     string                     `index:"73" json:",omitempty"`
+	TranslatedTextDialect           string                     `index:"74" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"75" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"76" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -126,35 +131,40 @@ func (um *LSUpsertMessage) ToInsert() *LSInsertMessage {
 		ReplyAttachmentType:             um.ReplyAttachmentType,
 		ReplyAttachmentId:               um.ReplyAttachmentId,
 		ReplyAttachmentExtra:            um.ReplyAttachmentExtra,
-		// LSInsertMessage doesn't have ReplyType, which would be here.
-		IsForwarded:               um.IsForwarded,
-		ForwardScore:              um.ForwardScore,
-		HasQuickReplies:           um.HasQuickReplies,
-		AdminMsgCtaId:             um.AdminMsgCtaId,
-		AdminMsgCtaTitle:          um.AdminMsgCtaTitle,
-		AdminMsgCtaType:           um.AdminMsgCtaType,
-		CannotUnsendReason:        um.CannotUnsendReason,
-		TextHasLinks:              um.TextHasLinks,
-		ViewFlags:                 um.ViewFlags,
-		DisplayedContentTypes:     um.DisplayedContentTypes,
-		ViewedPluginKey:           um.ViewedPluginKey,
-		ViewedPluginContext:       um.ViewedPluginContext,
-		QuickReplyType:            um.QuickReplyType,
-		HotEmojiSize:              um.HotEmojiSize,
-		PlatformXmdEncoded:        um.PlatformXmdEncoded,
-		ReplySourceTimestampMs:    um.ReplySourceTimestampMs,
-		EphemeralDurationInSec:    um.EphemeralDurationInSec,
-		MsUntilExpirationTs:       um.MsUntilExpirationTs,
-		EphemeralExpirationTs:     um.EphemeralExpirationTs,
-		TakedownState:             um.TakedownState,
-		IsCollapsed:               um.IsCollapsed,
-		SubthreadKey:              um.SubthreadKey,
-		BotResponseID:             um.BotResponseID,
-		EditCount:                 um.EditCount,
-		IsPaidPartnership:         um.IsPaidPartnership,
-		AdminSignatureName:        um.AdminSignatureName,
-		AdminSignatureProfileURL:  um.AdminSignatureProfileURL,
-		AdminSignatureCreatorType: um.AdminSignatureCreatorType,
+		ReplyType:                       um.ReplyType,
+		IsForwarded:                     um.IsForwarded,
+		ForwardScore:                    um.ForwardScore,
+		HasQuickReplies:                 um.HasQuickReplies,
+		AdminMsgCtaId:                   um.AdminMsgCtaId,
+		AdminMsgCtaTitle:                um.AdminMsgCtaTitle,
+		AdminMsgCtaType:                 um.AdminMsgCtaType,
+		CannotUnsendReason:              um.CannotUnsendReason,
+		TextHasLinks:                    um.TextHasLinks,
+		ViewFlags:                       um.ViewFlags,
+		DisplayedContentTypes:           um.DisplayedContentTypes,
+		ViewedPluginKey:                 um.ViewedPluginKey,
+		ViewedPluginContext:             um.ViewedPluginContext,
+		QuickReplyType:                  um.QuickReplyType,
+		HotEmojiSize:                    um.HotEmojiSize,
+		PlatformXmdEncoded:              um.PlatformXmdEncoded,
+		ReplySourceTimestampMs:          um.ReplySourceTimestampMs,
+		EphemeralDurationInSec:          um.EphemeralDurationInSec,
+		MsUntilExpirationTs:             um.MsUntilExpirationTs,
+		EphemeralExpirationTs:           um.EphemeralExpirationTs,
+		TakedownState:                   um.TakedownState,
+		IsCollapsed:                     um.IsCollapsed,
+		SubthreadKey:                    um.SubthreadKey,
+		BotResponseID:                   um.BotResponseID,
+		EditCount:                       um.EditCount,
+		IsPaidPartnership:               um.IsPaidPartnership,
+		AdminSignatureName:              um.AdminSignatureName,
+		AdminSignatureProfileURL:        um.AdminSignatureProfileURL,
+		AdminSignatureCreatorType:       um.AdminSignatureCreatorType,
+		TranslatedText:                  um.TranslatedText,
+		TextDialect:                     um.TextDialect,
+		TranslatedTextDialect:           um.TranslatedTextDialect,
+		ScheduledTimestamp:              um.ScheduledTimestamp,
+		IsVideoQuickSend:                um.IsVideoQuickSend,
 	}
 }
 
@@ -294,35 +304,41 @@ type LSInsertMessage struct {
 	ReplyAttachmentType             AttachmentType             `index:"39" json:",omitempty"`
 	ReplyAttachmentId               int64                      `index:"40" json:",omitempty"`
 	ReplyAttachmentExtra            string                     `index:"41" json:",omitempty"`
-	IsForwarded                     bool                       `index:"42" json:",omitempty"`
-	ForwardScore                    int64                      `index:"43" json:",omitempty"`
-	HasQuickReplies                 bool                       `index:"44" json:",omitempty"`
-	AdminMsgCtaId                   int64                      `index:"45" json:",omitempty"`
-	AdminMsgCtaTitle                string                     `index:"46" json:",omitempty"`
-	AdminMsgCtaType                 int64                      `index:"47" json:",omitempty"`
-	CannotUnsendReason              MessageUnsendabilityStatus `index:"48" json:",omitempty"`
-	TextHasLinks                    bool                       `index:"49" json:",omitempty"`
-	ViewFlags                       int64                      `index:"50" json:",omitempty"`
-	DisplayedContentTypes           DisplayedContentTypes      `index:"51" json:",omitempty"`
-	ViewedPluginKey                 int64                      `index:"52" json:",omitempty"`
-	ViewedPluginContext             int64                      `index:"53" json:",omitempty"`
-	QuickReplyType                  int64                      `index:"54" json:",omitempty"`
-	HotEmojiSize                    int64                      `index:"55" json:",omitempty"`
-	PlatformXmdEncoded              any                        `index:"56" json:",omitempty"`
-	ReplySourceTimestampMs          int64                      `index:"57" json:",omitempty"`
-	EphemeralDurationInSec          int64                      `index:"58" json:",omitempty"`
-	MsUntilExpirationTs             int64                      `index:"59" json:",omitempty"`
-	EphemeralExpirationTs           int64                      `index:"60" json:",omitempty"`
-	TakedownState                   int64                      `index:"61" json:",omitempty"`
-	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
-	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
-	BotResponseID                   int64                      `index:"64" json:",omitempty"`
-	MetadataDataclass               string                     `index:"65" json:",omitempty"`
-	EditCount                       int64                      `index:"66" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"67" json:",omitempty"`
-	AdminSignatureName              string                     `index:"68" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"69" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"70" json:",omitempty"`
+	ReplyType                       any                        `index:"42" json:",omitempty"`
+	IsForwarded                     bool                       `index:"43" json:",omitempty"`
+	ForwardScore                    int64                      `index:"44" json:",omitempty"`
+	HasQuickReplies                 bool                       `index:"45" json:",omitempty"`
+	AdminMsgCtaId                   int64                      `index:"46" json:",omitempty"`
+	AdminMsgCtaTitle                string                     `index:"47" json:",omitempty"`
+	AdminMsgCtaType                 int64                      `index:"48" json:",omitempty"`
+	CannotUnsendReason              MessageUnsendabilityStatus `index:"49" json:",omitempty"`
+	TextHasLinks                    bool                       `index:"50" json:",omitempty"`
+	ViewFlags                       int64                      `index:"51" json:",omitempty"`
+	DisplayedContentTypes           DisplayedContentTypes      `index:"52" json:",omitempty"`
+	ViewedPluginKey                 int64                      `index:"53" json:",omitempty"`
+	ViewedPluginContext             int64                      `index:"54" json:",omitempty"`
+	QuickReplyType                  int64                      `index:"55" json:",omitempty"`
+	HotEmojiSize                    int64                      `index:"56" json:",omitempty"`
+	PlatformXmdEncoded              any                        `index:"57" json:",omitempty"`
+	ReplySourceTimestampMs          int64                      `index:"58" json:",omitempty"`
+	EphemeralDurationInSec          int64                      `index:"59" json:",omitempty"`
+	MsUntilExpirationTs             int64                      `index:"60" json:",omitempty"`
+	EphemeralExpirationTs           int64                      `index:"61" json:",omitempty"`
+	TakedownState                   int64                      `index:"62" json:",omitempty"`
+	IsCollapsed                     bool                       `index:"63" json:",omitempty"`
+	SubthreadKey                    int64                      `index:"64" json:",omitempty"`
+	BotResponseID                   int64                      `index:"65" json:",omitempty"`
+	MetadataDataclass               string                     `index:"66" json:",omitempty"`
+	EditCount                       int64                      `index:"67" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"68" json:",omitempty"`
+	AdminSignatureName              string                     `index:"69" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"70" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"71" json:",omitempty"`
+	TranslatedText                  string                     `index:"72" json:",omitempty"`
+	TextDialect                     string                     `index:"73" json:",omitempty"`
+	TranslatedTextDialect           string                     `index:"74" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"75" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"76" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -513,6 +529,11 @@ type LSDeleteThenInsertMessage struct {
 	AdminSignatureName              string                     `index:"68" json:",omitempty"`
 	AdminSignatureProfileURL        string                     `index:"69" json:",omitempty"`
 	AdminSignatureCreatorType       any                        `index:"70" json:",omitempty"`
+	TranslatedText                  string                     `index:"71" json:",omitempty"`
+	TextDialect                     string                     `index:"72" json:",omitempty"`
+	TranslatedTextDialect           string                     `index:"73" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"74" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"75" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

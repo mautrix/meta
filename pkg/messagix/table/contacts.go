@@ -22,6 +22,7 @@ type LSVerifyContactRowExists struct {
 	Gender                                 Gender                    `index:"18" json:",omitempty"`
 	ContactViewerRelationship              ContactViewerRelationship `index:"19" json:",omitempty"`
 	SecondaryName                          string                    `index:"20" json:",omitempty"`
+	FirstName                              string                    `index:"21" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -78,11 +79,12 @@ type LSDeleteThenInsertContact struct {
 	ContactViewerRelationship                   ContactViewerRelationship `index:"39" json:",omitempty"`
 	Gender                                      Gender                    `index:"40" json:",omitempty"`
 	SecondaryName                               string                    `index:"41" json:",omitempty"`
-	ContactReachabilityStatusType               int64                     `index:"43" json:",omitempty"` // TODO enum
-	RestrictionType                             int64                     `index:"44" json:",omitempty"` // TODO enum
-	WaConnectStatus                             int64                     `index:"45" json:",omitempty"`
-	FbUnblockedSinceTimestampMs                 int64                     `index:"46" json:",omitempty"`
-	PageType                                    int64                     `index:"47" json:",omitempty"`
+	Username                                    string                    `index:"43" json:",omitempty"`
+	ContactReachabilityStatusType               int64                     `index:"44" json:",omitempty"` // TODO enum
+	RestrictionType                             int64                     `index:"45" json:",omitempty"` // TODO enum
+	WaConnectStatus                             int64                     `index:"46" json:",omitempty"`
+	FbUnblockedSinceTimestampMs                 int64                     `index:"47" json:",omitempty"`
+	PageType                                    int64                     `index:"48" json:",omitempty"`
 
 	// TODO figure out where this is
 	//ProfileRingState                            int64                     `index:"0" json:",omitempty"`
