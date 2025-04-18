@@ -55,33 +55,6 @@ func (m *MQTTConfig) BuildBrokerUrl() string {
 	}
 }
 
-/*
-type SiteConfig struct {
-	ServerRevision string
-	AccountId string
-	AccountIdInt int64
-	Bitmap *crypto.Bitmap
-	CSRBitmap *crypto.Bitmap
-	HasteSessionId string
-	WebSessionId string
-	CometReq string
-	LsdToken string
-	SpinT string
-	SpinB string
-	SpinR string
-	FbDtsg string
-	Jazoest string
-	Pr string
-	HasteSession string
-	ConnectionClass string
-	VersionId int64
-	X_ASDB_ID string
-	Locale string
-	LgnRnd string
-	Trynum string
-}
-*/
-
 type SprinkleConfig struct {
 	ParamName       string `json:"param_name,omitempty"`
 	ShouldRandomize bool   `json:"should_randomize,omitempty"`

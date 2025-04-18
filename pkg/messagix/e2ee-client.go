@@ -67,7 +67,7 @@ func (c *Client) refreshCAT() error {
 	}
 	c.catRefreshLock.Lock()
 	defer c.catRefreshLock.Unlock()
-	currentExpiration := time.Unix(c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken.ExpirationTimeInSeconds, 0)
+	currentExpiration := time.Unix(c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.ExpirationTimeInSeconds, 0)
 	if time.Until(currentExpiration) > 23*time.Hour {
 		c.unnecessaryCATRequests++
 		logEvt := c.Logger.Warn().Time("expiration", currentExpiration).Int("unnecessary_requests", c.unnecessaryCATRequests)
@@ -105,7 +105,7 @@ func (c *Client) refreshCAT() error {
 		return fmt.Errorf("didn't get CAT in response")
 	}
 	c.Logger.Info().Msg("Successfully refreshed crypto auth token")
-	c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken = parsedResp.Data.SecureMessageOverWACATQuery
+	c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken = parsedResp.Data.SecureMessageOverWACATQuery
 	return nil
 }
 
@@ -117,7 +117,7 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 	}
 	return &waWa6.ClientPayload{
 		Device:      proto.Uint32(uint32(c.device.ID.Device)),
-		FbCat:       []byte(c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat),
+		FbCat:       []byte(c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat),
 		FbUserAgent: []byte(UserAgent),
 		Product:     waWa6.ClientPayload_MESSENGER.Enum(),
 		Username:    proto.Uint64(userID),

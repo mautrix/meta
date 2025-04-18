@@ -27,7 +27,7 @@ func (tm *TaskManager) FinalizePayload() ([]byte, error) {
 		EpochId:     methods.GenerateEpochID(),
 		Tasks:       tm.currTasks,
 		DataTraceId: tm.traceId,
-		VersionId:   strconv.FormatInt(tm.client.configs.VersionId, 10),
+		VersionId:   strconv.FormatInt(tm.client.configs.VersionID, 10),
 	}
 	tm.currTasks = make([]socket.TaskData, 0)
 	return json.Marshal(p)

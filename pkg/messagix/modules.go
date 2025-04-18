@@ -153,8 +153,8 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 			if err != nil {
 				return fmt.Errorf("failed to parse graphql lightspeed preload request payload: %w", err)
 			}
-			m.client.configs.VersionId = syncData.Version
-			m.client.Logger.Debug().Int64("ls_version", m.client.configs.VersionId).Msg("Found LSVersion in SSJS")
+			m.client.configs.VersionID = syncData.Version
+			m.client.Logger.Debug().Int64("ls_version", m.client.configs.VersionID).Msg("Found LSVersion in SSJS")
 			break
 		}
 	case "RelayPrefetchedStreamCache":
@@ -261,7 +261,7 @@ func (m *ModuleParser) SSJSHandle(data json.RawMessage) error {
 			}
 			return fmt.Errorf("failed to unmarshal ssjs data into default_define module entries: %w", err)
 		}
-		reflectedConfigTable := reflect.ValueOf(m.client.configs.browserConfigTable).Elem()
+		reflectedConfigTable := reflect.ValueOf(m.client.configs.BrowserConfigTable).Elem()
 		for _, entry := range entries {
 			err = m.handleConfigData(entry, reflectedConfigTable)
 			if err != nil {
@@ -280,7 +280,7 @@ func (m *ModuleParser) SSJSHandle(data json.RawMessage) error {
 	} else if bboxContainer.BBox == nil {
 		return nil
 	}
-	reflectedConfigTable := reflect.ValueOf(m.client.configs.browserConfigTable).Elem()
+	reflectedConfigTable := reflect.ValueOf(m.client.configs.BrowserConfigTable).Elem()
 	for _, req := range bboxContainer.BBox.Require {
 		err = m.handleRequire(req)
 		if err != nil {
@@ -309,7 +309,7 @@ func (m *ModuleParser) HandleBootloaderPayload(payload json.RawMessage, bootload
 			if err != nil {
 				return err
 			}
-			m.client.configs.CsrBitmap.BMap = append(m.client.configs.CsrBitmap.BMap, newBits...)
+			m.client.configs.CSRBitmap.BMap = append(m.client.configs.CSRBitmap.BMap, newBits...)
 		}
 
 		if len(data.RsrcMap) > 0 {
@@ -320,7 +320,7 @@ func (m *ModuleParser) HandleBootloaderPayload(payload json.RawMessage, bootload
 					if err != nil {
 						return err
 					}
-					m.client.configs.CsrBitmap.BMap = append(m.client.configs.CsrBitmap.BMap, newBits...)
+					m.client.configs.CSRBitmap.BMap = append(m.client.configs.CSRBitmap.BMap, newBits...)
 				}
 			}
 		}

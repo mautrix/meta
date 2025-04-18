@@ -164,7 +164,7 @@ func (s *Socket) Connect() error {
 func (s *Socket) BuildBrokerURL() string {
 	query := &url.Values{}
 	query.Add("sid", strconv.FormatInt(s.sessionID, 10))
-	query.Add("cid", s.client.configs.browserConfigTable.MqttWebDeviceID.ClientID)
+	query.Add("cid", s.client.configs.BrowserConfigTable.MqttWebDeviceID.ClientID)
 
 	encodedQuery := query.Encode()
 	if strings.HasSuffix(s.broker, "?") {
@@ -401,7 +401,7 @@ type SocketLSRequestPayload struct {
 func (s *Socket) makeLSRequest(payload []byte, t int) (*Event_PublishResponse, error) {
 	packetId := s.SafePacketId()
 	lsPayload := &SocketLSRequestPayload{
-		AppId:     s.client.configs.browserConfigTable.CurrentUserInitialData.AppID,
+		AppId:     s.client.configs.BrowserConfigTable.CurrentUserInitialData.AppID,
 		Payload:   string(payload),
 		RequestId: int(packetId),
 		Type:      t,

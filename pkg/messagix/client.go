@@ -24,6 +24,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/endpoints"
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -116,13 +117,53 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 	cli.configurePlatformClient()
 	cli.configs = &Configs{
 		client:             cli,
-		browserConfigTable: &types.SchedulerJSDefineConfig{},
+		BrowserConfigTable: &types.SchedulerJSDefineConfig{},
 		Bitmap:             crypto.NewBitmap(),
-		CsrBitmap:          crypto.NewBitmap(),
+		CSRBitmap:          crypto.NewBitmap(),
 	}
 	cli.socket = cli.newSocketClient()
 
 	return cli
+}
+
+type dumpedState struct {
+	Configs     *Configs
+	SyncStore   map[int64]*socket.QueryMetadata
+	PacketsSent uint16
+	SessionID   int64
+}
+
+func (c *Client) DumpState() (json.RawMessage, error) {
+	if c.configs == nil || c.syncManager == nil || c.socket == nil || c.socket.packetsSent == 0 || !c.socket.previouslyConnected {
+		return nil, nil
+	}
+	return json.Marshal(&dumpedState{
+		Configs:     c.configs,
+		SyncStore:   c.syncManager.store,
+		PacketsSent: c.socket.packetsSent,
+		SessionID:   c.socket.sessionID,
+	})
+}
+
+func (c *Client) LoadState(state json.RawMessage) error {
+	var dumped dumpedState
+	if err := json.Unmarshal(state, &dumped); err != nil {
+		return err
+	}
+
+	c.configs = dumped.Configs
+	c.syncManager = c.newSyncManager()
+	c.syncManager.store = dumped.SyncStore
+	c.socket.packetsSent = dumped.PacketsSent
+	c.socket.sessionID = dumped.SessionID
+	if c.Platform == types.Instagram {
+		c.socket.broker = "wss://edge-chat.instagram.com/chat?"
+	} else {
+		c.socket.broker = c.configs.BrowserConfigTable.MqttWebConfig.Endpoint
+	}
+	c.socket.previouslyConnected = true
+	c.Logger.Info().Int64("session_id", c.socket.sessionID).Msg("Loaded state")
+	return nil
 }
 
 func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
@@ -145,9 +186,9 @@ func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 	}
 	var currentUser types.UserInfo
 	if c.Platform.IsMessenger() {
-		currentUser = &c.configs.browserConfigTable.CurrentUserInitialData
+		currentUser = &c.configs.BrowserConfigTable.CurrentUserInitialData
 	} else {
-		currentUser = &c.configs.browserConfigTable.PolarisViewer
+		currentUser = &c.configs.BrowserConfigTable.PolarisViewer
 	}
 	return currentUser, ls, nil
 }
@@ -322,7 +363,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 		h.Set("host", c.getEndpoint("host"))
 		h.Set("origin", c.getEndpoint("base_url"))
 		h.Set("referer", c.getEndpoint("base_url")+"/")
-		h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.browserConfigTable.SiteData.ServerRevision, 10))
+		h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.BrowserConfigTable.SiteData.ServerRevision, 10))
 		variables, err := json.Marshal(&types.InstagramCookiesVariables{
 			FirstPartyTrackingOptIn: true,
 			IgDid:                   c.cookies.Get("ig_did"),
@@ -382,9 +423,9 @@ func (c *Client) IsAuthenticated() bool {
 	}
 	var isAuthenticated bool
 	if c.Platform.IsMessenger() {
-		isAuthenticated = c.configs.browserConfigTable.CurrentUserInitialData.AccountID != "0"
+		isAuthenticated = c.configs.BrowserConfigTable.CurrentUserInitialData.AccountID != "0"
 	} else {
-		isAuthenticated = c.configs.browserConfigTable.PolarisViewer.ID != ""
+		isAuthenticated = c.configs.BrowserConfigTable.PolarisViewer.ID != ""
 	}
 	return isAuthenticated
 }
@@ -401,9 +442,9 @@ func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
 	}
 
 	if c.Platform.IsMessenger() {
-		return &c.configs.browserConfigTable.CurrentUserInitialData, nil
+		return &c.configs.BrowserConfigTable.CurrentUserInitialData, nil
 	} else {
-		return &c.configs.browserConfigTable.PolarisViewer, nil
+		return &c.configs.BrowserConfigTable.PolarisViewer, nil
 	}
 }
 

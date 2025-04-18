@@ -25,7 +25,7 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		s.client.handleEvent(&Event_Reconnected{})
 		return nil
 	}
-	appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionId)
+	appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionID)
 	if err != nil {
 		return fmt.Errorf("failed to get app settings JSON: %w", err)
 	}

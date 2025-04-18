@@ -155,6 +155,20 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 			zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled during sleep")
 			return
 		}
+	} else if state, err := m.Main.DB.PopReconnectionState(ctx, m.UserLogin.ID); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get reconnection state")
+	} else if state != nil {
+		if !m.Main.Config.CacheConnectionState {
+			zerolog.Ctx(ctx).Debug().Msg("Not using saved reconnection state as it's disabled in the config")
+		} else if err = m.Client.LoadState(state); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to load reconnection state")
+		} else {
+			zerolog.Ctx(ctx).Debug().Msg("Reconnecting with cached state")
+			m.connectWithCache(ctx)
+			return
+		}
+	} else {
+		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
 		m.Client.GetNewProxy = m.Main.getProxy
@@ -273,6 +287,22 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 	go m.periodicReconnect()
 }
 
+func (m *MetaClient) connectWithCache(ctx context.Context) {
+	go m.handleTableLoop()
+
+	err := m.Client.Connect()
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      MetaConnectError,
+		})
+		return
+	}
+
+	go m.periodicReconnect()
+}
+
 func (m *MetaClient) periodicReconnect() {
 	if m.Main.Config.ForceRefreshIntervalSeconds <= 0 {
 		return
@@ -372,12 +402,31 @@ func (m *MetaClient) connectE2EE() error {
 }
 
 func (m *MetaClient) Disconnect() {
+	state := m.disconnect(true)
+	if state != nil {
+		err := m.Main.DB.PutReconnectionState(m.UserLogin.Log.WithContext(context.Background()), m.UserLogin.ID, state)
+		if err != nil {
+			m.UserLogin.Log.Err(err).Msg("Failed to save reconnection state")
+		} else {
+			m.UserLogin.Log.Debug().Msg("Saved reconnection state")
+		}
+	}
+}
+
+func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 	if stopConnectAttempt := m.stopConnectAttempt.Swap(nil); stopConnectAttempt != nil {
 		(*stopConnectAttempt)()
 	}
 	if cli := m.Client; cli != nil {
 		cli.SetEventHandler(nil)
 		cli.Disconnect()
+		if dumpState && m.Main.Config.CacheConnectionState {
+			var err error
+			state, err = cli.DumpState()
+			if err != nil {
+				m.UserLogin.Log.Err(err).Msg("Failed to dump state")
+			}
+		}
 		m.Client = nil
 	}
 	if ecli := m.E2EEClient; ecli != nil {
@@ -393,6 +442,7 @@ func (m *MetaClient) Disconnect() {
 	if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 		(*stopPeriodicReconnect)()
 	}
+	return
 }
 
 func (m *MetaClient) IsLoggedIn() bool {
@@ -404,7 +454,7 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
-	m.Disconnect()
+	m.disconnect(false)
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete()
 		if err != nil {
@@ -427,7 +477,7 @@ func (m *MetaClient) FullReconnect() {
 	ctx := m.UserLogin.Log.WithContext(context.TODO())
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
-	m.Disconnect()
+	m.disconnect(false)
 	m.Client = messagix.NewClient(m.LoginMeta.Cookies, m.UserLogin.Log.With().Str("component", "messagix").Logger())
 	m.Client.SetEventHandler(m.handleMetaEvent)
 	m.Connect(ctx)

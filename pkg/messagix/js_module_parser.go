@@ -142,7 +142,7 @@ func (m *ModuleParser) Load(page string) error {
 	authenticated := m.client.IsAuthenticated()
 	// on certain occasions, the server does not return the lightspeed data or version
 	// when this is the case, the server "preloads" the js files in the link tags, so we need to loop through them until we can find the "LSVersion" module and extract the exported version string
-	if m.client.configs.VersionId == 0 && authenticated {
+	if m.client.configs.VersionID == 0 && authenticated {
 		m.client.Logger.Warn().Msg("Version ID not found in index page")
 		var doneCrawling bool
 		linkTags := m.findLinkTags(doc)
@@ -164,7 +164,7 @@ func (m *ModuleParser) Load(page string) error {
 	}
 
 	if m.client.Platform == types.Instagram {
-		sharedData := m.client.configs.browserConfigTable.XIGSharedData
+		sharedData := m.client.configs.BrowserConfigTable.XIGSharedData
 		err = sharedData.ParseRaw()
 		if err != nil {
 			m.client.Logger.Debug().Err(err).Str("raw_data", sharedData.Raw).Msg("Errored raw XIGSharedData")
@@ -283,7 +283,7 @@ func (m *ModuleParser) crawlJavascriptFile(href string) (bool, error) {
 			return false, err
 		}
 		m.client.Logger.Info().Int64("ls_version", versionInt).Msg("Found LSVersion")
-		m.client.configs.VersionId = versionInt
+		m.client.configs.VersionID = versionInt
 		return true, nil
 	}
 	return false, nil
@@ -313,7 +313,7 @@ func (m *ModuleParser) handleModule(data *ModuleEntry) error {
 		if string(data.Data[0]) != `"handlePayload"` {
 			return fmt.Errorf("unexpected Bootloader command %s", data.Data[0])
 		}
-		err := m.HandleBootloaderPayload(data.Data[2], &m.client.configs.browserConfigTable.BootloaderConfig)
+		err := m.HandleBootloaderPayload(data.Data[2], &m.client.configs.BrowserConfigTable.BootloaderConfig)
 		if err != nil {
 			return fmt.Errorf("failed to handle bootloader payload: %w", err)
 		}

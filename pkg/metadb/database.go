@@ -20,19 +20,24 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"errors"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 type MetaDB struct {
 	*dbutil.Database
+
+	BridgeID networkid.BridgeID
 }
 
-func New(db *dbutil.Database, log zerolog.Logger) *MetaDB {
+func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *MetaDB {
 	db = db.Child("meta_version", table, dbutil.ZeroLogger(log))
 	return &MetaDB{
+		BridgeID: bridgeID,
 		Database: db,
 	}
 }
@@ -69,6 +74,27 @@ func (db *MetaDB) GetThreadByMessage(ctx context.Context, messageID string) (thr
 		Scan(&threadKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
+	}
+	return
+}
+
+func (db *MetaDB) PutReconnectionState(ctx context.Context, loginID networkid.UserLoginID, state json.RawMessage) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_reconnection_state (bridge_id, login_id, state)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (bridge_id, login_id) DO UPDATE SET state = excluded.state
+	`, db.BridgeID, loginID, string(state))
+	return err
+}
+
+func (db *MetaDB) PopReconnectionState(ctx context.Context, loginID networkid.UserLoginID) (state json.RawMessage, err error) {
+	var stateStr string
+	err = db.QueryRow(ctx, "DELETE FROM meta_reconnection_state WHERE bridge_id = $1 AND login_id = $2 RETURNING state", db.BridgeID, loginID).
+		Scan(&stateStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	} else if err == nil {
+		state = []byte(stateStr)
 	}
 	return
 }

@@ -14,15 +14,15 @@ import (
 
 type Configs struct {
 	client             *Client
-	browserConfigTable *types.SchedulerJSDefineConfig
+	BrowserConfigTable *types.SchedulerJSDefineConfig
 	graphqlConfigTable *graphql.GraphQLTable
-	LsdToken           string
+	LSDToken           string
 	CometReq           string
-	VersionId          int64
+	VersionID          int64
 	Jazoest            string
-	WebSessionId       string
+	WebSessionID       string
 	Bitmap             *crypto.Bitmap
-	CsrBitmap          *crypto.Bitmap
+	CSRBitmap          *crypto.Bitmap
 }
 
 func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
@@ -30,15 +30,15 @@ func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
 		c.client.socket.previouslyConnected = false
 	}
 	authenticated := c.client.IsAuthenticated()
-	c.WebSessionId = methods.GenerateWebsessionID(authenticated)
-	c.LsdToken = c.browserConfigTable.LSD.Token
+	c.WebSessionID = methods.GenerateWebsessionID(authenticated)
+	c.LSDToken = c.BrowserConfigTable.LSD.Token
 
-	c.Bitmap, c.CsrBitmap = c.LoadBitmaps()
+	c.Bitmap, c.CSRBitmap = c.LoadBitmaps()
 
 	if !authenticated {
 		if c.Bitmap.CompressedStr != "" {
 			c.client.Logger.Trace().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
-			c.client.Logger.Trace().Any("value", c.CsrBitmap.CompressedStr).Msg("Loaded __csr bitmap")
+			c.client.Logger.Trace().Any("value", c.CSRBitmap.CompressedStr).Msg("Loaded __csr bitmap")
 		}
 		c.client.Logger.Debug().Any("platform", c.client.Platform).Msg("Configs loaded, but not yet logged in.")
 		return ls, nil
@@ -46,11 +46,11 @@ func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
 
 	if c.client.Platform == types.Instagram {
 		c.client.socket.broker = "wss://edge-chat.instagram.com/chat?"
-		c.browserConfigTable.MqttWebConfig.AppID = c.browserConfigTable.MessengerWebInitData.AppID
+		c.BrowserConfigTable.MqttWebConfig.AppID = c.BrowserConfigTable.MessengerWebInitData.AppID
 	} else {
-		c.client.socket.broker = c.browserConfigTable.MqttWebConfig.Endpoint
+		c.client.socket.broker = c.BrowserConfigTable.MqttWebConfig.Endpoint
 	}
-	c.client.syncManager.syncParams = &c.browserConfigTable.LSPlatformMessengerSyncParams
+	c.client.syncManager.syncParams = &c.BrowserConfigTable.LSPlatformMessengerSyncParams
 	if len(ls.LSExecuteFinallyBlockForSyncTransaction) == 0 {
 		c.client.Logger.Warn().Msg("Syncing initial data via graphql")
 		err := c.client.syncManager.UpdateDatabaseSyncParams(
@@ -81,8 +81,8 @@ func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
 		}
 	}
 	c.client.Logger.Trace().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
-	c.client.Logger.Trace().Any("value", c.CsrBitmap.CompressedStr).Msg("Loaded __csr bitmap")
-	c.client.Logger.Trace().Any("versionId", c.VersionId).Any("appId", c.browserConfigTable.MessengerWebInitData.AppID).Msg("Loaded versionId & appId")
+	c.client.Logger.Trace().Any("value", c.CSRBitmap.CompressedStr).Msg("Loaded __csr bitmap")
+	c.client.Logger.Trace().Any("versionId", c.VersionID).Any("appId", c.BrowserConfigTable.MessengerWebInitData.AppID).Msg("Loaded versionId & appId")
 	c.client.Logger.Debug().Any("broker", c.client.socket.broker).Msg("Configs successfully setup!")
 
 	return ls, nil
@@ -108,7 +108,7 @@ func (c *Configs) ParseFormInputs(inputs []InputTag, reflectedMs reflect.Value) 
 // (bitmap, csrBitmap)
 func (c *Configs) LoadBitmaps() (*crypto.Bitmap, *crypto.Bitmap) {
 	bitmap := crypto.NewBitmap().Update(c.Bitmap.BMap).ToCompressedString()
-	csrBitmap := crypto.NewBitmap().Update(c.CsrBitmap.BMap).ToCompressedString()
+	csrBitmap := crypto.NewBitmap().Update(c.CSRBitmap.BMap).ToCompressedString()
 
 	return bitmap, csrBitmap
 }

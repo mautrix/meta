@@ -54,12 +54,12 @@ func (ig *InstagramMethods) Login(identifier, password string) (*cookies.Cookies
 
 	ig.client.cookies.UpdateFromResponse(req)
 
-	err = json.Unmarshal(respBody, &ig.client.configs.browserConfigTable.XIGSharedData.ConfigData)
+	err = json.Unmarshal(respBody, &ig.client.configs.BrowserConfigTable.XIGSharedData.ConfigData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal web_shared_data_v1 resp body into *XIGSharedData.ConfigData: %w", err)
 	}
 
-	encryptionConfig := ig.client.configs.browserConfigTable.XIGSharedData.ConfigData.Encryption
+	encryptionConfig := ig.client.configs.BrowserConfigTable.XIGSharedData.ConfigData.Encryption
 	pubKeyId, err := strconv.Atoi(encryptionConfig.KeyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert keyId for instagram password encryption to int: %w", err)
@@ -248,7 +248,7 @@ func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.L
 	}
 	if newFBID == 0 {
 		newFBID = currentUser.GetFBID()
-		cuid := ig.client.configs.browserConfigTable.CurrentUserInitialData
+		cuid := ig.client.configs.BrowserConfigTable.CurrentUserInitialData
 		if strconv.FormatInt(newFBID, 10) == cuid.NonFacebookUserID && cuid.IGUserEIMU != "" {
 			newFBID, _ = strconv.ParseInt(cuid.IGUserEIMU, 10, 64)
 		}
@@ -256,7 +256,7 @@ func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.L
 			Int64("fbid", newFBID).
 			Str("non_facebook_user_id", cuid.NonFacebookUserID).
 			Str("ig_user_eimu", cuid.IGUserEIMU).
-			Str("init_data_user_id", ig.client.configs.browserConfigTable.MessengerWebInitData.UserID.String()).
+			Str("init_data_user_id", ig.client.configs.BrowserConfigTable.MessengerWebInitData.UserID.String()).
 			Msg("Own contact entry not found, falling back to fbid in current user object")
 	}
 	if newFBID == 0 {

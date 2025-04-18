@@ -88,7 +88,7 @@ func (sm *SyncManager) SyncSocketData(databaseId int64, db *socket.QueryMetadata
 	var t int
 	payload := &socket.DatabaseQuery{
 		Database: databaseId,
-		Version:  json.Number(strconv.FormatInt(sm.client.configs.VersionId, 10)),
+		Version:  json.Number(strconv.FormatInt(sm.client.configs.VersionID, 10)),
 		EpochId:  methods.GenerateEpochID(),
 	}
 
@@ -170,7 +170,7 @@ func (sm *SyncManager) SyncDataGraphQL(dbs []int64) (*table.LSTable, error) {
 		variables := &graphql.LSPlatformGraphQLLightspeedVariables{
 			Database:          int(db),
 			LastAppliedCursor: database.LastAppliedCursor,
-			Version:           sm.client.configs.VersionId,
+			Version:           sm.client.configs.VersionID,
 			EpochID:           0,
 		}
 		if database.SendSyncParams {

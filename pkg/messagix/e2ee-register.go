@@ -118,8 +118,8 @@ func (c *Client) doE2EERequest(ctx context.Context, endpoint string, body url.Va
 func (c *Client) fetchICDC(ctx context.Context, fbid int64, deviceUUID uuid.UUID) (*ICDCFetchResponse, error) {
 	formBody := url.Values{
 		"fbid":      {strconv.FormatInt(fbid, 10)},
-		"fb_cat":    {c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat},
-		"app_id":    {strconv.FormatInt(c.configs.browserConfigTable.MessengerWebInitData.AppID, 10)},
+		"fb_cat":    {c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat},
+		"app_id":    {strconv.FormatInt(c.configs.BrowserConfigTable.MessengerWebInitData.AppID, 10)},
 		"device_id": {deviceUUID.String()},
 	}
 	var icdcResp ICDCFetchResponse
@@ -192,8 +192,8 @@ func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 	}
 	formBody := url.Values{
 		"fbid":       {strconv.FormatInt(fbid, 10)},
-		"fb_cat":     {c.configs.browserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat},
-		"app_id":     {strconv.FormatInt(c.configs.browserConfigTable.MessengerWebInitData.AppID, 10)},
+		"fb_cat":     {c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat},
+		"app_id":     {strconv.FormatInt(c.configs.BrowserConfigTable.MessengerWebInitData.AppID, 10)},
 		"device_id":  {c.device.FacebookUUID.String()},
 		"e_regid":    {base64.StdEncoding.EncodeToString(binary.BigEndian.AppendUint32(nil, c.device.RegistrationID))},
 		"e_keytype":  {base64.StdEncoding.EncodeToString([]byte{ecc.DjbType})},

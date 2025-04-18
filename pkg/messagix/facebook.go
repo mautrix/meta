@@ -35,7 +35,7 @@ func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies,
 
 	fb.client.configs.Jazoest = loginForm.Jazoest
 
-	needsCookieConsent := len(fb.client.configs.browserConfigTable.InitialCookieConsent.InitialConsent) == 0
+	needsCookieConsent := len(fb.client.configs.BrowserConfigTable.InitialCookieConsent.InitialConsent) == 0
 	if needsCookieConsent {
 		err := fb.client.sendCookieConsent(moduleLoader.JSDatr)
 		if err != nil {
@@ -55,7 +55,7 @@ func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies,
 	loginForm.EncPass = encryptedPW
 	loginForm.AbTestData = data
 	loginForm.Lgndim = "eyJ3IjoyMjc1LCJoIjoxMjgwLCJhdyI6MjI3NiwiYWgiOjEyMzIsImMiOjI0fQ==" // irrelevant
-	loginForm.Lgnjs = strconv.Itoa(fb.client.configs.browserConfigTable.SiteData.SpinT)
+	loginForm.Lgnjs = strconv.Itoa(fb.client.configs.BrowserConfigTable.SiteData.SpinT)
 	loginForm.Timezone = "-120"
 
 	form, err := query.Values(&loginForm)

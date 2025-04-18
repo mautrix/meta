@@ -27,8 +27,9 @@ type Config struct {
 	DisableXMABackfill bool `yaml:"disable_xma_backfill"`
 	DisableXMAAlways   bool `yaml:"disable_xma_always"`
 
-	MinFullReconnectIntervalSeconds int `yaml:"min_full_reconnect_interval_seconds"`
-	ForceRefreshIntervalSeconds     int `yaml:"force_refresh_interval_seconds"`
+	MinFullReconnectIntervalSeconds int  `yaml:"min_full_reconnect_interval_seconds"`
+	ForceRefreshIntervalSeconds     int  `yaml:"force_refresh_interval_seconds"`
+	CacheConnectionState            bool `yaml:"cache_connection_state"`
 
 	DisplaynameTemplate string             `yaml:"displayname_template"`
 	displaynameTemplate *template.Template `yaml:"-"`
@@ -59,6 +60,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "proxy_media")
 	helper.Copy(up.Int, "min_full_reconnect_interval_seconds")
 	helper.Copy(up.Int, "force_refresh_interval_seconds")
+	helper.Copy(up.Bool, "cache_connection_state")
 	helper.Copy(up.Bool, "disable_xma_backfill")
 	helper.Copy(up.Bool, "disable_xma_always")
 }

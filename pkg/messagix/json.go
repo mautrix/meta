@@ -41,29 +41,29 @@ type Connect struct {
 
 func (s *Socket) newConnectJSON() (string, error) {
 	payload := &Connect{
-		AccountId:          s.client.configs.browserConfigTable.CurrentUserInitialData.AccountID,
+		AccountId:          s.client.configs.BrowserConfigTable.CurrentUserInitialData.AccountID,
 		SessionId:          s.client.socket.sessionID,
-		ClientCapabilities: s.client.configs.browserConfigTable.MqttWebConfig.ClientCapabilities,
-		Capabilities:       s.client.configs.browserConfigTable.MqttWebConfig.Capabilities,
-		ChatOn:             s.client.configs.browserConfigTable.MqttWebConfig.ChatVisibility,
+		ClientCapabilities: s.client.configs.BrowserConfigTable.MqttWebConfig.ClientCapabilities,
+		Capabilities:       s.client.configs.BrowserConfigTable.MqttWebConfig.Capabilities,
+		ChatOn:             s.client.configs.BrowserConfigTable.MqttWebConfig.ChatVisibility,
 		Fg:                 false,
 		ConnectionType:     s.client.socket.getConnectionType(),
 		MqttSid:            "",
-		AppId:              s.client.configs.browserConfigTable.MqttWebConfig.AppID,
-		SubscribedTopics:   s.client.configs.browserConfigTable.MqttWebConfig.SubscribedTopics,
+		AppId:              s.client.configs.BrowserConfigTable.MqttWebConfig.AppID,
+		SubscribedTopics:   s.client.configs.BrowserConfigTable.MqttWebConfig.SubscribedTopics,
 		PostMessage:        make([]ConnectPostMessage, 0),
 		Dc:                 "",
 		NoAutoFg:           true,
 		Gas:                nil,
 		Pack:               make([]any, 0),
-		HostNameOverride:   s.client.configs.browserConfigTable.MqttWebConfig.HostNameOverride,
+		HostNameOverride:   s.client.configs.BrowserConfigTable.MqttWebConfig.HostNameOverride,
 		P:                  nil,
 		UserAgent:          UserAgent,
 		Aids:               nil,
-		Cid:                s.client.configs.browserConfigTable.MqttWebDeviceID.ClientID,
+		Cid:                s.client.configs.BrowserConfigTable.MqttWebDeviceID.ClientID,
 	}
 	if s.previouslyConnected {
-		appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionId)
+		appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionID)
 		if err != nil {
 			return "", err
 		}

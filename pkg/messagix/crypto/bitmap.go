@@ -9,8 +9,8 @@ import (
 const charMap = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_"
 
 type Bitmap struct {
-	BMap          []int
-	CompressedStr string
+	BMap          []int  `json:"-"`
+	CompressedStr string `json:"compressed_str"`
 }
 
 func NewBitmap() *Bitmap {
@@ -83,6 +83,7 @@ func encodeRunLength(num int) string {
 }
 
 // CUSTOM "BASE64" IMPLEMENTATION, DON'T CHANGE
+// TODO change
 func encodeBase64(binaryStr string) string {
 	for len(binaryStr)%6 != 0 {
 		binaryStr += "0"
