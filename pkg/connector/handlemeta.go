@@ -150,7 +150,9 @@ func (m *MetaClient) handleTableLoop() {
 	for {
 		select {
 		case tbl := <-m.incomingTables:
+			m.notifyBackgroundConnAboutEvent(true)
 			m.handleTable(ctx, tbl)
+			m.notifyBackgroundConnAboutEvent(false)
 		case <-ctx.Done():
 			return
 		}

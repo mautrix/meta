@@ -42,6 +42,10 @@ type MetaClient struct {
 	connectLock        sync.Mutex
 	stopConnectAttempt atomic.Pointer[context.CancelFunc]
 
+	connectBackgroundEvt           chan connectBackgroundEvent
+	connectBackgroundWAOfflineSync *exsync.Event
+	connectBackgroundWAEventCount  atomic.Uint32
+
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	lastFullReconnect     time.Time
 	connectWaiter         *exsync.Event
@@ -71,6 +75,8 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 		incomingTables:     make(chan *table.LSTable, 16),
 		backfillCollectors: make(map[int64]*BackfillCollector),
+
+		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 
 		connectWaiter:     exsync.NewEvent(),
 		e2eeConnectWaiter: exsync.NewEvent(),

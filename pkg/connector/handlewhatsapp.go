@@ -53,6 +53,11 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 			},
 			Targets: targets,
 		})
+	case *events.OfflineSyncPreview:
+		m.connectBackgroundWAEventCount.Store(uint32(evt.Messages))
+	case *events.OfflineSyncCompleted:
+		m.connectBackgroundWAOfflineSync.Set()
+		log.Debug().Int("event_count", evt.Count).Msg("WhatsApp offline sync completed")
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		m.e2eeConnectWaiter.Set()

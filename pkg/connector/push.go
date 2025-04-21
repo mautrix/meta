@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -28,7 +30,10 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
-var _ bridgev2.PushableNetworkAPI = (*MetaClient)(nil)
+var (
+	_ bridgev2.PushableNetworkAPI          = (*MetaClient)(nil)
+	_ bridgev2.BackgroundSyncingNetworkAPI = (*MetaClient)(nil)
+)
 
 var pushCfg = &bridgev2.PushConfig{
 	Web: &bridgev2.WebPushConfig{VapidKey: "BIBn3E_rWTci8Xn6P9Xj3btShT85Wdtne0LtwNUyRQ5XjFNkuTq9j4MPAVLvAFhXrUU1A9UxyxBA7YIOjqDIDHI"},
@@ -83,5 +88,65 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 		return m.Client.Facebook.RegisterPushNotifications(token, keys)
 	} else {
 		return m.Client.Instagram.RegisterPushNotifications(token, keys)
+	}
+}
+
+func (m *MetaClient) notifyBackgroundConnAboutEvent(isProcessing bool) {
+	if ch := m.connectBackgroundEvt; ch != nil {
+		select {
+		case ch <- connectBackgroundEvent{isProcessing}:
+		default:
+		}
+	}
+}
+
+type connectBackgroundEvent struct {
+	isProcessing bool
+}
+
+func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
+	evtChan := make(chan connectBackgroundEvent, 8)
+	m.connectBackgroundWAOfflineSync.Clear()
+	m.connectBackgroundEvt = evtChan
+	defer func() {
+		m.connectBackgroundEvt = nil
+	}()
+	go m.Connect(ctx)
+	timer := time.NewTimer(10 * time.Second)
+	anythingReceived := false
+	isProcessing := false
+	waCount := 0
+	waDone := false
+	for {
+		select {
+		case <-timer.C:
+			zerolog.Ctx(ctx).Debug().
+				Bool("fb_tables_received", anythingReceived).
+				Bool("fb_table_processing", isProcessing).
+				Bool("wa_queue_empty", waDone).
+				Int("wa_message_count", waCount).
+				Msg("Closing background connection")
+			m.Disconnect()
+			return nil
+		case <-m.connectBackgroundWAOfflineSync.GetChan():
+			waDone = true
+			waCount = int(m.connectBackgroundWAEventCount.Load())
+			if (anythingReceived || waCount > 0) && !isProcessing {
+				timer.Reset(1 * time.Second)
+			}
+		case evt := <-evtChan:
+			anythingReceived = true
+			if evt.isProcessing {
+				isProcessing = true
+				timer.Reset(10 * time.Second)
+			} else {
+				isProcessing = false
+				if waDone {
+					timer.Reset(2 * time.Second)
+				} else {
+					timer.Reset(10 * time.Second)
+				}
+			}
+		}
 	}
 }
