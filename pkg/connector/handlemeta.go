@@ -80,6 +80,7 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 			m.incomingTables <- tbl
 		}
 		if m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE {
+			m.firstE2EEConnectDone = true
 			go m.tryConnectE2EE(false)
 		}
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
@@ -92,6 +93,10 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 		}
 		m.UserLogin.BridgeState.Send(m.metaState)
 	case *messagix.Event_Reconnected:
+		if !m.firstE2EEConnectDone && (m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE) {
+			m.firstE2EEConnectDone = true
+			go m.tryConnectE2EE(false)
+		}
 		log.Debug().Msg("Reconnected to Meta socket")
 		m.connectWaiter.Set()
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}

@@ -46,6 +46,7 @@ type MetaClient struct {
 	lastFullReconnect     time.Time
 	connectWaiter         *exsync.Event
 	e2eeConnectWaiter     *exsync.Event
+	firstE2EEConnectDone  bool
 
 	E2EEClient      *whatsmeow.Client
 	WADevice        *store.Device
