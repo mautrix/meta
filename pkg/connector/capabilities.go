@@ -42,7 +42,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 6
+	return 1, 7
 }
 
 const MaxTextLength = 20000
@@ -58,7 +58,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_04_15"
+	base := "fi.mau.meta.capabilities.2025_04_21"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -168,6 +168,8 @@ func init() {
 		// (works fine on Messenger iOS and Android though)
 		metaCapsWithE2E.File[key].Caption = event.CapLevelDropped
 	}
+	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
+	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
 
 	igCaps = ptr.Clone(metaCaps)
 	igCaps.File = maps.Clone(igCaps.File)
