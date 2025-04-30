@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -285,12 +286,22 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		ctx := log.WithContext(ctx)
 		sender := m.makeEventSender(msg.SenderId)
 		intent := portal.GetIntentFor(ctx, sender, m.UserLogin, bridgev2.RemoteEventBackfill)
+		parsedTS, err := methods.ParseMessageID(msg.MessageId)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to parse message ID in backfill")
+		} else if parsedTS != msg.TimestampMs {
+			log.Warn().
+				Int64("parsed_ts", parsedTS).
+				Int64("timestamp_ms", msg.TimestampMs).
+				Msg("Message ID timestamp mismatch in backfill")
+		}
 		wrappedMessages[i] = &bridgev2.BackfillMessage{
 			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, intent, msg, m.Main.Config.DisableXMABackfill || m.Main.Config.DisableXMAAlways),
 			Sender:           sender,
 			ID:               metaid.MakeFBMessageID(msg.MessageId),
 			Timestamp:        time.UnixMilli(msg.TimestampMs),
 			Reactions:        make([]*bridgev2.BackfillReaction, len(msg.Reactions)),
+			StreamOrder:      msg.TimestampMs,
 
 			//ShouldBackfillThread: msg.SubthreadKey != 0,
 		}
