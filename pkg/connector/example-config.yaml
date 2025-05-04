@@ -2,12 +2,13 @@
 # * unset - allow users to pick any service when logging in (except facebook-tor)
 # * facebook - connect to FB Messenger via facebook.com
 # * facebook-tor - connect to FB Messenger via facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion
-#                  (note: does not currently proxy media downloads)
 # * messenger - connect to FB Messenger via messenger.com (can be used with the facebook side deactivated)
 # * instagram - connect to Instagram DMs via instagram.com
 #
 # Remember to change the appservice id, bot profile info, bridge username_template and management_room_text too.
 mode:
+# Should users be allowed to pick messenger.com login when mode is set to `facebook`?
+allow_messenger_com_on_fb: false
 
 # When in Instagram mode, should the bridge connect to WhatsApp servers for encrypted chats?
 # In FB/Messenger mode encryption is always enabled, this option only affects Instagram mode.

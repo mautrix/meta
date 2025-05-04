@@ -20,6 +20,8 @@ type Config struct {
 	Mode    types.Platform `yaml:"-"`
 	IGE2EE  bool           `yaml:"ig_e2ee"`
 
+	AllowMessengerComOnFB bool `yaml:"allow_messenger_com_on_fb"`
+
 	Proxy        string `yaml:"proxy"`
 	GetProxyFrom string `yaml:"get_proxy_from"`
 	ProxyMedia   bool   `yaml:"proxy_media"`
@@ -53,6 +55,7 @@ func (c *Config) PostProcess() (err error) {
 
 func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "mode")
+	helper.Copy(up.Bool, "allow_messenger_com_on_fb")
 	helper.Copy(up.Bool, "ig_e2ee")
 	helper.Copy(up.Str, "displayname_template")
 	helper.Copy(up.Str|up.Null, "proxy")

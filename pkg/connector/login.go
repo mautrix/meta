@@ -71,7 +71,12 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	switch m.Config.Mode {
 	case types.Unset:
 		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram}
-	case types.Facebook, types.FacebookTor:
+	case types.Facebook:
+		if m.Config.AllowMessengerComOnFB {
+			return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger}
+		}
+		fallthrough
+	case types.FacebookTor:
 		return []bridgev2.LoginFlow{loginFlowFacebook}
 	case types.Messenger:
 		return []bridgev2.LoginFlow{loginFlowMessenger}
