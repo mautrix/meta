@@ -91,14 +91,15 @@ func (c *Client) newHTTPQuery() *HttpQuery {
 const MaxHTTPRetries = 5
 
 var (
-	ErrTokenInvalidated   = errors.New("access token is no longer valid")
-	ErrChallengeRequired  = errors.New("challenge required")
-	ErrConsentRequired    = errors.New("consent required")
-	ErrAccountSuspended   = errors.New("account suspended")
-	ErrRequestFailed      = errors.New("failed to send request")
-	ErrResponseReadFailed = errors.New("failed to read response body")
-	ErrMaxRetriesReached  = errors.New("maximum retries reached")
-	ErrTooManyRedirects   = errors.New("too many redirects")
+	ErrTokenInvalidated         = errors.New("access token is no longer valid")
+	ErrTokenInvalidatedRedirect = fmt.Errorf("%w: redirected", ErrTokenInvalidated)
+	ErrChallengeRequired        = errors.New("challenge required")
+	ErrConsentRequired          = errors.New("consent required")
+	ErrAccountSuspended         = errors.New("account suspended")
+	ErrRequestFailed            = errors.New("failed to send request")
+	ErrResponseReadFailed       = errors.New("failed to read response body")
+	ErrMaxRetriesReached        = errors.New("maximum retries reached")
+	ErrTooManyRedirects         = errors.New("too many redirects")
 )
 
 func isPermanentRequestError(err error) bool {
@@ -138,6 +139,9 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 		if (cookie.Name == "xs" || cookie.Name == "sessionid") && cookie.MaxAge < 0 {
 			return fmt.Errorf("%w: %s cookie was deleted", ErrTokenInvalidated, cookie.Name)
 		}
+	}
+	if req.URL.Path == "/login.php" {
+		return fmt.Errorf("%w to %s", ErrTokenInvalidatedRedirect, req.URL.String())
 	}
 	return nil
 }

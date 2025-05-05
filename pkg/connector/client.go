@@ -194,10 +194,14 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 			(*stopPeriodicReconnect)()
 		}
 		if errors.Is(err, messagix.ErrTokenInvalidated) {
-			m.UserLogin.BridgeState.Send(status.BridgeState{
+			state := status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      MetaCookieRemoved,
-			})
+			}
+			if errors.Is(err, messagix.ErrTokenInvalidatedRedirect) {
+				state.Error = MetaRedirectedToLoginPage
+			}
+			m.UserLogin.BridgeState.Send(state)
 			m.Client = nil
 			m.LoginMeta.Cookies = nil
 			err = m.UserLogin.Save(ctx)
