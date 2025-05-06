@@ -126,12 +126,15 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	case types.Facebook, types.FacebookTor:
 		step.CookiesParams.URL = "https://www.facebook.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "facebook.com")
+		step.CookiesParams.WaitForURLPattern = "^https://www\\.facebook\\.com/(?:messages/(?:e2ee/)?(?:t/[0-9]+/?)?)?$"
 	case types.Messenger:
 		step.CookiesParams.URL = "https://www.messenger.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
+		step.CookiesParams.WaitForURLPattern = "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?$"
 	case types.Instagram:
 		step.CookiesParams.URL = "https://www.instagram.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.IGRequiredCookies, "instagram.com")
+		step.CookiesParams.WaitForURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?$"
 	default:
 		return nil, fmt.Errorf("unknown mode %s", m.Mode)
 	}
