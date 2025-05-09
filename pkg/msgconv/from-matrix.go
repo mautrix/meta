@@ -33,7 +33,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
-	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -47,9 +46,10 @@ func (mc *MessageConverter) ToMeta(
 	content *event.MessageEventContent,
 	replyTo *database.Message,
 	threadRoot *database.Message,
+	otid int64,
 	relaybotFormatted bool,
 	portal *bridgev2.Portal,
-) ([]socket.Task, int64, error) {
+) ([]socket.Task, error) {
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage
 	}
@@ -57,7 +57,7 @@ func (mc *MessageConverter) ToMeta(
 	threadID := metaid.ParseFBPortalID(portal.ID)
 	task := &socket.SendMessageTask{
 		ThreadId:         threadID,
-		Otid:             methods.GenerateEpochID(),
+		Otid:             otid,
 		Source:           table.MESSENGER_INBOX_IN_THREAD,
 		InitiatingSource: table.FACEBOOK_INBOX,
 		SendType:         table.TEXT,
@@ -115,12 +115,12 @@ func (mc *MessageConverter) ToMeta(
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
 		resp, err := mc.reuploadFileToMeta(ctx, client, portal, content)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		attachmentID := resp.Payload.RealMetadata.GetFbId()
 		if attachmentID == 0 {
 			zerolog.Ctx(ctx).Warn().RawJSON("response", resp.Raw).Msg("No fbid received for upload")
-			return nil, 0, fmt.Errorf("failed to upload attachment: fbid not received")
+			return nil, fmt.Errorf("failed to upload attachment: fbid not received")
 		}
 		task.SendType = table.MEDIA
 		task.AttachmentFBIds = []int64{attachmentID}
@@ -132,7 +132,7 @@ func (mc *MessageConverter) ToMeta(
 		// TODO implement
 		fallthrough
 	default:
-		return nil, 0, fmt.Errorf("%w %s", bridgev2.ErrUnsupportedMessageType, content.MsgType)
+		return nil, fmt.Errorf("%w %s", bridgev2.ErrUnsupportedMessageType, content.MsgType)
 	}
 	readTask := &socket.ThreadMarkReadTask{
 		ThreadId:  task.ThreadId,
@@ -140,7 +140,7 @@ func (mc *MessageConverter) ToMeta(
 
 		LastReadWatermarkTs: time.Now().UnixMilli(),
 	}
-	return []socket.Task{task, readTask}, task.Otid, nil
+	return []socket.Task{task, readTask}, nil
 }
 
 const mentionLocator = "meta_mention_"
