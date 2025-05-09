@@ -100,6 +100,9 @@ func (rpsc *RelayPrefetchedStreamCache) UnmarshalJSON(data []byte) error {
 }
 
 func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
+	if strings.HasPrefix(data.Name, "CometPlatformRootClient@") {
+		data.Name = "CometPlatformRootClient"
+	}
 	switch data.Name {
 	case "CometPlatformRootClient":
 		var cometType string
