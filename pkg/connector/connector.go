@@ -42,7 +42,7 @@ func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
 }
 
 func (m *MetaConnector) Start(ctx context.Context) error {
-	err := m.DeviceStore.Upgrade()
+	err := m.DeviceStore.Upgrade(ctx)
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}
 	}

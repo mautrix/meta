@@ -366,10 +366,10 @@ func (m *MetaClient) connectE2EE() error {
 		return fmt.Errorf("already connected to e2ee")
 	}
 	log := m.UserLogin.Log.With().Str("component", "e2ee").Logger()
-	ctx := log.WithContext(context.TODO())
+	ctx := log.WithContext(m.Main.Bridge.BackgroundCtx)
 	var err error
 	if m.WADevice == nil && m.LoginMeta.WADeviceID != 0 {
-		m.WADevice, err = m.Main.DeviceStore.GetDevice(waTypes.JID{User: string(m.UserLogin.ID), Device: m.LoginMeta.WADeviceID, Server: waTypes.MessengerServer})
+		m.WADevice, err = m.Main.DeviceStore.GetDevice(ctx, waTypes.JID{User: string(m.UserLogin.ID), Device: m.LoginMeta.WADeviceID, Server: waTypes.MessengerServer})
 		if err != nil {
 			return fmt.Errorf("failed to get whatsmeow device: %w", err)
 		} else if m.WADevice == nil {
@@ -391,7 +391,7 @@ func (m *MetaClient) connectE2EE() error {
 			return fmt.Errorf("failed to register e2ee device: %w", err)
 		}
 		m.LoginMeta.WADeviceID = m.WADevice.ID.Device
-		err = m.WADevice.Save()
+		err = m.WADevice.Save(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to save whatsmeow device store: %w", err)
 		}
@@ -403,6 +403,10 @@ func (m *MetaClient) connectE2EE() error {
 	m.E2EEClient, err = m.Client.PrepareE2EEClient()
 	if err != nil {
 		return fmt.Errorf("failed to prepare e2ee client: %w", err)
+	}
+	if bridgev2.PortalEventBuffer == 0 {
+		m.E2EEClient.SynchronousAck = true
+		m.E2EEClient.EnableDecryptedEventBuffer = true
 	}
 	m.E2EEClient.AddEventHandler(m.e2eeEventHandler)
 	err = m.E2EEClient.Connect()
@@ -467,7 +471,7 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	m.disconnect(false)
 	if dev := m.WADevice; dev != nil {
-		err := dev.Delete()
+		err := dev.Delete(ctx)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to delete device from store")
 		}

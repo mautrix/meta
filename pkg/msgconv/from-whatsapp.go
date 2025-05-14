@@ -150,7 +150,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	client := ctx.Value(contextKeyWAClient).(*whatsmeow.Client)
 	intent := ctx.Value(contextKeyIntent).(bridgev2.MatrixAPI)
 	portal := ctx.Value(contextKeyPortal).(*bridgev2.Portal)
-	data, err := client.DownloadFB(transport.GetIntegral(), mediaType)
+	data, err := client.DownloadFB(ctx, transport.GetIntegral(), mediaType)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}

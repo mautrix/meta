@@ -98,7 +98,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 			if e.Reason == events.ConnectFailureNotFound {
 				if cli := m.E2EEClient; cli != nil {
 					cli.Disconnect()
-					err := m.WADevice.Delete()
+					err := m.WADevice.Delete(log.WithContext(m.Main.Bridge.BackgroundCtx))
 					if err != nil {
 						log.Err(err).Msg("Failed to delete WhatsApp device after 415 error")
 					}
