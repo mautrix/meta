@@ -18,6 +18,7 @@ package msgconv
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -150,6 +151,37 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	client := ctx.Value(contextKeyWAClient).(*whatsmeow.Client)
 	intent := ctx.Value(contextKeyIntent).(bridgev2.MatrixAPI)
 	portal := ctx.Value(contextKeyPortal).(*bridgev2.Portal)
+
+	if mc.DirectMedia {
+		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
+		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsApp, portal.Receiver, msgID)
+		content := &event.MessageEventContent{
+			Info: &event.FileInfo{},
+		}
+		var err error
+		content.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
+		if err != nil {
+			return nil, err
+		}
+		directMediaMeta, err := json.Marshal(DirectMediaWhatsApp{
+			Key:        transport.Integral.MediaKey,
+			Type:       mediaType,
+			SHA256:     transport.Integral.FileSHA256,
+			EncSHA256:  transport.Integral.FileEncSHA256,
+			DirectPath: *transport.Integral.DirectPath,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &bridgev2.ConvertedMessagePart{
+			Type:    event.EventMessage,
+			Content: content,
+			DBMetadata: &metaid.MessageMetadata{
+				DirectMediaMeta: directMediaMeta,
+			},
+			Extra: make(map[string]any),
+		}, nil
+	}
 	data, err := client.DownloadFB(ctx, transport.GetIntegral(), mediaType)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
@@ -468,6 +500,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, portal *bridge
 	ctx = context.WithValue(ctx, contextKeyWAClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
+	ctx = context.WithValue(ctx, contextKeyMsgID, metaid.MakeWAMessageID(evt.Info.Chat, evt.Info.Sender, evt.Info.ID))
 	cm := &bridgev2.ConvertedMessage{}
 
 	var replyOverride *waCommon.MessageKey

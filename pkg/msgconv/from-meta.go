@@ -18,6 +18,7 @@ package msgconv
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -87,6 +88,7 @@ func (mc *MessageConverter) ToMatrix(
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 	ctx = context.WithValue(ctx, contextKeyFetchXMA, !disableXMA)
+	ctx = context.WithValue(ctx, contextKeyMsgID, metaid.MakeFBMessageID(msg.MessageId))
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
@@ -723,6 +725,70 @@ func (mc *MessageConverter) reuploadAttachment(
 	if url == "" {
 		return nil, ErrURLNotFound
 	}
+
+	portal := ctx.Value(contextKeyPortal).(*bridgev2.Portal)
+	content := &event.MessageEventContent{
+		Info: &event.FileInfo{},
+	}
+	extra := map[string]any{}
+	if attachmentType == table.AttachmentTypeAnimatedImage && mimeType == "video/mp4" {
+		extra["info"] = map[string]any{
+			"fi.mau.gif":           true,
+			"fi.mau.loop":          true,
+			"fi.mau.autoplay":      true,
+			"fi.mau.hide_controls": true,
+			"fi.mau.no_audio":      true,
+		}
+	}
+	eventType := event.EventMessage
+	switch attachmentType {
+	case table.AttachmentTypeSticker:
+		eventType = event.EventSticker
+	case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
+		content.MsgType = event.MsgImage
+	case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
+		content.MsgType = event.MsgVideo
+	case table.AttachmentTypeFile:
+		content.MsgType = event.MsgFile
+	case table.AttachmentTypeAudio:
+		content.MsgType = event.MsgAudio
+	default:
+		switch strings.Split(mimeType, "/")[0] {
+		case "image":
+			content.MsgType = event.MsgImage
+		case "video":
+			content.MsgType = event.MsgVideo
+		case "audio":
+			content.MsgType = event.MsgAudio
+		default:
+			content.MsgType = event.MsgFile
+		}
+	}
+
+	if mc.DirectMedia {
+		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
+		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeMeta, portal.Receiver, msgID)
+		var err error
+		content.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
+		if err != nil {
+			return nil, err
+		}
+		directMediaMeta, err := json.Marshal(DirectMediaMeta{
+			MimeType: mimeType,
+			URL:      url,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &bridgev2.ConvertedMessagePart{
+			Type:    event.EventMessage,
+			Content: content,
+			DBMetadata: &metaid.MessageMetadata{
+				DirectMediaMeta: directMediaMeta,
+			},
+		}, nil
+	}
+
 	size, reader, err := DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
 	if err != nil {
 		if errors.Is(err, ErrTooLargeFile) {
@@ -730,17 +796,12 @@ func (mc *MessageConverter) reuploadAttachment(
 		}
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
-	content := &event.MessageEventContent{
-		Info: &event.FileInfo{
-			Size: int(size),
-		},
-	}
+	content.Info.Size = int(size)
 	needVoiceConvert := attachmentType == table.AttachmentTypeAudio && ffmpeg.Supported()
 	needMime := mimeType == ""
 	needImageSize := (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0)
 	requireFile := needVoiceConvert || needMime || needImageSize
 	intent := ctx.Value(contextKeyIntent).(bridgev2.MatrixAPI)
-	portal := ctx.Value(contextKeyPortal).(*bridgev2.Portal)
 	content.URL, content.File, err = intent.UploadMediaStream(ctx, portal.MXID, size, requireFile, func(dest io.Writer) (*bridgev2.FileStreamResult, error) {
 		_, err := io.Copy(dest, reader)
 		if err != nil {
@@ -803,46 +864,12 @@ func (mc *MessageConverter) reuploadAttachment(
 	if err != nil {
 		return nil, err
 	}
-	extra := map[string]any{}
 	content.Body = fileName
 	content.Info.MimeType = mimeType
 	content.Info.Duration = duration
 	content.Info.Width = width
 	content.Info.Height = height
 
-	if attachmentType == table.AttachmentTypeAnimatedImage && mimeType == "video/mp4" {
-		extra["info"] = map[string]any{
-			"fi.mau.gif":           true,
-			"fi.mau.loop":          true,
-			"fi.mau.autoplay":      true,
-			"fi.mau.hide_controls": true,
-			"fi.mau.no_audio":      true,
-		}
-	}
-	eventType := event.EventMessage
-	switch attachmentType {
-	case table.AttachmentTypeSticker:
-		eventType = event.EventSticker
-	case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
-		content.MsgType = event.MsgImage
-	case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
-		content.MsgType = event.MsgVideo
-	case table.AttachmentTypeFile:
-		content.MsgType = event.MsgFile
-	case table.AttachmentTypeAudio:
-		content.MsgType = event.MsgAudio
-	default:
-		switch strings.Split(mimeType, "/")[0] {
-		case "image":
-			content.MsgType = event.MsgImage
-		case "video":
-			content.MsgType = event.MsgVideo
-		case "audio":
-			content.MsgType = event.MsgAudio
-		default:
-			content.MsgType = event.MsgFile
-		}
-	}
 	if content.Body == "" {
 		content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
 	} else if content.MsgType != "" && !strings.ContainsRune(content.Body, '.') {

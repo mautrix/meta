@@ -31,6 +31,7 @@ type MessageConverter struct {
 	BridgeMode  types.Platform
 	HTMLParser  *format.HTMLParser
 	DB          *metadb.MetaDB
+	DirectMedia bool
 }
 
 func New(br *bridgev2.Bridge, db *metadb.MetaDB) *MessageConverter {
@@ -71,4 +72,5 @@ const (
 	contextKeyIntent
 	contextKeyPortal
 	contextKeyFetchXMA
+	contextKeyMsgID
 )
