@@ -126,6 +126,10 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 	return cli
 }
 
+func (c *Client) GetCookies() *cookies.Cookies {
+	return c.cookies
+}
+
 type dumpedState struct {
 	Configs     *Configs
 	SyncStore   map[int64]*socket.QueryMetadata

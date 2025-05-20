@@ -49,6 +49,33 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 	}, nil
 }
 
+// This creates a user login using credentials transferred from another instance of the meta bridge,
+// via the `ExportCredentials` API.
+func (m *MetaConnector) CreateUserLoginFromCredentials(ctx context.Context, user *bridgev2.User, credentials any) error {
+	creds, ok := credentials.(map[string]any)
+	if !ok {
+		return fmt.Errorf("invalid credentials type: %T", credentials)
+	}
+	cleanCreds := make(map[string]string, len(creds))
+	for k, v := range creds {
+		cleanCreds[k] = v.(string)
+	}
+
+	login, err := m.CreateLogin(ctx, user, FlowIDFacebookCookies)
+	if err != nil {
+		return err
+	}
+
+	step, err := login.(bridgev2.LoginProcessCookies).SubmitCookies(ctx, cleanCreds)
+	if err != nil {
+		return err
+	} else if step.Type != bridgev2.LoginStepTypeComplete {
+		return fmt.Errorf("expected complete step from credential login, got: %s", step.Type)
+	}
+
+	return nil
+}
+
 var (
 	loginFlowFacebook = bridgev2.LoginFlow{
 		Name:        "facebook.com",

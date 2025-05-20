@@ -93,8 +93,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 }
 
 var (
-	_ bridgev2.NetworkAPI      = (*MetaClient)(nil)
-	_ status.BridgeStateFiller = (*MetaClient)(nil)
+	_ bridgev2.NetworkAPI                    = (*MetaClient)(nil)
+	_ bridgev2.CredentialExportingNetworkAPI = (*MetaClient)(nil)
+	_ status.BridgeStateFiller               = (*MetaClient)(nil)
 )
 
 type respGetProxy struct {
@@ -131,6 +132,13 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 	return respData.ProxyURL, nil
+}
+
+func (m *MetaClient) ExportCredentials(ctx context.Context) any {
+	if m.Client == nil {
+		return nil
+	}
+	return m.Client.GetCookies()
 }
 
 func (m *MetaClient) Connect(ctx context.Context) {
