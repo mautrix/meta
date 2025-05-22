@@ -29,6 +29,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
+	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
@@ -200,3 +201,41 @@ func downloadChunkedVideo(ctx context.Context, mime, url string, maxSize int64) 
 		totalSize: resp.ContentLength,
 	}, nil
 }
+
+type DirectMediaMeta struct {
+	MimeType string `json:"mime_type"`
+	URL      string `json:"url"`
+}
+
+type DirectMediaWhatsApp struct {
+	Key        []byte              `json:"key"`
+	Type       whatsmeow.MediaType `json:"type"`
+	SHA256     []byte              `json:"sha256"`
+	EncSHA256  []byte              `json:"enc_sha256"`
+	DirectPath string              `json:"direct_path"`
+}
+
+func (f *DirectMediaWhatsApp) GetDirectPath() string {
+	return f.DirectPath
+}
+
+func (f *DirectMediaWhatsApp) GetMediaType() whatsmeow.MediaType {
+	return f.Type
+}
+
+func (f *DirectMediaWhatsApp) GetMediaKey() []byte {
+	return f.Key
+}
+
+func (f *DirectMediaWhatsApp) GetFileSHA256() []byte {
+	return f.SHA256
+}
+
+func (f *DirectMediaWhatsApp) GetFileEncSHA256() []byte {
+	return f.EncSHA256
+}
+
+var (
+	_ whatsmeow.DownloadableMessage = (*DirectMediaWhatsApp)(nil)
+	_ whatsmeow.MediaTypeable       = (*DirectMediaWhatsApp)(nil)
+)

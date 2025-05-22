@@ -3,6 +3,7 @@ package metaid
 import (
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/json"
 	"sync/atomic"
 
 	"go.mau.fi/util/exerrors"
@@ -16,7 +17,8 @@ import (
 )
 
 type MessageMetadata struct {
-	EditTimestamp int64 `json:"edit_timestamp,omitempty"`
+	EditTimestamp   int64           `json:"edit_timestamp,omitempty"`
+	DirectMediaMeta json.RawMessage `json:"direct_media_meta,omitempty"`
 }
 
 type GhostMetadata struct {
