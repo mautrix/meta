@@ -223,6 +223,7 @@ func (mc *MessageConverter) ToMatrix(
 			part.Content.Mentions = &event.Mentions{}
 		}
 	}
+	cm.MergeCaption()
 	return cm
 }
 
