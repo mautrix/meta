@@ -17,18 +17,18 @@ import (
 
 var _ bridgev2.DirectMediableNetwork = (*MetaConnector)(nil)
 
-func (mc *MetaConnector) SetUseDirectMedia() {
-	mc.MsgConv.DirectMedia = true
+func (m *MetaConnector) SetUseDirectMedia() {
+	m.MsgConv.DirectMedia = true
 }
 
-func (mc *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID, params map[string]string) (mediaproxy.GetMediaResponse, error) {
+func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID, params map[string]string) (mediaproxy.GetMediaResponse, error) {
 	mediaInfo, err := metaid.ParseMediaID(mediaID)
 	if err != nil {
 		return nil, err
 	}
 	zerolog.Ctx(ctx).Trace().Any("mediaInfo", mediaInfo).Any("err", err).Msg("download direct media")
 
-	msg, err := mc.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
+	msg, err := m.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
 	if err != nil {
 		return nil, nil
 	} else if msg == nil {
@@ -48,7 +48,7 @@ func (mc *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID
 			return nil, err
 		}
 
-		size, reader, err := msgconv.DownloadMedia(ctx, info.MimeType, info.URL, mc.MsgConv.MaxFileSize)
+		size, reader, err := msgconv.DownloadMedia(ctx, info.MimeType, info.URL, m.MsgConv.MaxFileSize)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +65,7 @@ func (mc *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID
 			return nil, err
 		}
 
-		ul := mc.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
+		ul := m.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 		if ul == nil || !ul.Client.IsLoggedIn() {
 			return nil, fmt.Errorf("no logged in user found")
 		}

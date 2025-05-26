@@ -165,7 +165,7 @@ func (evt *FBMessageEvent) GetStreamOrder() int64 {
 }
 
 func (evt *FBMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, evt.m.Client, intent, evt.WrappedMessage, evt.m.Main.Config.DisableXMAAlways), nil
+	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, evt.m.Client, intent, evt.GetID(), evt.WrappedMessage, evt.m.Main.Config.DisableXMAAlways), nil
 }
 
 type FBEditEvent struct {
@@ -457,7 +457,7 @@ func (evt *WAMessageEvent) GetStreamOrder() int64 {
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.m.Main.MsgConv.WhatsAppToMatrix(ctx, portal, evt.m.E2EEClient, intent, evt.FBMessage), nil
+	return evt.m.Main.MsgConv.WhatsAppToMatrix(ctx, portal, evt.m.E2EEClient, intent, evt.GetID(), evt.FBMessage), nil
 }
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {

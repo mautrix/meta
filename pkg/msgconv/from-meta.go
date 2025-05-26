@@ -81,6 +81,7 @@ func (mc *MessageConverter) ToMatrix(
 	portal *bridgev2.Portal,
 	client *messagix.Client,
 	intent bridgev2.MatrixAPI,
+	messageID networkid.MessageID,
 	msg *table.WrappedMessage,
 	disableXMA bool,
 ) *bridgev2.ConvertedMessage {
@@ -88,7 +89,7 @@ func (mc *MessageConverter) ToMatrix(
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 	ctx = context.WithValue(ctx, contextKeyFetchXMA, !disableXMA)
-	ctx = context.WithValue(ctx, contextKeyMsgID, metaid.MakeFBMessageID(msg.MessageId))
+	ctx = context.WithValue(ctx, contextKeyMsgID, messageID)
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
@@ -257,7 +258,9 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 		mime = att.PreviewUrlMimeType
 		width, height = att.PreviewWidth, att.PreviewHeight
 	}
-	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), int(duration))
+	converted, err := mc.reuploadAttachment(
+		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
+	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer blob media")
 		return errorToNotice(err, "blob")
@@ -278,7 +281,9 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 		mime = att.PreviewUrlMimeType
 		width, height = att.PreviewWidth, att.PreviewHeight
 	}
-	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), int(duration))
+	converted, err := mc.reuploadAttachment(
+		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
+	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
 		return errorToNotice(err, "generic")
@@ -295,7 +300,9 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 		mime = att.PreviewUrlMimeType
 		width, height = att.PreviewWidth, att.PreviewHeight
 	}
-	converted, err := mc.reuploadAttachment(ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, int(width), int(height), 0)
+	converted, err := mc.reuploadAttachment(
+		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, int(width), int(height), 0,
+	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")
 		return errorToNotice(err, "sticker")
@@ -323,7 +330,9 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 			}
 		}
 	}
-	return mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, width, height, int(resp.VideoDuration*1000))
+	return mc.reuploadAttachment(
+		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), width, height, int(resp.VideoDuration*1000),
+	)
 }
 
 func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.WrappedXMA) *bridgev2.ConvertedMessagePart {
@@ -646,7 +655,9 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 		},
 	}
 	if att.PreviewUrl != "" {
-		converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, int(att.PreviewWidth), int(att.PreviewHeight), 0)
+		converted, err := mc.reuploadAttachment(
+			ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, 0, int(att.PreviewWidth), int(att.PreviewHeight), 0,
+		)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload URL preview image")
 		} else {
@@ -679,7 +690,9 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	if att.ShouldAutoplayVideo {
 		att.AttachmentType = table.AttachmentTypeAnimatedImage
 	}
-	converted, err := mc.reuploadAttachment(ctx, att.AttachmentType, url, att.Filename, mime, int(width), int(height), 0)
+	converted, err := mc.reuploadAttachment(
+		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), 0,
+	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
 		converted = errorToNotice(err, "XMA")
@@ -720,7 +733,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 func (mc *MessageConverter) reuploadAttachment(
 	ctx context.Context, attachmentType table.AttachmentType,
 	url, fileName, mimeType string,
-	width, height, duration int,
+	fileSize, width, height, duration int,
 ) (*bridgev2.ConvertedMessagePart, error) {
 	if url == "" {
 		return nil, ErrURLNotFound
@@ -764,6 +777,19 @@ func (mc *MessageConverter) reuploadAttachment(
 			content.MsgType = event.MsgFile
 		}
 	}
+	fillMetadata := func() {
+		content.Body = fileName
+		content.Info.MimeType = mimeType
+		content.Info.Duration = duration
+		content.Info.Width = width
+		content.Info.Height = height
+
+		if content.Body == "" {
+			content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
+		} else if content.MsgType != "" && !strings.ContainsRune(content.Body, '.') {
+			content.Body += exmime.ExtensionFromMimetype(mimeType)
+		}
+	}
 
 	if mc.DirectMedia {
 		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
@@ -780,6 +806,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		if err != nil {
 			return nil, err
 		}
+		fillMetadata()
 		return &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: content,
@@ -864,17 +891,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	if err != nil {
 		return nil, err
 	}
-	content.Body = fileName
-	content.Info.MimeType = mimeType
-	content.Info.Duration = duration
-	content.Info.Width = width
-	content.Info.Height = height
-
-	if content.Body == "" {
-		content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
-	} else if content.MsgType != "" && !strings.ContainsRune(content.Body, '.') {
-		content.Body += exmime.ExtensionFromMimetype(mimeType)
-	}
+	fillMetadata()
 	return &bridgev2.ConvertedMessagePart{
 		Type:    eventType,
 		Content: content,

@@ -295,10 +295,11 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 				Int64("timestamp_ms", msg.TimestampMs).
 				Msg("Message ID timestamp mismatch in backfill")
 		}
+		msgID := metaid.MakeFBMessageID(msg.MessageId)
 		wrappedMessages[i] = &bridgev2.BackfillMessage{
-			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, intent, msg, m.Main.Config.DisableXMABackfill || m.Main.Config.DisableXMAAlways),
+			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, intent, msgID, msg, m.Main.Config.DisableXMABackfill || m.Main.Config.DisableXMAAlways),
 			Sender:           sender,
-			ID:               metaid.MakeFBMessageID(msg.MessageId),
+			ID:               msgID,
 			Timestamp:        time.UnixMilli(msg.TimestampMs),
 			Reactions:        make([]*bridgev2.BackfillReaction, len(msg.Reactions)),
 			StreamOrder:      msg.TimestampMs,

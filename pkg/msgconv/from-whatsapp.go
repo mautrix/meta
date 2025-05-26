@@ -156,7 +156,10 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
 		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsApp, portal.Receiver, msgID)
 		content := &event.MessageEventContent{
-			Info: &event.FileInfo{},
+			Info: &event.FileInfo{
+				MimeType: transport.GetAncillary().GetMimetype(),
+				Size:     int(transport.GetAncillary().GetFileLength()),
+			},
 		}
 		var err error
 		content.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
@@ -496,11 +499,18 @@ func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent 
 	return
 }
 
-func (mc *MessageConverter) WhatsAppToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, evt *events.FBMessage) *bridgev2.ConvertedMessage {
+func (mc *MessageConverter) WhatsAppToMatrix(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	client *whatsmeow.Client,
+	intent bridgev2.MatrixAPI,
+	messageID networkid.MessageID,
+	evt *events.FBMessage,
+) *bridgev2.ConvertedMessage {
 	ctx = context.WithValue(ctx, contextKeyWAClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
-	ctx = context.WithValue(ctx, contextKeyMsgID, metaid.MakeWAMessageID(evt.Info.Chat, evt.Info.Sender, evt.Info.ID))
+	ctx = context.WithValue(ctx, contextKeyMsgID, messageID)
 	cm := &bridgev2.ConvertedMessage{}
 
 	var replyOverride *waCommon.MessageKey

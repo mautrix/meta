@@ -14,6 +14,9 @@ func MakeWAUserID(jid types.JID) networkid.UserID {
 }
 
 func MakeUserID(user int64) networkid.UserID {
+	if user == 0 {
+		return ""
+	}
 	return networkid.UserID(strconv.FormatInt(user, 10))
 }
 

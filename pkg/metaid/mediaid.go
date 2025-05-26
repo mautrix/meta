@@ -1,9 +1,8 @@
 package metaid
 
 import (
-	"bytes"
 	"encoding/binary"
-	"io"
+	"fmt"
 
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
@@ -11,8 +10,8 @@ import (
 type DirectMediaType byte
 
 const (
-	DirectMediaTypeMeta DirectMediaType = iota
-	DirectMediaTypeWhatsApp
+	DirectMediaTypeMeta     DirectMediaType = 2
+	DirectMediaTypeWhatsApp DirectMediaType = 3
 )
 
 type MediaInfo struct {
@@ -22,54 +21,32 @@ type MediaInfo struct {
 }
 
 func MakeMediaID(mediaType DirectMediaType, userID networkid.UserLoginID, messageID networkid.MessageID) networkid.MediaID {
-	mediaID := []byte{byte(mediaType)}
-	mediaID = binary.AppendVarint(mediaID, ParseUserLoginID(userID))
-	mediaID = writeByteSlice(mediaID, []byte(messageID))
+	mediaID := make([]byte, 1, 10+len(messageID))
+	mediaID[0] = byte(mediaType)
+	mediaID = binary.BigEndian.AppendUint64(mediaID, uint64(ParseUserLoginID(userID)))
+	mediaID = append(mediaID, byte(len(messageID)))
+	mediaID = append(mediaID, messageID...)
 	return mediaID
 }
 
 func ParseMediaID(mediaID networkid.MediaID) (*MediaInfo, error) {
-	buf := bytes.NewReader(mediaID)
-	var mediaType DirectMediaType
-	if err := binary.Read(buf, binary.BigEndian, &mediaType); err != nil {
-		return nil, err
+	if len(mediaID) < 10 {
+		return nil, fmt.Errorf("media ID too short: %d bytes", len(mediaID))
+	}
+	mediaType := DirectMediaType(mediaID[0])
+	switch mediaType {
+	case DirectMediaTypeMeta, DirectMediaTypeWhatsApp:
+	default:
+		return nil, fmt.Errorf("unrecognized media type %d", mediaType)
+	}
+	messageIDLength := int(mediaID[9])
+	if len(mediaID) != 10+messageIDLength {
+		return nil, fmt.Errorf("unexpected media ID length, message ID byte says 10+%d, actual is %d", messageIDLength, len(mediaID))
 	}
 
-	mediaInfo := &MediaInfo{Type: mediaType}
-	uID, err := binary.ReadVarint(buf)
-	if err != nil {
-		return nil, err
-	}
-	mediaInfo.UserID = MakeUserLoginID(uID)
-
-	if bs, err := readByteSlice(buf); err != nil {
-		return nil, err
-	} else {
-		mediaInfo.MessageID = networkid.MessageID(string(bs))
-	}
-
-	return mediaInfo, nil
-}
-
-func writeByteSlice(buf []byte, data []byte) []byte {
-	buf = binary.AppendUvarint(buf, uint64(len(data)))
-	var err error
-	buf, err = binary.Append(buf, binary.BigEndian, data)
-	if err != nil {
-		panic(err)
-	}
-	return buf
-}
-
-func readByteSlice(buf *bytes.Reader) ([]byte, error) {
-	size, err := binary.ReadUvarint(buf)
-	if err != nil {
-		return nil, err
-	}
-	bs := make([]byte, size)
-	_, err = io.ReadFull(buf, bs)
-	if err != nil {
-		return nil, err
-	}
-	return bs, nil
+	return &MediaInfo{
+		Type:      mediaType,
+		UserID:    MakeUserLoginID(int64(binary.BigEndian.Uint64(mediaID[1:9]))),
+		MessageID: networkid.MessageID(mediaID[10 : 10+messageIDLength]),
+	}, nil
 }
