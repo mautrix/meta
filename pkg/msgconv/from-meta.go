@@ -363,27 +363,6 @@ var reelActionURLRegex2 = regexp.MustCompile(`^https://instagram\.com/stories/([
 var usernameRegex = regexp.MustCompile(`^[a-z0-9.-_]{3,32}$`)
 var ErrURLNotFound = errors.New("url not found")
 
-func trimPostTitle(title string, maxLines int) string {
-	// For some reason Instagram gives maxLines 1 less than what they mean (i.e. what the official clients render)
-	maxLines++
-	lines := strings.SplitN(title, "\n", maxLines+1)
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-		lines[maxLines-1] += "…"
-	}
-	maxCharacters := maxLines * 50
-	for i, line := range lines {
-		lineRunes := []rune(line)
-		if len(lineRunes) > maxCharacters {
-			lines[i] = string(lineRunes[:maxCharacters]) + "…"
-			lines = lines[:i+1]
-			break
-		}
-		maxCharacters -= len(lineRunes)
-	}
-	return strings.Join(lines, "\n")
-}
-
 func removeLPHP(addr string) string {
 	parsed, _ := url.Parse(addr)
 	if parsed != nil && parsed.Path == "/l.php" {
@@ -708,25 +687,8 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	}
 	parts := []*bridgev2.ConvertedMessagePart{converted}
 	if att.TitleText != "" || att.CaptionBodyText != "" {
-		captionContent := &event.MessageEventContent{
-			MsgType: event.MsgText,
-		}
-		if att.TitleText != "" {
-			captionContent.Body = trimPostTitle(att.TitleText, int(att.MaxTitleNumOfLines))
-		}
-		if att.CaptionBodyText != "" {
-			if captionContent.Body != "" {
-				captionContent.Body += "\n\n"
-			}
-			captionContent.Body += att.CaptionBodyText
-		}
-		parts = append(parts, &bridgev2.ConvertedMessagePart{
-			Type:    event.EventMessage,
-			Content: captionContent,
-			Extra: map[string]any{
-				"com.beeper.meta.full_post_title": att.TitleText,
-			},
-		})
+		converted.Extra["com.beeper.meta.full_post_title"] = att.TitleText
+		converted.Extra["com.beeper.meta.caption_body_text"] = att.CaptionBodyText
 	}
 	return parts
 }
