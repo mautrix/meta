@@ -643,9 +643,9 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 		} else {
 			preview.ImageEncryption = converted.Content.File
 			preview.ImageURL = converted.Content.URL
-			preview.ImageWidth = converted.Content.Info.Width
-			preview.ImageHeight = converted.Content.Info.Height
-			preview.ImageSize = converted.Content.Info.Size
+			preview.ImageWidth = event.IntOrString(converted.Content.Info.Width)
+			preview.ImageHeight = event.IntOrString(converted.Content.Info.Height)
+			preview.ImageSize = event.IntOrString(converted.Content.Info.Size)
 		}
 	}
 	return preview

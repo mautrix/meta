@@ -22,7 +22,7 @@ require (
 	golang.org/x/net v0.40.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.23.4-0.20250509121614-a0191c8f5847
+	maunium.net/go/mautrix v0.24.1-0.20250527083757-8a745c0d03ec
 )
 
 require (
@@ -38,7 +38,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/yuin/goldmark v1.7.10 // indirect
+	github.com/yuin/goldmark v1.7.11 // indirect
 	go.mau.fi/zeroconfig v0.1.3 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
