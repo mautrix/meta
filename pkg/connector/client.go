@@ -37,6 +37,7 @@ type MetaClient struct {
 	stopHandlingTables atomic.Pointer[context.CancelFunc]
 	initialTable       atomic.Pointer[table.LSTable]
 	incomingTables     chan *table.LSTable
+	wrappedEvents      chan []bridgev2.RemoteEvent
 	backfillCollectors map[int64]*BackfillCollector
 	backfillLock       sync.Mutex
 	connectLock        sync.Mutex
@@ -80,6 +81,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 		connectWaiter:     exsync.NewEvent(),
 		e2eeConnectWaiter: exsync.NewEvent(),
+	}
+	if bridgev2.PortalEventBuffer == 0 && !m.Bridge.Background {
+		c.wrappedEvents = make(chan []bridgev2.RemoteEvent, 16)
 	}
 	if messagixClient != nil {
 		messagixClient.SetEventHandler(c.handleMetaEvent)

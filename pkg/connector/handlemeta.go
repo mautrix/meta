@@ -142,10 +142,13 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 }
 
 func (m *MetaClient) handleTableLoop() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(m.Main.Bridge.BackgroundCtx)
 	defer cancel()
 	if oldCancel := m.stopHandlingTables.Swap(&cancel); oldCancel != nil {
 		(*oldCancel)()
+	}
+	if m.wrappedEvents != nil {
+		go m.handleEventLoop(ctx)
 	}
 	log := m.UserLogin.Log.With().Str("action", "handle table").Logger()
 	ctx = log.WithContext(ctx)
@@ -155,6 +158,22 @@ func (m *MetaClient) handleTableLoop() {
 			m.notifyBackgroundConnAboutEvent(true)
 			m.handleTable(ctx, tbl)
 			m.notifyBackgroundConnAboutEvent(false)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (m *MetaClient) handleEventLoop(ctx context.Context) {
+	for {
+		select {
+		case evts := <-m.wrappedEvents:
+			for _, evt := range evts {
+				m.UserLogin.QueueRemoteEvent(evt)
+				if ctx.Err() != nil {
+					return
+				}
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -188,6 +207,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 		vtes:  threadExists,
 		syncs: threadResyncs,
 	}
+	innerQueue := make([]bridgev2.RemoteEvent, 0, 8)
 
 	for _, thread := range tbl.LSVerifyThreadExists {
 		threadExists[thread.ThreadKey] = thread
@@ -204,43 +224,51 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	// TODO resync threads with LSUpdateOrInsertThread?
 
 	// Deleting a thread will cancel all further events, so handle those first
-	handlePortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread)
+	handlePortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
 
 	for _, verifyExists := range threadExists {
 		if _, resyncing := threadResyncs[verifyExists.ThreadKey]; resyncing {
 			continue
 		}
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &VerifyThreadExistsEvent{LSVerifyThreadExists: verifyExists, m: m})
+		innerQueue = append(innerQueue, &VerifyThreadExistsEvent{LSVerifyThreadExists: verifyExists, m: m})
 	}
 
 	// Handle events that are merged into thread resyncs before dispatching the resyncs
-	handlePortalEvents(params, tbl.LSAddParticipantIdToGroupThread, m.handleAddParticipant)
-	handlePortalEvents(params, tbl.LSUpdateThreadMuteSetting, m.handleUpdateMuteSetting)
-	handlePortalEvents(params, tbl.LSMoveThreadToE2EECutoverFolder, m.handleMoveThreadToE2EE)
+	handlePortalEvents(params, tbl.LSAddParticipantIdToGroupThread, m.handleAddParticipant, &innerQueue)
+	handlePortalEvents(params, tbl.LSUpdateThreadMuteSetting, m.handleUpdateMuteSetting, &innerQueue)
+	handlePortalEvents(params, tbl.LSMoveThreadToE2EECutoverFolder, m.handleMoveThreadToE2EE, &innerQueue)
 	upsert, insert := tbl.WrapMessages()
-	handlePortalEvents(params, maps.Values(upsert), m.handleUpsertMessages)
-	handlePortalEvents(params, tbl.LSUpdateExistingMessageRange, m.handleUpdateExistingMessageRange)
+	handlePortalEvents(params, maps.Values(upsert), m.handleUpsertMessages, &innerQueue)
+	handlePortalEvents(params, tbl.LSUpdateExistingMessageRange, m.handleUpdateExistingMessageRange, &innerQueue)
 
 	for _, resync := range threadResyncs {
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, resync)
+		innerQueue = append(innerQueue, resync)
 	}
 
-	handlePortalEvents(params, insert, m.handleMessageInsert)
+	handlePortalEvents(params, insert, m.handleMessageInsert, &innerQueue)
 	// Edits are special snowflakes that don't include the thread key
 	for _, edit := range tbl.LSEditMessage {
-		m.handleEdit(ctx, edit)
+		m.handleEdit(ctx, edit, &innerQueue)
 	}
-	handlePortalEvents(params, tbl.LSSyncUpdateThreadName, m.handleUpdateThreadName)
-	handlePortalEvents(params, tbl.LSSetThreadImageURL, m.handleSetThreadImage)
-	handlePortalEvents(params, tbl.LSUpdateReadReceipt, m.handleUpdateReadReceipt)
-	handlePortalEvents(params, tbl.LSMarkThreadReadV2, m.handleMarkThreadRead)
-	handlePortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator)
-	handlePortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage)
-	handlePortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage)
-	handlePortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction)
-	handlePortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction)
-	handlePortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant)
+	handlePortalEvents(params, tbl.LSSyncUpdateThreadName, m.handleUpdateThreadName, &innerQueue)
+	handlePortalEvents(params, tbl.LSSetThreadImageURL, m.handleSetThreadImage, &innerQueue)
+	handlePortalEvents(params, tbl.LSUpdateReadReceipt, m.handleUpdateReadReceipt, &innerQueue)
+	handlePortalEvents(params, tbl.LSMarkThreadReadV2, m.handleMarkThreadRead, &innerQueue)
+	handlePortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator, &innerQueue)
+	handlePortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage, &innerQueue)
+	handlePortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage, &innerQueue)
+	handlePortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
+	handlePortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
+	handlePortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
 	// TODO request more inbox if applicable
+
+	if m.wrappedEvents == nil {
+		for _, evt := range innerQueue {
+			m.UserLogin.QueueRemoteEvent(evt)
+		}
+	} else {
+		m.wrappedEvents <- innerQueue
+	}
 }
 
 func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThreadReadV2) bridgev2.RemoteEvent {
@@ -501,7 +529,7 @@ func (m *MetaClient) handleMessageInsert(tk handlerParams, msg *table.WrappedMes
 	}
 }
 
-func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage) {
+func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage, innerQueue *[]bridgev2.RemoteEvent) {
 	editID := metaid.MakeFBMessageID(edit.MessageID)
 	originalMsg, err := m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, editID)
 	if err != nil {
@@ -509,7 +537,7 @@ func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage) 
 	} else if originalMsg == nil {
 		zerolog.Ctx(ctx).Warn().Str("message_id", edit.MessageID).Msg("Edit target message not found")
 	} else {
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &FBEditEvent{
+		*innerQueue = append(*innerQueue, &FBEditEvent{
 			LSEditMessage: edit,
 			orig:          originalMsg,
 			m:             m,
@@ -547,6 +575,7 @@ func handlePortalEvents[T ThreadKeyable](
 	p threadMaps,
 	msgs []T,
 	fn func(tk handlerParams, msg T) bridgev2.RemoteEvent,
+	innerQueue *[]bridgev2.RemoteEvent,
 ) {
 	for _, msg := range msgs {
 		threadKey := msg.GetThreadKey()
@@ -588,7 +617,7 @@ func handlePortalEvents[T ThreadKeyable](
 			syncs: p.syncs,
 		}, msg)
 		if evt != nil {
-			p.m.Main.Bridge.QueueRemoteEvent(p.m.UserLogin, evt)
+			*innerQueue = append(*innerQueue, evt)
 		}
 	}
 }
