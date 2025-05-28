@@ -773,6 +773,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		return &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: content,
+			Extra:   extra,
 			DBMetadata: &metaid.MessageMetadata{
 				DirectMediaMeta: directMediaMeta,
 			},
