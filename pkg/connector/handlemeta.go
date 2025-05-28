@@ -165,6 +165,7 @@ func (m *MetaClient) handleTableLoop() {
 }
 
 func (m *MetaClient) handleEventLoop(ctx context.Context) {
+	zerolog.Ctx(ctx).Info().Msg("Starting inner event queue")
 	for {
 		select {
 		case evts := <-m.wrappedEvents:
