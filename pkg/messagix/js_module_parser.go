@@ -94,6 +94,9 @@ func (m *ModuleParser) Load(page string) error {
 	if err != nil {
 		return err
 	}
+	if !strings.Contains(page, "login") && bytes.Contains(htmlData, []byte(`"USER_ID":"0"`)) {
+		return ErrUserIDIsZero
+	}
 
 	doc, err := html.Parse(bytes.NewReader(htmlData))
 	if err != nil {

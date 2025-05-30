@@ -93,6 +93,7 @@ const MaxHTTPRetries = 5
 var (
 	ErrTokenInvalidated         = errors.New("access token is no longer valid")
 	ErrTokenInvalidatedRedirect = fmt.Errorf("%w: redirected", ErrTokenInvalidated)
+	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
 	ErrChallengeRequired        = errors.New("challenge required")
 	ErrConsentRequired          = errors.New("consent required")
 	ErrAccountSuspended         = errors.New("account suspended")

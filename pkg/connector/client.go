@@ -212,6 +212,8 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 			}
 			if errors.Is(err, messagix.ErrTokenInvalidatedRedirect) {
 				state.Error = MetaRedirectedToLoginPage
+			} else if errors.Is(err, messagix.ErrUserIDIsZero) {
+				state.Error = MetaUserIDIsZero
 			}
 			m.UserLogin.BridgeState.Send(state)
 			m.Client = nil

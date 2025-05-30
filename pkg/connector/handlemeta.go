@@ -28,6 +28,7 @@ const (
 	MetaConnectionUnauthorized status.BridgeStateErrorCode = "meta-connection-unauthorized"
 	MetaPermanentError         status.BridgeStateErrorCode = "meta-unknown-permanent-error"
 	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"
+	MetaUserIDIsZero           status.BridgeStateErrorCode = "meta-user-id-is-zero"
 	MetaRedirectedToLoginPage  status.BridgeStateErrorCode = "meta-redirected-to-login"
 	MetaNotLoggedIn            status.BridgeStateErrorCode = "meta-not-logged-in"
 	MetaConnectError           status.BridgeStateErrorCode = "meta-connect-error"
@@ -47,6 +48,7 @@ func init() {
 		MetaTransientDisconnect:    "Disconnected from server, trying to reconnect",
 		MetaConnectionUnauthorized: "Logged out, please relogin to continue",
 		MetaCookieRemoved:          "Logged out, please relogin to continue",
+		MetaUserIDIsZero:           "Logged out, please relogin to continue",
 		MetaRedirectedToLoginPage:  "Logged out, please relogin to continue",
 		MetaNotLoggedIn:            "Logged out, please relogin to continue",
 		IGAccountSuspended:         "Logged out, please check the Instagram website to continue",
