@@ -94,7 +94,7 @@ func (m *ModuleParser) Load(page string) error {
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(page, "login") && bytes.Contains(htmlData, []byte(`"USER_ID":"0"`)) {
+	if m.client.Platform.IsMessenger() && !strings.Contains(page, "login") && bytes.Contains(htmlData, []byte(`"USER_ID":"0"`)) {
 		return ErrUserIDIsZero
 	}
 
