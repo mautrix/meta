@@ -161,6 +161,7 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
+				Int("status_code", resp.StatusCode).
 				Msg("Request successful")
 			return resp, respDat, nil
 		} else if attempts > MaxHTTPRetries {
