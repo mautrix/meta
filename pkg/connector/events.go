@@ -292,7 +292,7 @@ var (
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 	consumerApp, ok := evt.Message.(*waConsumerApplication.ConsumerApplication)
 	if !ok {
-		panic(fmt.Errorf("GetTargetMessage called for non-ConsumerApplication message %T", evt.Message))
+		return ""
 	}
 	switch typedPayload := consumerApp.GetPayload().GetPayload().(type) {
 	case *waConsumerApplication.ConsumerApplication_Payload_Content:
@@ -301,19 +301,14 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 			return evt.m.waKeyToMessageID(evt.Info.Chat, evt.Info.Sender, content.EditMessage.GetKey())
 		case *waConsumerApplication.ConsumerApplication_Content_ReactionMessage:
 			return evt.m.waKeyToMessageID(evt.Info.Chat, evt.Info.Sender, content.ReactionMessage.GetKey())
-		default:
-			panic(fmt.Errorf("GetTargetMessage called for non-edit/reaction content message (%T)", content))
 		}
 	case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
 		switch applicationContent := typedPayload.ApplicationData.GetApplicationContent().(type) {
 		case *waConsumerApplication.ConsumerApplication_ApplicationData_Revoke:
 			return evt.m.waKeyToMessageID(evt.Info.Chat, evt.Info.Sender, applicationContent.Revoke.GetKey())
-		default:
-			panic(fmt.Errorf("GetTargetMessage called for non-Revoke application data message (%T)", applicationContent))
 		}
-	default:
-		panic(fmt.Errorf("GetTargetMessage called for non-Content/ApplicationData consumer message (%T)", typedPayload))
 	}
+	return ""
 }
 
 func (m *MetaClient) messageIDToWAKey(id metaid.ParsedWAMessageID) *waCommon.MessageKey {
