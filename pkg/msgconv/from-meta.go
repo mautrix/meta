@@ -315,6 +315,10 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 	var url, mime string
 	var width, height int
 	var found bool
+	mime = att.PlayableUrlMimeType
+	if mime == "" {
+		mime = att.PreviewUrlMimeType
+	}
 	for _, ver := range resp.VideoVersions {
 		if ver.Width*ver.Height > width*height {
 			url = ver.URL
@@ -438,9 +442,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
 				return minimalConverted
 			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if !mc.DirectMedia {
+				secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+				secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+				secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			}
 			secondConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
@@ -522,9 +528,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
 				return minimalConverted
 			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if !mc.DirectMedia {
+				secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+				secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+				secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			}
 			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
@@ -582,9 +590,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
 				return minimalConverted
 			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if !mc.DirectMedia {
+				secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+				secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+				secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			}
 			secondConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
@@ -717,30 +727,30 @@ func (mc *MessageConverter) reuploadAttachment(
 		}
 	}
 	eventType := event.EventMessage
-	switch attachmentType {
-	case table.AttachmentTypeSticker:
-		eventType = event.EventSticker
-	case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
-		content.MsgType = event.MsgImage
-	case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
-		content.MsgType = event.MsgVideo
-	case table.AttachmentTypeFile:
-		content.MsgType = event.MsgFile
-	case table.AttachmentTypeAudio:
-		content.MsgType = event.MsgAudio
-	default:
-		switch strings.Split(mimeType, "/")[0] {
-		case "image":
+	fillMetadata := func() {
+		switch attachmentType {
+		case table.AttachmentTypeSticker:
+			eventType = event.EventSticker
+		case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
 			content.MsgType = event.MsgImage
-		case "video":
+		case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
 			content.MsgType = event.MsgVideo
-		case "audio":
+		case table.AttachmentTypeFile:
+			content.MsgType = event.MsgFile
+		case table.AttachmentTypeAudio:
 			content.MsgType = event.MsgAudio
 		default:
-			content.MsgType = event.MsgFile
+			switch strings.Split(mimeType, "/")[0] {
+			case "image":
+				content.MsgType = event.MsgImage
+			case "video":
+				content.MsgType = event.MsgVideo
+			case "audio":
+				content.MsgType = event.MsgAudio
+			default:
+				content.MsgType = event.MsgFile
+			}
 		}
-	}
-	fillMetadata := func() {
 		content.Body = fileName
 		content.Info.MimeType = mimeType
 		content.Info.Duration = duration
