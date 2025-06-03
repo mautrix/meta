@@ -717,30 +717,30 @@ func (mc *MessageConverter) reuploadAttachment(
 		}
 	}
 	eventType := event.EventMessage
-	switch attachmentType {
-	case table.AttachmentTypeSticker:
-		eventType = event.EventSticker
-	case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
-		content.MsgType = event.MsgImage
-	case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
-		content.MsgType = event.MsgVideo
-	case table.AttachmentTypeFile:
-		content.MsgType = event.MsgFile
-	case table.AttachmentTypeAudio:
-		content.MsgType = event.MsgAudio
-	default:
-		switch strings.Split(mimeType, "/")[0] {
-		case "image":
+	fillMetadata := func() {
+		switch attachmentType {
+		case table.AttachmentTypeSticker:
+			eventType = event.EventSticker
+		case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
 			content.MsgType = event.MsgImage
-		case "video":
+		case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
 			content.MsgType = event.MsgVideo
-		case "audio":
+		case table.AttachmentTypeFile:
+			content.MsgType = event.MsgFile
+		case table.AttachmentTypeAudio:
 			content.MsgType = event.MsgAudio
 		default:
-			content.MsgType = event.MsgFile
+			switch strings.Split(mimeType, "/")[0] {
+			case "image":
+				content.MsgType = event.MsgImage
+			case "video":
+				content.MsgType = event.MsgVideo
+			case "audio":
+				content.MsgType = event.MsgAudio
+			default:
+				content.MsgType = event.MsgFile
+			}
 		}
-	}
-	fillMetadata := func() {
 		content.Body = fileName
 		content.Info.MimeType = mimeType
 		content.Info.Duration = duration
