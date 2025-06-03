@@ -315,6 +315,10 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 	var url, mime string
 	var width, height int
 	var found bool
+	mime = att.PlayableUrlMimeType
+	if mime == "" {
+		mime = att.PreviewUrlMimeType
+	}
 	for _, ver := range resp.VideoVersions {
 		if ver.Width*ver.Height > width*height {
 			url = ver.URL
@@ -438,9 +442,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
 				return minimalConverted
 			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if !mc.DirectMedia {
+				secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+				secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+				secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			}
 			secondConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
@@ -522,9 +528,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
 				return minimalConverted
 			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if !mc.DirectMedia {
+				secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+				secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+				secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			}
 			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
@@ -582,9 +590,11 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
 				return minimalConverted
 			}
-			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
-			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
-			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			if !mc.DirectMedia {
+				secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+				secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+				secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+			}
 			secondConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
