@@ -315,6 +315,10 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 	var url, mime string
 	var width, height int
 	var found bool
+	mime = att.PlayableUrlMimeType
+	if mime == "" {
+		mime = att.PreviewUrlMimeType
+	}
 	for _, ver := range resp.VideoVersions {
 		if ver.Width*ver.Height > width*height {
 			url = ver.URL
