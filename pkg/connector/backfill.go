@@ -255,6 +255,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 				}
 				if newMinTS == 0 || newMinTS == prevMinTS {
 					zerolog.Ctx(ctx).Error().
+						Any("received_range", collector.UpsertMessages.Range).
 						Msg("Waiting for backfill collector timed out")
 					m.removeBackfillCollector(threadID, collector)
 					upsert = collector.UpsertMessages
@@ -263,6 +264,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 					zerolog.Ctx(ctx).Warn().
 						Int64("prev_min_ts", prevMinTS).
 						Int64("new_min_ts", newMinTS).
+						Any("received_range", collector.UpsertMessages.Range).
 						Msg("Backfill collector is taking long, but got new messages after last check, waiting longer")
 					prevMinTS = newMinTS
 				}

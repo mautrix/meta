@@ -68,6 +68,9 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 	switch evt := rawEvt.(type) {
 	case *messagix.Event_PublishResponse:
 		log.Trace().Any("table", &evt.Table).Msg("Got new event")
+		for _, rng := range evt.Table.LSInsertNewMessageRange {
+			log.Debug().Any("message_range", rng).Msg("Message range in publish response")
+		}
 		select {
 		case m.incomingTables <- evt.Table:
 		default:
