@@ -356,7 +356,7 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 	return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
 }
 
-func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64) bridgev2.RemoteEvent {
+func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
 	// TODO figure out how to handle meta's false delete events
 	// Delete the thread from the sync maps to prevent future events finding it
 	delete(tk.syncs, threadKey)
@@ -367,13 +367,12 @@ func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64) br
 			PortalKey:         tk.Portal,
 			UncertainReceiver: tk.UncertainReceiver,
 		},
-		// TODO can deletes be only for me?
-		OnlyForMe: false,
+		OnlyForMe: onlyForMe,
 	}
 }
 
 func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThread) bridgev2.RemoteEvent {
-	return m.handleDeleteThreadKey(tk, msg.ThreadKey)
+	return m.handleDeleteThreadKey(tk, msg.ThreadKey, false /* OnlyForMe */)
 }
 
 func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
@@ -494,7 +493,7 @@ func (m *MetaClient) handleSelfLeaveThread(tk handlerParams, evt *table.LSRemove
 		Int64("thread_key", evt.ThreadKey).
 		Msg("Left thread ourselves, deleting")
 
-	return m.handleDeleteThreadKey(tk, evt.ThreadKey)
+	return m.handleDeleteThreadKey(tk, evt.ThreadKey, true /* OnlyForMe */)
 }
 
 func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemoveParticipantFromThread) bridgev2.RemoteEvent {
