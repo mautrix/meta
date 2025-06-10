@@ -683,7 +683,15 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), 0,
 	)
-	if err != nil {
+	if err == ErrURLNotFound && att.TitleText != "" {
+		return []*bridgev2.ConvertedMessagePart{{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    att.TitleText,
+			},
+		}}
+	} else if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
 		converted = errorToNotice(err, "XMA")
 	} else {
