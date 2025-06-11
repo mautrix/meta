@@ -30,6 +30,7 @@ import (
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/instamadilloAddMessage"
 	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
 	"go.mau.fi/whatsmeow/proto/waArmadilloXMA"
 	"go.mau.fi/whatsmeow/proto/waCommon"
@@ -499,6 +500,17 @@ func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent 
 	return
 }
 
+func (mc *MessageConverter) instamadilloToMatrix(ctx context.Context, rawContent *instamadilloAddMessage.AddMessagePayload) (parts []*bridgev2.ConvertedMessagePart, replyOverride *waCommon.MessageKey) {
+	// TODO implement
+	return []*bridgev2.ConvertedMessagePart{{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    "Unsupported encrypted Instagram message",
+		},
+	}}, nil
+}
+
 func (mc *MessageConverter) WhatsAppToMatrix(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -519,6 +531,8 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 		cm.Parts = mc.waConsumerToMatrix(ctx, typedMsg.GetPayload().GetContent())
 	case *waArmadilloApplication.Armadillo:
 		cm.Parts, replyOverride = mc.waArmadilloToMatrix(ctx, typedMsg.GetPayload().GetContent())
+	case *instamadilloAddMessage.AddMessagePayload:
+		cm.Parts, replyOverride = mc.instamadilloToMatrix(ctx, typedMsg)
 	default:
 		cm.Parts = []*bridgev2.ConvertedMessagePart{{
 			Type: event.EventMessage,
@@ -528,7 +542,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 			},
 		}}
 	}
-	if qm := evt.Application.GetMetadata().GetQuotedMessage(); qm != nil {
+	if qm := evt.FBApplication.GetMetadata().GetQuotedMessage(); qm != nil {
 		pcp, _ := types.ParseJID(qm.GetParticipant())
 		// TODO what if participant is not set?
 		cm.ReplyTo = &networkid.MessageOptionalPartID{

@@ -7,6 +7,9 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow/proto/instamadilloAddMessage"
+	"go.mau.fi/whatsmeow/proto/instamadilloDeleteMessage"
+	"go.mau.fi/whatsmeow/proto/instamadilloSupplementMessage"
 	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
@@ -292,6 +295,10 @@ var (
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 	consumerApp, ok := evt.Message.(*waConsumerApplication.ConsumerApplication)
 	if !ok {
+		//payload, ok := evt.Message.(*instamadilloSupplementMessage.SupplementMessagePayload)
+		//if ok {
+		//	// TODO return target message
+		//}
 		return ""
 	}
 	switch typedPayload := consumerApp.GetPayload().GetPayload().(type) {
@@ -361,8 +368,20 @@ func (m *MetaClient) waKeyToMessageID(chat, sender types.JID, key *waCommon.Mess
 }
 
 func (evt *WAMessageEvent) GetReactionEmoji() (string, networkid.EmojiID) {
-	consumerApp, _ := evt.Message.(*waConsumerApplication.ConsumerApplication)
-	return consumerApp.GetPayload().GetContent().GetReactionMessage().GetText(), ""
+	switch typed := evt.Message.(type) {
+	case *waConsumerApplication.ConsumerApplication:
+		return typed.GetPayload().GetContent().GetReactionMessage().GetText(), ""
+	case *instamadilloSupplementMessage.SupplementMessagePayload:
+		switch innerTyped := typed.GetContent().GetSupplementMessageContent().(type) {
+		case *instamadilloSupplementMessage.SupplementMessageContent_Reaction:
+			return innerTyped.Reaction.GetEmoji(), ""
+		case *instamadilloSupplementMessage.SupplementMessageContent_MediaReaction:
+			return innerTyped.MediaReaction.GetReaction().GetEmoji(), ""
+		}
+		return "", ""
+	default:
+		return "", ""
+	}
 }
 
 func (evt *WAMessageEvent) GetRemovedEmojiID() networkid.EmojiID {
@@ -414,6 +433,20 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 		default:
 			log.Warn().Type("payload_type", payload).Msg("Unrecognized armadillo message payload type")
 		}
+	case *instamadilloSupplementMessage.SupplementMessagePayload:
+		switch typedMsg.GetContent().GetSupplementMessageContent().(type) {
+		case *instamadilloSupplementMessage.SupplementMessageContent_Reaction:
+			// TODO reaction removal
+			return bridgev2.RemoteEventReaction
+		case *instamadilloSupplementMessage.SupplementMessageContent_MediaReaction:
+			return bridgev2.RemoteEventReaction
+		case *instamadilloSupplementMessage.SupplementMessageContent_EditText:
+			return bridgev2.RemoteEventEdit
+		}
+	case *instamadilloAddMessage.AddMessagePayload:
+		return bridgev2.RemoteEventMessage
+	case *instamadilloDeleteMessage.DeleteMessagePayload:
+		return bridgev2.RemoteEventMessageRemove
 	default:
 		log.Warn().Type("message_type", evt.Message).Msg("Unrecognized message type")
 	}
@@ -437,11 +470,14 @@ func (evt *WAMessageEvent) GetID() networkid.MessageID {
 }
 
 func (evt *WAMessageEvent) GetTimestamp() time.Time {
-	consumerContent := evt.GetConsumerApplication().GetPayload().GetContent()
-	if reactionSenderTS := consumerContent.GetReactionMessage().GetSenderTimestampMS(); reactionSenderTS != 0 {
-		return time.UnixMilli(reactionSenderTS)
-	} else if editTS := consumerContent.GetEditMessage().GetTimestampMS(); editTS != 0 {
-		return time.UnixMilli(editTS)
+	switch typedMsg := evt.Message.(type) {
+	case *waConsumerApplication.ConsumerApplication:
+		consumerContent := typedMsg.GetPayload().GetContent()
+		if reactionSenderTS := consumerContent.GetReactionMessage().GetSenderTimestampMS(); reactionSenderTS != 0 {
+			return time.UnixMilli(reactionSenderTS)
+		} else if editTS := consumerContent.GetEditMessage().GetTimestampMS(); editTS != 0 {
+			return time.UnixMilli(editTS)
+		}
 	}
 	return evt.Info.Timestamp
 }
@@ -459,16 +495,39 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	if len(existing) > 1 {
 		zerolog.Ctx(ctx).Warn().Msg("Got edit to message with multiple parts")
 	}
-	editMsg := evt.GetConsumerApplication().GetPayload().GetContent().GetEditMessage()
-	if existing[0].Metadata.(*metaid.MessageMetadata).EditTimestamp >= editMsg.GetTimestampMS() {
-		return nil, fmt.Errorf("%w: duplicate edit", bridgev2.ErrIgnoringRemoteEvent)
+	switch typedMsg := evt.Message.(type) {
+	case *waConsumerApplication.ConsumerApplication:
+		editMsg := typedMsg.GetPayload().GetContent().GetEditMessage()
+		if existing[0].Metadata.(*metaid.MessageMetadata).EditTimestamp >= editMsg.GetTimestampMS() {
+			return nil, fmt.Errorf("%w: duplicate edit", bridgev2.ErrIgnoringRemoteEvent)
+		}
+		converted := evt.m.Main.MsgConv.WhatsAppTextToMatrix(ctx, editMsg.GetMessage())
+		editPart := converted.ToEditPart(existing[0])
+		editPart.Part.Metadata.(*metaid.MessageMetadata).EditTimestamp = editMsg.GetTimestampMS()
+		return &bridgev2.ConvertedEdit{
+			ModifiedParts: []*bridgev2.ConvertedEditPart{editPart},
+		}, nil
+	case *instamadilloSupplementMessage.SupplementMessagePayload:
+		editText := typedMsg.GetContent().GetEditText()
+		if existing[0].EditCount >= int(editText.GetEditCount()) {
+			return nil, fmt.Errorf("%w: duplicate edit", bridgev2.ErrIgnoringRemoteEvent)
+		}
+		converted := &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:  event.MsgText,
+				Body:     editText.GetNewContent(),
+				Mentions: &event.Mentions{},
+			},
+		}
+		editPart := converted.ToEditPart(existing[0])
+		editPart.Part.EditCount = int(editText.GetEditCount())
+		return &bridgev2.ConvertedEdit{
+			ModifiedParts: []*bridgev2.ConvertedEditPart{editPart},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported message type %T for edit conversion", evt.Message)
 	}
-	converted := evt.m.Main.MsgConv.WhatsAppTextToMatrix(ctx, editMsg.GetMessage())
-	editPart := converted.ToEditPart(existing[0])
-	editPart.Part.Metadata.(*metaid.MessageMetadata).EditTimestamp = editMsg.GetTimestampMS()
-	return &bridgev2.ConvertedEdit{
-		ModifiedParts: []*bridgev2.ConvertedEditPart{editPart},
-	}, nil
 }
 
 type FBChatResync struct {

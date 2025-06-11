@@ -22,7 +22,8 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 		m.UserLogin.Log.Trace().
 			Any("info", evt.Info).
 			Any("transport", evt.Transport).
-			Any("application", evt.Application).
+			Any("application", evt.FBApplication).
+			Any("ig_transport", evt.IGTransport).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m})
