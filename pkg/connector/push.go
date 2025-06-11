@@ -36,7 +36,8 @@ var (
 )
 
 var pushCfg = &bridgev2.PushConfig{
-	Web: &bridgev2.WebPushConfig{VapidKey: "BIBn3E_rWTci8Xn6P9Xj3btShT85Wdtne0LtwNUyRQ5XjFNkuTq9j4MPAVLvAFhXrUU1A9UxyxBA7YIOjqDIDHI"},
+	Web:  &bridgev2.WebPushConfig{VapidKey: "BIBn3E_rWTci8Xn6P9Xj3btShT85Wdtne0LtwNUyRQ5XjFNkuTq9j4MPAVLvAFhXrUU1A9UxyxBA7YIOjqDIDHI"},
+	APNs: &bridgev2.APNsPushConfig{BundleID: "com.facebook.Facebook"},
 }
 
 func (m *MetaClient) GetPushConfigs() *bridgev2.PushConfig {
@@ -49,9 +50,10 @@ type DoubleToken struct {
 }
 
 func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
-	if pushType != bridgev2.PushTypeWeb {
+	if pushType != bridgev2.PushTypeWeb && pushType != bridgev2.PushTypeAPNs {
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
+
 	meta := m.UserLogin.Metadata.(*metaid.UserLoginMetadata)
 	if meta.PushKeys == nil {
 		meta.GeneratePushKeys()
@@ -64,26 +66,38 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 		P256DH: meta.PushKeys.P256DH,
 		Auth:   meta.PushKeys.Auth,
 	}
-	var encToken string
+
 	if token[0] == '{' && token[len(token)-1] == '}' {
 		var dt DoubleToken
 		err := json.Unmarshal([]byte(token), &dt)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal double token: %w", err)
 		}
+
 		token = dt.Unencrypted
-		encToken = dt.Encrypted
-	}
-	if encToken != "" {
-		err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
-			Endpoint: encToken,
-			Auth:     meta.PushKeys.Auth,
-			P256DH:   meta.PushKeys.P256DH,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to register e2ee notifications: %w", err)
+		encToken := dt.Encrypted
+
+		if encToken != "" {
+			switch pushType {
+			case bridgev2.PushTypeWeb:
+				err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
+					Endpoint: encToken,
+					Auth:     meta.PushKeys.Auth,
+					P256DH:   meta.PushKeys.P256DH,
+				})
+				if err != nil {
+					return fmt.Errorf("failed to register web e2ee notifications: %w", err)
+				}
+			case bridgev2.PushTypeAPNs:
+				if err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.APNsPushConfig{
+					Token: encToken,
+				}); err != nil {
+					return fmt.Errorf("failed to register for APNs notifications: %w", err)
+				}
+			}
 		}
 	}
+
 	if m.Client.Platform.IsMessenger() {
 		return m.Client.Facebook.RegisterPushNotifications(token, keys)
 	} else {
