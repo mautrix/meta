@@ -19,7 +19,7 @@ import (
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost.Name == "" {
 		contactID := metaid.ParseUserID(ghost.ID)
-		resp, err := m.Client.ExecuteTasks(&socket.GetContactsFullTask{
+		resp, err := m.Client.ExecuteTasks(ctx, &socket.GetContactsFullTask{
 			ContactID: contactID,
 		})
 		if err != nil {

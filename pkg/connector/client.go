@@ -36,8 +36,7 @@ type MetaClient struct {
 
 	stopHandlingTables atomic.Pointer[context.CancelFunc]
 	initialTable       atomic.Pointer[table.LSTable]
-	incomingTables     chan *table.LSTable
-	wrappedEvents      chan []bridgev2.RemoteEvent
+	parsedTables       chan *parsedTable
 	backfillCollectors map[int64]*BackfillCollector
 	backfillLock       sync.Mutex
 	connectLock        sync.Mutex
@@ -74,16 +73,13 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		LoginMeta: loginMetadata,
 		UserLogin: login,
 
-		incomingTables:     make(chan *table.LSTable, 16),
+		parsedTables:       make(chan *parsedTable, 16),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 
 		connectWaiter:     exsync.NewEvent(),
 		e2eeConnectWaiter: exsync.NewEvent(),
-	}
-	if bridgev2.PortalEventBuffer == 0 && !m.Bridge.Background {
-		c.wrappedEvents = make(chan []bridgev2.RemoteEvent, 16)
 	}
 	if messagixClient != nil {
 		messagixClient.SetEventHandler(c.handleMetaEvent)
@@ -147,17 +143,17 @@ func (m *MetaClient) Connect(ctx context.Context) {
 		return
 	}
 	defer m.connectLock.Unlock()
-	ctx, cancel := context.WithCancel(ctx)
+	retryCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if oldCancel := m.stopConnectAttempt.Swap(&cancel); oldCancel != nil {
 		(*oldCancel)()
 	}
-	m.connectWithRetry(ctx, 0)
+	m.connectWithRetry(retryCtx, ctx, 0)
 }
 
 const MaxConnectRetries = 10
 
-func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
+func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts int) {
 	if m.Client == nil {
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
@@ -170,7 +166,7 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 		zerolog.Ctx(ctx).Debug().Stringer("retry_in", retryIn).Msg("Sleeping before retrying connection")
 		select {
 		case <-time.After(retryIn):
-		case <-ctx.Done():
+		case <-retryCtx.Done():
 			zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled during sleep")
 			return
 		}
@@ -199,7 +195,7 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 			return
 		}
 	}
-	currentUser, initialTable, err := m.Client.LoadMessagesPage()
+	currentUser, initialTable, err := m.Client.LoadMessagesPage(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load messages page")
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
@@ -254,14 +250,14 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 				Message:    lsErr.Error(),
 			})
 			if stateEvt == status.StateTransientDisconnect {
-				m.connectWithRetry(ctx, attempts+1)
+				m.connectWithRetry(retryCtx, ctx, attempts+1)
 			}
 		} else if attempts < MaxConnectRetries {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateTransientDisconnect,
 				Error:      MetaConnectError,
 			})
-			m.connectWithRetry(ctx, attempts+1)
+			m.connectWithRetry(retryCtx, ctx, attempts+1)
 		} else {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
@@ -270,7 +266,7 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 		}
 		return
 	}
-	if ctx.Err() != nil {
+	if retryCtx.Err() != nil {
 		zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled")
 		return
 	}
@@ -278,7 +274,7 @@ func (m *MetaClient) connectWithRetry(ctx context.Context, attempts int) {
 }
 
 func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable, currentUser types.UserInfo) {
-	go m.handleTableLoop()
+	go m.handleTableLoop(ctx)
 
 	var err error
 	m.Ghost, err = m.Main.Bridge.GetGhostByID(ctx, networkid.UserID(m.UserLogin.ID))
@@ -299,7 +295,7 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 
 	m.initialTable.Store(initialTable)
 
-	err = m.Client.Connect()
+	err = m.Client.Connect(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
 		m.UserLogin.BridgeState.Send(status.BridgeState{
@@ -313,9 +309,9 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 }
 
 func (m *MetaClient) connectWithCache(ctx context.Context) {
-	go m.handleTableLoop()
+	go m.handleTableLoop(ctx)
 
-	err := m.Client.Connect()
+	err := m.Client.Connect(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
 		m.UserLogin.BridgeState.Send(status.BridgeState{
@@ -503,7 +499,7 @@ func (m *MetaClient) FullReconnect() {
 	if m.LoginMeta.Cookies == nil {
 		return
 	}
-	ctx := m.UserLogin.Log.WithContext(context.TODO())
+	ctx := m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx)
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)

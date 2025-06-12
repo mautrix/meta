@@ -62,7 +62,7 @@ func init() {
 	})
 }
 
-func (m *MetaClient) handleMetaEvent(rawEvt any) {
+func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 	log := m.UserLogin.Log
 
 	switch evt := rawEvt.(type) {
@@ -71,27 +71,20 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 		for _, rng := range evt.Table.LSInsertNewMessageRange {
 			log.Debug().Any("message_range", rng).Msg("Message range in publish response")
 		}
-		select {
-		case m.incomingTables <- evt.Table:
-		default:
-			log.Warn().Msg("Incoming tables channel full, event order not guaranteed")
-			go func() {
-				m.incomingTables <- evt.Table
-			}()
-		}
+		m.parseAndQueueTable(ctx, evt.Table, false)
 	case *messagix.Event_Ready:
 		log.Debug().Msg("Initial connect to Meta socket completed")
 		m.connectWaiter.Set()
-		if tbl := m.initialTable.Swap(nil); tbl != nil {
-			log.Debug().Msg("Sending cached initial table to handler")
-			m.incomingTables <- tbl
-		}
 		if m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE {
 			m.firstE2EEConnectDone = true
 			go m.tryConnectE2EE(false)
 		}
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.metaState)
+		if tbl := m.initialTable.Swap(nil); tbl != nil {
+			log.Debug().Msg("Handling cached initial table")
+			m.parseAndQueueTable(ctx, tbl, true)
+		}
 	case *messagix.Event_SocketError:
 		log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
 		m.metaState = status.BridgeState{
@@ -146,43 +139,74 @@ func (m *MetaClient) handleMetaEvent(rawEvt any) {
 	}
 }
 
-func (m *MetaClient) handleTableLoop() {
-	ctx, cancel := context.WithCancel(m.Main.Bridge.BackgroundCtx)
+func (m *MetaClient) parseAndQueueTable(ctx context.Context, tbl *table.LSTable, isInitial bool) {
+	evts := m.parseTable(ctx, tbl)
+	wrapped := &parsedTable{
+		Table:     tbl,
+		Events:    evts,
+		IsInitial: isInitial,
+	}
+	if ctx.Err() != nil {
+		zerolog.Ctx(ctx).Warn().Err(ctx.Err()).Msg("Not dispatching parsed table, context is canceled")
+	}
+	select {
+	case m.parsedTables <- wrapped:
+	default:
+		zerolog.Ctx(ctx).Warn().Msg("Parsed table queue is full, events may get stuck")
+		select {
+		case m.parsedTables <- wrapped:
+		case <-ctx.Done():
+			zerolog.Ctx(ctx).Warn().Msg("Context was cancelled before stuck table was dispatched, dropping table")
+		}
+	}
+}
+
+type parsedTable struct {
+	Table     *table.LSTable
+	Events    []bridgev2.RemoteEvent
+	IsInitial bool
+}
+
+func (m *MetaClient) handleTableLoop(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if oldCancel := m.stopHandlingTables.Swap(&cancel); oldCancel != nil {
 		(*oldCancel)()
 	}
-	if m.wrappedEvents != nil {
-		go m.handleEventLoop(ctx)
-	}
-	log := m.UserLogin.Log.With().Str("action", "handle table").Logger()
+	log := m.UserLogin.Log.With().Str("action", "handle parsed table").Logger()
 	ctx = log.WithContext(ctx)
 	for {
 		select {
-		case tbl := <-m.incomingTables:
+		case evt := <-m.parsedTables:
 			m.notifyBackgroundConnAboutEvent(true)
-			m.handleTable(ctx, tbl)
+			m.handleParsedTable(ctx, evt.IsInitial, evt.Table, evt.Events)
 			m.notifyBackgroundConnAboutEvent(false)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
-
-func (m *MetaClient) handleEventLoop(ctx context.Context) {
-	zerolog.Ctx(ctx).Info().Msg("Starting inner event queue")
-	for {
-		select {
-		case evts := <-m.wrappedEvents:
-			for _, evt := range evts {
-				m.UserLogin.QueueRemoteEvent(evt)
-				if ctx.Err() != nil {
-					return
-				}
-			}
-		case <-ctx.Done():
+func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl *table.LSTable, innerQueue []bridgev2.RemoteEvent) {
+	for _, contact := range tbl.LSDeleteThenInsertContact {
+		if ctx.Err() != nil {
 			return
 		}
+		m.syncGhost(ctx, contact)
+	}
+	for _, contact := range tbl.LSVerifyContactRowExists {
+		if ctx.Err() != nil {
+			return
+		}
+		m.syncGhost(ctx, contact)
+	}
+	for _, evt := range innerQueue {
+		if ctx.Err() != nil {
+			return
+		}
+		m.UserLogin.QueueRemoteEvent(evt)
+	}
+	if !isInitial && ctx.Err() == nil {
+		m.Client.PostHandlePublishResponse(tbl)
 	}
 }
 
@@ -197,14 +221,7 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 	ghost.UpdateInfo(ctx, m.wrapUserInfo(info))
 }
 
-func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
-	for _, contact := range tbl.LSDeleteThenInsertContact {
-		m.syncGhost(ctx, contact)
-	}
-	for _, contact := range tbl.LSVerifyContactRowExists {
-		m.syncGhost(ctx, contact)
-	}
-
+func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
 	params := threadMaps{
@@ -213,7 +230,7 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 		vtes:  threadExists,
 		syncs: threadResyncs,
 	}
-	innerQueue := make([]bridgev2.RemoteEvent, 0, 8)
+	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
 
 	for _, thread := range tbl.LSVerifyThreadExists {
 		threadExists[thread.ThreadKey] = thread
@@ -230,9 +247,9 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	// TODO resync threads with LSUpdateOrInsertThread?
 
 	// Deleting a thread will cancel all further events, so handle those first
-	handlePortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
+	collectPortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
 	// Similar to above - delete the thread when the user leaves it
-	handlePortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleSelfLeaveThread, &innerQueue)
+	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleSelfLeaveThread, &innerQueue)
 
 	for _, verifyExists := range threadExists {
 		if _, resyncing := threadResyncs[verifyExists.ThreadKey]; resyncing {
@@ -242,41 +259,35 @@ func (m *MetaClient) handleTable(ctx context.Context, tbl *table.LSTable) {
 	}
 
 	// Handle events that are merged into thread resyncs before dispatching the resyncs
-	handlePortalEvents(params, tbl.LSAddParticipantIdToGroupThread, m.handleAddParticipant, &innerQueue)
-	handlePortalEvents(params, tbl.LSUpdateThreadMuteSetting, m.handleUpdateMuteSetting, &innerQueue)
-	handlePortalEvents(params, tbl.LSMoveThreadToE2EECutoverFolder, m.handleMoveThreadToE2EE, &innerQueue)
+	collectPortalEvents(params, tbl.LSAddParticipantIdToGroupThread, m.handleAddParticipant, &innerQueue)
+	collectPortalEvents(params, tbl.LSUpdateThreadMuteSetting, m.handleUpdateMuteSetting, &innerQueue)
+	collectPortalEvents(params, tbl.LSMoveThreadToE2EECutoverFolder, m.handleMoveThreadToE2EE, &innerQueue)
 	upsert, insert := tbl.WrapMessages()
-	handlePortalEvents(params, maps.Values(upsert), m.handleUpsertMessages, &innerQueue)
-	handlePortalEvents(params, tbl.LSUpdateExistingMessageRange, m.handleUpdateExistingMessageRange, &innerQueue)
+	collectPortalEvents(params, maps.Values(upsert), m.handleUpsertMessages, &innerQueue)
+	collectPortalEvents(params, tbl.LSUpdateExistingMessageRange, m.handleUpdateExistingMessageRange, &innerQueue)
 
 	for _, resync := range threadResyncs {
 		innerQueue = append(innerQueue, resync)
 	}
 
-	handlePortalEvents(params, insert, m.handleMessageInsert, &innerQueue)
+	collectPortalEvents(params, insert, m.handleMessageInsert, &innerQueue)
 	// Edits are special snowflakes that don't include the thread key
 	for _, edit := range tbl.LSEditMessage {
 		m.handleEdit(ctx, edit, &innerQueue)
 	}
-	handlePortalEvents(params, tbl.LSSyncUpdateThreadName, m.handleUpdateThreadName, &innerQueue)
-	handlePortalEvents(params, tbl.LSSetThreadImageURL, m.handleSetThreadImage, &innerQueue)
-	handlePortalEvents(params, tbl.LSUpdateReadReceipt, m.handleUpdateReadReceipt, &innerQueue)
-	handlePortalEvents(params, tbl.LSMarkThreadReadV2, m.handleMarkThreadRead, &innerQueue)
-	handlePortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator, &innerQueue)
-	handlePortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage, &innerQueue)
-	handlePortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage, &innerQueue)
-	handlePortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
-	handlePortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
-	handlePortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
+	collectPortalEvents(params, tbl.LSSyncUpdateThreadName, m.handleUpdateThreadName, &innerQueue)
+	collectPortalEvents(params, tbl.LSSetThreadImageURL, m.handleSetThreadImage, &innerQueue)
+	collectPortalEvents(params, tbl.LSUpdateReadReceipt, m.handleUpdateReadReceipt, &innerQueue)
+	collectPortalEvents(params, tbl.LSMarkThreadReadV2, m.handleMarkThreadRead, &innerQueue)
+	collectPortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator, &innerQueue)
+	collectPortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage, &innerQueue)
+	collectPortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage, &innerQueue)
+	collectPortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
+	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
+	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
 	// TODO request more inbox if applicable
 
-	if m.wrappedEvents == nil {
-		for _, evt := range innerQueue {
-			m.UserLogin.QueueRemoteEvent(evt)
-		}
-	} else {
-		m.wrappedEvents <- innerQueue
-	}
+	return
 }
 
 func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThreadReadV2) bridgev2.RemoteEvent {
@@ -594,7 +605,7 @@ type handlerParams struct {
 	syncs map[int64]*FBChatResync
 }
 
-func handlePortalEvents[T ThreadKeyable](
+func collectPortalEvents[T ThreadKeyable](
 	p threadMaps,
 	msgs []T,
 	fn func(tk handlerParams, msg T) bridgev2.RemoteEvent,

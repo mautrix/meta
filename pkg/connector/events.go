@@ -92,16 +92,14 @@ func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bri
 			return nil, fmt.Errorf("thread resync was already requested")
 		}
 		zerolog.Ctx(ctx).Debug().Msg("Sending create thread request for unknown thread in verifyThreadExists")
-		resp, err := evt.m.Client.ExecuteTasks(
-			&socket.CreateThreadTask{
-				ThreadFBID:                evt.ThreadKey,
-				ForceUpsert:               0,
-				UseOpenMessengerTransport: 0,
-				SyncGroup:                 1,
-				MetadataOnly:              0,
-				PreviewOnly:               0,
-			},
-		)
+		resp, err := evt.m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
+			ThreadFBID:                evt.ThreadKey,
+			ForceUpsert:               0,
+			UseOpenMessengerTransport: 0,
+			SyncGroup:                 1,
+			MetadataOnly:              0,
+			PreviewOnly:               0,
+		})
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to request full thread info")
 		} else {

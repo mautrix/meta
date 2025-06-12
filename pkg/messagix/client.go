@@ -46,7 +46,8 @@ const SecCHPrefersColorScheme = "light"
 
 var ErrClientIsNil = whatsmeow.ErrClientIsNil
 
-type EventHandler func(evt interface{})
+type EventHandler func(ctx context.Context, evt any)
+
 type Client struct {
 	Instagram *InstagramMethods
 	Facebook  *FacebookMethods
@@ -170,7 +171,7 @@ func (c *Client) LoadState(state json.RawMessage) error {
 	return nil
 }
 
-func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
+func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.LSTable, error) {
 	if c == nil {
 		return nil, nil, ErrClientIsNil
 	} else if !c.cookies.IsLoggedIn() {
@@ -178,13 +179,13 @@ func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 	}
 
 	moduleLoader := &ModuleParser{client: c, LS: &table.LSTable{}}
-	err := moduleLoader.Load(c.getEndpoint("messages"))
+	err := moduleLoader.Load(ctx, c.getEndpoint("messages"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
 	}
 
 	c.syncManager = c.newSyncManager()
-	ls, err := c.configs.SetupConfigs(moduleLoader.LS)
+	ls, err := c.configs.SetupConfigs(ctx, moduleLoader.LS)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -197,9 +198,9 @@ func (c *Client) LoadMessagesPage() (types.UserInfo, *table.LSTable, error) {
 	return currentUser, ls, nil
 }
 
-func (c *Client) loadLoginPage() *ModuleParser {
+func (c *Client) loadLoginPage(ctx context.Context) *ModuleParser {
 	moduleLoader := &ModuleParser{client: c}
-	moduleLoader.Load(c.getEndpoint("login_page"))
+	moduleLoader.Load(ctx, c.getEndpoint("login_page"))
 	return moduleLoader
 }
 
@@ -255,9 +256,9 @@ func (c *Client) SetEventHandler(handler EventHandler) {
 	c.eventHandler = handler
 }
 
-func (c *Client) handleEvent(evt any) {
+func (c *Client) handleEvent(ctx context.Context, evt any) {
 	if c.eventHandler != nil {
-		c.eventHandler(evt)
+		c.eventHandler(ctx, evt)
 	}
 }
 
@@ -275,13 +276,13 @@ func (c *Client) UpdateProxy(reason string) bool {
 	return true
 }
 
-func (c *Client) Connect() error {
+func (c *Client) Connect(ctx context.Context) error {
 	if c == nil {
 		return ErrClientIsNil
 	} else if err := c.socket.CanConnect(); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(ctx)
 	oldCancel := c.stopCurrentConnection.Swap(&cancel)
 	if oldCancel != nil {
 		(*oldCancel)()
@@ -292,20 +293,24 @@ func (c *Client) Connect() error {
 		for {
 			c.disableSendingMessages() // In case we're reconnecting from a normal network error
 			connectStart := time.Now()
-			err := c.socket.Connect()
+			err := c.socket.Connect(ctx)
 			c.disableSendingMessages()
 			if ctx.Err() != nil {
+				zerolog.Ctx(ctx).Warn().
+					Err(ctx.Err()).
+					AnErr("connect_err", err).
+					Msg("Context canceled, stopping connection loop")
 				return
 			}
 			if errors.Is(err, CONNECTION_REFUSED_UNAUTHORIZED) ||
 				errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) ||
 				// TODO server unavailable may mean a challenge state, should be checked somehow
 				errors.Is(err, CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
-				c.handleEvent(&Event_PermanentError{Err: err})
+				c.handleEvent(ctx, &Event_PermanentError{Err: err})
 				return
 			}
 			connectionAttempts += 1
-			c.handleEvent(&Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
+			c.handleEvent(ctx, &Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
 			if time.Since(connectStart) > 2*time.Minute {
 				reconnectIn = 2 * time.Second
 			} else {
@@ -344,7 +349,7 @@ func (c *Client) IsConnected() bool {
 	return c != nil && c.socket.conn != nil
 }
 
-func (c *Client) sendCookieConsent(jsDatr string) error {
+func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
 
 	var payloadQuery interface{}
 	h := c.buildHeaders(false, false)
@@ -393,7 +398,7 @@ func (c *Client) sendCookieConsent(jsDatr string) error {
 	}
 
 	payload := []byte(form.Encode())
-	req, _, err := c.MakeRequest(c.getEndpoint("cookie_consent"), "POST", h, payload, types.FORM)
+	req, _, err := c.MakeRequest(ctx, c.getEndpoint("cookie_consent"), "POST", h, payload, types.FORM)
 	if err != nil {
 		return err
 	}
@@ -483,7 +488,7 @@ func (c *Client) disableSendingMessages() {
 	c.sendMessagesCond.L.Unlock()
 }
 
-func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
+func (c *Client) WaitUntilCanSendMessages(ctx context.Context, timeout time.Duration) error {
 	if c == nil {
 		return ErrClientIsNil
 	}
@@ -502,6 +507,8 @@ func (c *Client) WaitUntilCanSendMessages(timeout time.Duration) error {
 		select {
 		case <-timer.C:
 			return fmt.Errorf("timeout waiting for canSendMessages")
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-done:
 			if c.canSendMessages {
 				return nil

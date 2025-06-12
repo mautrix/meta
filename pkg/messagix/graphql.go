@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/google/go-querystring/query"
+	"golang.org/x/net/context"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
@@ -15,7 +16,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.Response, []byte, error) {
+func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {
 	graphQLDoc, ok := graphql.GraphQLDocs[name]
 	if !ok {
 		return nil, nil, fmt.Errorf("could not find graphql doc by the name of: %s", name)
@@ -51,7 +52,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 
 	reqUrl := c.getEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
-	resp, respData, err := c.MakeRequest(reqUrl, "POST", headers, payloadBytes, types.FORM)
+	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 	if err == nil && resp != nil {
 		c.cookies.UpdateFromResponse(resp)
 	}
@@ -59,7 +60,7 @@ func (c *Client) makeGraphQLRequest(name string, variables interface{}) (*http.R
 	return resp, respData, err
 }
 
-func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVariables, reqType int) (*table.LSTable, error) {
+func (c *Client) makeLSRequest(ctx context.Context, variables *graphql.LSPlatformGraphQLLightspeedVariables, reqType int) (*table.LSTable, error) {
 	strPayload, err := json.Marshal(&variables)
 	if err != nil {
 		return nil, err
@@ -80,7 +81,7 @@ func (c *Client) makeLSRequest(variables *graphql.LSPlatformGraphQLLightspeedVar
 	} else {
 		lsRequestQueryName = "LSGraphQLRequestIG"
 	}
-	_, respBody, err := c.makeGraphQLRequest(lsRequestQueryName, &lsVariables)
+	_, respBody, err := c.makeGraphQLRequest(ctx, lsRequestQueryName, &lsVariables)
 	if err != nil {
 		return nil, err
 	}

@@ -40,16 +40,14 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 
 	var chat *bridgev2.CreateChatResponse
 	if createChat {
-		resp, err := m.Client.ExecuteTasks(
-			&socket.CreateThreadTask{
-				ThreadFBID:                id,
-				ForceUpsert:               0,
-				UseOpenMessengerTransport: 0,
-				SyncGroup:                 1,
-				MetadataOnly:              0,
-				PreviewOnly:               0,
-			},
-		)
+		resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
+			ThreadFBID:                id,
+			ForceUpsert:               0,
+			UseOpenMessengerTransport: 0,
+			SyncGroup:                 1,
+			MetadataOnly:              0,
+			PreviewOnly:               0,
+		})
 
 		log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
 		chat = &bridgev2.CreateChatResponse{
@@ -91,12 +89,12 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		resp, err := m.Client.ExecuteTasks(secondaryTask)
+		resp, err := m.Client.ExecuteTasks(ctx, secondaryTask)
 		log.Trace().Any("response_data", resp).Err(err).Msg("Resolve identifier secondary response")
 		// The secondary response doesn't seem to have anything important, so just ignore it
 	}()
 
-	resp, err := m.Client.ExecuteTasks(task)
+	resp, err := m.Client.ExecuteTasks(ctx, task)
 	log.Trace().Any("response_data", resp).Err(err).Msg("Resolve identifier primary response")
 	if err != nil {
 		return nil, fmt.Errorf("failed to search for user: %w", err)

@@ -59,7 +59,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	var attempts int
 	for {
 		attempts += 1
-		_, respBody, err := c.MakeRequest(url, "POST", h, payload, types.NONE)
+		_, respBody, err := c.MakeRequest(ctx, url, "POST", h, payload, types.NONE)
 		if err != nil {
 			// MakeRequest retries itself, so bail immediately if that fails
 			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %w", err)

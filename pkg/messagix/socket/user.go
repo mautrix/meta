@@ -4,7 +4,7 @@ import "go.mau.fi/mautrix-meta/pkg/messagix/table"
 
 type ReportAppStateTask struct {
 	AppState  table.AppState `json:"app_state"`
-	RequestId string         `json:"request_id"`
+	RequestID string         `json:"request_id"`
 }
 
 func (t *ReportAppStateTask) GetLabel() string {

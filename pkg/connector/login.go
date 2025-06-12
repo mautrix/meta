@@ -196,7 +196,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		}
 	}
 
-	user, tbl, err := client.LoadMessagesPage()
+	user, tbl, err := client.LoadMessagesPage(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to load messages page for login")
 		if errors.Is(err, messagix.ErrChallengeRequired) {
@@ -247,7 +247,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	metaClient.lastFullReconnect = time.Time{}
 	metaClient.Client = client
 
-	backgroundCtx := ul.Log.WithContext(context.Background())
+	backgroundCtx := ul.Log.WithContext(m.Main.Bridge.BackgroundCtx)
 	go metaClient.connectWithTable(backgroundCtx, tbl, user)
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,

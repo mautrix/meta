@@ -85,9 +85,9 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 		}
 	}
 	if m.Client.Platform.IsMessenger() {
-		return m.Client.Facebook.RegisterPushNotifications(token, keys)
+		return m.Client.Facebook.RegisterPushNotifications(ctx, token, keys)
 	} else {
-		return m.Client.Instagram.RegisterPushNotifications(token, keys)
+		return m.Client.Instagram.RegisterPushNotifications(ctx, token, keys)
 	}
 }
 

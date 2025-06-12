@@ -83,7 +83,7 @@ func (sb *SubscribePayload) Write() ([]byte, error) {
 
 func (c *Client) newSubscribeRequest(topic Topic, qos packets.QoS) ([]byte, uint16, error) {
 	packetByte := &packets.SubscribePacket{}
-	packetId := c.socket.SafePacketId()
+	packetId := c.socket.SafePacketID()
 	c.socket.responseHandler.addPacketChannel(packetId)
 	payload := &SubscribePayload{
 		PacketId: packetId,

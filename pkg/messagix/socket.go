@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
@@ -114,7 +116,7 @@ func (s *Socket) CanConnect() error {
 	return nil
 }
 
-func (s *Socket) Connect() error {
+func (s *Socket) Connect(ctx context.Context) error {
 	err := s.CanConnect()
 	if err != nil {
 		return err
@@ -141,7 +143,7 @@ func (s *Socket) Connect() error {
 	}
 
 	s.client.Logger.Debug().Str("broker", brokerUrl).Msg("Dialing socket")
-	conn, _, err := dialer.Dial(brokerUrl, headers)
+	conn, _, err := dialer.DialContext(ctx, brokerUrl, headers)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrDial, err)
 	}
@@ -152,7 +154,7 @@ func (s *Socket) Connect() error {
 		return fmt.Errorf("%w: %w", ErrSendConnect, err)
 	}
 
-	err = s.readLoop(conn)
+	err = s.readLoop(ctx, conn)
 	s.responseHandler.CancelAllRequests()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInReadLoop, err)
@@ -192,7 +194,7 @@ func (s *Socket) Disconnect() {
 	}
 }
 
-func (s *Socket) readLoop(conn *websocket.Conn) error {
+func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	defer func() {
 		s.conn = nil
 	}()
@@ -210,14 +212,31 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 	})
 	pongTimeoutTicker := time.NewTicker(pongTimeout)
 	defer pongTimeoutTicker.Stop()
-	wsMessages := make(chan []byte, 32)
-	defer close(wsMessages)
+	wsQueue := make(chan any, 32)
+	defer close(wsQueue)
 	closeDueToError := func(reason string) {
 		err := conn.Close()
 		if err != nil && !errors.Is(err, net.ErrClosed) {
 			s.client.Logger.Debug().Err(err).Msg("Error closing connection after " + reason)
 		}
 	}
+	go func() {
+		for item := range wsQueue {
+			switch evt := item.(type) {
+			case *Event_PublishResponse:
+				s.handlePublishResponseEvent(ctx, evt, true)
+			case *Event_Ready:
+				err := s.handleReadyEvent(ctx, evt)
+				if err != nil {
+					closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to handle connect ack: %w", err)))
+					s.client.Logger.Err(err).Msg("Failed to handle connect ack")
+					closeDueToError("connect ack failed")
+				}
+			default:
+				panic(fmt.Errorf("invalid type %T in websocket item queue", item))
+			}
+		}
+	}()
 	handleBinaryMessage := func(data []byte) {
 		resp := &Response{}
 		err := resp.Read(data)
@@ -232,7 +251,15 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 			s.client.Logger.Trace().Msg("Got ping response")
 			pongTimeoutTicker.Reset(pongTimeout)
 		case *Event_PublishResponse:
-			s.handlePublishResponseEvent(evt, resp.QOS())
+			evt.QoS = resp.QOS()
+			if s.handlePublishResponseEvent(ctx, evt, false) {
+				select {
+				case wsQueue <- evt:
+				default:
+					s.client.Logger.Warn().Msg("Websocket queue is full")
+					wsQueue <- evt
+				}
+			}
 		case *Event_PublishACK, *Event_SubscribeACK:
 			s.handleACKEvent(evt.(AckEvent))
 		case *Event_Ready:
@@ -242,14 +269,12 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 				closeDueToError("connection refused")
 				return
 			}
-			go func() {
-				err := s.handleReadyEvent(evt)
-				if err != nil {
-					closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to handle connect ack: %w", err)))
-					s.client.Logger.Err(err).Msg("Failed to handle connect ack")
-					closeDueToError("connect ack failed")
-				}
-			}()
+			select {
+			case wsQueue <- evt:
+			default:
+				s.client.Logger.Warn().Msg("Websocket queue is full")
+				wsQueue <- evt
+			}
 		default:
 			s.client.Logger.Warn().Any("data", data).Msg("Unexpected data in websocket")
 		}
@@ -259,11 +284,6 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 		defer ticker.Stop()
 		for {
 			select {
-			case p := <-wsMessages:
-				if p == nil {
-					return
-				}
-				handleBinaryMessage(p)
 			case <-ticker.C:
 				err := s.sendData([]byte{packets.PINGREQ << 4, 0})
 				if err != nil {
@@ -277,9 +297,12 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 				s.client.Logger.Error().Msg("Pong timeout")
 				closeDueToError("pong timeout")
 				return
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
+	zerolog.Ctx(ctx).Debug().Msg("Connection established, starting read loop")
 	for {
 		messageType, p, err := conn.ReadMessage()
 		if err != nil {
@@ -297,12 +320,7 @@ func (s *Socket) readLoop(conn *websocket.Conn) error {
 		case websocket.TextMessage:
 			s.client.Logger.Warn().Bytes("bytes", p).Msg("Unexpected text message in websocket")
 		case websocket.BinaryMessage:
-			select {
-			case wsMessages <- p:
-			default:
-				s.client.Logger.Warn().Msg("Websocket message channel is full")
-				wsMessages <- p
-			}
+			handleBinaryMessage(p)
 		}
 	}
 }
@@ -321,7 +339,7 @@ func (s *Socket) sendData(data []byte) error {
 	return nil
 }
 
-func (s *Socket) SafePacketId() uint16 {
+func (s *Socket) SafePacketID() uint16 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -346,7 +364,7 @@ func (s *Socket) sendConnectPacket() error {
 	return s.sendData(connectPayload)
 }
 
-func (s *Socket) sendSubscribePacket(topic Topic, qos packets.QoS, wait bool) (*Event_SubscribeACK, error) {
+func (s *Socket) sendSubscribePacket(ctx context.Context, topic Topic, qos packets.QoS, wait bool) (*Event_SubscribeACK, error) {
 	subscribeRequestPayload, packetId, err := s.client.newSubscribeRequest(topic, qos)
 	if err != nil {
 		return nil, err
@@ -359,7 +377,7 @@ func (s *Socket) sendSubscribePacket(topic Topic, qos packets.QoS, wait bool) (*
 
 	var resp *Event_SubscribeACK
 	if wait {
-		resp, err = s.responseHandler.waitForSubACKDetails(packetId)
+		resp, err = s.responseHandler.waitForSubACKDetails(ctx, packetId)
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +389,7 @@ func (s *Socket) sendSubscribePacket(topic Topic, qos packets.QoS, wait bool) (*
 	return resp, nil
 }
 
-func (s *Socket) sendPublishPacket(topic Topic, jsonData string, packet *packets.PublishPacket, packetId uint16) (uint16, error) {
+func (s *Socket) sendPublishPacket(ctx context.Context, topic Topic, jsonData string, packet *packets.PublishPacket, packetId uint16) (uint16, error) {
 	publishRequestPayload, packetId, err := s.client.newPublishRequest(topic, jsonData, packet.Compress(), packetId)
 	if err != nil {
 		return packetId, err
@@ -383,7 +401,7 @@ func (s *Socket) sendPublishPacket(topic Topic, jsonData string, packet *packets
 		s.responseHandler.deleteDetails(packetId, RequestChannel)
 		return packetId, err
 	}
-	_, err = s.responseHandler.waitForPubACKDetails(packetId)
+	_, err = s.responseHandler.waitForPubACKDetails(ctx, packetId)
 	if err != nil {
 		s.responseHandler.deleteDetails(packetId, RequestChannel)
 		return packetId, err
@@ -398,8 +416,8 @@ type SocketLSRequestPayload struct {
 	Type      int    `json:"type"`
 }
 
-func (s *Socket) makeLSRequest(payload []byte, t int) (*Event_PublishResponse, error) {
-	packetId := s.SafePacketId()
+func (s *Socket) makeLSRequest(ctx context.Context, payload []byte, t int) (*Event_PublishResponse, error) {
+	packetId := s.SafePacketID()
 	lsPayload := &SocketLSRequestPayload{
 		AppId:     s.client.configs.BrowserConfigTable.CurrentUserInitialData.AppID,
 		Payload:   string(payload),
@@ -412,12 +430,12 @@ func (s *Socket) makeLSRequest(payload []byte, t int) (*Event_PublishResponse, e
 		return nil, err
 	}
 
-	_, err = s.sendPublishPacket(LS_REQ, string(jsonPayload), &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, packetId)
+	_, err = s.sendPublishPacket(ctx, LS_REQ, string(jsonPayload), &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, packetId)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.responseHandler.waitForPubResponseDetails(packetId)
+	return s.responseHandler.waitForPubResponseDetails(ctx, packetId)
 }
 
 func (s *Socket) getConnHeaders() http.Header {

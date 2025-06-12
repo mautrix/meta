@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -147,7 +148,7 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 	return nil
 }
 
-func (c *Client) MakeRequest(url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+func (c *Client) MakeRequest(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
 	if c == nil {
 		return nil, nil, ErrClientIsNil
 	}
@@ -155,7 +156,7 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 	for {
 		attempts++
 		start := time.Now()
-		resp, respDat, err := c.makeRequestDirect(url, method, headers, payload, contentType)
+		resp, respDat, err := c.makeRequestDirect(ctx, url, method, headers, payload, contentType)
 		dur := time.Since(start)
 		if err == nil {
 			c.Logger.Debug().
@@ -172,7 +173,7 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 				Dur("duration", dur).
 				Msg("Request failed, giving up")
 			return nil, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
-		} else if isPermanentRequestError(err) {
+		} else if isPermanentRequestError(err) || ctx.Err() != nil {
 			c.Logger.Err(err).
 				Str("url", url).
 				Str("method", method).
@@ -189,8 +190,8 @@ func (c *Client) MakeRequest(url string, method string, headers http.Header, pay
 	}
 }
 
-func (c *Client) makeRequestDirect(url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
-	newRequest, err := http.NewRequest(method, url, bytes.NewBuffer(payload))
+func (c *Client) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+	newRequest, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -292,11 +293,11 @@ func (c *Client) findCookie(cookies []*http.Cookie, name string) *http.Cookie {
 	return nil
 }
 
-func (c *Client) sendLoginRequest(form url.Values, loginUrl string) (*http.Response, []byte, error) {
+func (c *Client) sendLoginRequest(ctx context.Context, form url.Values, loginUrl string) (*http.Response, []byte, error) {
 	h := c.buildLoginHeaders()
 	loginPayload := []byte(form.Encode())
 
-	resp, respBody, err := c.MakeRequest(loginUrl, "POST", h, loginPayload, types.FORM)
+	resp, respBody, err := c.MakeRequest(ctx, loginUrl, "POST", h, loginPayload, types.FORM)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to send login request: %w", err)
 	}

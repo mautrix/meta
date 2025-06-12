@@ -46,7 +46,7 @@ func fnToggleEncryption(ce *commands.Event) {
 	} else {
 		if len(ce.Args) == 0 || ce.Args[0] != "--force" {
 			threadID := metaid.ParseFBPortalID(ce.Portal.ID)
-			resp, err := cli.Client.ExecuteTasks(&socket.CreateWhatsAppThreadTask{
+			resp, err := cli.Client.ExecuteTasks(ce.Ctx, &socket.CreateWhatsAppThreadTask{
 				WAJID:            threadID,
 				OfflineThreadKey: methods.GenerateEpochID(),
 				ThreadType:       table.ENCRYPTED_OVER_WA_ONE_TO_ONE,
@@ -66,7 +66,7 @@ func fnToggleEncryption(ce *commands.Event) {
 					ce.Log.Trace().Any("task", task).Msg("Create WhatsApp thread response task")
 					tasks[i] = task
 				}
-				resp, err = cli.Client.ExecuteTasks(tasks...)
+				resp, err = cli.Client.ExecuteTasks(ce.Ctx, tasks...)
 				if err != nil {
 					ce.Log.Err(err).Msg("Failed to create WhatsApp thread (subtask)")
 					ce.Reply("Failed to create WhatsApp thread")

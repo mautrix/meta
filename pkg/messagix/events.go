@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -15,14 +16,14 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 )
 
-func (s *Socket) handleReadyEvent(data *Event_Ready) error {
+func (s *Socket) handleReadyEvent(ctx context.Context, data *Event_Ready) error {
 	if s.previouslyConnected {
 		s.client.EnableSendingMessages()
-		err := s.client.syncManager.EnsureSyncedSocket(reconnectSync[s.client.Platform])
+		err := s.client.syncManager.EnsureSyncedSocket(ctx, reconnectSync[s.client.Platform])
 		if err != nil {
 			return fmt.Errorf("failed to sync after reconnect: %w", err)
 		}
-		s.client.handleEvent(&Event_Reconnected{})
+		s.client.handleEvent(ctx, &Event_Reconnected{})
 		return nil
 	}
 	appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionID)
@@ -30,17 +31,17 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 		return fmt.Errorf("failed to get app settings JSON: %w", err)
 	}
 
-	_, err = s.sendPublishPacket(LS_APP_SETTINGS, appSettingPublishJSON, &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, s.SafePacketId())
+	_, err = s.sendPublishPacket(ctx, LS_APP_SETTINGS, appSettingPublishJSON, &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, s.SafePacketID())
 	if err != nil {
 		return fmt.Errorf("failed to send app settings packet: %w", err)
 	}
 
-	_, err = s.sendSubscribePacket(LS_FOREGROUND_STATE, packets.QOS_LEVEL_0, true)
+	_, err = s.sendSubscribePacket(ctx, LS_FOREGROUND_STATE, packets.QOS_LEVEL_0, true)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to /ls_foreground_state: %w", err)
 	}
 
-	_, err = s.sendSubscribePacket(LS_RESP, packets.QOS_LEVEL_0, true)
+	_, err = s.sendSubscribePacket(ctx, LS_RESP, packets.QOS_LEVEL_0, true)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to /ls_resp: %w", err)
 	}
@@ -94,77 +95,92 @@ func (s *Socket) handleReadyEvent(data *Event_Ready) error {
 	}
 
 	s.client.Logger.Trace().Any("data", string(payload)).Msg("Sync groups tasks")
-	_, err = s.makeLSRequest(payload, 3)
+	_, err = s.makeLSRequest(ctx, payload, 3)
 	if err != nil {
 		return fmt.Errorf("failed to send sync tasks: %w", err)
 	}
 
-	_, err = s.client.ExecuteTasks(&socket.ReportAppStateTask{AppState: table.FOREGROUND, RequestId: uuid.NewString()})
+	_, err = s.client.ExecuteTasks(ctx, &socket.ReportAppStateTask{AppState: table.FOREGROUND, RequestID: uuid.NewString()})
 	if err != nil {
 		return fmt.Errorf("failed to report app state: %w", err)
 	}
 
-	err = s.client.syncManager.EnsureSyncedSocket(initialSync[s.client.Platform])
+	err = s.client.syncManager.EnsureSyncedSocket(ctx, initialSync[s.client.Platform])
 	if err != nil {
 		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
 	}
 
 	data.client = s.client
-	s.client.handleEvent(data.Finish())
+	s.client.handleEvent(ctx, data.Finish())
 	s.previouslyConnected = true
 
 	return nil
 }
 
 func (s *Socket) handleACKEvent(ackData AckEvent) {
-	ok := s.responseHandler.updatePacketChannel(ackData.GetPacketId(), ackData)
+	ok := s.responseHandler.updatePacketChannel(ackData.GetPacketID(), ackData)
 	if !ok {
-		s.client.Logger.Debug().Uint16("packet_id", ackData.GetPacketId()).Msg("Got unexpected publish ack")
+		s.client.Logger.Debug().Uint16("packet_id", ackData.GetPacketID()).Msg("Got unexpected publish ack")
 	}
 }
 
-func (s *Socket) handlePublishResponseEvent(resp *Event_PublishResponse, qos packets.QoS) {
-	packetId := resp.Data.RequestID
-	hasPacket := s.responseHandler.hasPacket(uint16(packetId))
+func (s *Socket) postHandlePublishResponse(tbl *table.LSTable) {
+	syncGroupsNeedUpdate := methods.NeedUpdateSyncGroups(tbl)
+	if syncGroupsNeedUpdate {
+		s.client.Logger.Debug().
+			Any("LSExecuteFirstBlockForSyncTransaction", tbl.LSExecuteFirstBlockForSyncTransaction).
+			Any("LSUpsertSyncGroupThreadsRange", tbl.LSUpsertSyncGroupThreadsRange).
+			Msg("Updating sync groups")
+		err := s.client.syncManager.updateSyncGroupCursors(tbl)
+		if err != nil {
+			s.client.Logger.Err(err).Msg("Failed to sync transactions from publish response event")
+		}
+	}
+}
+
+func (c *Client) PostHandlePublishResponse(tbl *table.LSTable) {
+	if s := c.socket; s != nil {
+		s.postHandlePublishResponse(tbl)
+	}
+}
+
+func (s *Socket) handlePublishResponseEvent(ctx context.Context, resp *Event_PublishResponse, isQueue bool) (addToQueue bool) {
+	packetID := resp.Data.RequestID
+	hasPacket := s.responseHandler.hasPacket(uint16(packetID))
 	switch resp.Topic {
 	case string(LS_RESP):
 		resp.Finish()
-		if hasPacket {
-			ok := s.responseHandler.updateRequestChannel(uint16(packetId), resp)
+		if !isQueue && hasPacket {
+			ok := s.responseHandler.updateRequestChannel(uint16(packetID), resp)
 			if !ok {
-				s.client.Logger.Warn().Int64("packet_id", packetId).Msg("Dropped response to packet")
+				s.client.Logger.Warn().Int64("packet_id", packetID).Msg("Dropped response to packet")
 			}
-		} else if packetId == 0 {
-			syncGroupsNeedUpdate := methods.NeedUpdateSyncGroups(resp.Table)
-			if syncGroupsNeedUpdate {
-				s.client.Logger.Debug().
-					Any("LSExecuteFirstBlockForSyncTransaction", resp.Table.LSExecuteFirstBlockForSyncTransaction).
-					Any("LSUpsertSyncGroupThreadsRange", resp.Table.LSUpsertSyncGroupThreadsRange).
-					Msg("Updating sync groups")
-				//err := s.client.syncManager.SyncTransactions(transactions)
-				err := s.client.syncManager.updateSyncGroupCursors(resp.Table)
-				if err != nil {
-					s.client.Logger.Err(err).Msg("Failed to sync transactions from publish response event")
-				}
+		} else if packetID == 0 {
+			if !isQueue {
+				return true
 			}
-			s.client.handleEvent(resp)
+			s.client.handleEvent(ctx, resp)
 		} else {
-			s.client.Logger.Debug().Int64("packet_id", packetId).Msg("Got unexpected lightspeed publish response")
+			s.client.Logger.Debug().Int64("packet_id", packetID).Msg("Got unexpected lightspeed publish response")
 		}
 	default:
-		s.client.Logger.Info().Any("packetId", packetId).Any("topic", resp.Topic).Any("data", resp.Data).
+		s.client.Logger.Info().Any("packet_id", packetID).Any("topic", resp.Topic).Any("data", resp.Data).
 			Msg("Got unknown publish response topic")
 	}
+	if ctx.Err() != nil {
+		return false
+	}
 	go func() {
-		if qos == packets.QOS_LEVEL_1 {
+		if resp.QoS == packets.QOS_LEVEL_1 {
 			err := s.sendData(binary.BigEndian.AppendUint16([]byte{packets.PUBACK << 4, 2}, resp.MessageIdentifier))
 			if err != nil {
 				s.client.Logger.Err(err).Uint16("message_id", resp.MessageIdentifier).Msg("Failed to send puback")
 			}
-		} else if qos == packets.QOS_LEVEL_2 {
+		} else if resp.QoS == packets.QOS_LEVEL_2 {
 			s.client.Logger.Error().Msg("Got packet with QoS level 2")
 		}
 	}()
+	return false
 }
 
 type Event_PingResp struct{}
@@ -197,16 +213,16 @@ func (e *Event_Ready) Finish() ResponseData {
 }
 
 type AckEvent interface {
-	GetPacketId() uint16
+	GetPacketID() uint16
 }
 
 // Event_PublishACK is never emitted, it only handles the acknowledgement after a PUBLISH packet has been sent.
 type Event_PublishACK struct {
-	PacketId uint16
+	PacketID uint16
 }
 
-func (pb *Event_PublishACK) GetPacketId() uint16 {
-	return pb.PacketId
+func (pb *Event_PublishACK) GetPacketID() uint16 {
+	return pb.PacketID
 }
 
 func (pb *Event_PublishACK) SetIdentifier(identifier uint16) {}
@@ -217,12 +233,12 @@ func (pb *Event_PublishACK) Finish() ResponseData {
 
 // Event_SubscribeACK is never emitted, it only handles the acknowledgement after a SUBSCRIBE packet has been sent.
 type Event_SubscribeACK struct {
-	PacketId uint16
+	PacketID uint16
 	QoSLevel uint8 // 0, 1, 2, 128
 }
 
-func (pb *Event_SubscribeACK) GetPacketId() uint16 {
-	return pb.PacketId
+func (pb *Event_SubscribeACK) GetPacketID() uint16 {
+	return pb.PacketID
 }
 
 func (pb *Event_SubscribeACK) SetIdentifier(identifier uint16) {}
@@ -239,6 +255,7 @@ type Event_PublishResponse struct {
 	Data              PublishResponseData `jsonString:"1"`
 	Table             *table.LSTable
 	MessageIdentifier uint16
+	QoS               packets.QoS
 }
 
 type PublishResponseData struct {

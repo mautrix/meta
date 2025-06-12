@@ -127,7 +127,7 @@ func (m *MetaClient) handleUpdateExistingMessageRange(tk handlerParams, rng *tab
 }
 
 func (m *MetaClient) requestMoreHistory(ctx context.Context, threadID, minTimestampMS int64, minMessageID string) bool {
-	resp, err := m.Client.ExecuteTasks(&socket.FetchMessagesTask{
+	resp, err := m.Client.ExecuteTasks(ctx, &socket.FetchMessagesTask{
 		ThreadKey:            threadID,
 		Direction:            0,
 		ReferenceTimestampMs: minTimestampMS,

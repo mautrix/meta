@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
+	"golang.org/x/net/context"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -20,8 +21,8 @@ type FacebookMethods struct {
 	client *Client
 }
 
-func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies, error) {
-	moduleLoader := fb.client.loadLoginPage()
+func (fb *FacebookMethods) Login(ctx context.Context, identifier, password string) (*cookies.Cookies, error) {
+	moduleLoader := fb.client.loadLoginPage(ctx)
 	loginFormTags := moduleLoader.FormTags[0]
 	loginPath, ok := loginFormTags.Attributes["action"]
 	if !ok {
@@ -37,7 +38,7 @@ func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies,
 
 	needsCookieConsent := len(fb.client.configs.BrowserConfigTable.InitialCookieConsent.InitialConsent) == 0
 	if needsCookieConsent {
-		err := fb.client.sendCookieConsent(moduleLoader.JSDatr)
+		err := fb.client.sendCookieConsent(ctx, moduleLoader.JSDatr)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +65,7 @@ func (fb *FacebookMethods) Login(identifier, password string) (*cookies.Cookies,
 	}
 
 	loginUrl := fb.client.getEndpoint("base_url") + loginPath
-	loginResp, loginBody, err := fb.client.sendLoginRequest(form, loginUrl)
+	loginResp, loginBody, err := fb.client.sendLoginRequest(ctx, form, loginUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,7 @@ type PushKeys struct {
 	Auth   jsonbytes.UnpaddedURLBytes `json:"auth"`
 }
 
-func (fb *FacebookMethods) RegisterPushNotifications(endpoint string, keys PushKeys) error {
+func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoint string, keys PushKeys) error {
 	c := fb.client
 	jsonKeys, err := json.Marshal(&keys)
 	if err != nil {
@@ -109,7 +110,7 @@ func (fb *FacebookMethods) RegisterPushNotifications(endpoint string, keys PushK
 
 	url := c.getEndpoint("web_push")
 
-	resp, body, err := c.MakeRequest(url, "POST", headers, payloadBytes, types.FORM)
+	resp, body, err := c.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
 	if err != nil {
 		return err
 	}

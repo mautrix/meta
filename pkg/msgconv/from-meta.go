@@ -415,7 +415,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		}
 
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA media from CTA data")
-		resp, err := ig.FetchMedia(strconv.FormatInt(att.CTA.TargetId, 10), mediaShortcode)
+		resp, err := ig.FetchMedia(ctx, strconv.FormatInt(att.CTA.TargetId, 10), mediaShortcode)
 		if err != nil {
 			log.Err(err).Int64("target_id", att.CTA.TargetId).Msg("Failed to fetch XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
@@ -475,7 +475,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
 			return minimalConverted
-		} else if resp, err := ig.FetchReel([]string{match[2]}, match[1]); err != nil {
+		} else if resp, err := ig.FetchReel(ctx, []string{match[2]}, match[1]); err != nil {
 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
 			return minimalConverted
@@ -557,7 +557,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL (type 2)")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
 			return minimalConverted
-		} else if resp, err := ig.FetchMedia(match[2], ""); err != nil {
+		} else if resp, err := ig.FetchMedia(ctx, match[2], ""); err != nil {
 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story (type 2)")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
 			return minimalConverted

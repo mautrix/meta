@@ -15,7 +15,7 @@ type LSTruncateThreadRangeTablesForSyncGroup struct {
 type LSUpsertSyncGroupThreadsRange struct {
 	SyncGroup                  int64 `index:"0" json:",omitempty"`
 	ParentThreadKey            int64 `index:"1" json:",omitempty"`
-	MinLastActivityTimestampMs int64 `index:"2" json:",omitempty"`
+	MinLastActivityTimestampMS int64 `index:"2" json:",omitempty"`
 	HasMoreBefore              bool  `index:"3" json:",omitempty"`
 	IsLoadingBefore            bool  `index:"4" json:",omitempty"`
 	MinThreadKey               int64 `index:"5" json:",omitempty"`
@@ -25,7 +25,7 @@ type LSUpsertSyncGroupThreadsRange struct {
 
 type LSMciTraceLog struct {
 	SomeInt0                      int64       `index:"0" json:",omitempty"`
-	MCITraceUnsampledEventTraceId string      `index:"1" json:",omitempty"`
+	MCITraceUnsampledEventTraceID string      `index:"1" json:",omitempty"`
 	Unknown2                      interface{} `index:"2" json:",omitempty"`
 	SomeInt3                      int64       `index:"3" json:",omitempty"`
 	Unknown4                      interface{} `index:"4" json:",omitempty"`
@@ -36,13 +36,13 @@ type LSMciTraceLog struct {
 }
 
 type LSExecuteFirstBlockForSyncTransaction struct {
-	DatabaseId               int64  `index:"0" json:",omitempty"`
-	EpochId                  int64  `index:"1" json:",omitempty"`
+	DatabaseID               int64  `index:"0" json:",omitempty"`
+	EpochID                  int64  `index:"1" json:",omitempty"`
 	CurrentCursor            string `index:"2" json:",omitempty"`
 	NextCursor               string `index:"3" json:",omitempty"`
 	SyncStatus               int64  `index:"4" json:",omitempty"`
 	SendSyncParams           bool   `index:"5" json:",omitempty"`
-	MinTimeToSyncTimestampMs int64  `index:"6" json:",omitempty"` // fix this, use conditionIndex
+	MinTimeToSyncTimestampMS int64  `index:"6" json:",omitempty"` // fix this, use conditionIndex
 	CanIgnoreTimestamp       bool   `index:"7" json:",omitempty"`
 	SyncChannel              int64  `index:"8" json:",omitempty"`
 
@@ -51,8 +51,8 @@ type LSExecuteFirstBlockForSyncTransaction struct {
 
 type LSExecuteFinallyBlockForSyncTransaction struct {
 	ShouldFlush    bool  `index:"0" json:",omitempty"` // shouldFlush ? should sync ?
-	SyncDatabaseId int64 `index:"1" json:",omitempty"`
-	EpochId        int64 `index:"2" json:",omitempty"`
+	SyncDatabaseID int64 `index:"1" json:",omitempty"`
+	EpochID        int64 `index:"2" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -65,7 +65,7 @@ type LSSetHMPSStatus struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
-type LSUpsertSequenceId struct {
+type LSUpsertSequenceID struct {
 	LastAppliedMailboxSequenceId int64 `index:"0" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`

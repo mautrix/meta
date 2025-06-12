@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -82,15 +83,15 @@ func (m *ModuleParser) SetClientInstance(cli *Client) {
 	m.client = cli
 }
 
-func (m *ModuleParser) fetchPageData(page string) ([]byte, error) { // just log.fatal if theres an error because the library should not be able to continue then
+func (m *ModuleParser) fetchPageData(ctx context.Context, page string) ([]byte, error) { // just log.fatal if theres an error because the library should not be able to continue then
 	headers := m.client.buildHeaders(true, true)
 	//headers.Set("host", m.client.getEndpoint("host"))
-	_, responseBody, err := m.client.MakeRequest(page, "GET", headers, nil, types.NONE)
+	_, responseBody, err := m.client.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
 	return responseBody, err
 }
 
-func (m *ModuleParser) Load(page string) error {
-	htmlData, err := m.fetchPageData(page)
+func (m *ModuleParser) Load(ctx context.Context, page string) error {
+	htmlData, err := m.fetchPageData(ctx, page)
 	if err != nil {
 		return err
 	}
@@ -158,7 +159,7 @@ func (m *ModuleParser) Load(page string) error {
 
 			switch as {
 			case "script":
-				doneCrawling, err = m.crawlJavascriptFile(href)
+				doneCrawling, err = m.crawlJavascriptFile(ctx, href)
 				if err != nil {
 					return fmt.Errorf("messagix-moduleparser: failed to crawl js file %s (%w)", href, err)
 				}
@@ -273,8 +274,8 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 	return nil
 }
 
-func (m *ModuleParser) crawlJavascriptFile(href string) (bool, error) {
-	_, jsContent, err := m.client.MakeRequest(href, "GET", http.Header{}, nil, types.NONE)
+func (m *ModuleParser) crawlJavascriptFile(ctx context.Context, href string) (bool, error) {
+	_, jsContent, err := m.client.MakeRequest(ctx, href, "GET", http.Header{}, nil, types.NONE)
 	if err != nil {
 		return false, err
 	}

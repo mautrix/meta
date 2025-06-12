@@ -26,6 +26,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"golang.org/x/net/context"
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -61,7 +62,7 @@ type refreshCATResponseGraphQL struct {
 	} `json:"extensions"`
 }
 
-func (c *Client) refreshCAT() error {
+func (c *Client) refreshCAT(ctx context.Context) error {
 	if c == nil {
 		return ErrClientIsNil
 	}
@@ -88,7 +89,7 @@ func (c *Client) refreshCAT() error {
 		c.unnecessaryCATRequests = 0
 	}
 	c.Logger.Info().Time("prev_expiration", currentExpiration).Msg("Refreshing crypto auth token")
-	_, respData, err := c.makeGraphQLRequest("MAWCatQuery", struct{}{})
+	_, respData, err := c.makeGraphQLRequest(ctx, "MAWCatQuery", struct{}{})
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

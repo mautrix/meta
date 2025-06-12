@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 
@@ -25,7 +26,7 @@ type Configs struct {
 	CSRBitmap          *crypto.Bitmap
 }
 
-func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
+func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.LSTable, error) {
 	if c.client.socket != nil {
 		c.client.socket.previouslyConnected = false
 	}
@@ -64,7 +65,7 @@ func (c *Configs) SetupConfigs(ls *table.LSTable) (*table.LSTable, error) {
 			return ls, fmt.Errorf("failed to update sync params for databases: 1, 2, 95: %w", err)
 		}
 
-		ls, err = c.client.syncManager.SyncDataGraphQL([]int64{1, 2, 95})
+		ls, err = c.client.syncManager.SyncDataGraphQL(ctx, []int64{1, 2, 95})
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95: %w", err)
 		}
