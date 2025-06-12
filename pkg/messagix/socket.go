@@ -220,8 +220,14 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			s.client.Logger.Debug().Err(err).Msg("Error closing connection after " + reason)
 		}
 	}
+	var loopWg sync.WaitGroup
+	loopWg.Add(1)
 	go func() {
+		defer loopWg.Done()
 		for item := range wsQueue {
+			if ctx.Err() != nil {
+				return
+			}
 			switch evt := item.(type) {
 			case *Event_PublishResponse:
 				s.handlePublishResponseEvent(ctx, evt, true)
@@ -313,6 +319,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			}
 			// Hacky sleep to give the ready handler time to run and set the best available error
 			time.Sleep(100 * time.Millisecond)
+			loopWg.Wait()
 			return *closeErr.Load()
 		}
 
