@@ -103,10 +103,14 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
 		)
 		if errors.Is(err, types.ErrPleaseReloadPage) {
-			// TODO handle properly
+			if m.canReconnect() {
+				go m.FullReconnect()
+			}
 			return nil, err
 		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
-			// TODO handle properly
+			if m.canReconnect() {
+				go m.FullReconnect()
+			}
 			return nil, err
 		} else if err != nil {
 			return nil, fmt.Errorf("failed to convert message: %w", err)
