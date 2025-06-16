@@ -213,7 +213,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	pongTimeoutTicker := time.NewTicker(pongTimeout)
 	defer pongTimeoutTicker.Stop()
 	wsQueue := make(chan any, 32)
-	defer close(wsQueue)
 	closeDueToError := func(reason string) {
 		err := conn.Close()
 		if err != nil && !errors.Is(err, net.ErrClosed) {
@@ -222,6 +221,10 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	}
 	var loopWg sync.WaitGroup
 	loopWg.Add(1)
+	defer func() {
+		close(wsQueue)
+		loopWg.Wait()
+	}()
 	go func() {
 		defer loopWg.Done()
 		for item := range wsQueue {
@@ -319,7 +322,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			}
 			// Hacky sleep to give the ready handler time to run and set the best available error
 			time.Sleep(100 * time.Millisecond)
-			loopWg.Wait()
 			return *closeErr.Load()
 		}
 
