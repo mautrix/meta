@@ -1,3 +1,18 @@
+# v0.5.1 (2025-06-16)
+
+* Fixed deadlock on websocket disconnect (introduced in v0.5.0).
+
+# v0.5.0 (2025-06-16)
+
+* Added option to reconnect faster after restart by caching connection state.
+* Added option to allow both Messenger and Facebook login without allowing
+  Instagram.
+* Added basic support for direct media.
+* Added placeholders for encrypted messages on Instagram.
+* Updated Docker image to Alpine 3.22.
+* Changed Instagram reel bridging to never include caption.
+* Fixed detecting some types of logouts.
+
 # v0.4.6 (2025-04-16)
 
 * Fixed bridging own read status in encrypted chats.
