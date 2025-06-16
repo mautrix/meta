@@ -1,3 +1,7 @@
+# v0.5.1 (2025-06-16)
+
+* Fixed deadlock on websocket disconnect (introduced in v0.5.0).
+
 # v0.5.0 (2025-06-16)
 
 * Added option to reconnect faster after restart by caching connection state.
