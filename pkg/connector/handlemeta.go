@@ -203,7 +203,13 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 		if ctx.Err() != nil {
 			return
 		}
-		m.UserLogin.QueueRemoteEvent(evt)
+		res := m.UserLogin.QueueRemoteEvent(evt)
+		if !res.Success {
+			zerolog.Ctx(ctx).Warn().
+				Any("queue_result", res).
+				Msg("Queue remote event returned non-success status, cancelling table handling")
+			return
+		}
 	}
 	if !isInitial && ctx.Err() == nil {
 		m.Client.PostHandlePublishResponse(tbl)

@@ -15,7 +15,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
-func (m *MetaClient) e2eeEventHandler(rawEvt any) {
+func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	log := m.UserLogin.Log
 	switch evt := rawEvt.(type) {
 	case *events.FBMessage:
@@ -27,7 +27,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m})
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m})
+		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
 	case *events.Receipt:
 		var evtType bridgev2.RemoteEventType
 		switch evt.Type {
@@ -44,7 +44,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 		for i, id := range evt.MessageIDs {
 			targets[i] = metaid.MakeWAMessageID(evt.Chat, messageSender, id)
 		}
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.Receipt{
+		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.Receipt{
 			EventMeta: simplevent.EventMeta{
 				Type:       evtType,
 				LogContext: nil,
@@ -53,7 +53,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 				Timestamp:  evt.Timestamp,
 			},
 			Targets: targets,
-		})
+		}).Success
 	case *events.OfflineSyncPreview:
 		m.connectBackgroundWAEventCount.Store(uint32(evt.Messages))
 	case *events.OfflineSyncCompleted:
@@ -75,7 +75,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 		if errors.Is(evt.Error, types.ErrPleaseReloadPage) && m.canReconnect() {
 			log.Err(evt.Error).Msg("Got CATRefreshError, reloading page")
 			go m.FullReconnect()
-			return
+			return true
 		}
 		m.waState = status.BridgeState{
 			StateEvent: status.StateUnknownError,
@@ -125,4 +125,5 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) {
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
+	return true
 }

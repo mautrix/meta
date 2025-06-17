@@ -418,7 +418,7 @@ func (m *MetaClient) connectE2EE() error {
 		m.E2EEClient.SynchronousAck = true
 		m.E2EEClient.EnableDecryptedEventBuffer = true
 	}
-	m.E2EEClient.AddEventHandler(m.e2eeEventHandler)
+	m.E2EEClient.AddEventHandlerWithSuccessStatus(m.e2eeEventHandler)
 	err = m.E2EEClient.Connect()
 	if err != nil {
 		return fmt.Errorf("failed to connect to e2ee socket: %w", err)
