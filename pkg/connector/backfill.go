@@ -317,7 +317,10 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		log := zerolog.Ctx(ctx).With().Str("message_id", msg.MessageId).Logger()
 		ctx := log.WithContext(ctx)
 		sender := m.makeEventSender(msg.SenderId)
-		intent := portal.GetIntentFor(ctx, sender, m.UserLogin, bridgev2.RemoteEventBackfill)
+		intent, ok := portal.GetIntentFor(ctx, sender, m.UserLogin, bridgev2.RemoteEventBackfill)
+		if !ok {
+			continue
+		}
 		parsedTS, err := methods.ParseMessageID(msg.MessageId)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to parse message ID in backfill")
