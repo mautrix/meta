@@ -19,6 +19,8 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
 
+	"go.mau.fi/util/exhttp"
+
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/packets"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -440,7 +442,13 @@ func (s *Socket) makeLSRequest(ctx context.Context, payload []byte, t int) (*Eve
 	}
 
 	_, err = s.sendPublishPacket(ctx, LS_REQ, string(jsonPayload), &packets.PublishPacket{QOSLevel: packets.QOS_LEVEL_1}, packetId)
-	if err != nil {
+	if conn := s.conn; conn != nil && exhttp.IsNetworkError(err) {
+		closeErr := conn.Close()
+		if closeErr != nil && !errors.Is(err, net.ErrClosed) {
+			s.client.Logger.Debug().Err(closeErr).Msg("Error closing connection after network error")
+		}
+		return nil, errors.Join(err, closeErr)
+	} else if err != nil {
 		return nil, err
 	}
 
