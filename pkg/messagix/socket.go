@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exhttp"
 	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
@@ -341,7 +342,13 @@ func (s *Socket) sendData(data []byte) error {
 		return fmt.Errorf("not connected")
 	}
 	err := conn.WriteMessage(websocket.BinaryMessage, data)
-	if err != nil {
+	if exhttp.IsNetworkError(err) {
+		closeErr := conn.Close()
+		if closeErr != nil && !errors.Is(err, net.ErrClosed) {
+			s.client.Logger.Debug().Err(closeErr).Msg("Error closing connection after network error")
+		}
+		return errors.Join(err, closeErr)
+	} else if err != nil {
 		return fmt.Errorf("failed to write to websocket: %w", err)
 	}
 	return nil
