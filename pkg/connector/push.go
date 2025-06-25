@@ -105,13 +105,18 @@ type connectBackgroundEvent struct {
 }
 
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
+	l := zerolog.Ctx(ctx)
+
 	evtChan := make(chan connectBackgroundEvent, 8)
 	m.connectBackgroundWAOfflineSync.Clear()
 	m.connectBackgroundEvt = evtChan
 	defer func() {
 		m.connectBackgroundEvt = nil
 	}()
+
 	go m.Connect(ctx)
+	defer m.Disconnect()
+
 	timer := time.NewTimer(10 * time.Second)
 	anythingReceived := false
 	isProcessing := false
@@ -120,30 +125,41 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 	for {
 		select {
 		case <-timer.C:
-			zerolog.Ctx(ctx).Debug().
+			l.Debug().
 				Bool("fb_tables_received", anythingReceived).
 				Bool("fb_table_processing", isProcessing).
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
-				Msg("Closing background connection")
-			m.Disconnect()
+				Msg("Closing background connection due to timeout")
+			return nil
+		case <-ctx.Done():
+			l.Debug().
+				Bool("fb_tables_received", anythingReceived).
+				Bool("fb_table_processing", isProcessing).
+				Bool("wa_queue_empty", waDone).
+				Int("wa_message_count", waCount).
+				Msg("Closing background connection due to cancellation")
 			return nil
 		case <-m.connectBackgroundWAOfflineSync.GetChan():
 			waDone = true
 			waCount = int(m.connectBackgroundWAEventCount.Load())
 			if (anythingReceived || waCount > 0) && !isProcessing {
+				l.Debug().Msg("Extending background connection timeout by 1 second now that whatsapp offline sync is complete and we've received an event")
 				timer.Reset(1 * time.Second)
 			}
 		case evt := <-evtChan:
 			anythingReceived = true
 			if evt.isProcessing {
 				isProcessing = true
+				l.Debug().Msg("Extending background connection timeout by 10 seconds due to starting processing an event")
 				timer.Reset(10 * time.Second)
 			} else {
 				isProcessing = false
 				if waDone {
+					l.Debug().Msg("Extending background connection timeout by 2 seconds after finishing processing an event")
 					timer.Reset(2 * time.Second)
 				} else {
+					l.Debug().Msg("Extending background connection timeout by 10 seconds after finishing processing an event")
 					timer.Reset(10 * time.Second)
 				}
 			}
