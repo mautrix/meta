@@ -144,7 +144,6 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 			waDone = true
 			waCount = int(m.connectBackgroundWAEventCount.Load())
 			if (anythingReceived || waCount > 0) && !isProcessing {
-				log.Debug().Msg("Extending background connection timeout by 1 second now that whatsapp offline sync is complete and we've received an event")
 				timer.Reset(1 * time.Second)
 			}
 		case evt := <-evtChan:
