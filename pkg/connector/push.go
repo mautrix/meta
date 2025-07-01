@@ -109,6 +109,7 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 
 	evtChan := make(chan connectBackgroundEvent, 8)
 	m.connectBackgroundWAOfflineSync.Clear()
+	waOfflineSyncChan := m.connectBackgroundWAOfflineSync.GetChan()
 	m.connectBackgroundEvt = evtChan
 	defer func() {
 		m.connectBackgroundEvt = nil
@@ -140,7 +141,8 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to cancellation")
 			return nil
-		case <-m.connectBackgroundWAOfflineSync.GetChan():
+		case <-waOfflineSyncChan:
+			waOfflineSyncChan = nil
 			waDone = true
 			waCount = int(m.connectBackgroundWAEventCount.Load())
 			if (anythingReceived || waCount > 0) && !isProcessing {
