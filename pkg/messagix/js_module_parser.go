@@ -165,6 +165,9 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 				}
 			}
 		}
+		if !doneCrawling {
+			m.client.Logger.Warn().Msg("Failed to find version ID in JS files")
+		}
 	}
 
 	if m.client.Platform == types.Instagram {
@@ -286,7 +289,7 @@ func (m *ModuleParser) crawlJavascriptFile(ctx context.Context, href string) (bo
 		if err != nil {
 			return false, err
 		}
-		m.client.Logger.Info().Int64("ls_version", versionInt).Msg("Found LSVersion")
+		m.client.Logger.Info().Int64("ls_version", versionInt).Msg("Found LSVersion in JS file")
 		m.client.configs.VersionID = versionInt
 		return true, nil
 	}
