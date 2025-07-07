@@ -32,6 +32,7 @@ const (
 	MetaRedirectedToLoginPage  status.BridgeStateErrorCode = "meta-redirected-to-login"
 	MetaNotLoggedIn            status.BridgeStateErrorCode = "meta-not-logged-in"
 	MetaConnectError           status.BridgeStateErrorCode = "meta-connect-error"
+	MetaGraphQLError           status.BridgeStateErrorCode = "meta-graphql-error"
 	MetaTransientDisconnect    status.BridgeStateErrorCode = "meta-transient-disconnect"
 	IGChallengeRequired        status.BridgeStateErrorCode = "ig-challenge-required"
 	IGChallengeRequiredMaybe   status.BridgeStateErrorCode = "ig-challenge-required-maybe"

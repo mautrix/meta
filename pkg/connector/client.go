@@ -252,6 +252,13 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			if stateEvt == status.StateTransientDisconnect {
 				m.connectWithRetry(retryCtx, ctx, attempts+1)
 			}
+		} else if gqlErr := (&types.GraphQLError{}); errors.As(err, &gqlErr) {
+			// TODO determine if this should retry
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      MetaGraphQLError,
+				Message:    gqlErr.Message,
+			})
 		} else if attempts < MaxConnectRetries {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateTransientDisconnect,
