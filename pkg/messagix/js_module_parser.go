@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -96,6 +97,7 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 		return err
 	}
 	if m.client.Platform.IsMessenger() && !strings.Contains(page, "login") && bytes.Contains(htmlData, []byte(`"USER_ID":"0"`)) {
+		os.WriteFile("/tmp/index.html", htmlData, 0600)
 		return ErrUserIDIsZero
 	}
 
