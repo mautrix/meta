@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type ErrorResponse struct {
@@ -10,6 +11,19 @@ type ErrorResponse struct {
 	ErrorSummary     string `json:"errorSummary,omitempty"`
 	ErrorDescription string `json:"errorDescription,omitempty"`
 	RedirectTo       string `json:"redirectTo,omitempty"`
+
+	Errors []GraphQLError `json:"errors,omitempty"`
+}
+
+type GraphQLError struct {
+	Message  string   `json:"message"`
+	Severity string   `json:"severity"`
+	MIDs     []string `json:"mids"`
+	Path     []string `json:"path"`
+}
+
+func (gqe *GraphQLError) Error() string {
+	return fmt.Sprintf("graphql error at %s: %s", strings.Join(gqe.Path, "."), gqe.Message)
 }
 
 var ErrPleaseReloadPage = &ErrorResponse{ErrorCode: 1357004}
