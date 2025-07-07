@@ -102,6 +102,7 @@ var (
 	ErrResponseReadFailed       = errors.New("failed to read response body")
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
+	ErrVersionIDNotFound        = errors.New("version ID not found")
 )
 
 func isPermanentRequestError(err error) bool {

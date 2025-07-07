@@ -181,8 +181,7 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 			}
 		}
 		if !doneCrawling {
-			// TODO should this be a fatal error?
-			m.client.Logger.Warn().Msg("Failed to find version ID in JS files")
+			return ErrVersionIDNotFound
 		}
 	}
 

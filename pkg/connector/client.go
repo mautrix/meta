@@ -259,7 +259,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Error:      MetaGraphQLError,
 				Message:    gqlErr.Message,
 			})
-		} else if attempts < MaxConnectRetries {
+		} else if attempts < MaxConnectRetries && !errors.Is(err, messagix.ErrVersionIDNotFound) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateTransientDisconnect,
 				Error:      MetaConnectError,
@@ -269,6 +269,9 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaConnectError,
+				Info: map[string]any{
+					"go_error": err.Error(),
+				},
 			})
 		}
 		return
