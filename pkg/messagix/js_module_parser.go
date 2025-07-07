@@ -168,7 +168,7 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 		if !doneCrawling {
 			for _, tag := range scriptTags {
 				href := tag.Attributes["src"]
-				if href == "" {
+				if href == "" || !strings.HasPrefix(href, "https://") {
 					continue
 				}
 				doneCrawling, err = m.crawlJavascriptFile(ctx, href)
