@@ -40,6 +40,7 @@ const (
 	MetaServerUnavailable      status.BridgeStateErrorCode = "meta-server-unavailable"
 	IGConsentRequired          status.BridgeStateErrorCode = "ig-consent-required"
 	FBConsentRequired          status.BridgeStateErrorCode = "fb-consent-required"
+	FBCheckpointRequired       status.BridgeStateErrorCode = "fb-checkpoint-required"
 	MetaProxyUpdateFail        status.BridgeStateErrorCode = "meta-proxy-update-fail"
 )
 
@@ -57,6 +58,7 @@ func init() {
 		IGChallengeRequiredMaybe:   "Connection refused, please check the Instagram website to continue",
 		IGConsentRequired:          "Consent required, please check the Instagram website to continue",
 		FBConsentRequired:          "Consent required, please check the Facebook website to continue",
+		FBCheckpointRequired:       "Checkpoint required, please check the Facebook website to continue",
 		MetaServerUnavailable:      "Connection refused by server",
 		MetaConnectError:           "Unknown connection error",
 		MetaProxyUpdateFail:        "Failed to update proxy",
