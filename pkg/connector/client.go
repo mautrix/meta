@@ -228,6 +228,11 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				StateEvent: status.StateBadCredentials,
 				Error:      IGAccountSuspended,
 			})
+		} else if errors.Is(err, messagix.ErrCheckpointRequired) {
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      FBCheckpointRequired,
+			})
 		} else if errors.Is(err, messagix.ErrConsentRequired) {
 			code := IGConsentRequired
 			if m.LoginMeta.Platform.IsMessenger() {

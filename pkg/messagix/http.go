@@ -96,6 +96,7 @@ var (
 	ErrTokenInvalidatedRedirect = fmt.Errorf("%w: redirected", ErrTokenInvalidated)
 	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
 	ErrChallengeRequired        = errors.New("challenge required")
+	ErrCheckpointRequired       = errors.New("checkpoint required")
 	ErrConsentRequired          = errors.New("consent required")
 	ErrAccountSuspended         = errors.New("account suspended")
 	ErrRequestFailed            = errors.New("failed to send request")
@@ -108,6 +109,7 @@ var (
 func isPermanentRequestError(err error) bool {
 	return errors.Is(err, ErrTokenInvalidated) ||
 		errors.Is(err, ErrChallengeRequired) ||
+		errors.Is(err, ErrCheckpointRequired) ||
 		errors.Is(err, ErrConsentRequired) ||
 		errors.Is(err, ErrAccountSuspended) ||
 		errors.Is(err, ErrTooManyRedirects)
@@ -136,6 +138,8 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 		return fmt.Errorf("%w: redirected to %s", ErrAccountSuspended, req.URL.String())
 	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
 		return fmt.Errorf("%w: redirected to %s", ErrConsentRequired, req.URL.String())
+	} else if strings.HasPrefix(req.URL.Path, "/checkpoint/") {
+		return fmt.Errorf("%w: redirected to %s", ErrCheckpointRequired, req.URL.String())
 	}
 	respCookies := req.Response.Cookies()
 	for _, cookie := range respCookies {
