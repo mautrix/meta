@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -197,6 +199,9 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		}
 	}
 
+	log.Debug().
+		Strs("cookie_names", slices.Collect(maps.Keys(strCookies))).
+		Msg("Logging in with cookies")
 	user, tbl, err := client.LoadMessagesPage(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to load messages page for login")

@@ -35,6 +35,14 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			evtType = bridgev2.RemoteEventReadReceipt
 		case waTypes.ReceiptTypeDelivered:
 			evtType = bridgev2.RemoteEventDeliveryReceipt
+		case waTypes.ReceiptTypeSender:
+			// Ignore
+			return true
+		default:
+			log.Debug().
+				Str("receipt_type", string(evt.Type)).
+				Msg("Dropping unsupported WhatsApp receipt type")
+			return true
 		}
 		targets := make([]networkid.MessageID, len(evt.MessageIDs))
 		messageSender := *m.WADevice.ID
