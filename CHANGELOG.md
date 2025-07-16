@@ -1,3 +1,8 @@
+# v0.5.2 (2025-07-16)
+
+* Fixed handling some types of GraphQL errors.
+* Fixed LSVersion finding error on some accounts.
+
 # v0.5.1 (2025-06-16)
 
 * Fixed deadlock on websocket disconnect (introduced in v0.5.0).
