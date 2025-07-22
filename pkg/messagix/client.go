@@ -136,6 +136,7 @@ type dumpedState struct {
 	SyncStore   map[int64]*socket.QueryMetadata
 	PacketsSent uint16
 	SessionID   int64
+	Timestamp   time.Time
 }
 
 func (c *Client) DumpState() (json.RawMessage, error) {
@@ -147,13 +148,20 @@ func (c *Client) DumpState() (json.RawMessage, error) {
 		SyncStore:   c.syncManager.store,
 		PacketsSent: c.socket.packetsSent,
 		SessionID:   c.socket.sessionID,
+		Timestamp:   time.Now(),
 	})
 }
+
+const MaxCachedStateAge = 24 * time.Hour
+
+var ErrCachedStateTooOld = errors.New("cached state is too old")
 
 func (c *Client) LoadState(state json.RawMessage) error {
 	var dumped dumpedState
 	if err := json.Unmarshal(state, &dumped); err != nil {
 		return err
+	} else if !dumped.Timestamp.IsZero() && time.Since(dumped.Timestamp) > MaxCachedStateAge {
+		return fmt.Errorf("%w (created at %s)", ErrCachedStateTooOld, dumped.Timestamp)
 	}
 
 	c.configs = dumped.Configs
