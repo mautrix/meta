@@ -66,25 +66,26 @@ type LSUpsertMessage struct {
 	QuickReplyType                  int64                      `index:"55" json:",omitempty"`
 	HotEmojiSize                    int64                      `index:"56" json:",omitempty"`
 	PlatformXmdEncoded              any                        `index:"57" json:",omitempty"`
-	ReplySourceTimestampMs          int64                      `index:"58" json:",omitempty"`
-	EphemeralDurationInSec          int64                      `index:"59" json:",omitempty"`
-	MsUntilExpirationTs             int64                      `index:"60" json:",omitempty"`
-	EphemeralExpirationTs           int64                      `index:"61" json:",omitempty"`
-	TakedownState                   int64                      `index:"62" json:",omitempty"`
-	IsCollapsed                     bool                       `index:"63" json:",omitempty"`
-	SubthreadKey                    int64                      `index:"64" json:",omitempty"`
-	BotResponseID                   int64                      `index:"65" json:",omitempty"`
-	MetadataDataclass               string                     `index:"66" json:",omitempty"`
-	EditCount                       int64                      `index:"67" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"68" json:",omitempty"`
-	AdminSignatureName              string                     `index:"69" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"70" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"71" json:",omitempty"`
-	TranslatedText                  string                     `index:"72" json:",omitempty"`
-	TextDialect                     string                     `index:"73" json:",omitempty"`
-	TranslatedTextDialect           string                     `index:"74" json:",omitempty"`
-	ScheduledTimestamp              int64                      `index:"75" json:",omitempty"`
-	IsVideoQuickSend                bool                       `index:"76" json:",omitempty"`
+	SendAttributionXmd              any                        `index:"58" json:",omitempty"`
+	ReplySourceTimestampMs          int64                      `index:"59" json:",omitempty"`
+	EphemeralDurationInSec          int64                      `index:"60" json:",omitempty"`
+	MsUntilExpirationTs             int64                      `index:"61" json:",omitempty"`
+	EphemeralExpirationTs           int64                      `index:"62" json:",omitempty"`
+	TakedownState                   int64                      `index:"63" json:",omitempty"`
+	IsCollapsed                     bool                       `index:"64" json:",omitempty"`
+	SubthreadKey                    int64                      `index:"65" json:",omitempty"`
+	BotResponseID                   int64                      `index:"66" json:",omitempty"`
+	MetadataDataclass               string                     `index:"67" json:",omitempty"`
+	EditCount                       int64                      `index:"68" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"69" json:",omitempty"`
+	AdminSignatureName              string                     `index:"70" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"71" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"72" json:",omitempty"`
+	TranslatedText                  string                     `index:"73" json:",omitempty"`
+	TextDialect                     string                     `index:"74" json:",omitempty"`
+	TranslatedTextDialect           string                     `index:"75" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"76" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"77" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -320,25 +321,26 @@ type LSInsertMessage struct {
 	QuickReplyType                  int64                      `index:"55" json:",omitempty"`
 	HotEmojiSize                    int64                      `index:"56" json:",omitempty"`
 	PlatformXmdEncoded              any                        `index:"57" json:",omitempty"`
-	ReplySourceTimestampMs          int64                      `index:"58" json:",omitempty"`
-	EphemeralDurationInSec          int64                      `index:"59" json:",omitempty"`
-	MsUntilExpirationTs             int64                      `index:"60" json:",omitempty"`
-	EphemeralExpirationTs           int64                      `index:"61" json:",omitempty"`
-	TakedownState                   int64                      `index:"62" json:",omitempty"`
-	IsCollapsed                     bool                       `index:"63" json:",omitempty"`
-	SubthreadKey                    int64                      `index:"64" json:",omitempty"`
-	BotResponseID                   int64                      `index:"65" json:",omitempty"`
-	MetadataDataclass               string                     `index:"66" json:",omitempty"`
-	EditCount                       int64                      `index:"67" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"68" json:",omitempty"`
-	AdminSignatureName              string                     `index:"69" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"70" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"71" json:",omitempty"`
-	TranslatedText                  string                     `index:"72" json:",omitempty"`
-	TextDialect                     string                     `index:"73" json:",omitempty"`
-	TranslatedTextDialect           string                     `index:"74" json:",omitempty"`
-	ScheduledTimestamp              int64                      `index:"75" json:",omitempty"`
-	IsVideoQuickSend                bool                       `index:"76" json:",omitempty"`
+	SendAttributionXmd              any                        `index:"58" json:",omitempty"`
+	ReplySourceTimestampMs          int64                      `index:"59" json:",omitempty"`
+	EphemeralDurationInSec          int64                      `index:"60" json:",omitempty"`
+	MsUntilExpirationTs             int64                      `index:"61" json:",omitempty"`
+	EphemeralExpirationTs           int64                      `index:"62" json:",omitempty"`
+	TakedownState                   int64                      `index:"63" json:",omitempty"`
+	IsCollapsed                     bool                       `index:"64" json:",omitempty"`
+	SubthreadKey                    int64                      `index:"65" json:",omitempty"`
+	BotResponseID                   int64                      `index:"66" json:",omitempty"`
+	MetadataDataclass               string                     `index:"67" json:",omitempty"`
+	EditCount                       int64                      `index:"68" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"69" json:",omitempty"`
+	AdminSignatureName              string                     `index:"70" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"71" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"72" json:",omitempty"`
+	TranslatedText                  string                     `index:"73" json:",omitempty"`
+	TextDialect                     string                     `index:"74" json:",omitempty"`
+	TranslatedTextDialect           string                     `index:"75" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"76" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"77" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -515,25 +517,26 @@ type LSDeleteThenInsertMessage struct {
 	QuickReplyType                  int64                      `index:"54" json:",omitempty"`
 	HotEmojiSize                    int64                      `index:"55" json:",omitempty"`
 	PlatformXmdEncoded              any                        `index:"56" json:",omitempty"`
-	ReplySourceTimestampMs          int64                      `index:"57" json:",omitempty"`
-	EphemeralDurationInSec          int64                      `index:"58" json:",omitempty"`
-	MsUntilExpirationTs             int64                      `index:"59" json:",omitempty"`
-	EphemeralExpirationTs           int64                      `index:"60" json:",omitempty"`
-	TakedownState                   int64                      `index:"61" json:",omitempty"`
-	IsCollapsed                     bool                       `index:"62" json:",omitempty"`
-	SubthreadKey                    int64                      `index:"63" json:",omitempty"`
-	BotResponseID                   int64                      `index:"64" json:",omitempty"`
-	MetadataDataclass               string                     `index:"65" json:",omitempty"`
-	EditCount                       int64                      `index:"66" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"67" json:",omitempty"`
-	AdminSignatureName              string                     `index:"68" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"69" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"70" json:",omitempty"`
-	TranslatedText                  string                     `index:"71" json:",omitempty"`
-	TextDialect                     string                     `index:"72" json:",omitempty"`
-	TranslatedTextDialect           string                     `index:"73" json:",omitempty"`
-	ScheduledTimestamp              int64                      `index:"74" json:",omitempty"`
-	IsVideoQuickSend                bool                       `index:"75" json:",omitempty"`
+	SendAttributionXmd              any                        `index:"57" json:",omitempty"`
+	ReplySourceTimestampMs          int64                      `index:"58" json:",omitempty"`
+	EphemeralDurationInSec          int64                      `index:"59" json:",omitempty"`
+	MsUntilExpirationTs             int64                      `index:"60" json:",omitempty"`
+	EphemeralExpirationTs           int64                      `index:"61" json:",omitempty"`
+	TakedownState                   int64                      `index:"62" json:",omitempty"`
+	IsCollapsed                     bool                       `index:"63" json:",omitempty"`
+	SubthreadKey                    int64                      `index:"64" json:",omitempty"`
+	BotResponseID                   int64                      `index:"65" json:",omitempty"`
+	MetadataDataclass               string                     `index:"66" json:",omitempty"`
+	EditCount                       int64                      `index:"67" json:",omitempty"`
+	IsPaidPartnership               bool                       `index:"68" json:",omitempty"`
+	AdminSignatureName              string                     `index:"69" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"70" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"71" json:",omitempty"`
+	TranslatedText                  string                     `index:"72" json:",omitempty"`
+	TextDialect                     string                     `index:"73" json:",omitempty"`
+	TranslatedTextDialect           string                     `index:"74" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"75" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"76" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
