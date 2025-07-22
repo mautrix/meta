@@ -71,11 +71,11 @@ type LSUpsertMessage struct {
 	EphemeralDurationInSec          int64                      `index:"60" json:",omitempty"`
 	MsUntilExpirationTs             int64                      `index:"61" json:",omitempty"`
 	EphemeralExpirationTs           int64                      `index:"62" json:",omitempty"`
-	TakedownState                   int64                      `index:"63" json:",omitempty"`
+	TakedownState                   any                        `index:"63" json:",omitempty"` // bool?
 	IsCollapsed                     bool                       `index:"64" json:",omitempty"`
 	SubthreadKey                    int64                      `index:"65" json:",omitempty"`
 	BotResponseID                   int64                      `index:"66" json:",omitempty"`
-	MetadataDataclass               string                     `index:"67" json:",omitempty"`
+	MetadataDataclass               any                        `index:"67" json:",omitempty"` // int?
 	EditCount                       int64                      `index:"68" json:",omitempty"`
 	IsPaidPartnership               bool                       `index:"69" json:",omitempty"`
 	AdminSignatureName              string                     `index:"70" json:",omitempty"`
@@ -326,11 +326,11 @@ type LSInsertMessage struct {
 	EphemeralDurationInSec          int64                      `index:"60" json:",omitempty"`
 	MsUntilExpirationTs             int64                      `index:"61" json:",omitempty"`
 	EphemeralExpirationTs           int64                      `index:"62" json:",omitempty"`
-	TakedownState                   int64                      `index:"63" json:",omitempty"`
+	TakedownState                   any                        `index:"63" json:",omitempty"`
 	IsCollapsed                     bool                       `index:"64" json:",omitempty"`
 	SubthreadKey                    int64                      `index:"65" json:",omitempty"`
 	BotResponseID                   int64                      `index:"66" json:",omitempty"`
-	MetadataDataclass               string                     `index:"67" json:",omitempty"`
+	MetadataDataclass               any                        `index:"67" json:",omitempty"`
 	EditCount                       int64                      `index:"68" json:",omitempty"`
 	IsPaidPartnership               bool                       `index:"69" json:",omitempty"`
 	AdminSignatureName              string                     `index:"70" json:",omitempty"`
@@ -522,11 +522,11 @@ type LSDeleteThenInsertMessage struct {
 	EphemeralDurationInSec          int64                      `index:"59" json:",omitempty"`
 	MsUntilExpirationTs             int64                      `index:"60" json:",omitempty"`
 	EphemeralExpirationTs           int64                      `index:"61" json:",omitempty"`
-	TakedownState                   int64                      `index:"62" json:",omitempty"`
+	TakedownState                   any                        `index:"62" json:",omitempty"`
 	IsCollapsed                     bool                       `index:"63" json:",omitempty"`
 	SubthreadKey                    int64                      `index:"64" json:",omitempty"`
 	BotResponseID                   int64                      `index:"65" json:",omitempty"`
-	MetadataDataclass               string                     `index:"66" json:",omitempty"`
+	MetadataDataclass               any                        `index:"66" json:",omitempty"`
 	EditCount                       int64                      `index:"67" json:",omitempty"`
 	IsPaidPartnership               bool                       `index:"68" json:",omitempty"`
 	AdminSignatureName              string                     `index:"69" json:",omitempty"`
