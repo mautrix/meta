@@ -289,6 +289,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 }
 
 func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable, currentUser types.UserInfo) {
+	zerolog.Ctx(ctx).Debug().Msg("Loaded messages page, connecting to MQTT with initial table")
 	go m.handleTableLoop(ctx)
 
 	var err error

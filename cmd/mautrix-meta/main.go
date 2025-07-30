@@ -48,8 +48,8 @@ func main() {
 	}
 	m.PostStart = func() {
 		if m.Matrix.Provisioning != nil {
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/login", legacyProvLogin)
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/logout", legacyProvLogout)
+			m.Matrix.Provisioning.Router.HandleFunc("POST /v1/login", legacyProvLogin)
+			m.Matrix.Provisioning.Router.HandleFunc("POST /v1/logout", legacyProvLogout)
 		}
 	}
 	m.InitVersion(Tag, Commit, BuildTime)
