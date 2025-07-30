@@ -102,12 +102,14 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		tasks, err := m.Main.MsgConv.ToMeta(
 			ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
 		)
-		if errors.Is(err, types.ErrPleaseReloadPage) {
-			if m.canReconnect() {
-				go m.FullReconnect()
-			}
-			return nil, err
-		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+		if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
+			log.Debug().Err(err).Msg("Doing full reconnect and retrying upload")
+			m.FullReconnect()
+			tasks, err = m.Main.MsgConv.ToMeta(
+				ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
+			)
+		}
+		if errors.Is(err, messagix.ErrTokenInvalidated) {
 			if m.canReconnect() {
 				go m.FullReconnect()
 			}
