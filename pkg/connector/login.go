@@ -256,6 +256,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	metaClient.Client = client
 
 	backgroundCtx := ul.Log.WithContext(m.Main.Bridge.BackgroundCtx)
+	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	go metaClient.connectWithTable(backgroundCtx, tbl, user)
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,

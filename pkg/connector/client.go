@@ -143,6 +143,9 @@ func (m *MetaClient) Connect(ctx context.Context) {
 		return
 	}
 	defer m.connectLock.Unlock()
+	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
+		m.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
+	}
 	retryCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if oldCancel := m.stopConnectAttempt.Swap(&cancel); oldCancel != nil {
