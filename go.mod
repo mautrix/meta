@@ -22,7 +22,7 @@ require (
 	golang.org/x/net v0.42.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.24.3-0.20250729144204-bcf92ba0e80a
+	maunium.net/go/mautrix v0.24.3-0.20250731100108-91b2bcdb9fb7
 )
 
 require (
