@@ -79,6 +79,9 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		log.Debug().Msg("Initial connect to Meta socket completed")
 		m.connectWaiter.Set()
 		if m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE {
+			if m.waState.StateEvent == "" {
+				m.waState.StateEvent = status.StateConnecting
+			}
 			m.firstE2EEConnectDone = true
 			go m.tryConnectE2EE(false)
 		}
@@ -97,6 +100,9 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		m.UserLogin.BridgeState.Send(m.metaState)
 	case *messagix.Event_Reconnected:
 		if !m.firstE2EEConnectDone && (m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE) {
+			if m.waState.StateEvent == "" {
+				m.waState.StateEvent = status.StateConnecting
+			}
 			m.firstE2EEConnectDone = true
 			go m.tryConnectE2EE(false)
 		}
