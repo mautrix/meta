@@ -78,8 +78,8 @@ type Client struct {
 	unnecessaryCATRequests int
 
 	stopCurrentConnection atomic.Pointer[context.CancelFunc]
-
-	canSendMessages *exsync.Event
+	connectionLoopStopped *exsync.Event
+	canSendMessages       *exsync.Event
 }
 
 var DisableTLSVerification = false
@@ -98,15 +98,17 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 			},
 			Timeout: 60 * time.Second,
 		},
-		cookies:         cookies,
-		Logger:          logger,
-		lsRequests:      0,
-		graphQLRequests: 1,
-		Platform:        cookies.Platform,
-		activeTasks:     make([]int, 0),
-		taskMutex:       &sync.Mutex{},
-		canSendMessages: exsync.NewEvent(),
+		cookies:               cookies,
+		Logger:                logger,
+		lsRequests:            0,
+		graphQLRequests:       1,
+		Platform:              cookies.Platform,
+		activeTasks:           make([]int, 0),
+		taskMutex:             &sync.Mutex{},
+		connectionLoopStopped: exsync.NewEvent(),
+		canSendMessages:       exsync.NewEvent(),
 	}
+	cli.connectionLoopStopped.Set()
 	if DisableTLSVerification {
 		cli.http.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true,
@@ -294,7 +296,13 @@ func (c *Client) Connect(ctx context.Context) error {
 	if oldCancel != nil {
 		(*oldCancel)()
 	}
+	c.connectionLoopStopped.Clear()
 	go func() {
+		defer func() {
+			if c.stopCurrentConnection.Load() == &cancel {
+				c.connectionLoopStopped.Set()
+			}
+		}()
 		connectionAttempts := 1
 		reconnectIn := 2 * time.Second
 		for {
@@ -350,6 +358,9 @@ func (c *Client) Disconnect() {
 		(*fn)()
 	}
 	c.socket.Disconnect()
+	if !c.connectionLoopStopped.WaitTimeout(5 * time.Second) {
+		c.Logger.Warn().Msg("Connection loop didn't stop in time")
+	}
 }
 
 func (c *Client) IsConnected() bool {
