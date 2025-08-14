@@ -455,11 +455,13 @@ func (mc *MessageConverter) waStoryReplyMessageToMatrix(ctx context.Context, con
 
 func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart) {
 	body := content.GetMessageText()
+	nativeUrl := ""
 	for _, cta := range content.GetCtas() {
 		parsedURL, err := url.Parse(cta.GetNativeURL())
 		if err != nil {
 			continue
 		}
+		nativeUrl = parsedURL.String()
 		if parsedURL.Scheme == "messenger" && parsedURL.Host == "location_share" {
 			return mc.waLocationMessageToMatrix(ctx, content, parsedURL)
 		}
@@ -483,7 +485,19 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 			break
 		}
 		for _, part := range parts {
-			part.Content.Body = "[Reply to your Facebook story] " + part.Content.Body
+			part.Content.EnsureHasHTML()
+			if nativeUrl != "" {
+				part.Content.FormattedBody = fmt.Sprintf(
+					`<blockquote>Reply to <a href="%s">your Facebook story</blockquote>%s`,
+					nativeUrl,
+					part.Content.FormattedBody,
+				)
+			} else {
+				part.Content.FormattedBody = fmt.Sprintf(
+					`<blockquote>Reply to your Facebook story</blockquote>%s`,
+					part.Content.FormattedBody,
+				)
+			}
 		}
 		return parts
 	}
