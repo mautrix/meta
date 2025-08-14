@@ -30,12 +30,14 @@ import (
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/armadilloutil"
 	"go.mau.fi/whatsmeow/proto/instamadilloAddMessage"
 	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
 	"go.mau.fi/whatsmeow/proto/waArmadilloXMA"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/proto/waMediaTransport"
+	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
@@ -436,6 +438,21 @@ func (mc *MessageConverter) waLocationMessageToMatrix(ctx context.Context, conte
 	}}
 }
 
+func (mc *MessageConverter) waStoryReplyMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart, err error) {
+	assocMsg := waMsgApplication.MessageApplication{}
+	_, err = armadilloutil.Unmarshal(&assocMsg, content.AssociatedMessage, 2)
+	if err != nil {
+		return
+	}
+	consMsg := waConsumerApplication.ConsumerApplication{}
+	_, err = armadilloutil.Unmarshal(&consMsg, assocMsg.GetPayload().GetSubProtocol().GetConsumerMessage(), 1)
+	if err != nil {
+		return
+	}
+	parts = mc.waConsumerToMatrix(ctx, consMsg.GetPayload().GetContent())
+	return
+}
+
 func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart) {
 	body := content.GetMessageText()
 	for _, cta := range content.GetCtas() {
@@ -458,6 +475,17 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 	if body == "" {
 		body = fmt.Sprintf("Unsupported message\n\nPlease open in %s", mc.appName())
 		msgtype = event.MsgNotice
+	}
+	switch content.GetTargetType() {
+	case waArmadilloXMA.ExtendedContentMessage_FB_STORY_REPLY:
+		parts, err := mc.waStoryReplyMessageToMatrix(ctx, content)
+		if err != nil {
+			break
+		}
+		for _, part := range parts {
+			part.Content.Body = "[Reply to your Facebook story] " + part.Content.Body
+		}
+		return parts
 	}
 	return []*bridgev2.ConvertedMessagePart{{
 		Type: event.EventMessage,
