@@ -488,13 +488,13 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 			part.Content.EnsureHasHTML()
 			if nativeUrl != "" {
 				part.Content.FormattedBody = fmt.Sprintf(
-					`<blockquote>Reply to <a href="%s">your Facebook story</a></blockquote>%s`,
+					`<blockquote>Reply to <a href="%s">your Facebook story</a>:</blockquote>%s`,
 					nativeUrl,
 					part.Content.FormattedBody,
 				)
 			} else {
 				part.Content.FormattedBody = fmt.Sprintf(
-					`<blockquote>Reply to your Facebook story</blockquote>%s`,
+					`<blockquote>Reply to your Facebook story:</blockquote>%s`,
 					part.Content.FormattedBody,
 				)
 			}
