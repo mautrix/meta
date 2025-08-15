@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,13 +11,70 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
-	"golang.org/x/net/context"
+	//"golang.org/x/net/context"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
+
+func (c *Client) makeWrappedBloksRequest(ctx context.Context, name string, serverParams map[string]any, clientParams map[string]any) (*http.Response, []byte, error) {
+	bloksDoc, ok := bloks.BloksDocs[name]
+	if !ok {
+		return nil, nil, fmt.Errorf("could not find bloks doc by the name of: %s", name)
+	}
+
+	wrappedBloksRequest, err := bloks.MakeWrappedBloksRequest(bloksDoc.AppID, serverParams, clientParams)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create wrapped bloks request: %w", err)
+	}
+
+	return c.makeBloksRequest(ctx, bloksDoc, wrappedBloksRequest)
+}
+
+// TODO: Should this be layered on top of makeGraphQLRequest?
+func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, variables interface{}) (*http.Response, []byte, error) {
+	vBytes, err := json.Marshal(variables)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
+	}
+
+	payload := &HttpQuery {}
+	payload.Method = "post"
+	payload.Pretty = "false"
+	payload.Format = "json"
+	payload.ServerTimestamps = "true"
+	payload.Locale = "en_US"
+	payload.Purpose = "fetch"
+	payload.FbAPIReqFriendlyName = doc.FriendlyName
+	payload.ClientDocID = doc.ClientDocId
+	payload.EnableCanonicalNaming = "true"
+	payload.EnableCanonicalVariableOverrides = "true"
+	payload.EnableCanonicalNamingAmbiguousTypePrefixing = "true"
+	payload.Variables = string(vBytes)
+
+	form, err := query.Values(payload)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	payloadBytes := []byte(form.Encode())
+
+	headers := c.buildMessengerLiteHeaders()
+	headers.Set("x-fb-friendly-name", doc.FriendlyName)
+	headers.Set("x-root-field-name", "bloks_action")
+	headers.Set("x-graphql-request-purpose", "fetch")
+	headers.Set("x-graphql-client-library", "pando")
+
+	reqUrl := c.getEndpoint("graphql")
+	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
+
+	// TODO: Do some kind of response processing?
+
+	return resp, respData, err
+}
 
 func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {
 	graphQLDoc, ok := graphql.GraphQLDocs[name]

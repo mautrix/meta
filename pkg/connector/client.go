@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
@@ -409,6 +410,9 @@ func (m *MetaClient) connectE2EE() error {
 	if m.WADevice == nil {
 		isNew = true
 		m.WADevice = m.Main.DeviceStore.NewDevice()
+	}
+	if m.Client.DeviceID != uuid.Nil {
+		m.WADevice.FacebookUUID = m.Client.DeviceID
 	}
 	m.Client.SetDevice(m.WADevice)
 

@@ -51,6 +51,20 @@ type HttpQuery struct {
 	DeviceType           string `url:"device_type,omitempty"`       // not required
 	Mid                  string `url:"mid,omitempty"`               // not required
 	Aaid                 string `url:"__aaid,omitempty"`
+
+	// Messenger Lite:
+	Method string `url:"method,omitempty"`
+	Pretty string `url:"pretty,omitempty"` // "true" or "false"
+	Format string `url:"format,omitempty"`
+	// ServerTimestamps
+	Locale string `url:"locale,omitempty"`
+	Purpose string `url:"purpose,omitempty"`
+	// FbAPIReqFriendlyName
+	ClientDocID string `url:"client_doc_id,omitempty"`
+	EnableCanonicalNaming string `url:"enable_canonical_naming,omitempty"` // "true" or "false"
+	EnableCanonicalVariableOverrides string `url:"enable_canonical_variable_overrides,omitempty"` // "true" or "false"
+	EnableCanonicalNamingAmbiguousTypePrefixing string `url:"enable_canonical_naming_ambiguous_type_prefixing,omitempty"` // "true" or "false"
+	// Variables
 }
 
 func (c *Client) newHTTPQuery() *HttpQuery {
@@ -261,6 +275,20 @@ func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header 
 		headers.Set("viewport-width", w)
 		headers.Set("x-asbd-id", "129477")
 	}
+	return headers
+}
+
+func (c *Client) buildMessengerLiteHeaders() http.Header {
+	// This isn't from a browser, so we don't include most of the usual headers
+	headers := http.Header{}
+	//headers.Set("accept", "application/json")
+	headers.Set("user-agent", MessengerLiteUserAgent)
+	headers.Set("x-fb-http-engine", "Tigon+iOS")
+	headers.Set("accept", "*/*")
+	headers.Set("priority", "u=3, i")
+	headers.Set("accept-language", "en-US,en;q=0.9")
+	// TODO: Analytics headers
+
 	return headers
 }
 

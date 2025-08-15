@@ -33,3 +33,14 @@ func makeFacebookEndpoints(host string) map[string]string {
 	}
 	return urls
 }
+
+var MessengerLiteEndpoints = map[string]string{
+	"graphql": "https://graph.facebook.com/graphql",
+
+	"pwd_key": "https://graph.facebook.com/pwd_key_fetch",
+	"v2.10":   "https://graph.facebook.com/v2.10",
+	"cat":     "https://web.facebook.com/messaging/lightspeed/cat",
+
+	"icdc_fetch":    "https://v.whatsapp.net/v2/fb_icdc_fetch",
+	"icdc_register": "https://v.whatsapp.net/v2/fb_register_v2",
+}

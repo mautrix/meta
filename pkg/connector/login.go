@@ -23,9 +23,12 @@ const (
 	FlowIDFacebookCookies  = "facebook"
 	FlowIDMessengerCookies = "messenger"
 	FlowIDInstagramCookies = "instagram"
+	FlowIDMessengerLite    = "messenger-lite"
 
 	LoginStepIDCookies  = "fi.mau.meta.cookies"
 	LoginStepIDComplete = "fi.mau.meta.complete"
+
+	LoginStepIDCredentials = "fi.mau.meta.credentials"
 )
 
 func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
@@ -40,6 +43,13 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 		plat = types.Messenger
 	case FlowIDInstagramCookies:
 		plat = types.Instagram
+	case FlowIDMessengerLite:
+		plat = types.MessengerLite
+		return &MetaNativeLogin{
+			Mode: plat,
+			User: user,
+			Main: m,
+		}, nil
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
@@ -94,12 +104,17 @@ var (
 		Description: "Login using cookies from instagram.com",
 		ID:          FlowIDInstagramCookies,
 	}
+	loginFlowMessengerLite = bridgev2.LoginFlow{
+		Name:        "Messenger iOS",
+		Description: "Login in using Messenger mobile API",
+		ID:          FlowIDMessengerLite,
+	}
 )
 
 func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	switch m.Config.Mode {
 	case types.Unset:
-		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram}
+		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram, loginFlowMessengerLite}
 	case types.Facebook:
 		if m.Config.AllowMessengerComOnFB {
 			return []bridgev2.LoginFlow{loginFlowMessenger, loginFlowFacebook}
@@ -268,3 +283,70 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		},
 	}, nil
 }
+
+type MetaNativeLogin struct {
+	Mode types.Platform
+	User *bridgev2.User
+	Main *MetaConnector
+}
+
+func (m *MetaNativeLogin) Cancel() {
+	panic("unimplemented")
+}
+
+func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	step := &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeUserInput,
+		StepID:       LoginStepIDCredentials,
+		Instructions: "Enter your Messenger credentials",
+		UserInputParams: &bridgev2.LoginUserInputParams{
+			Fields: []bridgev2.LoginInputDataField{
+				{ID: "username", Name: "Username", Type: bridgev2.LoginInputFieldTypeEmail},
+				{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+			},
+		},
+	}
+	return step, nil
+}
+
+func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	log := m.User.Log.With().Str("component", "messagix").Logger()
+	fakeCookies := &cookies.Cookies{
+		Platform: m.Mode,
+	}
+	client := messagix.NewClient(fakeCookies, log)
+
+	cookies, err := client.MessengerLite.Login(ctx, input["username"], input["password"])
+	if err != nil {
+		return nil, fmt.Errorf("failed to login: %w", err)
+	}
+
+	log.Debug().Any("cookies", cookies).Msg("Logged in with Messenger Lite")
+	// ul, err := m.User.NewLogin(ctx, &database.UserLogin{
+	// 	ID:         loginID,
+	// 	RemoteName: user.GetName(),
+	// 	RemoteProfile: status.RemoteProfile{
+	// 		Name: user.GetName(),
+	// 	},
+	// 	Metadata: &metaid.UserLoginMetadata{
+	// 		Platform: c.Platform,
+	// 		Cookies:  c,
+	// 		LoginUA:  loginUA,
+	// 	},
+	// }, nil)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to save new login: %w", err)
+	// }
+
+	return &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeComplete,
+		StepID:       LoginStepIDComplete,
+		Instructions: fmt.Sprintf("Logged in as ?"),
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: "",
+			UserLogin:   nil,
+		},
+	}, nil
+}
+
+var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
