@@ -439,12 +439,12 @@ func (mc *MessageConverter) waLocationMessageToMatrix(ctx context.Context, conte
 }
 
 func (mc *MessageConverter) waStoryReplyMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart, err error) {
-	assocMsg := waMsgApplication.MessageApplication{}
+	var assocMsg waMsgApplication.MessageApplication
 	_, err = armadilloutil.Unmarshal(&assocMsg, content.AssociatedMessage, 2)
 	if err != nil {
 		return
 	}
-	consMsg := waConsumerApplication.ConsumerApplication{}
+	var consMsg waConsumerApplication.ConsumerApplication
 	_, err = armadilloutil.Unmarshal(&consMsg, assocMsg.GetPayload().GetSubProtocol().GetConsumerMessage(), 1)
 	if err != nil {
 		return
@@ -482,6 +482,7 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 	case waArmadilloXMA.ExtendedContentMessage_FB_STORY_REPLY:
 		parts, err := mc.waStoryReplyMessageToMatrix(ctx, content)
 		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to parse story reply message")
 			break
 		}
 		for _, part := range parts {
