@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -110,9 +111,9 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password string) (*http.Response, []byte, error) {
+func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password string) (map[string]any, error) {
 	deviceId := strings.ToUpper(c.DeviceID.String())
-	return c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_ASYNC_SEND_LOGIN_REQUEST", map[string]any{
+	_, respBytes, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_ASYNC_SEND_LOGIN_REQUEST", map[string]any{
 		"family_device_id": deviceId,
         "is_from_aymh": 0,
         "should_trigger_override_login_success_action": 0,
@@ -186,6 +187,96 @@ func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password s
         "headers_infra_flow_id": "",
         "family_device_id": c.DeviceID,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Clean up this parsing with structs
+
+	// Parse respBytes as JSON
+	var respData map[string]any
+	err = json.Unmarshal(respBytes, &respData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Safely extract nested fields using type assertions
+	data, ok := respData["data"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format: missing 'data'")
+	}
+	bloksAction, ok := data["1$bloks_action(bk_context:$bk_context,params:$params)"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format: missing '1$bloks_action(bk_context:$bk_context,params:$params)'")
+	}
+	action, ok := bloksAction["action"].(map[string]any)
+	if !ok {
+		return nil,	 fmt.Errorf("unexpected response format: missing 'action'")
+	}
+	actionBundle, ok := action["action_bundle"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format: missing 'action_bundle'")
+	}
+	inner, ok := actionBundle["bloks_bundle_action"]
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format: missing 'bloks_bundle_action'")
+	}
+
+	// Parse inner as JSON
+	var innerData map[string]any
+	err = json.Unmarshal([]byte(inner.(string)), &innerData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse 'bloks_bundle_action' as JSON: %w", err)
+	}
+	// ['layout']['bloks_payload']['action']
+	actionLayout, ok := innerData["layout"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format: missing 'layout'")
+	}
+	actionBloksPayload, ok := actionLayout["bloks_payload"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format: missing 'bloks_payload'")
+	}
+	actionPayload, ok := actionBloksPayload["action"]
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format: missing 'action'")
+	}
+
+	c.Logger.Debug().Any("actionPayload", actionPayload).Msg("Processed Messenger Lite login response")
+
+	// Parse the action payload
+	payloadData, err := c.parseBloksActionPayload(actionPayload.(string))
+	if err != nil {
+		return nil, err
+	}
+
+	c.Logger.Debug().Any("payloadData", payloadData).Msg("Parsed Bloks action payload")
+
+	return payloadData, nil
+}
+
+func (c *Client) parseBloksActionPayload(actionPayload string) (map[string]any, error) {
+	re := regexp.MustCompile(`\{\\.*?\}"`)
+    match := re.FindString(actionPayload)
+
+    if match == "" {
+        fmt.Println("No match found in action string.")
+        return nil, nil
+    }
+
+	match = strings.TrimSuffix(match, `"`)
+    // Unescape double backslashes to single ones
+    unescaped := strings.ReplaceAll(match, `\\`, `\`)
+	unescaped = strings.ReplaceAll(unescaped, `\"`, `"`)
+
+    // Decode JSON
+    var data map[string]interface{}
+    err := json.Unmarshal([]byte(unescaped), &data)
+    if err != nil {
+        return nil, fmt.Errorf("failed to decode JSON: %w", err)
+    }
+
+	return data, nil
 }
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
@@ -208,66 +299,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, fmt.Errorf("failed to encrypt password for facebook: %w", err)
 	}
 
-	resp, respBytes, err := fb.client.sendAsyncLoginRequest(ctx, username, encryptedPW)
+	data, err := fb.client.sendAsyncLoginRequest(ctx, username, encryptedPW)
 	if err != nil {
 		return nil, err
 	}
 
-	fb.client.Logger.Debug().Any("resp", resp).Any("respBytes", string(respBytes)).Msg("Processing Messenger Lite login response")
+	fb.client.Logger.Debug().Any("data", data).Msg("Processed Messenger Lite login response")
 
 	return nil, nil
-	// moduleLoader := fb.client.loadLoginPage(ctx)
-	// loginFormTags := moduleLoader.FormTags[0]
-	// loginPath, ok := loginFormTags.Attributes["action"]
-	// if !ok {
-	// 	return nil, fmt.Errorf("failed to resolve login path / action from html form tags for facebook login")
-	// }
-
-	// loginInputs := append(loginFormTags.Inputs, moduleLoader.LoginInputs...)
-	// loginForm := types.LoginForm{}
-	// v := reflect.ValueOf(&loginForm).Elem()
-	// fb.client.configs.ParseFormInputs(loginInputs, v)
-
-	// fb.client.configs.Jazoest = loginForm.Jazoest
-
-	// needsCookieConsent := len(fb.client.configs.BrowserConfigTable.InitialCookieConsent.InitialConsent) == 0
-	// if needsCookieConsent {
-	// 	err := fb.client.sendCookieConsent(ctx, moduleLoader.JSDatr)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// }
-
-	// testDataSimulator := crypto.NewABTestData()
-	// data := testDataSimulator.GenerateAbTestData([]string{identifier, password})
-
-	// encryptedPW, err := crypto.EncryptPassword(int(types.Facebook), crypto.FacebookPubKeyId, crypto.FacebookPubKey, password)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to encrypt password for facebook: %w", err)
-	// }
-
-	// loginForm.Email = identifier
-	// loginForm.EncPass = encryptedPW
-	// loginForm.AbTestData = data
-	// loginForm.Lgndim = "eyJ3IjoyMjc1LCJoIjoxMjgwLCJhdyI6MjI3NiwiYWgiOjEyMzIsImMiOjI0fQ==" // irrelevant
-	// loginForm.Lgnjs = strconv.Itoa(fb.client.configs.BrowserConfigTable.SiteData.SpinT)
-	// loginForm.Timezone = "-120"
-
-	// form, err := query.Values(&loginForm)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// loginUrl := fb.client.getEndpoint("base_url") + loginPath
-	// loginResp, loginBody, err := fb.client.sendLoginRequest(ctx, form, loginUrl)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// loginResult := fb.client.processLogin(loginResp, loginBody)
-	// if loginResult != nil {
-	// 	return nil, loginResult
-	// }
-
-	// return fb.client.cookies, nil
 }
