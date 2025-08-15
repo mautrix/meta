@@ -27,6 +27,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c // indirect
 	github.com/coder/websocket v1.8.13 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
@@ -41,7 +42,7 @@ require (
 	github.com/yuin/goldmark v1.7.12 // indirect
 	go.mau.fi/zeroconfig v0.1.3 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect

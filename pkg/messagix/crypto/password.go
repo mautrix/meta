@@ -2,12 +2,18 @@ package crypto
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
+
+	"golang.org/x/crypto/nacl/box"
+	// We're replacing golang.org/x/crypto with a fork for "legacy chacha20poly1305" (8 byte nonce)
+	//"golang.org/x/crypto/chacha20poly1305"
+	"github.com/beeper/poly1305/chacha20poly1305"
 )
 
 var FacebookPubKey = "70425d9c3279f0fd3855dd64cd5588d2dfd0fe77163bd7b650e1304b5f25135b"
@@ -61,4 +67,46 @@ func EncryptPassword(platform int, pubKeyId int, pubKey, password string) (strin
 	}
 
 	return formattedStr, nil
+}
+
+func EncryptPasswordLightspeed(pubKeyId int, pubKey, password string) (string, error) {
+	pubKeyBytes, err := hex.DecodeString(pubKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode pubKey, must be a hex-encoded string: %w", err)
+	}
+
+	buf := bytes.NewBuffer(nil)
+	ts := []byte(strconv.FormatInt(time.Now().Unix(), 10))
+	pwBytes := []byte(password)
+	buf.WriteByte(1)
+	buf.WriteByte(byte(pubKeyId))
+
+	encryptionKey := make([]byte, 32)
+	if _, err := rand.Read(encryptionKey); err != nil {
+		return "", err
+	}
+
+	var pubKeyArray [32]byte
+	copy(pubKeyArray[:], pubKeyBytes)
+	boxed, err := box.SealAnonymous(nil, encryptionKey, &pubKeyArray, rand.Reader)
+	if err != nil {
+		return "", err
+	}
+	buf.Write([]byte{0x50, 0x00}) // TODO: I assume this is length?
+	buf.Write(boxed)
+
+	cipher, err := chacha20poly1305.NewLegacy(encryptionKey)
+	if err != nil {
+		return "", err
+	}
+
+	encrypted_password := cipher.Seal(nil, []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, pwBytes, ts)
+	// Swap AEAD tag from back to front
+	encrypted_password = append(encrypted_password[len(encrypted_password)-16:], encrypted_password[:len(encrypted_password)-16]...)
+
+	buf.Write(encrypted_password)
+
+	finalString := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	return fmt.Sprintf("#PWD_LIGHTSPEED:3:%s:%s", string(ts), finalString), nil
 }
