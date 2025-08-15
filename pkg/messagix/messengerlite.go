@@ -111,7 +111,7 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password string) (map[string]any, error) {
+func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password string) (*BloksLoginActionResponsePayload, error) {
 	deviceId := strings.ToUpper(c.DeviceID.String())
 	_, respBytes, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_ASYNC_SEND_LOGIN_REQUEST", map[string]any{
 		"family_device_id": deviceId,
@@ -255,7 +255,45 @@ func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password s
 	return payloadData, nil
 }
 
-func (c *Client) parseBloksActionPayload(actionPayload string) (map[string]any, error) {
+type RawCookie struct {
+	Domain           string `json:"domain"`
+    Expires          string `json:"expires"`
+    ExpiresTimestamp int64  `json:"expires_timestamp"`
+    HttpOnly         *bool  `json:"httponly"` // nullable
+    Name             string `json:"name"`
+    Path             string `json:"path"`
+    SameSite         string `json:"samesite"`
+    Secure           bool   `json:"secure"`
+    Value            string `json:"value"`
+}
+
+type BloksLoginActionResponsePayload struct {
+	AccessToken string `json:"access_token"`
+	AnalyticsClaim string `json:"analytics_claim"`
+	AutoLoginSSO bool `json:"auto_login_sso"`
+	Confirmed bool `json:"confirmed"`
+	CredentialType string `json:"credential_type"`
+	HasEncryptedBackup bool `json:"has_encrypted_backup"`
+	Identifier string `json:"identifier"`
+	IsAccountConfirmed bool `json:"is_account_confirmed"`
+	IsAymhSurveyEligible bool `json:"is_aymh_survey_eligible"`
+	IsFBOnlyNotAllowedInMessenger bool `json:"is_fb_only_not_allowed_in_msgr"`
+	IsGamingConsented bool `json:"is_gaming_consented"`
+	IsLisaSSOLogin bool `json:"is_lisa_sso_login"`
+	IsMarketplaceConsented bool `json:"is_marketplace_consented"`
+	IsMSplitAccount bool `json:"is_msplit_account"`
+	IsSpectraAccount bool `json:"is_spectra_account"`
+	MachineID string `json:"machine_id"`
+	RefreshNonce bool `json:"refresh_nonce"`
+	Secret string `json:"secret"`
+	SessionKey string `json:"session_key"`
+	UID int64 `json:"uid"`
+	UserStorageKey string `json:"user_storage_key"`
+	
+	SessionCookies []RawCookie `json:"session_cookies"`
+}
+
+func (c *Client) parseBloksActionPayload(actionPayload string) (*BloksLoginActionResponsePayload, error) {
 	re := regexp.MustCompile(`\{\\.*?\}"`)
     match := re.FindString(actionPayload)
 
@@ -269,14 +307,23 @@ func (c *Client) parseBloksActionPayload(actionPayload string) (map[string]any, 
     unescaped := strings.ReplaceAll(match, `\\`, `\`)
 	unescaped = strings.ReplaceAll(unescaped, `\"`, `"`)
 
-    // Decode JSON
-    var data map[string]interface{}
-    err := json.Unmarshal([]byte(unescaped), &data)
-    if err != nil {
-        return nil, fmt.Errorf("failed to decode JSON: %w", err)
-    }
+    // Decode into BloksLoginActionResponsePayload
+	var data BloksLoginActionResponsePayload
+	err := json.Unmarshal([]byte(unescaped), &data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JSON: %w", err)
+	}
 
-	return data, nil
+	return &data, nil
+}
+
+func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
+	newCookies := &cookies.Cookies{}
+	newCookies.UpdateValues(make(map[string]string))
+	for _, raw := range payload.SessionCookies {
+		newCookies.Set(cookies.MetaCookieName(raw.Name), raw.Value)
+	}
+	return newCookies
 }
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
@@ -304,7 +351,9 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, err
 	}
 
+	newCookies := convertCookies(data)
+
 	fb.client.Logger.Debug().Any("data", data).Msg("Processed Messenger Lite login response")
 
-	return nil, nil
+	return newCookies, nil
 }
