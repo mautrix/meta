@@ -29,7 +29,7 @@ type HttpQuery struct {
 	S                    string `url:"__s,omitempty"`         // not required
 	Hsi                  string `url:"__hsi,omitempty"`       // not required
 	Dyn                  string `url:"__dyn,omitempty"`       // not required
-	Csr                  string `url:"__csr"`                 // not required
+	Csr                  string `url:"__csr,omitempty"`                 // not required
 	CometReq             string `url:"__comet_req,omitempty"` // not required but idk what this is
 	FbDtsg               string `url:"fb_dtsg,omitempty"`
 	Jazoest              string `url:"jazoest,omitempty"`                  // not required

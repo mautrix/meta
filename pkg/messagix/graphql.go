@@ -68,6 +68,8 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
 
+	headers.Set("Authorization", "OAuth " + MessengerLiteAccessToken)
+
 	reqUrl := c.getEndpoint("graphql")
 	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 

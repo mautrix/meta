@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"golang.org/x/crypto/nacl/box"
 	// We're replacing golang.org/x/crypto with a fork for "legacy chacha20poly1305" (8 byte nonce)
 	//"golang.org/x/crypto/chacha20poly1305"
@@ -26,6 +27,10 @@ var (
 
 // TO-DO: implement automatic grabbing of pub key from html module config for facebook as insta does
 func EncryptPassword(platform int, pubKeyId int, pubKey, password string) (string, error) {
+	if platform == int(types.MessengerLite) {
+		return encryptPasswordLightspeed(pubKeyId, pubKey, password)
+	}
+
 	pubKeyBytes, err := hex.DecodeString(pubKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode pubKey, must be a hex-encoded string: %w", err)
@@ -69,7 +74,7 @@ func EncryptPassword(platform int, pubKeyId int, pubKey, password string) (strin
 	return formattedStr, nil
 }
 
-func EncryptPasswordLightspeed(pubKeyId int, pubKey, password string) (string, error) {
+func encryptPasswordLightspeed(pubKeyId int, pubKey, password string) (string, error) {
 	pubKeyBytes, err := hex.DecodeString(pubKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode pubKey, must be a hex-encoded string: %w", err)

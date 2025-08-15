@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -83,7 +84,7 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 		c.DeviceID = uuid.New()
 	}
 
-	_ , _, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_HOME_PAGE", map[string]any{
+	_ , respBytes, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_HOME_PAGE", map[string]any{
 		"is_from_logged_out":                0,
 		"flow_source":                       "aymh_single_profile_native_integration_point",
 		"offline_experiment_group":          "caa_iteration_v2_perf_ls_ios_test_1",
@@ -105,8 +106,88 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 		"should_show_nested_nta_from_aymh": 1,
 	})
 
+	c.Logger.Debug().Any("respBytes", respBytes).Msg("Loaded Messenger Lite login page")
 	return err
 }
+
+func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password string) (*http.Response, []byte, error) {
+	deviceId := strings.ToUpper(c.DeviceID.String())
+	return c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_ASYNC_SEND_LOGIN_REQUEST", map[string]any{
+		"family_device_id": deviceId,
+        "is_from_aymh": 0,
+        "should_trigger_override_login_success_action": 0,
+        "INTERNAL__latency_qpl_marker_id": 36707139,
+        "is_from_assistive_id": 0,
+        "login_source": "Login",
+        "is_from_logged_in_switcher": 0,
+        "should_trigger_override_login_2fa_action": 0,
+        "is_from_landing_page": 0,
+        "device_id": deviceId,
+        "INTERNAL__latency_qpl_instance_id": 44728029400434,
+        "is_platform_login": 0,
+        "is_from_msplit_fallback": 0,
+        "ar_event_source": "login_home_page",
+        "is_from_password_entry_page": 0,
+        "waterfall_id": "0143cbfa4ec747949d67511836abe901",
+        "access_flow_version": "pre_mt_behavior",
+        "credential_type": "password",
+        "username_text_input_id": "7earom:118",
+        "password_text_input_id": "7earom:119",
+        "is_from_logged_out": 0,
+        "caller": "gslr",
+        "server_login_source": "login",
+        "layered_homepage_experiment_group": "not_in_experiment",
+        "reg_flow_source": "aymh_single_profile_native_integration_point",
+        "is_caa_perf_enabled": 1,
+        "is_vanilla_password_page_empty_password": 0,
+        "is_from_empty_password": 0,
+        "offline_experiment_group": "caa_iteration_v2_perf_ls_ios_test_1",
+        "login_credential_type": "none",
+        "two_step_login_type": "one_step_login",
+	}, map[string]any{
+		"try_num": 1,
+        "block_store_machine_id": "",
+        "contact_point": username,
+        "has_granted_read_phone_permissions": 0,
+        "lois_settings": map[string]any{"lois_token": ""},
+        "event_step": "home_page",
+        "event_flow": "login_manual",
+        "should_show_nested_nta_from_aymh": 1,
+        "cloud_trust_token": nil,
+        "has_granted_read_contacts_permissions": 0,
+        "device_id": deviceId,
+        "sso_token_map_json_string": `{"": []}`,
+        "auth_secure_device_id": "",
+        "openid_tokens": map[string]any{},
+        "login_attempt_count": 1,
+        "app_manager_id": "",
+        "has_whatsapp_installed": 0,
+		"aymh_accounts": []any{
+			map[string]any{
+				"id":       "",
+				"profiles": map[string]any{},
+			},
+		},
+        "client_known_key_hash": "",
+        "fb_ig_device_id": []string{},
+        "encrypted_msisdn": "",
+        "secure_family_device_id": "",
+        "machine_id": c.machineId,
+        "password": password,
+        "password_contains_non_ascii": "false",
+		"accounts_list": []any{
+			map[string]any{
+				"metadata":     map[string]any{},
+				"uid":          "",
+				"credential_type": "none",
+				"token":       "none",
+			},
+		},
+        "headers_infra_flow_id": "",
+        "family_device_id": c.DeviceID,
+	})
+}
+
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
 	// TODO: Extract info from login page
 	fb.client.Logger.Debug().Msg("Loading Messenger Lite login page")
@@ -122,12 +203,17 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	}
 
 	fb.client.Logger.Debug().Msg("Encrypting password for Messenger Lite")
-	encryptedPW, err := crypto.EncryptPassword(int(types.Facebook), keyId, pubKey, password)
+	encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), keyId, pubKey, password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt password for facebook: %w", err)
 	}
 
-	println("Encrypted Password:", encryptedPW)
+	resp, respBytes, err := fb.client.sendAsyncLoginRequest(ctx, username, encryptedPW)
+	if err != nil {
+		return nil, err
+	}
+
+	fb.client.Logger.Debug().Any("resp", resp).Any("respBytes", string(respBytes)).Msg("Processing Messenger Lite login response")
 
 	return nil, nil
 	// moduleLoader := fb.client.loadLoginPage(ctx)

@@ -1,6 +1,8 @@
 package bloks
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 const BloksVersion = "3988ff4cdf5ca5de647ba84aa74b5bd2fcd4ffd768e0faec8adc3e53492f3f87"
 
@@ -44,8 +46,8 @@ func makeWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID stri
 		return nil, err
 	}
 
-	innerParamsJson, err := json.Marshal(map[string]interface{}{
-		"params": innerInnerParamsJson,
+	innerParamsJson, err := json.Marshal(map[string]any{
+		"params": string(innerInnerParamsJson),
 	})
 	if err != nil {
 		return nil, err
