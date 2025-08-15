@@ -315,36 +315,84 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 		Platform: m.Mode,
 	}
 	client := messagix.NewClient(fakeCookies, log)
+	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
+		client.GetNewProxy = m.Main.getProxy
+		if !client.UpdateProxy("login") {
+			return nil, fmt.Errorf("failed to update proxy")
+		}
+	}
 
 	cookies, err := client.MessengerLite.Login(ctx, input["username"], input["password"])
 	if err != nil {
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
 
-	log.Debug().Any("cookies", cookies).Msg("Logged in with Messenger Lite")
-	// ul, err := m.User.NewLogin(ctx, &database.UserLogin{
-	// 	ID:         loginID,
-	// 	RemoteName: user.GetName(),
-	// 	RemoteProfile: status.RemoteProfile{
-	// 		Name: user.GetName(),
-	// 	},
-	// 	Metadata: &metaid.UserLoginMetadata{
-	// 		Platform: c.Platform,
-	// 		Cookies:  c,
-	// 		LoginUA:  loginUA,
-	// 	},
-	// }, nil)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to save new login: %w", err)
-	// }
+	newCookies, err := cookies.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal cookies: %w", err)
+	}
+	client.GetCookies().UnmarshalJSON(newCookies)
 
+	log.Debug().Any("cookies", cookies).Msg("Logged in with Messenger Lite")
+
+	user, tbl, err := client.LoadMessagesPage(ctx)
+	if err != nil {
+		log.Err(err).Msg("Failed to load messages page for login")
+		if errors.Is(err, messagix.ErrChallengeRequired) {
+			return nil, ErrLoginChallenge
+		} else if errors.Is(err, messagix.ErrCheckpointRequired) {
+			return nil, ErrLoginCheckpoint
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			return nil, ErrLoginConsent
+		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+			return nil, ErrLoginTokenInvalidated
+		} else {
+			return nil, fmt.Errorf("%w: %w", ErrLoginUnknown, err)
+		}
+	}
+
+	log.Debug().Any("user", user).Any("tbl", tbl).Msg("Loaded user after Messenger Lite login")
+	id := user.GetFBID()
+
+	loginID := metaid.MakeUserLoginID(id)
+	var loginUA string
+	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {
+		loginUA = req.Header.Get("User-Agent")
+	}
+
+	ul, err := m.User.NewLogin(ctx, &database.UserLogin{
+		ID:         loginID,
+		RemoteName: user.GetName(),
+		RemoteProfile: status.RemoteProfile{
+			Name: user.GetName(),
+		},
+		Metadata: &metaid.UserLoginMetadata{
+			Platform: client.GetCookies().Platform,
+			Cookies:  client.GetCookies(),
+			LoginUA:  loginUA,
+		},
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save new login: %w", err)
+	}
+
+	metaClient := ul.Client.(*MetaClient)
+	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
+	client.Logger = metaClient.Client.Logger
+	client.SetEventHandler(metaClient.handleMetaEvent)
+	metaClient.lastFullReconnect = time.Time{}
+	metaClient.Client = client
+
+	backgroundCtx := ul.Log.WithContext(m.Main.Bridge.BackgroundCtx)
+	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
+	go metaClient.connectWithTable(backgroundCtx, tbl, user)
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Logged in as ?"),
+		Instructions: fmt.Sprintf("Logged in as %s (%d)", user.GetName(), id),
 		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: "",
-			UserLogin:   nil,
+			UserLoginID: ul.ID,
+			UserLogin:   ul,
 		},
 	}, nil
 }

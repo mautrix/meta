@@ -9,6 +9,7 @@ const (
 var FacebookEndpoints = makeFacebookEndpoints(facebookHost)
 var MessengerEndpoints = makeFacebookEndpoints(messengerHost)
 var FacebookTorEndpoints = makeFacebookEndpoints(facebookTorHost)
+var MessengerLiteEndpoints = makeMessengerLiteEndpoints(facebookHost)
 
 func makeFacebookEndpoints(host string) map[string]string {
 	baseURL := "https://" + host
@@ -34,13 +35,14 @@ func makeFacebookEndpoints(host string) map[string]string {
 	return urls
 }
 
-var MessengerLiteEndpoints = map[string]string{
-	"graphql": "https://graph.facebook.com/graphql",
+func makeMessengerLiteEndpoints(host string) map[string]string {
+	endpoints := makeFacebookEndpoints(host)
+	endpoints["graph_graphql"] = "https://graph.facebook.com/graphql"
+	endpoints["pwd_key"] = "https://graph.facebook.com/pwd_key_fetch"
+	endpoints["v2.10"] = "https://graph.facebook.com/v2.10"
+	endpoints["cat"] = "https://web.facebook.com/messaging/lightspeed/cat"
+	endpoints["icdc_fetch"] = "https://v.whatsapp.net/v2/fb_icdc_fetch"
+	endpoints["icdc_register"] = "https://v.whatsapp.net/v2/fb_register_v2"
 
-	"pwd_key": "https://graph.facebook.com/pwd_key_fetch",
-	"v2.10":   "https://graph.facebook.com/v2.10",
-	"cat":     "https://web.facebook.com/messaging/lightspeed/cat",
-
-	"icdc_fetch":    "https://v.whatsapp.net/v2/fb_icdc_fetch",
-	"icdc_register": "https://v.whatsapp.net/v2/fb_register_v2",
+	return endpoints
 }

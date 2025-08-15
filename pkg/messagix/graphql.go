@@ -70,7 +70,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 
 	headers.Set("Authorization", "OAuth " + MessengerLiteAccessToken)
 
-	reqUrl := c.getEndpoint("graphql")
+	reqUrl := c.getEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
 	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 
 	// TODO: Do some kind of response processing?
