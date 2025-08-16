@@ -1,3 +1,11 @@
+# v0.5.3 (2025-08-16)
+
+* Deprecated legacy provisioning API. The `/_matrix/provision/v1` endpoints will
+  be deleted in the next release.
+* Bumped minimum Go version to 1.24.
+* Added automatic refresh if sending media fails with please reload page error.
+* Added time limit for using cached connection states.
+
 # v0.5.2 (2025-07-16)
 
 * Fixed handling some types of GraphQL errors.
