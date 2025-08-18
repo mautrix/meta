@@ -30,12 +30,14 @@ import (
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/armadilloutil"
 	"go.mau.fi/whatsmeow/proto/instamadilloAddMessage"
 	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
 	"go.mau.fi/whatsmeow/proto/waArmadilloXMA"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/proto/waMediaTransport"
+	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
@@ -436,13 +438,30 @@ func (mc *MessageConverter) waLocationMessageToMatrix(ctx context.Context, conte
 	}}
 }
 
+func (mc *MessageConverter) waStoryReplyMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart, err error) {
+	var assocMsg waMsgApplication.MessageApplication
+	_, err = armadilloutil.Unmarshal(&assocMsg, content.AssociatedMessage, 2)
+	if err != nil {
+		return
+	}
+	var consMsg waConsumerApplication.ConsumerApplication
+	_, err = armadilloutil.Unmarshal(&consMsg, assocMsg.GetPayload().GetSubProtocol().GetConsumerMessage(), 1)
+	if err != nil {
+		return
+	}
+	parts = mc.waConsumerToMatrix(ctx, consMsg.GetPayload().GetContent())
+	return
+}
+
 func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart) {
 	body := content.GetMessageText()
+	nativeURL := ""
 	for _, cta := range content.GetCtas() {
 		parsedURL, err := url.Parse(cta.GetNativeURL())
 		if err != nil {
 			continue
 		}
+		nativeURL = parsedURL.String()
 		if parsedURL.Scheme == "messenger" && parsedURL.Host == "location_share" {
 			return mc.waLocationMessageToMatrix(ctx, content, parsedURL)
 		}
@@ -458,6 +477,30 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 	if body == "" {
 		body = fmt.Sprintf("Unsupported message\n\nPlease open in %s", mc.appName())
 		msgtype = event.MsgNotice
+	}
+	switch content.GetTargetType() {
+	case waArmadilloXMA.ExtendedContentMessage_FB_STORY_REPLY:
+		parts, err := mc.waStoryReplyMessageToMatrix(ctx, content)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to parse story reply message")
+			break
+		}
+		for _, part := range parts {
+			part.Content.EnsureHasHTML()
+			if nativeURL != "" {
+				part.Content.FormattedBody = fmt.Sprintf(
+					`<blockquote>Reply to <a href="%s">Facebook story</a>:</blockquote><p>%s</p>`,
+					nativeURL,
+					part.Content.FormattedBody,
+				)
+			} else {
+				part.Content.FormattedBody = fmt.Sprintf(
+					`<blockquote>Reply to Facebook story:</blockquote><p>%s</p>`,
+					part.Content.FormattedBody,
+				)
+			}
+		}
+		return parts
 	}
 	return []*bridgev2.ConvertedMessagePart{{
 		Type: event.EventMessage,
