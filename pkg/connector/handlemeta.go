@@ -130,6 +130,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 				m.metaState = status.BridgeState{
 					StateEvent: status.StateBadCredentials,
 					Error:      IGChallengeRequiredMaybe,
+					UserAction: status.UserActionRestart,
 				}
 			}
 		} else {

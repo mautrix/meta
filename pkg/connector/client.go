@@ -225,6 +225,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      IGChallengeRequired,
+				UserAction: status.UserActionRestart,
 			})
 		} else if errors.Is(err, messagix.ErrAccountSuspended) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
@@ -235,6 +236,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBCheckpointRequired,
+				UserAction: status.UserActionRestart,
 			})
 		} else if errors.Is(err, messagix.ErrConsentRequired) {
 			code := IGConsentRequired
@@ -244,6 +246,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      code,
+				UserAction: status.UserActionRestart,
 			})
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			stateEvt := status.StateUnknownError
