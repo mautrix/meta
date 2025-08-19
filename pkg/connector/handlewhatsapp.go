@@ -1,8 +1,11 @@
 package connector
 
 import (
+	"context"
 	"errors"
+	"time"
 
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -17,7 +20,6 @@ import (
 
 func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	log := m.UserLogin.Log
-	log.Debug().Msgf("rrosborough: raw event %T %+v", rawEvt, rawEvt)
 	switch evt := rawEvt.(type) {
 	case *events.FBMessage:
 		m.UserLogin.Log.Trace().
@@ -30,7 +32,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m})
 		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
 	case *events.ChatPresence:
-		log.Debug().Msg("rrosborough: chat presence")
+		m.handleWAChatPresence(m.Main.Bridge.BackgroundCtx, evt)
 	case *events.Receipt:
 		var evtType bridgev2.RemoteEventType
 		switch evt.Type {
@@ -137,4 +139,33 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
 	return true
+}
+
+func (m *MetaClient) handleWAChatPresence(ctx context.Context, evt *events.ChatPresence) {
+	typingType := bridgev2.TypingTypeText
+	timeout := 5 * time.Second
+	if evt.Media == waTypes.ChatPresenceMediaAudio {
+		typingType = bridgev2.TypingTypeRecordingMedia
+	}
+	if evt.State == waTypes.ChatPresencePaused {
+		timeout = 0
+	}
+
+	m.UserLogin.Log.Debug().Msg("rrosborough: handleWAChatPresence")
+
+	m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
+		EventMeta: simplevent.EventMeta{
+			Type:       bridgev2.RemoteEventTyping,
+			LogContext: nil,
+			PortalKey:  m.makeWAPortalKey(evt.Chat),
+			Sender: bridgev2.EventSender{
+				IsFromMe:    evt.Sender.UserInt() == m.WADevice.GetJID().UserInt(),
+				Sender:      waid.MakeUserID(evt.Sender),
+				SenderLogin: waid.MakeUserLoginID(evt.Sender),
+			},
+			Timestamp: time.Now(),
+		},
+		Timeout: timeout,
+		Type:    typingType,
+	})
 }
