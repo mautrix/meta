@@ -147,6 +147,7 @@ var metaCaps = &event.RoomFeatures{
 	Reaction:      event.CapLevelFullySupported,
 	ReactionCount: 1,
 	//LocationMessage: event.CapLevelPartialSupport,
+	TypingNotifications: true,
 }
 
 var metaCapsWithThreads *event.RoomFeatures

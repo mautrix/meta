@@ -17,6 +17,7 @@ import (
 
 func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	log := m.UserLogin.Log
+	log.Debug().Msgf("rrosborough: raw event %T %+v", rawEvt, rawEvt)
 	switch evt := rawEvt.(type) {
 	case *events.FBMessage:
 		m.UserLogin.Log.Trace().
@@ -28,6 +29,8 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Msg("Received WhatsApp message")
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m})
 		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
+	case *events.ChatPresence:
+		log.Debug().Msg("rrosborough: chat presence")
 	case *events.Receipt:
 		var evtType bridgev2.RemoteEventType
 		switch evt.Type {

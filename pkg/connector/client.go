@@ -58,6 +58,8 @@ type MetaClient struct {
 
 	metaState status.BridgeState
 	waState   status.BridgeState
+
+	waLastPresence waTypes.Presence
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -91,6 +93,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 var (
 	_ bridgev2.NetworkAPI                    = (*MetaClient)(nil)
 	_ bridgev2.CredentialExportingNetworkAPI = (*MetaClient)(nil)
+	_ bridgev2.ChatViewingNetworkAPI         = (*MetaClient)(nil)
 	_ status.BridgeStateFiller               = (*MetaClient)(nil)
 )
 
@@ -557,4 +560,12 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.Info["login_user_agent"] = m.LoginMeta.LoginUA
 	}
 	return state
+}
+
+func (m *MetaClient) updateWAPresence(presence waTypes.Presence) error {
+	err := m.E2EEClient.SendPresence(presence)
+	if err == nil {
+		m.waLastPresence = presence
+	}
+	return err
 }
