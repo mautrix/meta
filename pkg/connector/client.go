@@ -534,7 +534,7 @@ func (m *MetaClient) resetWADevice() {
 }
 
 func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeState {
-	if state.StateEvent == status.StateConnected {
+	if state.StateEvent == status.StateConnected || state.Error == WADisconnected {
 		var copyFrom *status.BridgeState
 		if m.waState.StateEvent != "" && m.waState.StateEvent != status.StateConnected {
 			copyFrom = &m.waState
