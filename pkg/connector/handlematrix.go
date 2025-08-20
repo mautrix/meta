@@ -524,8 +524,8 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 // whatsapp bridge, because they both use the same API.
 
 func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
-	portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
-	if portalJID.IsEmpty() {
+	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
+	if !portalMeta.ThreadType.IsWhatsApp() {
 		// Not needed for non E2EE chat
 		return nil
 	}
@@ -557,48 +557,46 @@ func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.
 }
 
 func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
-	portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
-	// E2EE and non-E2EE typing indicators are sent totally
-	// different ways. No portalJID means non-E2EE
-	if portalJID.IsEmpty() {
-		threadID := metaid.ParseFBPortalID(msg.Portal.ID)
-		portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
-		isGroupThread := int64(1)
-		if portalMeta.ThreadType.IsOneToOne() {
-			isGroupThread = 0
-		}
-		isTyping := int64(0)
+	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
+	if portalMeta.ThreadType.IsWhatsApp() {
+		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
+		var chatPresence waTypes.ChatPresence
+		var mediaPresence waTypes.ChatPresenceMedia
 		if msg.IsTyping {
-			isTyping = 1
+			chatPresence = waTypes.ChatPresenceComposing
+		} else {
+			chatPresence = waTypes.ChatPresencePaused
 		}
-		return m.Client.ExecuteStatelessTask(ctx, &socket.UpdatePresenceTask{
-			ThreadKey:     threadID,
-			IsGroupThread: isGroupThread,
-			IsTyping:      isTyping,
-			Attribution:   0,
-			SyncGroup:     1,
-			ThreadType:    int64(portalMeta.ThreadType),
-		})
-	}
-	var chatPresence waTypes.ChatPresence
-	var mediaPresence waTypes.ChatPresenceMedia
-	if msg.IsTyping {
-		chatPresence = waTypes.ChatPresenceComposing
-	} else {
-		chatPresence = waTypes.ChatPresencePaused
-	}
-	switch msg.Type {
-	case bridgev2.TypingTypeText:
-		mediaPresence = waTypes.ChatPresenceMediaText
-	case bridgev2.TypingTypeRecordingMedia:
-		mediaPresence = waTypes.ChatPresenceMediaAudio
-	case bridgev2.TypingTypeUploadingMedia:
-		return nil
-	}
+		switch msg.Type {
+		case bridgev2.TypingTypeText:
+			mediaPresence = waTypes.ChatPresenceMediaText
+		case bridgev2.TypingTypeRecordingMedia:
+			mediaPresence = waTypes.ChatPresenceMediaAudio
+		case bridgev2.TypingTypeUploadingMedia:
+			return nil
+		}
 
-	err := m.updateWAPresence(waTypes.PresenceAvailable)
-	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
+		err := m.updateWAPresence(waTypes.PresenceAvailable)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
+		}
+		return m.E2EEClient.SendChatPresence(portalJID, chatPresence, mediaPresence)
 	}
-	return m.E2EEClient.SendChatPresence(portalJID, chatPresence, mediaPresence)
+	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+	isGroupThread := int64(1)
+	if portalMeta.ThreadType.IsOneToOne() {
+		isGroupThread = 0
+	}
+	isTyping := int64(0)
+	if msg.IsTyping {
+		isTyping = 1
+	}
+	return m.Client.ExecuteStatelessTask(ctx, &socket.UpdatePresenceTask{
+		ThreadKey:     threadID,
+		IsGroupThread: isGroupThread,
+		IsTyping:      isTyping,
+		Attribution:   0,
+		SyncGroup:     1,
+		ThreadType:    int64(portalMeta.ThreadType),
+	})
 }

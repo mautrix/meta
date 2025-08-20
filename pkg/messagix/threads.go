@@ -44,7 +44,7 @@ func (c *Client) ExecuteStatelessTask(ctx context.Context, task socket.Task) err
 	}
 	payload, queueName, _ := task.Create()
 	label := task.GetLabel()
-	if queueName != "" {
+	if queueName != nil {
 		return fmt.Errorf("tried to execute stateful task %s as stateless", label)
 	}
 	payloadMarshalled, err := json.Marshal(payload)
