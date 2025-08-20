@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 )
@@ -42,15 +44,24 @@ func (c *Client) ExecuteStatelessTask(ctx context.Context, task socket.Task) err
 	} else if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	payload, queueName, _ := task.Create()
+	innerPayload, queueName, _ := task.Create()
 	label := task.GetLabel()
 	if queueName != nil {
 		return fmt.Errorf("tried to execute stateful task %s as stateless", label)
 	}
-	payloadMarshalled, err := json.Marshal(payload)
+	innerPayloadMarshalled, err := json.Marshal(innerPayload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal task payload: %w", err)
+		return fmt.Errorf("failed to marshal inner task %s payload: %w", label, err)
 	}
-	_, err = c.socket.makeLSRequest(ctx, payloadMarshalled, 4)
+	outerPayload := socket.StatelessTaskData{
+		Label:   label,
+		Payload: string(innerPayloadMarshalled),
+		Version: strconv.FormatInt(c.configs.VersionID, 10),
+	}
+	outerPayloadMarshalled, err := json.Marshal(outerPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal outer task %s payload: %w", label, err)
+	}
+	_, err = c.socket.makeLSRequest(ctx, outerPayloadMarshalled, 4)
 	return err
 }

@@ -576,9 +576,11 @@ func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.Matri
 			return nil
 		}
 
-		err := m.updateWAPresence(waTypes.PresenceAvailable)
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
+		if m.Main.Config.SendPresenceOnTyping {
+			err := m.updateWAPresence(waTypes.PresenceAvailable)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
+			}
 		}
 		return m.E2EEClient.SendChatPresence(portalJID, chatPresence, mediaPresence)
 	}

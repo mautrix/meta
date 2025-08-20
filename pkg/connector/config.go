@@ -35,6 +35,9 @@ type Config struct {
 
 	DisplaynameTemplate string             `yaml:"displayname_template"`
 	displaynameTemplate *template.Template `yaml:"-"`
+
+	// Only affects E2EE chats right now.
+	SendPresenceOnTyping bool `yaml:"send_presence_on_typing"`
 }
 
 type umConfig Config

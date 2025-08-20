@@ -339,8 +339,12 @@ func (m *MetaClient) handleUpdateReadReceipt(tk handlerParams, msg *table.LSUpda
 func (m *MetaClient) handleTypingIndicator(tk handlerParams, msg *table.LSUpdateTypingIndicator) bridgev2.RemoteEvent {
 	var timeout time.Duration
 	if msg.IsTyping {
-		// TODO find if this is the correct timeout
-		timeout = 15 * time.Second
+		// Timeout used by the web client is about 3 seconds,
+		// but adding a bit of buffer to debounce what with
+		// potential added latency from bridging, since the
+		// typing indicators sent from the server only arrive
+		// exactly 3 seconds apart
+		timeout = 5 * time.Second
 	}
 	return &simplevent.Typing{
 		EventMeta: simplevent.EventMeta{
