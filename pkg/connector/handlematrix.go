@@ -32,6 +32,8 @@ var (
 	_ bridgev2.ReactionHandlingNetworkAPI    = (*MetaClient)(nil)
 	_ bridgev2.RedactionHandlingNetworkAPI   = (*MetaClient)(nil)
 	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
+	_ bridgev2.ChatViewingNetworkAPI         = (*MetaClient)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI      = (*MetaClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*MetaConnector)(nil)
@@ -517,9 +519,11 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 	return nil
 }
 
-func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
-	zerolog.Ctx(ctx).Debug().Msgf("rrosborough: MatrixViewingChat: %+v", *msg)
+// Note: the handling of typing notifications for facebook E2EE is
+// very similar to the handling of typing notifications in the
+// whatsapp bridge, because they both use the same API.
 
+func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
 	// WhatsApp only sends typing notifications if the user is set
 	// to online, and Facebook uses WhatsApp for E2EE chats,
 	// therefore we need to set online status for typing
@@ -544,4 +548,29 @@ func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.
 
 	// No codepaths where we return an error, yet
 	return nil
+}
+
+func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
+	portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
+	var chatPresence waTypes.ChatPresence
+	var mediaPresence waTypes.ChatPresenceMedia
+	if msg.IsTyping {
+		chatPresence = waTypes.ChatPresenceComposing
+	} else {
+		chatPresence = waTypes.ChatPresencePaused
+	}
+	switch msg.Type {
+	case bridgev2.TypingTypeText:
+		mediaPresence = waTypes.ChatPresenceMediaText
+	case bridgev2.TypingTypeRecordingMedia:
+		mediaPresence = waTypes.ChatPresenceMediaAudio
+	case bridgev2.TypingTypeUploadingMedia:
+		return nil
+	}
+
+	err := m.updateWAPresence(waTypes.PresenceAvailable)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
+	}
+	return m.E2EEClient.SendChatPresence(portalJID, chatPresence, mediaPresence)
 }

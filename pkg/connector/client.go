@@ -93,7 +93,6 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 var (
 	_ bridgev2.NetworkAPI                    = (*MetaClient)(nil)
 	_ bridgev2.CredentialExportingNetworkAPI = (*MetaClient)(nil)
-	_ bridgev2.ChatViewingNetworkAPI         = (*MetaClient)(nil)
 	_ status.BridgeStateFiller               = (*MetaClient)(nil)
 )
 

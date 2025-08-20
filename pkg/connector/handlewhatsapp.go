@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -151,19 +150,13 @@ func (m *MetaClient) handleWAChatPresence(ctx context.Context, evt *events.ChatP
 		timeout = 0
 	}
 
-	m.UserLogin.Log.Debug().Msg("rrosborough: handleWAChatPresence")
-
 	m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
 		EventMeta: simplevent.EventMeta{
 			Type:       bridgev2.RemoteEventTyping,
 			LogContext: nil,
 			PortalKey:  m.makeWAPortalKey(evt.Chat),
-			Sender: bridgev2.EventSender{
-				IsFromMe:    evt.Sender.UserInt() == m.WADevice.GetJID().UserInt(),
-				Sender:      waid.MakeUserID(evt.Sender),
-				SenderLogin: waid.MakeUserLoginID(evt.Sender),
-			},
-			Timestamp: time.Now(),
+			Sender:     m.makeWAEventSender(evt.Sender),
+			Timestamp:  time.Now(),
 		},
 		Timeout: timeout,
 		Type:    typingType,
