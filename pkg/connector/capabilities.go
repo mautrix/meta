@@ -147,7 +147,6 @@ var metaCaps = &event.RoomFeatures{
 	Reaction:      event.CapLevelFullySupported,
 	ReactionCount: 1,
 	//LocationMessage: event.CapLevelPartialSupport,
-	TypingNotifications: true,
 }
 
 var metaCapsWithThreads *event.RoomFeatures
@@ -171,6 +170,7 @@ func init() {
 	}
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
+	metaCapsWithE2E.TypingNotifications = true
 
 	igCaps = ptr.Clone(metaCaps)
 	igCaps.File = maps.Clone(igCaps.File)
