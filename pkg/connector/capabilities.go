@@ -136,16 +136,17 @@ var metaCaps = &event.RoomFeatures{
 			MaxSize: MaxFileSize,
 		},
 	},
-	MaxTextLength: MaxTextLength,
-	Reply:         event.CapLevelFullySupported,
-	Edit:          event.CapLevelFullySupported,
-	EditMaxCount:  10,
-	EditMaxAge:    ptr.Ptr(jsontime.S(24 * time.Hour)),
-	Delete:        event.CapLevelFullySupported,
-	DeleteForMe:   false,
-	DeleteMaxAge:  ptr.Ptr(jsontime.S(10 * time.Minute)),
-	Reaction:      event.CapLevelFullySupported,
-	ReactionCount: 1,
+	MaxTextLength:       MaxTextLength,
+	Reply:               event.CapLevelFullySupported,
+	Edit:                event.CapLevelFullySupported,
+	EditMaxCount:        10,
+	EditMaxAge:          ptr.Ptr(jsontime.S(24 * time.Hour)),
+	Delete:              event.CapLevelFullySupported,
+	DeleteForMe:         false,
+	DeleteMaxAge:        ptr.Ptr(jsontime.S(10 * time.Minute)),
+	Reaction:            event.CapLevelFullySupported,
+	ReactionCount:       1,
+	TypingNotifications: true,
 	//LocationMessage: event.CapLevelPartialSupport,
 }
 
@@ -157,6 +158,7 @@ func init() {
 	metaCapsWithThreads = ptr.Clone(metaCaps)
 	metaCapsWithThreads.ID += "+communitygroup"
 	metaCapsWithThreads.Thread = event.CapLevelFullySupported
+	metaCapsWithThreads.TypingNotifications = false
 
 	metaCapsWithE2E = ptr.Clone(metaCaps)
 	metaCapsWithE2E.ID += "+e2e"
@@ -170,10 +172,10 @@ func init() {
 	}
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
-	metaCapsWithE2E.TypingNotifications = true
 
 	igCaps = ptr.Clone(metaCaps)
 	igCaps.File = maps.Clone(igCaps.File)
+	igCaps.TypingNotifications = false
 	delete(igCaps.File, event.MsgFile)
 	for key, value := range igCaps.File {
 		igCaps.File[key] = ptr.Clone(value)
