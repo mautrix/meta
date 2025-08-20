@@ -444,6 +444,11 @@ func (s *Socket) makeLSRequest(ctx context.Context, payload []byte, t int) (*Eve
 		return nil, err
 	}
 
+	// Request type 4 is for requests that aren't expected to
+	// receive a response.
+	if t == 4 {
+		return nil, nil
+	}
 	return s.responseHandler.waitForPubResponseDetails(ctx, packetId)
 }
 

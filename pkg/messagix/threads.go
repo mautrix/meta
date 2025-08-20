@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
@@ -33,4 +34,23 @@ func (c *Client) ExecuteTasks(ctx context.Context, tasks ...socket.Task) (*table
 	resp.Finish()
 
 	return resp.Table, nil
+}
+
+func (c *Client) ExecuteStatelessTask(ctx context.Context, task socket.Task) error {
+	if c == nil {
+		return ErrClientIsNil
+	} else if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	payload, queueName, _ := task.Create()
+	label := task.GetLabel()
+	if queueName != "" {
+		return fmt.Errorf("tried to execute stateful task %s as stateless", label)
+	}
+	payloadMarshalled, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal task payload: %w", err)
+	}
+	_, err = c.socket.makeLSRequest(ctx, payloadMarshalled, 4)
+	return err
 }

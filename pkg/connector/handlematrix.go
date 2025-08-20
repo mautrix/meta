@@ -524,6 +524,12 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 // whatsapp bridge, because they both use the same API.
 
 func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
+	portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
+	if portalJID.IsEmpty() {
+		// Not needed for non E2EE chat
+		return nil
+	}
+
 	// WhatsApp only sends typing notifications if the user is set
 	// to online, and Facebook uses WhatsApp for E2EE chats,
 	// therefore we need to set online status for typing
@@ -552,6 +558,28 @@ func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.
 
 func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
 	portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
+	// E2EE and non-E2EE typing indicators are sent totally
+	// different ways. No portalJID means non-E2EE
+	if portalJID.IsEmpty() {
+		threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+		portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
+		isGroupThread := int64(1)
+		if portalMeta.ThreadType.IsOneToOne() {
+			isGroupThread = 0
+		}
+		isTyping := int64(0)
+		if msg.IsTyping {
+			isTyping = 1
+		}
+		return m.Client.ExecuteStatelessTask(ctx, &socket.UpdatePresenceTask{
+			ThreadKey:     threadID,
+			IsGroupThread: isGroupThread,
+			IsTyping:      isTyping,
+			Attribution:   0,
+			SyncGroup:     1,
+			ThreadType:    int64(portalMeta.ThreadType),
+		})
+	}
 	var chatPresence waTypes.ChatPresence
 	var mediaPresence waTypes.ChatPresenceMedia
 	if msg.IsTyping {
