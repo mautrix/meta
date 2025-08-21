@@ -1,7 +1,9 @@
 package connector
 
 import (
+	"context"
 	"errors"
+	"time"
 
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -28,6 +30,8 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Msg("Received WhatsApp message")
 		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m})
 		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
+	case *events.ChatPresence:
+		m.handleWAChatPresence(m.Main.Bridge.BackgroundCtx, evt)
 	case *events.Receipt:
 		var evtType bridgev2.RemoteEventType
 		switch evt.Type {
@@ -134,4 +138,27 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
 	return true
+}
+
+func (m *MetaClient) handleWAChatPresence(ctx context.Context, evt *events.ChatPresence) {
+	typingType := bridgev2.TypingTypeText
+	timeout := 5 * time.Second
+	if evt.Media == waTypes.ChatPresenceMediaAudio {
+		typingType = bridgev2.TypingTypeRecordingMedia
+	}
+	if evt.State == waTypes.ChatPresencePaused {
+		timeout = 0
+	}
+
+	m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
+		EventMeta: simplevent.EventMeta{
+			Type:       bridgev2.RemoteEventTyping,
+			LogContext: nil,
+			PortalKey:  m.makeWAPortalKey(evt.Chat),
+			Sender:     m.makeWAEventSender(evt.Sender),
+			Timestamp:  time.Now(),
+		},
+		Timeout: timeout,
+		Type:    typingType,
+	})
 }

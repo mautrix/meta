@@ -35,6 +35,9 @@ type Config struct {
 
 	DisplaynameTemplate string             `yaml:"displayname_template"`
 	displaynameTemplate *template.Template `yaml:"-"`
+
+	// Only affects E2EE chats right now.
+	SendPresenceOnTyping bool `yaml:"send_presence_on_typing"`
 }
 
 type umConfig Config
@@ -66,6 +69,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "cache_connection_state")
 	helper.Copy(up.Bool, "disable_xma_backfill")
 	helper.Copy(up.Bool, "disable_xma_always")
+	helper.Copy(up.Bool, "send_presence_on_typing")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
