@@ -2,7 +2,6 @@ package messagix
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
-	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/packets"
@@ -125,21 +123,18 @@ func (s *Socket) Connect(ctx context.Context) error {
 	headers := s.getConnHeaders()
 	brokerUrl := s.BuildBrokerURL()
 
-	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
+	netDialer := s.client.proxyDialer
+	if netDialer == nil {
+		netDialer = &net.Dialer{Timeout: 20 * time.Second}
+	}
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 20 * time.Second,
+		NetDialTLSContext: (&WebsocketTLSDialer{
+			netDialer: netDialer,
+		}).DialTLSContext,
+	}
 	if s.client.httpProxy != nil {
 		dialer.Proxy = s.client.httpProxy
-	} else if s.client.socksProxy != nil {
-		dialer.NetDial = s.client.socksProxy.Dial
-
-		contextDialer, ok := s.client.socksProxy.(proxy.ContextDialer)
-		if ok {
-			dialer.NetDialContext = contextDialer.DialContext
-		}
-	}
-	if DisableTLSVerification {
-		dialer.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
 	}
 
 	s.client.Logger.Debug().Str("broker", brokerUrl).Msg("Dialing socket")
@@ -455,6 +450,8 @@ func (s *Socket) makeLSRequest(ctx context.Context, payload []byte, t int) (*Eve
 func (s *Socket) getConnHeaders() http.Header {
 	h := http.Header{}
 
+	h.Set("Cache-Control", "nocache")
+	h.Set("Pragma", "no-cache")
 	h.Set("cookie", s.client.cookies.String())
 	h.Set("user-agent", UserAgent)
 	h.Set("origin", s.client.getEndpoint("base_url"))

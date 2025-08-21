@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/go-querystring/query"
+	"github.com/imroc/req/v3"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
@@ -56,6 +57,8 @@ type Client struct {
 	Platform  types.Platform
 
 	http         *http.Client
+	transport    *req.Transport
+	proxyDialer  proxy.ContextDialer
 	socket       *Socket
 	eventHandler EventHandler
 	configs      *Configs
@@ -63,7 +66,6 @@ type Client struct {
 
 	cookies     *cookies.Cookies
 	httpProxy   func(*http.Request) (*url.URL, error)
-	socksProxy  proxy.Dialer
 	GetNewProxy func(reason string) (string, error)
 
 	device *store.Device
@@ -88,15 +90,15 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 	if cookies.Platform == types.Unset {
 		panic("messagix: platform must be set in cookies")
 	}
+	transport := req.NewClient().ImpersonateChrome().DisableHTTP3().GetTransport()
+	if DisableTLSVerification {
+		transport.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	}
 	cli := &Client{
+		transport: transport,
 		http: &http.Client{
-			Transport: &http.Transport{
-				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 40 * time.Second,
-				ForceAttemptHTTP2:     true,
-			},
-			Timeout: 60 * time.Second,
+			Transport: transport,
+			Timeout:   60 * time.Second,
 		},
 		cookies:               cookies,
 		Logger:                logger,
@@ -109,11 +111,6 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		canSendMessages:       exsync.NewEvent(),
 	}
 	cli.connectionLoopStopped.Set()
-	if DisableTLSVerification {
-		cli.http.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-	}
 	cli.http.CheckRedirect = cli.checkHTTPRedirect
 
 	cli.configurePlatformClient()
@@ -244,14 +241,14 @@ func (c *Client) SetProxy(proxyAddr string) error {
 
 	if proxyParsed.Scheme == "http" || proxyParsed.Scheme == "https" {
 		c.httpProxy = http.ProxyURL(proxyParsed)
-		c.http.Transport.(*http.Transport).Proxy = c.httpProxy
+		c.transport.Proxy = c.httpProxy
 	} else if proxyParsed.Scheme == "socks5" {
-		c.socksProxy, err = proxy.FromURL(proxyParsed, &net.Dialer{Timeout: 20 * time.Second})
+		px, err := proxy.FromURL(proxyParsed, &net.Dialer{Timeout: 20 * time.Second})
 		if err != nil {
 			return err
 		}
-		contextDialer := c.socksProxy.(proxy.ContextDialer)
-		c.http.Transport.(*http.Transport).DialContext = contextDialer.DialContext
+		c.proxyDialer = px.(proxy.ContextDialer)
+		c.transport.DialContext = c.proxyDialer.DialContext
 	}
 
 	c.Logger.Debug().
