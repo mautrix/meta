@@ -37,3 +37,7 @@ cache_connection_state: false
 disable_xma_backfill: true
 # Disable fetching XMA media entirely.
 disable_xma_always: false
+# Should the bridge mark you as online when you send typing
+# notifications? Currently, this only has an effect for E2EE chats on
+# Facebook/Messenger. Full presence bridging is not supported.
+send_presence_on_typing: false

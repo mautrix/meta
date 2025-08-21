@@ -42,20 +42,20 @@ func (tm *TaskManager) AddNewTask(task socket.Task) {
 	payload, queueName, marshalQueueName := task.Create()
 	label := task.GetLabel()
 	if queueName == nil {
-		tm.client.Logger.Error().Any("label", label).Msg("no queue name provided for task")
+		tm.client.Logger.Error().Str("label", label).Msg("no queue name provided for task")
 		return
 	}
 
 	payloadMarshalled, err := json.Marshal(payload)
 	if err != nil {
-		tm.client.Logger.Err(err).Any("label", label).Msg("failed to marshal task payload")
+		tm.client.Logger.Err(err).Str("label", label).Msg("failed to marshal task payload")
 		return
 	}
 
 	if marshalQueueName {
 		queueName, err = json.Marshal(queueName)
 		if err != nil {
-			tm.client.Logger.Err(err).Any("label", label).Msg("failed to marshal queueName information for task")
+			tm.client.Logger.Err(err).Str("label", label).Msg("failed to marshal queueName information for task")
 			return
 		}
 		queueName = string(queueName.([]byte))
@@ -68,7 +68,7 @@ func (tm *TaskManager) AddNewTask(task socket.Task) {
 		QueueName:    queueName,
 		TaskId:       tm.GetTaskID(),
 	}
-	tm.client.Logger.Trace().Any("label", label).Any("payload", payload).Any("queueName", queueName).Any("taskId", taskData.TaskId).Msg("Creating task")
+	tm.client.Logger.Trace().Str("label", label).Any("payload", payload).Any("queueName", queueName).Int64("taskId", taskData.TaskId).Msg("Creating task")
 
 	tm.currTasks = append(tm.currTasks, taskData)
 }
