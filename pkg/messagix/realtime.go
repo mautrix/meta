@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 )
@@ -37,13 +38,12 @@ func (s *RealtimeSocket) CanConnect() error {
 }
 
 func (s *RealtimeSocket) Connect(ctx context.Context) error {
-	s.client.Logger.Error().Msg("rrosborough: connecting realtime socket")
 	dialer := s.client.getDialer()
 	headers := s.getConnHeaders()
 	socketURL := s.BuildSocketURL()
-	conn, _, err := dialer.DialContext(ctx, socketURL, headers)
+	conn, resp, err := dialer.DialContext(ctx, socketURL, headers)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrDial, err)
+		return fmt.Errorf("%w: %w (status code %d)", ErrDial, err, resp.StatusCode)
 	}
 	s.conn = conn
 
@@ -108,18 +108,24 @@ func (s *RealtimeSocket) getConnHeaders() http.Header {
 }
 
 func (s *RealtimeSocket) BuildSocketURL() string {
+	// The web client sends a new UUID every time I reload the
+	// page, and that UUID does not appear anywhere else in the
+	// HAR that I checked, so guessing it may be okay to generate
+	// randomly here?
+	deviceID := uuid.Must(uuid.NewRandom())
+
 	query := &url.Values{}
-	query.Add("x-dgw-appid", "936619743392459")
+	query.Add("x-dgw-appid", "936619743392459") // static-ish?
 	query.Add("x-dgw-appversion", "0")
 	query.Add("x-dgw-authtype", "6:0")
 	query.Add("x-dgw-version", "5")
 	query.Add("x-dgw-uuid", "0")
 	query.Add("x-dgw-tier", "prod")
-	query.Add("x-dgw-deviceid", "8364d51e-7d91-4902-84cb-a26d7bf87dfd")
+	query.Add("x-dgw-deviceid", deviceID.String())
 	query.Add("x-dgw-app-stream-group", "group1")
 
 	encodedQuery := query.Encode()
-	return "wss://gateway.instagram.com?" + encodedQuery
+	return "wss://gateway.instagram.com/ws/realtime?" + encodedQuery
 }
 
 func (s *RealtimeSocket) Disconnect() {

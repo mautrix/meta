@@ -354,13 +354,13 @@ func (c *Client) Connect(ctx context.Context) error {
 }
 
 func (c *Client) connectRealtime(ctx context.Context) error {
+	reconnectIn := 2 * time.Second
 	for {
 		connectStart := time.Now()
 		err := c.connectRealtimeOnce(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		reconnectIn := 2 * time.Second
 		if time.Since(connectStart) > 2*time.Minute {
 			reconnectIn = 2 * time.Second
 		} else {
