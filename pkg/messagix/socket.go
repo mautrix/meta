@@ -116,22 +116,14 @@ func (s *Socket) CanConnect() error {
 	return nil
 }
 
-func (s *Socket) Connect(ctx context.Context) error {
-	err := s.CanConnect()
-	if err != nil {
-		return err
-	}
-
-	headers := s.getConnHeaders()
-	brokerUrl := s.BuildBrokerURL()
-
+func (c *Client) getDialer() *websocket.Dialer {
 	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
-	if s.client.httpProxy != nil {
-		dialer.Proxy = s.client.httpProxy
-	} else if s.client.socksProxy != nil {
-		dialer.NetDial = s.client.socksProxy.Dial
+	if c.httpProxy != nil {
+		dialer.Proxy = c.httpProxy
+	} else if c.socksProxy != nil {
+		dialer.NetDial = c.socksProxy.Dial
 
-		contextDialer, ok := s.client.socksProxy.(proxy.ContextDialer)
+		contextDialer, ok := c.socksProxy.(proxy.ContextDialer)
 		if ok {
 			dialer.NetDialContext = contextDialer.DialContext
 		}
@@ -141,7 +133,19 @@ func (s *Socket) Connect(ctx context.Context) error {
 			InsecureSkipVerify: true,
 		}
 	}
+	return &dialer
+}
 
+func (s *Socket) Connect(ctx context.Context) error {
+	err := s.CanConnect()
+	if err != nil {
+		return err
+	}
+
+	headers := s.getConnHeaders()
+	brokerUrl := s.BuildBrokerURL()
+
+	dialer := s.client.getDialer()
 	s.client.Logger.Debug().Str("broker", brokerUrl).Msg("Dialing socket")
 	conn, _, err := dialer.DialContext(ctx, brokerUrl, headers)
 	if err != nil {

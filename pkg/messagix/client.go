@@ -55,11 +55,12 @@ type Client struct {
 	Logger    zerolog.Logger
 	Platform  types.Platform
 
-	http         *http.Client
-	socket       *Socket
-	eventHandler EventHandler
-	configs      *Configs
-	syncManager  *SyncManager
+	http           *http.Client
+	socket         *Socket
+	realtimeSocket *RealtimeSocket
+	eventHandler   EventHandler
+	configs        *Configs
+	syncManager    *SyncManager
 
 	cookies     *cookies.Cookies
 	httpProxy   func(*http.Request) (*url.URL, error)
@@ -77,9 +78,9 @@ type Client struct {
 	catRefreshLock         sync.Mutex
 	unnecessaryCATRequests int
 
-	stopCurrentConnection atomic.Pointer[context.CancelFunc]
-	connectionLoopStopped *exsync.Event
-	canSendMessages       *exsync.Event
+	stopCurrentConnections atomic.Pointer[context.CancelFunc]
+	connectionLoopStopped  *exsync.Event
+	canSendMessages        *exsync.Event
 }
 
 var DisableTLSVerification = false
@@ -124,6 +125,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		CSRBitmap:          crypto.NewBitmap(),
 	}
 	cli.socket = cli.newSocketClient()
+	cli.realtimeSocket = cli.newRealtimeSocketClient()
 
 	return cli
 }
@@ -292,14 +294,14 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	oldCancel := c.stopCurrentConnection.Swap(&cancel)
+	oldCancel := c.stopCurrentConnections.Swap(&cancel)
 	if oldCancel != nil {
 		(*oldCancel)()
 	}
 	c.connectionLoopStopped.Clear()
 	go func() {
 		defer func() {
-			if c.stopCurrentConnection.Load() == &cancel {
+			if c.stopCurrentConnections.Load() == &cancel {
 				c.connectionLoopStopped.Set()
 			}
 		}()
@@ -347,6 +349,48 @@ func (c *Client) Connect(ctx context.Context) error {
 			c.UpdateProxy("reconnect")
 		}
 	}()
+	go c.connectRealtime(ctx)
+	return nil
+}
+
+func (c *Client) connectRealtime(ctx context.Context) error {
+	for {
+		connectStart := time.Now()
+		err := c.connectRealtimeOnce(ctx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		reconnectIn := 2 * time.Second
+		if time.Since(connectStart) > 2*time.Minute {
+			reconnectIn = 2 * time.Second
+		} else {
+			reconnectIn *= 2
+			if reconnectIn > 5*time.Minute {
+				reconnectIn = 5 * time.Minute
+			}
+		}
+		if err != nil {
+			c.Logger.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in realtime connection, reconnecting")
+		} else {
+			c.Logger.Warn().Dur("reconnect_in", reconnectIn).Msg("Realtime connection closed without error, reconnecting")
+		}
+		select {
+		case <-time.After(reconnectIn):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (c *Client) connectRealtimeOnce(ctx context.Context) error {
+	err := c.realtimeSocket.CanConnect()
+	if err != nil {
+		return err
+	}
+	err = c.realtimeSocket.Connect(ctx)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -354,10 +398,11 @@ func (c *Client) Disconnect() {
 	if c == nil {
 		return
 	}
-	if fn := c.stopCurrentConnection.Load(); fn != nil {
+	if fn := c.stopCurrentConnections.Load(); fn != nil {
 		(*fn)()
 	}
 	c.socket.Disconnect()
+	c.realtimeSocket.Disconnect()
 	if !c.connectionLoopStopped.WaitTimeout(5 * time.Second) {
 		c.Logger.Warn().Msg("Connection loop didn't stop in time")
 	}
