@@ -524,6 +524,9 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 // whatsapp bridge, because they both use the same API.
 
 func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
+	if msg.Portal == nil {
+		return nil
+	}
 	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
 	if !portalMeta.ThreadType.IsWhatsApp() {
 		// Not needed for non E2EE chat
