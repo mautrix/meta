@@ -537,10 +537,6 @@ func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.
 	// to online, and Facebook uses WhatsApp for E2EE chats,
 	// therefore we need to set online status for typing
 	// notifications to work properly.
-	//
-	// Technically it might be more correct to only set online
-	// status when the user is viewing an E2EE room but I think
-	// all rooms are going to be E2EE pretty soon anyway.
 	var presence waTypes.Presence
 	if msg.Portal != nil {
 		presence = waTypes.PresenceAvailable
