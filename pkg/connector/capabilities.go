@@ -42,7 +42,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 8
+	return 1, 9
 }
 
 const MaxTextLength = 20000
@@ -58,7 +58,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_08_21"
+	base := "fi.mau.meta.capabilities.2025_08_22"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -175,7 +175,6 @@ func init() {
 
 	igCaps = ptr.Clone(metaCaps)
 	igCaps.File = maps.Clone(igCaps.File)
-	igCaps.TypingNotifications = false
 	delete(igCaps.File, event.MsgFile)
 	for key, value := range igCaps.File {
 		igCaps.File[key] = ptr.Clone(value)
