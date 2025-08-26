@@ -52,7 +52,7 @@ const (
 func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatInfo {
 	var disappear database.DisappearingSetting
 	if chatInfo.IsEphemeral {
-		disappear.Type = database.DisappearingTypeAfterRead
+		disappear.Type = event.DisappearingTypeAfterSend
 		disappear.Timer = time.Duration(chatInfo.DisappearingTimer) * time.Second
 	}
 	// TODO avatar
@@ -68,6 +68,8 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 				event.StateTopic:      powerDefault,
 				event.EventReaction:   powerDefault,
 				event.EventRedaction:  powerDefault,
+
+				event.StateBeeperDisappearingTimer: powerDefault,
 			},
 			EventsDefault: ptr.Ptr(powerDefault),
 			StateDefault:  ptr.Ptr(powerAdmin),
@@ -77,6 +79,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		ml.PowerLevels.Events[event.StateRoomName] = powerAdmin
 		ml.PowerLevels.Events[event.StateRoomAvatar] = powerAdmin
 		ml.PowerLevels.Events[event.StateTopic] = powerAdmin
+		ml.PowerLevels.Events[event.StateBeeperDisappearingTimer] = powerAdmin
 	}
 	if chatInfo.IsAnnounce {
 		ml.PowerLevels.EventsDefault = ptr.Ptr(powerAdmin)
@@ -178,6 +181,14 @@ func (m *MetaClient) makeWADirectChatInfo(recipient types.JID) *bridgev2.ChatInf
 	members := &bridgev2.ChatMemberList{
 		OtherUserID: metaid.MakeWAUserID(recipient),
 		IsFull:      true,
+		PowerLevels: &bridgev2.PowerLevelOverrides{
+			Events: map[event.Type]int{
+				event.StateRoomName:                0,
+				event.StateRoomAvatar:              0,
+				event.StateTopic:                   0,
+				event.StateBeeperDisappearingTimer: 0,
+			},
+		},
 	}
 
 	if networkid.UserLoginID(recipient.User) != m.UserLogin.ID {

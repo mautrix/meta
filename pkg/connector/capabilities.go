@@ -33,7 +33,7 @@ import (
 )
 
 var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
-	DisappearingMessages: false,
+	DisappearingMessages: true,
 	AggressiveUpdateInfo: false,
 }
 
