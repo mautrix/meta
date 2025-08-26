@@ -125,7 +125,9 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		CSRBitmap:          crypto.NewBitmap(),
 	}
 	cli.socket = cli.newSocketClient()
-	cli.realtimeSocket = cli.newRealtimeSocketClient()
+	if cli.Platform == types.Instagram {
+		cli.realtimeSocket = cli.newRealtimeSocketClient()
+	}
 
 	return cli
 }
@@ -349,7 +351,9 @@ func (c *Client) Connect(ctx context.Context) error {
 			c.UpdateProxy("reconnect")
 		}
 	}()
-	go c.connectRealtime(ctx)
+	if c.Platform == types.Instagram {
+		go c.connectRealtime(ctx)
+	}
 	return nil
 }
 

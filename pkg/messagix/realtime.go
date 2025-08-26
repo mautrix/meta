@@ -2,11 +2,14 @@ package messagix
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,6 +21,7 @@ import (
 type RealtimeSocket struct {
 	client *Client
 	conn   *websocket.Conn
+	mu     *sync.Mutex
 
 	cleanClose atomic.Pointer[func()]
 }
@@ -25,6 +29,7 @@ type RealtimeSocket struct {
 func (c *Client) newRealtimeSocketClient() *RealtimeSocket {
 	return &RealtimeSocket{
 		client: c,
+		mu:     &sync.Mutex{},
 	}
 }
 
@@ -45,7 +50,12 @@ func (s *RealtimeSocket) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w (status code %d)", ErrDial, err, resp.StatusCode)
 	}
+
 	s.conn = conn
+	err = s.sendConnectPacket()
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrSendConnect, err)
+	}
 
 	err = s.readLoop(ctx, conn)
 	if err != nil {
@@ -97,7 +107,8 @@ func (s *RealtimeSocket) readLoop(ctx context.Context, conn *websocket.Conn) err
 		case websocket.TextMessage:
 			s.client.Logger.Warn().Bytes("bytes", p).Msg("Unexpected text message in websocket")
 		case websocket.BinaryMessage:
-			s.client.Logger.Error().Msgf("rrosborough: Received realtime message: %s", string(p))
+			enc := base64.StdEncoding.EncodeToString(p)
+			s.client.Logger.Error().Msgf("rrosborough: Received realtime message: %+v", enc)
 		}
 	}
 }
@@ -136,4 +147,41 @@ func (s *RealtimeSocket) Disconnect() {
 		_ = s.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(3*time.Second))
 		_ = s.conn.Close()
 	}
+}
+
+type RealtimeConnect struct {
+	XRSSMethod   string `json:"x-dgw-app-XRSS-method"`
+	XRSBody      string `json:"x-dgw-app-xrs-body"`
+	XRSAcceptAck string `json:"x-dgw-app-XRS-Accept-Ack"`
+	XRSSReferer  string `json:"x-dgw-app-XRSS-http_referer"`
+}
+
+func (s *RealtimeSocket) sendConnectPacket() error {
+	payload := RealtimeConnect{
+		XRSSMethod:   "Falco",
+		XRSBody:      "true",
+		XRSAcceptAck: "RSAck",
+		XRSSReferer:  "https://www.instagram.com/direct/",
+	}
+	jsonData, err := json.Marshal(&payload)
+	if err != nil {
+		return err
+	}
+	return s.sendData(append([]byte{0x0f, 0x00, 0x00, 0xa2, 0x00, 0x00}, jsonData...))
+}
+
+func (s *RealtimeSocket) sendData(data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	conn := s.conn
+	if conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	enc := base64.StdEncoding.EncodeToString(data)
+	s.client.Logger.Error().Msgf("rrosborough: Sending realtime message: %+v", enc)
+	err := conn.WriteMessage(websocket.BinaryMessage, append(data, '\n'))
+	if err != nil {
+		return fmt.Errorf("failed to write to websocket: %w", err)
+	}
+	return nil
 }
