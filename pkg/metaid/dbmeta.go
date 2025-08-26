@@ -52,6 +52,8 @@ type PortalMetadata struct {
 	ThreadType     table.ThreadType `json:"thread_type"`
 	WhatsAppServer string           `json:"whatsapp_server,omitempty"`
 
+	EphemeralSettingTimestamp int64 `json:"ephemeral_setting_timestamp,omitempty"`
+
 	FetchAttempted atomic.Bool `json:"-"`
 }
 

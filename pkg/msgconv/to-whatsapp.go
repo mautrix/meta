@@ -31,6 +31,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ffmpeg"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	armadillo "go.mau.fi/whatsmeow/proto"
 	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
@@ -131,6 +132,32 @@ func (mc *MessageConverter) ToWhatsApp(
 				Participant: proto.String(messageID.Sender.String()),
 				Payload:     nil,
 			}
+		}
+	}
+	var disappearTimer time.Duration
+	var disappearType event.DisappearingType
+	if content.BeeperDisappearingTimer != nil {
+		disappearTimer = content.BeeperDisappearingTimer.Timer.Duration
+		disappearType = content.BeeperDisappearingTimer.Type
+	} else if portal.Disappear.Timer != 0 {
+		disappearTimer = portal.Disappear.Timer
+		disappearType = portal.Disappear.Type
+	}
+	if disappearTimer > 0 {
+		var ephemeralityType waMsgApplication.MessageApplication_EphemeralSetting_EphemeralityType
+		switch disappearType {
+		// TODO native never seems to set these
+		//case event.DisappearingTypeAfterRead:
+		//	ephemeralityType = waMsgApplication.MessageApplication_EphemeralSetting_SEEN_BASED_WITH_TIMER
+		//case event.DisappearingTypeAfterSend:
+		//	ephemeralityType = waMsgApplication.MessageApplication_EphemeralSetting_SEND_BASED_WITH_TIMER
+		}
+		meta.Ephemeral = &waMsgApplication.MessageApplication_Metadata_ChatEphemeralSetting{
+			ChatEphemeralSetting: &waMsgApplication.MessageApplication_EphemeralSetting{
+				EphemeralExpiration:       proto.Uint32(uint32(disappearTimer.Seconds())),
+				EphemeralSettingTimestamp: ptr.NonZero(portal.Metadata.(*metaid.PortalMetadata).EphemeralSettingTimestamp),
+				EphemeralityType:          &ephemeralityType,
+			},
 		}
 	}
 	if waContent.Content != nil {
