@@ -176,12 +176,12 @@ func (s *RealtimeSocket) Disconnect() {
 }
 
 type RealtimeRequest struct {
-	XRSSMethod      string `json:"x-dgw-app-XRSS-method"`
-	XRSSDocID       string `json:"x-dgw-XRSS-doc_id"`
-	XRSSRoutingHint string `json:"x-dgw-XRSS-routing_hint"`
-	XRSBody         string `json:"x-dgw-app-xrs-body"`
-	XRSAcceptAck    string `json:"x-dgw-app-XRS-Accept-Ack"`
-	XRSSReferer     string `json:"x-dgw-app-XRSS-http_referer"`
+	XRSSMethod      string `json:"x-dgw-app-XRSS-method,omitempty"`
+	XRSSDocID       string `json:"x-dgw-XRSS-doc_id,omitempty"`
+	XRSSRoutingHint string `json:"x-dgw-XRSS-routing_hint,omitempty"`
+	XRSBody         string `json:"x-dgw-app-xrs-body,omitempty"`
+	XRSAcceptAck    string `json:"x-dgw-app-XRS-Accept-Ack,omitempty"`
+	XRSSReferer     string `json:"x-dgw-app-XRSS-http_referer,omitempty"`
 }
 
 type RealtimeResponse struct {
@@ -278,7 +278,7 @@ func (s *RealtimeSocket) sendData(data []byte) error {
 	if conn == nil {
 		return fmt.Errorf("not connected")
 	}
-	err := conn.WriteMessage(websocket.BinaryMessage, append(data, '\n'))
+	err := conn.WriteMessage(websocket.BinaryMessage, data)
 	if err != nil {
 		return fmt.Errorf("failed to write to websocket: %w", err)
 	}
