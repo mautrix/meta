@@ -291,6 +291,9 @@ var (
 )
 
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
+	if evt.Message == nil {
+		return ""
+	}
 	consumerApp, ok := evt.Message.(*waConsumerApplication.ConsumerApplication)
 	if !ok {
 		//payload, ok := evt.Message.(*instamadilloSupplementMessage.SupplementMessagePayload)
@@ -446,6 +449,9 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	case *instamadilloDeleteMessage.DeleteMessagePayload:
 		return bridgev2.RemoteEventMessageRemove
 	default:
+		if evt.Message == nil && evt.FBApplication.GetMetadata().GetChatEphemeralSetting() != nil {
+			return bridgev2.RemoteEventMessage
+		}
 		log.Warn().Type("message_type", evt.Message).Msg("Unrecognized message type")
 	}
 	return bridgev2.RemoteEventUnknown

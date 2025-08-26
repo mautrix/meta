@@ -25,6 +25,7 @@ import (
 	_ "image/png"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
@@ -42,6 +43,7 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
@@ -567,6 +569,34 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 	ctx = context.WithValue(ctx, contextKeyMsgID, messageID)
 	cm := &bridgev2.ConvertedMessage{}
+	if disappear := evt.FBApplication.GetMetadata().GetChatEphemeralSetting(); disappear != nil {
+		cm.Disappear = database.DisappearingSetting{
+			Timer: time.Duration(disappear.GetEphemeralExpiration()) * time.Second,
+		}
+		switch disappear.GetEphemeralityType() {
+		case waMsgApplication.MessageApplication_EphemeralSetting_SEEN_BASED_WITH_TIMER:
+			cm.Disappear.Type = event.DisappearingTypeAfterRead
+		case waMsgApplication.MessageApplication_EphemeralSetting_SEND_BASED_WITH_TIMER,
+			waMsgApplication.MessageApplication_EphemeralSetting_UNKNOWN:
+			cm.Disappear.Type = event.DisappearingTypeAfterSend
+		case waMsgApplication.MessageApplication_EphemeralSetting_SEEN_ONCE:
+			cm.Disappear.Timer = 5 * time.Minute
+			cm.Disappear.Type = event.DisappearingTypeAfterRead
+		}
+		if cm.Disappear.Timer == 0 {
+			cm.Disappear.Type = event.DisappearingTypeNone
+		}
+		if evt.Message != nil && cm.Disappear != portal.Disappear && disappear.EphemeralSettingTimestamp != nil {
+			portal.Metadata.(*metaid.PortalMetadata).EphemeralSettingTimestamp = *disappear.EphemeralSettingTimestamp
+			portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
+				Sender:     intent,
+				Timestamp:  evt.Info.Timestamp,
+				Implicit:   true,
+				Save:       true,
+				SendNotice: true,
+			})
+		}
+	}
 
 	var replyOverride *waCommon.MessageKey
 	switch typedMsg := evt.Message.(type) {
@@ -576,14 +606,33 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 		cm.Parts, replyOverride = mc.waArmadilloToMatrix(ctx, typedMsg.GetPayload().GetContent())
 	case *instamadilloAddMessage.AddMessagePayload:
 		cm.Parts, replyOverride = mc.instamadilloToMatrix(ctx, typedMsg)
+		if disappear := typedMsg.GetMetadata().GetEphemeralityParams(); disappear != nil {
+			cm.Disappear = database.DisappearingSetting{
+				Timer: time.Duration(disappear.GetEphemeralDurationSec()) * time.Second,
+				Type:  event.DisappearingTypeAfterSend,
+			}
+		}
 	default:
-		cm.Parts = []*bridgev2.ConvertedMessagePart{{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    "Unsupported message content type",
-			},
-		}}
+		if evt.Message == nil && evt.FBApplication.GetMetadata().GetChatEphemeralSetting() != nil {
+			portal.Metadata.(*metaid.PortalMetadata).EphemeralSettingTimestamp = evt.Info.Timestamp.Unix()
+			portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
+				Sender:    intent,
+				Timestamp: evt.Info.Timestamp,
+				Save:      true,
+			})
+			cm.Parts = []*bridgev2.ConvertedMessagePart{{
+				Type:    event.EventMessage,
+				Content: bridgev2.DisappearingMessageNotice(cm.Disappear.Timer, false),
+			}}
+		} else {
+			cm.Parts = []*bridgev2.ConvertedMessagePart{{
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType: event.MsgNotice,
+					Body:    "Unsupported message content type",
+				},
+			}}
+		}
 	}
 	if qm := evt.FBApplication.GetMetadata().GetQuotedMessage(); qm != nil {
 		pcp, _ := types.ParseJID(qm.GetParticipant())
