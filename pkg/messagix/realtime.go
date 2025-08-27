@@ -64,9 +64,14 @@ func (s *RealtimeSocket) Connect(ctx context.Context) (err error) {
 	return nil
 }
 
-func (s *RealtimeSocket) handleMessage(p []byte) error {
-	enc := base64.StdEncoding.EncodeToString(p)
-	s.client.Logger.Error().Msgf("rrosborough: Received realtime message: %+v", enc)
+func (s *RealtimeSocket) handleMessage(data []byte) error {
+	msgStart := bytes.Index(data, []byte("{"))
+	msgEnd := bytes.LastIndex(data, []byte("}"))
+	if msgStart < 0 || msgEnd < 0 {
+		return nil
+	}
+	data = data[msgStart : msgEnd+1]
+	s.client.Logger.Error().Msgf("rrosborough: Received realtime message: %s", data)
 	return nil
 }
 
@@ -95,22 +100,22 @@ func (s *RealtimeSocket) readLoop(ctx context.Context, conn *websocket.Conn) err
 		}
 	}
 
-	err := s.sendConnectPacket()
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrSendConnect, err)
-	}
-
-	err = s.waitForAck()
-	if err != nil {
-		return fmt.Errorf("waiting for connect packet ack: %w", err)
-	}
-
-	err = s.sendTypingIndicatorSubscriptionPacket()
+	err := s.sendTypingIndicatorSubscriptionPacket()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrSendTypingSubscription, err)
 	}
 
-	err = s.waitForAck()
+	err = s.waitForEstabStreamAck()
+	if err != nil {
+		return fmt.Errorf("waiting for typing indicator subscription packet ack: %w", err)
+	}
+
+	err = s.sendTypingIndicatorParamsPacket()
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrSendTypingSubscription, err)
+	}
+
+	err = s.waitForDataAck()
 	if err != nil {
 		return fmt.Errorf("waiting for typing indicator subscription packet ack: %w", err)
 	}
@@ -175,7 +180,7 @@ func (s *RealtimeSocket) Disconnect() {
 	}
 }
 
-type RealtimeRequest struct {
+type RealtimeEstabStreamFrame struct {
 	XRSSMethod      string `json:"x-dgw-app-XRSS-method,omitempty"`
 	XRSSDocID       string `json:"x-dgw-app-XRSS-doc_id,omitempty"`
 	XRSSRoutingHint string `json:"x-dgw-app-XRSS-routing_hint,omitempty"`
@@ -184,35 +189,26 @@ type RealtimeRequest struct {
 	XRSSReferer     string `json:"x-dgw-app-XRSS-http_referer,omitempty"`
 }
 
-type RealtimeResponse struct {
+type RealtimeDataFrame struct {
+	InputData RealtimeDataFrameInputData `json:"input_data"`
+	Options   RealtimeDataFrameOptions   `json:"%options"`
+}
+
+type RealtimeDataFrameInputData struct {
+	UserID string `json:"user_id"`
+}
+
+type RealtimeDataFrameOptions struct {
+	UseOSSResponseFormat        bool `json:"useOSSResponseFormat"`
+	ClientHasODSUsecaseCounters bool `json:"client_has_ods_usecase_counters"`
+}
+
+type RealtimeEstabStreamResponse struct {
 	Code int `json:"code"`
 }
 
-func (s *RealtimeSocket) sendConnectPacket() error {
-	payload := RealtimeRequest{
-		XRSSMethod:   "Falco",
-		XRSBody:      "true",
-		XRSAcceptAck: "RSAck",
-		XRSSReferer:  "https://www.instagram.com/direct/",
-	}
-	jsonData, err := json.Marshal(&payload)
-	if err != nil {
-		return err
-	}
-	// Byte 1 is magic
-	// Byte 2 is message sequence number
-	// Byte 3 is zero
-	// Byte 4 is approx message length lower order byte
-	// Byte 5 is approx message length higher order byte
-	// Byte 6 is zero
-	//
-	// If header is wrong server will NOT ACK THE MESSAGE
-	// Changing payload length breaks the header
-	return s.sendData(append([]byte{0x0f, 0x00, 0x00, 0xa2, 0x00, 0x00}, jsonData...))
-}
-
 func (s *RealtimeSocket) sendTypingIndicatorSubscriptionPacket() error {
-	payload := RealtimeRequest{
+	payload := RealtimeEstabStreamFrame{
 		XRSSMethod:      "FBGQLS:XDT_DIRECT_REALTIME_EVENT",
 		XRSSDocID:       "9712315318850438", // ???
 		XRSSRoutingHint: "useIGDTypingIndicatorSubscription",
@@ -224,28 +220,86 @@ func (s *RealtimeSocket) sendTypingIndicatorSubscriptionPacket() error {
 	if err != nil {
 		return err
 	}
-	return s.sendData(append([]byte{0x0f, 0x01, 0x00, 0x2a, 0x01, 0x00}, jsonData...))
+	return s.sendData(append([]byte{
+		// Byte 1 is message type (0x0f = ESTAB_STREAM)
+		0x0f,
+		// Bytes 2-3 are stream index, little endian
+		0x01, 0x00,
+		// Bytes 4-5 are encoded params length, little endian
+		0x2a, 0x01,
+		// Byte 6 has unknown function
+		0x00,
+	}, jsonData...))
 }
 
-func (s *RealtimeSocket) waitForAck() error {
+func (s *RealtimeSocket) sendTypingIndicatorParamsPacket() error {
+	userID := s.client.configs.BrowserConfigTable.CurrentUserInitialData.UserID
+	payload := RealtimeDataFrame{
+		InputData: RealtimeDataFrameInputData{
+			UserID: userID,
+		},
+		Options: RealtimeDataFrameOptions{
+			UseOSSResponseFormat:        true,
+			ClientHasODSUsecaseCounters: true,
+		},
+	}
+	jsonData, err := json.Marshal(&payload)
+	if err != nil {
+		return err
+	}
+	encodedParamsLength := 0x74 + len(userID)
+	return s.sendData(append(append([]byte{
+		// Byte 1 is message type (0x0d = DATA)
+		0x0d,
+		// Bytes 2-3 are stream index, little endian
+		0x01, 0x00,
+		// Bytes 4-5 are encoded params length, little endian
+		byte(encodedParamsLength), 0x00,
+		// Bytes 6-7 have unknown function
+		0x00, 0x00,
+		// Bytes 8-11 have unknown function
+		0x80, 0x2c, 0x18, 0x78,
+	}, jsonData...), 0x00, 0x00))
+}
+
+func (s *RealtimeSocket) waitForEstabStreamAck() error {
 	for {
-		jsonData, err, _ := s.recvData()
+		data, err, _ := s.recvData()
 		if err != nil {
 			return err
 		}
-		response := RealtimeResponse{}
-		err = json.Unmarshal(jsonData, &response)
+		msgStart := bytes.Index(data, []byte("{"))
+		msgEnd := bytes.LastIndex(data, []byte("}"))
+		if msgStart < 0 || msgEnd < 0 {
+			continue
+		}
+		data = data[msgStart : msgEnd+1]
+		response := RealtimeEstabStreamResponse{}
+		err = json.Unmarshal(data, &response)
 		if err != nil {
 			return err
 		}
 		switch response.Code {
 		case 0:
-			s.client.Logger.Warn().Bytes("bytes", jsonData).Msg("Unexpected JSON while waiting for ack")
+			s.client.Logger.Warn().Bytes("bytes", data).Msg("Unexpected message while waiting for estabstream frame ack")
 		case 200:
 			return nil
 		default:
-			return fmt.Errorf("got code %d from realtime socket request", response.Code)
+			return fmt.Errorf("got code %d from estabstream request", response.Code)
 		}
+	}
+}
+
+func (s *RealtimeSocket) waitForDataAck() error {
+	for {
+		ackData, err, _ := s.recvData()
+		if err != nil {
+			return err
+		}
+		if ackData[0] == 0x0c {
+			return nil
+		}
+		s.client.Logger.Warn().Bytes("bytes", ackData).Msg("Unexpected message while waiting for data frame ack")
 	}
 }
 
@@ -264,16 +318,7 @@ func (s *RealtimeSocket) recvData() ([]byte, error, bool) {
 		case websocket.TextMessage:
 			s.client.Logger.Warn().Bytes("bytes", data).Msg("Unexpected text message in websocket")
 		case websocket.BinaryMessage:
-			if len(data) == 1 && data[0] == '\n' {
-				continue
-			}
-			msgStart := bytes.Index(data, []byte("{"))
-			msgEnd := bytes.LastIndex(data, []byte("}"))
-			if msgStart < 0 || msgEnd < 0 {
-				s.client.Logger.Warn().Bytes("bytes", data).Msg("Failed to parse JSON from realtime websocket message")
-				continue
-			}
-			return data[msgStart : msgEnd+1], nil, false
+			return data, nil, false
 		}
 	}
 }
