@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 )
 
 var ErrSendTypingSubscription = errors.New("failed to send typing indicator subscription packet")
@@ -75,6 +76,9 @@ func (s *RealtimeSocket) handleMessage(data []byte) error {
 	return nil
 }
 
+const realtimePongTimeout = 30 * time.Second
+const realtimePingInterval = 5 * time.Second
+
 func (s *RealtimeSocket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	defer func() {
 		s.conn = nil
@@ -91,7 +95,7 @@ func (s *RealtimeSocket) readLoop(ctx context.Context, conn *websocket.Conn) err
 		s.client.Logger.Info().Int("code", code).Str("text", text).Msg("Websocket closed by server")
 		return nil
 	})
-	pongTimeoutTicker := time.NewTicker(pongTimeout)
+	pongTimeoutTicker := time.NewTicker(realtimePongTimeout)
 	defer pongTimeoutTicker.Stop()
 	closeDueToError := func(reason string) {
 		err := conn.Close()
@@ -121,9 +125,34 @@ func (s *RealtimeSocket) readLoop(ctx context.Context, conn *websocket.Conn) err
 	}
 
 	zerolog.Ctx(ctx).Debug().Msg("Realtime connection established, starting read loop")
+
+	go func() {
+		ticker := time.NewTicker(realtimePingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				err := s.sendData([]byte{0x09}) // ping
+				if err != nil {
+					closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to send ping: %w", err)))
+					s.client.Logger.Err(err).Msg("Error sending ping")
+					closeDueToError("ping failed")
+					return
+				}
+			case <-pongTimeoutTicker.C:
+				closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("pong timeout")))
+				s.client.Logger.Error().Msg("Pong timeout")
+				closeDueToError("pong timeout")
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	for {
-		p, err, failedRead := s.recvData()
-		if failedRead {
+		p, err := s.recvData()
+		if err != nil {
 			closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to read message: %w", err)))
 			if !closedCleanly.Load() {
 				s.client.Logger.Err(err).Msg("Error reading message from socket")
@@ -133,8 +162,11 @@ func (s *RealtimeSocket) readLoop(ctx context.Context, conn *websocket.Conn) err
 			time.Sleep(100 * time.Millisecond)
 			return *closeErr.Load()
 		}
-		if err != nil {
-			s.client.Logger.Warn().Bytes("bytes", p).Msg("Failed to parse realtime websocket message")
+
+		// handle pong
+		if p[0] == 0x0a {
+			pongTimeoutTicker.Reset(realtimePongTimeout)
+			continue
 		}
 
 		err = s.handleMessage(p)
@@ -233,7 +265,7 @@ func (s *RealtimeSocket) sendTypingIndicatorSubscriptionPacket() error {
 }
 
 func (s *RealtimeSocket) sendTypingIndicatorParamsPacket() error {
-	userID := s.client.configs.BrowserConfigTable.CurrentUserInitialData.UserID
+	userID := s.client.cookies.Get(cookies.IGCookieDSUserID)
 	payload := RealtimeDataFrame{
 		InputData: RealtimeDataFrameInputData{
 			UserID: userID,
@@ -264,7 +296,7 @@ func (s *RealtimeSocket) sendTypingIndicatorParamsPacket() error {
 
 func (s *RealtimeSocket) waitForEstabStreamAck() error {
 	for {
-		data, err, _ := s.recvData()
+		data, err := s.recvData()
 		if err != nil {
 			return err
 		}
@@ -292,7 +324,7 @@ func (s *RealtimeSocket) waitForEstabStreamAck() error {
 
 func (s *RealtimeSocket) waitForDataAck() error {
 	for {
-		ackData, err, _ := s.recvData()
+		ackData, err := s.recvData()
 		if err != nil {
 			return err
 		}
@@ -303,22 +335,22 @@ func (s *RealtimeSocket) waitForDataAck() error {
 	}
 }
 
-func (s *RealtimeSocket) recvData() ([]byte, error, bool) {
+func (s *RealtimeSocket) recvData() ([]byte, error) {
 	conn := s.conn
 	if conn == nil {
-		return nil, fmt.Errorf("not connected"), false
+		return nil, fmt.Errorf("not connected")
 	}
 
 	for {
 		msgtype, data, err := conn.ReadMessage()
 		if err != nil {
-			return nil, fmt.Errorf("failed to read from websocket: %w", err), true
+			return nil, err
 		}
 		switch msgtype {
 		case websocket.TextMessage:
 			s.client.Logger.Warn().Bytes("bytes", data).Msg("Unexpected text message in websocket")
 		case websocket.BinaryMessage:
-			return data, nil, false
+			return data, nil
 		}
 	}
 }
