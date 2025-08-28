@@ -17,7 +17,7 @@
   * [x] Message reactions
   * [x] Message edits
   * [ ] Presence
-  * [ ] Typing notifications (may not be possible, not supported on IG/FB web clients)
+  * [x] Typing notifications
   * [x] Read receipts
   * [ ] Power level
   * [ ] Membership actions
