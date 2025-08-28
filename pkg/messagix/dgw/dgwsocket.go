@@ -1,8 +1,8 @@
 package dgw
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,6 +79,27 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 const AckTimeout = 5 * time.Second
 const PingInterval = 15 * time.Second
 const PongTimeout = 30 * time.Second // from web client
+
+type XDTData struct {
+	Data struct {
+		Event struct {
+			EventType string `json:"event"`
+			Data      []struct {
+				Operation string `json:"op"`
+				Path      string `json:"path"`
+				Value     string `json:"value"`
+			} `json:"data"`
+		} `json:"xdt_direct_realtime_event"`
+	} `json:"data"`
+}
+
+type ActivityIndicator struct {
+	TimestampNano  int `json:"timestamp"`
+	SenderID       int `json:"sender_id"`
+	TTL            int `json:"ttl"`
+	ActivityStatus int `json:"activity_status"`
+	Attribution    any `json:"attribution"` // always null?
+}
 
 func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
@@ -213,7 +234,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 				}
 				if f.Parameters.StatusCode != 200 {
 					fatalError(fmt.Errorf("error %d from EstabStream response", f.Parameters.StatusCode))
-					return
+					continue
 				}
 				s.ackSubscription.Store(true)
 				s.activity.Broadcast()
@@ -222,6 +243,25 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 					outgoing <- &AckFrame{
 						StreamID: f.StreamID,
 						AckID:    f.AckID,
+					}
+				}
+				if bytes.Contains(f.Payload, []byte("activity_indicator_id")) {
+					msgStart := bytes.IndexByte(f.Payload, '{')
+					msgEnd := bytes.LastIndexByte(f.Payload, '}') + 1
+					var data XDTData
+					err := json.Unmarshal(f.Payload[msgStart:msgEnd], &data)
+					if err != nil {
+						s.client.GetLogger().Warn().Err(err).Bytes("json", f.Payload[msgStart:msgEnd]).Msg("Failed to parse XDT event JSON, dropping")
+						continue
+					}
+					for _, event := range data.Data.Event.Data {
+						var ind ActivityIndicator
+						err = json.Unmarshal([]byte(event.Value), &ind)
+						if err != nil {
+							s.client.GetLogger().Warn().Err(err).Str("json", event.Value).Msg("Failed to parse XDT event op JSON, dropping")
+							continue
+						}
+						s.client.GetLogger().Info().Str("path", event.Path).Int("status", ind.ActivityStatus).Msg("Got activity indicator")
 					}
 				}
 			case *AckFrame:
