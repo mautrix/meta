@@ -2,6 +2,7 @@ package dgw
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -76,9 +77,29 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 }
 
 const AckTimeout = 5 * time.Second
+const PingInterval = 10 * time.Second
 const PongTimeout = 30 * time.Second // from web client
 
 func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
+
+	done := atomic.Bool{}
+	markDone := func() {
+		done.Store(true)
+		s.activity.Signal()
+	}
+	waitDone := func() <-chan struct{} {
+		ch := make(chan struct{})
+		go func() {
+			s.activity.L.Lock()
+			for !done.Load() {
+				s.activity.Wait()
+			}
+			s.activity.L.Unlock()
+			ch <- struct{}{}
+			close(ch)
+		}()
+		return ch
+	}
 
 	// Setup a function to call if we get a fatal error, that will
 	// close the connection and store the error so that it can be
@@ -86,6 +107,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
 	fatalError := func(err error) {
 		s.err.Store(&err)
+		markDone()
 		closeErr := conn.Close()
 		if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
 			s.client.GetLogger().Debug().Err(closeErr).Msg("Error closing DGW connection after " + err.Error())
@@ -97,15 +119,14 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
 	incoming := make(chan Frame)
 	outgoing := make(chan Frame)
-	done := make(chan struct{})
 
 	// Copy inbound frames from the websocket to the channel.
 
 	go func() {
-		defer close(done)
 		defer close(incoming)
 		for {
 			msgtype, data, err := conn.ReadMessage()
+			s.client.GetLogger().Error().Msgf("rrosborough: RECV msg %s", base64.StdEncoding.EncodeToString(data))
 			if err != nil {
 				fatalError(fmt.Errorf("reading message: %w", err))
 				return
@@ -130,15 +151,22 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	// Copy outbound frames from the channel to the websocket.
 
 	go func() {
-		for frame := range outgoing {
-			b, err := frame.Marshal()
-			if err != nil {
-				s.client.GetLogger().Warn().Any("frame", frame).Msg("Failed to marshal outbound frame, dropping")
-				continue
-			}
-			err = conn.WriteMessage(websocket.BinaryMessage, b)
-			if err != nil {
-				fatalError(fmt.Errorf("writing message: %w", err))
+		waitDoneCh := waitDone()
+		for {
+			select {
+			case <-waitDoneCh:
+				return
+			case frame := <-outgoing:
+				b, err := frame.Marshal()
+				if err != nil {
+					s.client.GetLogger().Warn().Any("frame", frame).Msg("Failed to marshal outbound frame, dropping")
+					continue
+				}
+				s.client.GetLogger().Error().Msgf("rrosborough: SEND msg %s", base64.StdEncoding.EncodeToString(b))
+				err = conn.WriteMessage(websocket.BinaryMessage, b)
+				if err != nil {
+					fatalError(fmt.Errorf("writing message: %w", err))
+				}
 			}
 		}
 	}()
@@ -151,11 +179,13 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	defer pongTimeoutTimer.Stop()
 
 	go func() {
+		waitDoneCh := waitDone()
 		for {
 			select {
 			case <-pongTimeoutTimer.C:
 				fatalError(fmt.Errorf("pong timeout"))
 				return
+			case <-waitDoneCh:
 			case <-ctx.Done():
 				return
 			}
@@ -174,7 +204,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 				}
 			case *PongFrame:
 				pongTimeoutTimer.Reset(PongTimeout)
-				outgoing <- &PingFrame{}
 			case *OpenFrame:
 				if f.StreamID != Stream_TYPING {
 					s.client.GetLogger().Warn().Any("frame", f).Msg("Encountered EstabStream response for wrong stream, dropping")
@@ -202,6 +231,18 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			}
 		}
 	}()
+
+	// Set up a ping timer.
+
+	pingTicker := time.NewTicker(PingInterval)
+	defer pingTicker.Stop()
+	go func() {
+		for range pingTicker.C {
+			outgoing <- &PingFrame{}
+		}
+	}()
+
+	s.client.GetLogger().Debug().Msg("Initiating DGW socket handshake")
 
 	// Create a function to help with timing out waiting on ack
 	// frames if no response comes.
@@ -247,9 +288,12 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		return fmt.Errorf("didn't get ack for second subscription frame")
 	}
 
-	// ... let the goroutines process messages until an error ...
+	s.client.GetLogger().Debug().Msg("DGW socket handshake is completed")
 
-	<-done
+	// Wait until done.
+	<-waitDone()
+
+	// Return the error, if any, saved from another goroutine.
 	return *s.err.Load()
 }
 
