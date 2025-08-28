@@ -281,7 +281,7 @@ func (s *Socket) getConnURL() string {
 	query.Add("x-dgw-app-stream-group", "group1")
 
 	encodedQuery := query.Encode()
-	return "wss://gateway.instagram.com/ws/DGW?" + encodedQuery
+	return "wss://gateway.instagram.com/ws/realtime?" + encodedQuery
 }
 
 func (s *Socket) Disconnect() {
