@@ -25,25 +25,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/endpoints"
+	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
-
-const DPR = "1"
-const BrowserName = "Chrome"
-const ChromeVersion = "138"
-const ChromeVersionFull = ChromeVersion + ".0.7204.92"
-const UserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + ChromeVersion + ".0.0.0 Safari/537.36"
-const SecCHUserAgent = `"Chromium";v="` + ChromeVersion + `", "Google Chrome";v="` + ChromeVersion + `", "Not-A.Brand";v="99"`
-const SecCHFullVersionList = `"Chromium";v="` + ChromeVersionFull + `", "Google Chrome";v="` + ChromeVersionFull + `", "Not-A.Brand";v="99.0.0.0"`
-const OSName = "Linux"
-const OSVersion = "6.8.0"
-const SecCHPlatform = `"` + OSName + `"`
-const SecCHPlatformVersion = `"` + OSVersion + `"`
-const SecCHMobile = "?0"
-const SecCHModel = `""`
-const SecCHPrefersColorScheme = "light"
 
 var ErrClientIsNil = whatsmeow.ErrClientIsNil
 
@@ -55,12 +41,12 @@ type Client struct {
 	Logger    zerolog.Logger
 	Platform  types.Platform
 
-	http           *http.Client
-	socket         *Socket
-	realtimeSocket *RealtimeSocket
-	eventHandler   EventHandler
-	configs        *Configs
-	syncManager    *SyncManager
+	http         *http.Client
+	socket       *Socket
+	dgwSocket    *dgw.Socket
+	eventHandler EventHandler
+	configs      *Configs
+	syncManager  *SyncManager
 
 	cookies     *cookies.Cookies
 	httpProxy   func(*http.Request) (*url.URL, error)
@@ -384,12 +370,12 @@ func (c *Client) connectRealtime(ctx context.Context) error {
 }
 
 func (c *Client) connectRealtimeOnce(ctx context.Context) error {
-	c.realtimeSocket = c.newRealtimeSocketClient()
-	err := c.realtimeSocket.CanConnect()
+	c.dgwSocket = dgw.NewSocketClient(c)
+	err := c.dgwSocket.CanConnect()
 	if err != nil {
 		return err
 	}
-	err = c.realtimeSocket.Connect(ctx)
+	err = c.dgwSocket.Connect(ctx)
 	if err != nil {
 		return err
 	}
@@ -404,8 +390,8 @@ func (c *Client) Disconnect() {
 		(*fn)()
 	}
 	c.socket.Disconnect()
-	if c.realtimeSocket != nil {
-		c.realtimeSocket.Disconnect()
+	if c.dgwSocket != nil {
+		c.dgwSocket.Disconnect()
 	}
 	if !c.connectionLoopStopped.WaitTimeout(5 * time.Second) {
 		c.Logger.Warn().Msg("Connection loop didn't stop in time")
@@ -548,4 +534,8 @@ func (c *Client) WaitUntilCanSendMessages(ctx context.Context, timeout time.Dura
 	case <-c.canSendMessages.GetChan():
 		return nil
 	}
+}
+
+func (c *Client) GetLogger() *zerolog.Logger {
+	return &c.Logger
 }

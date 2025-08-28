@@ -21,7 +21,9 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/packets"
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 var (
@@ -35,9 +37,6 @@ var (
 		types.Messenger:   "websocket",
 		types.FacebookTor: "websocket",
 	}
-	ErrSocketClosed      = errors.New("messagix-socket: socket is closed")
-	ErrSocketAlreadyOpen = errors.New("messagix-socket: socket is already open")
-	ErrNotAuthenticated  = errors.New("messagix-socket: client has not been authenticated successfully yet")
 
 	//lint:ignore U1000 - alternatives for minimal*Sync
 	igReconnectSync = []int64{1, 2, 16}
@@ -101,15 +100,11 @@ func (c *Client) newSocketClient() *Socket {
 	}
 }
 
-var ErrDial = errors.New("failed to dial socket")
-var ErrSendConnect = errors.New("failed to send connect packet")
-var ErrInReadLoop = errors.New("error in read loop")
-
 func (s *Socket) CanConnect() error {
 	if s.conn != nil {
-		return ErrSocketAlreadyOpen
+		return socket.ErrSocketAlreadyOpen
 	} else if !s.client.IsAuthenticated() {
-		return ErrNotAuthenticated
+		return socket.ErrNotAuthenticated
 	} else if s.broker == "" {
 		return fmt.Errorf("broker has not been set in socket struct (broker=%s)", s.broker)
 	}
@@ -145,23 +140,23 @@ func (s *Socket) Connect(ctx context.Context) error {
 	headers := s.getConnHeaders()
 	brokerUrl := s.BuildBrokerURL()
 
-	dialer := s.client.getDialer()
+	dialer := s.client.GetDialer()
 	s.client.Logger.Debug().Str("broker", brokerUrl).Msg("Dialing socket")
 	conn, _, err := dialer.DialContext(ctx, brokerUrl, headers)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrDial, err)
+		return fmt.Errorf("%w: %w", socket.ErrDial, err)
 	}
 
 	s.conn = conn
 	err = s.sendConnectPacket()
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrSendConnect, err)
+		return fmt.Errorf("%w: %w", socket.ErrSendConnect, err)
 	}
 
 	err = s.readLoop(ctx, conn)
 	s.responseHandler.CancelAllRequests()
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInReadLoop, err)
+		return fmt.Errorf("%w: %w", socket.ErrInReadLoop, err)
 	}
 
 	return nil
@@ -460,8 +455,8 @@ func (s *Socket) getConnHeaders() http.Header {
 	h := http.Header{}
 
 	h.Set("cookie", s.client.cookies.String())
-	h.Set("user-agent", UserAgent)
-	h.Set("origin", s.client.getEndpoint("base_url"))
+	h.Set("user-agent", useragent.UserAgent)
+	h.Set("origin", s.client.GetEndpoint("base_url"))
 	//h.Set("Sec-Fetch-Dest", "empty")
 	//h.Set("Sec-Fetch-Mode", "websocket")
 	//h.Set("Sec-Fetch-Site", "same-site")

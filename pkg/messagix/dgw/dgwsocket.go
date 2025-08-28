@@ -1,7 +1,6 @@
 package dgw
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,12 +14,23 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"github.com/rs/zerolog"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
+// import cycle
+type MessagixClient interface {
+	IsAuthenticated() bool
+	GetDialer() *websocket.Dialer
+	GetLogger() *zerolog.Logger
+	GetCookies() *cookies.Cookies
+	GetEndpoint(string) string
+}
+
 type Socket struct {
-	client *messagix.Client
+	client MessagixClient
 	conn   *websocket.Conn
 	err    atomic.Pointer[error]
 
@@ -30,7 +40,7 @@ type Socket struct {
 	activity *sync.Cond
 }
 
-func NewSocketClient(c *messagix.Client) *Socket {
+func NewSocketClient(c MessagixClient) *Socket {
 	return &Socket{
 		client:   c,
 		activity: &sync.Cond{L: &sync.Mutex{}},
@@ -39,9 +49,9 @@ func NewSocketClient(c *messagix.Client) *Socket {
 
 func (s *Socket) CanConnect() error {
 	if s.conn != nil {
-		return fmt.Errorf("DGW: %w", messagix.ErrSocketAlreadyOpen)
+		return fmt.Errorf("DGW: %w", socket.ErrSocketAlreadyOpen)
 	} else if !s.client.IsAuthenticated() {
-		return fmt.Errorf("DGW: %w", messagix.ErrNotAuthenticated)
+		return fmt.Errorf("DGW: %w", socket.ErrNotAuthenticated)
 	}
 	return nil
 }
@@ -53,13 +63,13 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 
 	conn, resp, err := dialer.DialContext(ctx, socketURL, headers)
 	if err != nil {
-		return fmt.Errorf("DGW: %w: %w (status code %d)", messagix.ErrDial, err, resp.StatusCode)
+		return fmt.Errorf("DGW: %w: %w (status code %d)", socket.ErrDial, err, resp.StatusCode)
 	}
 	s.conn = conn
 
 	err = s.readLoop(ctx, conn)
 	if err != nil {
-		return fmt.Errorf("DGW: %w: %w", messagix.ErrInReadLoop, err)
+		return fmt.Errorf("DGW: %w: %w", socket.ErrInReadLoop, err)
 	}
 
 	return nil
@@ -78,7 +88,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		s.err.Store(&err)
 		closeErr := conn.Close()
 		if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
-			s.client.Logger.Debug().Err(closeErr).Msg("Error closing DGW connection after " + err.Error())
+			s.client.GetLogger().Debug().Err(closeErr).Msg("Error closing DGW connection after " + err.Error())
 		}
 	}
 
@@ -103,12 +113,12 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			for len(data) > 0 {
 				switch msgtype {
 				case websocket.TextMessage:
-					s.client.Logger.Warn().Bytes("bytes", data).Msg("Unexpected non-binary DGW message, dropping")
+					s.client.GetLogger().Warn().Bytes("bytes", data).Msg("Unexpected non-binary DGW message, dropping")
 				case websocket.BinaryMessage:
 					frame := CheckFrameType(data)
 					data, err = frame.Unmarshal(data)
 					if err != nil {
-						s.client.Logger.Warn().Bytes("bytes", data).Msg("Failed to unmarshal DGW frame, dropping")
+						s.client.GetLogger().Warn().Bytes("bytes", data).Msg("Failed to unmarshal DGW frame, dropping")
 						continue
 					}
 					incoming <- frame
@@ -123,7 +133,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		for frame := range outgoing {
 			b, err := frame.Marshal()
 			if err != nil {
-				s.client.Logger.Warn().Any("frame", frame).Msg("Failed to marshal outbound frame, dropping")
+				s.client.GetLogger().Warn().Any("frame", frame).Msg("Failed to marshal outbound frame, dropping")
 				continue
 			}
 			err = conn.WriteMessage(websocket.BinaryMessage, b)
@@ -160,18 +170,18 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			switch f := frame.(type) {
 			case *UnsupportedFrame:
 				if f.MayHaveLostData() {
-					s.client.Logger.Warn().Bytes("bytes", f.Raw).Msg("Encountered unknown unsupported frame, dropping with potential data loss")
+					s.client.GetLogger().Warn().Bytes("bytes", f.Raw).Msg("Encountered unknown unsupported frame, dropping with potential data loss")
 				}
 			case *PongFrame:
 				pongTimeoutTimer.Reset(PongTimeout)
 				outgoing <- &PingFrame{}
 			case *OpenFrame:
 				if f.StreamID != Stream_TYPING {
-					s.client.Logger.Warn().Any("frame", f).Msg("Encountered EstabStream response for wrong stream, dropping")
+					s.client.GetLogger().Warn().Any("frame", f).Msg("Encountered EstabStream response for wrong stream, dropping")
 					continue
 				}
 				if f.Parameters.Status == 0 {
-					s.client.Logger.Warn().Bytes("bytes", f.Raw).Msg("Encountered EstabStream response without status code, dropping")
+					s.client.GetLogger().Warn().Bytes("bytes", f.Raw).Msg("Encountered EstabStream response without status code, dropping")
 					continue
 				}
 				if f.Parameters.Status != 200 {
@@ -181,11 +191,11 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 				s.ackSubscription.Store(true)
 			case *AckFrame:
 				if f.StreamID != Stream_TYPING {
-					s.client.Logger.Warn().Any("frame", f).Msg("Encountered ack for wrong stream, dropping")
+					s.client.GetLogger().Warn().Any("frame", f).Msg("Encountered ack for wrong stream, dropping")
 					continue
 				}
 				if f.AckID != 0 {
-					s.client.Logger.Warn().Any("frame", f).Msg("Encountered ack with unknown ack id, dropping")
+					s.client.GetLogger().Warn().Any("frame", f).Msg("Encountered ack with unknown ack id, dropping")
 					continue
 				}
 				s.ackParameters.Store(true)
@@ -247,7 +257,7 @@ func (s *Socket) getConnHeaders() http.Header {
 	h := http.Header{}
 
 	h.Set("cookie", s.client.GetCookies().String())
-	h.Set("user-agent", messagix.UserAgent)
+	h.Set("user-agent", useragent.UserAgent)
 	h.Set("origin", s.client.GetEndpoint("base_url"))
 
 	return h

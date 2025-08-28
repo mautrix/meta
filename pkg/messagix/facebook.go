@@ -64,7 +64,7 @@ func (fb *FacebookMethods) Login(ctx context.Context, identifier, password strin
 		return nil, err
 	}
 
-	loginUrl := fb.client.getEndpoint("base_url") + loginPath
+	loginUrl := fb.client.GetEndpoint("base_url") + loginPath
 	loginResp, loginBody, err := fb.client.sendLoginRequest(ctx, form, loginUrl)
 	if err != nil {
 		return nil, err
@@ -104,11 +104,11 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 	payloadBytes := []byte(form.Encode())
 
 	headers := c.buildHeaders(true, false)
-	headers.Set("Referer", c.getEndpoint("base_url"))
+	headers.Set("Referer", c.GetEndpoint("base_url"))
 	headers.Set("Sec-fetch-site", "same-origin")
 	headers.Set("Accept", "*/*")
 
-	url := c.getEndpoint("web_push")
+	url := c.GetEndpoint("web_push")
 
 	resp, body, err := c.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
 	if err != nil {

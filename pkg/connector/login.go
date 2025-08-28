@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -148,7 +149,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		StepID:       LoginStepIDCookies,
 		Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
 		CookiesParams: &bridgev2.LoginCookiesParams{
-			UserAgent: messagix.UserAgent,
+			UserAgent: useragent.UserAgent,
 		},
 	}
 	switch m.Mode {

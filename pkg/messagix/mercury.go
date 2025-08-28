@@ -42,7 +42,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	}
 
 	payloadQuery := queryValues.Encode()
-	url := c.getEndpoint("media_upload") + payloadQuery
+	url := c.GetEndpoint("media_upload") + payloadQuery
 	payload, contentType, err := c.newMercuryMediaPayload(media)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	h := c.buildHeaders(true, false)
 	h.Set("accept", "*/*")
 	h.Set("content-type", contentType)
-	h.Set("origin", c.getEndpoint("base_url"))
+	h.Set("origin", c.GetEndpoint("base_url"))
 	h.Set("referer", c.getEndpointForThreadID(threadID))
 	h.Set("priority", "u=1, i")
 	h.Set("sec-fetch-dest", "empty")

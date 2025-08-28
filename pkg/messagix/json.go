@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/packets"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 type ConnectPostMessage struct {
@@ -58,7 +59,7 @@ func (s *Socket) newConnectJSON() (string, error) {
 		Pack:               make([]any, 0),
 		HostNameOverride:   s.client.configs.BrowserConfigTable.MqttWebConfig.HostNameOverride,
 		P:                  nil,
-		UserAgent:          UserAgent,
+		UserAgent:          useragent.UserAgent,
 		Aids:               nil,
 		Cid:                s.client.configs.BrowserConfigTable.MqttWebDeviceID.ClientID,
 	}

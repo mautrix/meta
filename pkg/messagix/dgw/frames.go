@@ -1,23 +1,8 @@
 package dgw
 
 import (
-	"bytes"
-	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"net"
-	"net/http"
-	"net/url"
-	"sync"
-	"sync/atomic"
-	"time"
-
-	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
-	"go.mau.fi/mautrix-meta/pkg/messagix"
-	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 )
 
 type FrameType uint8
