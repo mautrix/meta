@@ -335,16 +335,16 @@ func (c *Client) Connect(ctx context.Context) error {
 		}
 	}()
 	if c.Platform == types.Instagram {
-		go c.connectRealtime(ctx)
+		go c.connectDGW(ctx)
 	}
 	return nil
 }
 
-func (c *Client) connectRealtime(ctx context.Context) error {
+func (c *Client) connectDGW(ctx context.Context) error {
 	reconnectIn := 2 * time.Second
 	for {
 		connectStart := time.Now()
-		err := c.connectRealtimeOnce(ctx)
+		err := c.connectDGWOnce(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -357,9 +357,9 @@ func (c *Client) connectRealtime(ctx context.Context) error {
 			}
 		}
 		if err != nil {
-			c.Logger.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in realtime connection, reconnecting")
+			c.Logger.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in DGW connection, reconnecting")
 		} else {
-			c.Logger.Warn().Dur("reconnect_in", reconnectIn).Msg("Realtime connection closed without error, reconnecting")
+			c.Logger.Warn().Dur("reconnect_in", reconnectIn).Msg("DGW connection closed without error, reconnecting")
 		}
 		select {
 		case <-time.After(reconnectIn):
@@ -369,7 +369,7 @@ func (c *Client) connectRealtime(ctx context.Context) error {
 	}
 }
 
-func (c *Client) connectRealtimeOnce(ctx context.Context) error {
+func (c *Client) connectDGWOnce(ctx context.Context) error {
 	c.dgwSocket = dgw.NewSocketClient(c)
 	err := c.dgwSocket.CanConnect()
 	if err != nil {
