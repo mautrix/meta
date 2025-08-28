@@ -125,9 +125,6 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		CSRBitmap:          crypto.NewBitmap(),
 	}
 	cli.socket = cli.newSocketClient()
-	if cli.Platform == types.Instagram {
-		cli.realtimeSocket = cli.newRealtimeSocketClient()
-	}
 
 	return cli
 }
@@ -192,7 +189,7 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 	}
 
 	moduleLoader := &ModuleParser{client: c, LS: &table.LSTable{}}
-	err := moduleLoader.Load(ctx, c.getEndpoint("messages"))
+	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
 	}
@@ -213,7 +210,7 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 
 func (c *Client) loadLoginPage(ctx context.Context) *ModuleParser {
 	moduleLoader := &ModuleParser{client: c}
-	moduleLoader.Load(ctx, c.getEndpoint("login_page"))
+	moduleLoader.Load(ctx, c.GetEndpoint("login_page"))
 	return moduleLoader
 }
 
@@ -387,6 +384,7 @@ func (c *Client) connectRealtime(ctx context.Context) error {
 }
 
 func (c *Client) connectRealtimeOnce(ctx context.Context) error {
+	c.realtimeSocket = c.newRealtimeSocketClient()
 	err := c.realtimeSocket.CanConnect()
 	if err != nil {
 		return err
@@ -406,7 +404,9 @@ func (c *Client) Disconnect() {
 		(*fn)()
 	}
 	c.socket.Disconnect()
-	c.realtimeSocket.Disconnect()
+	if c.realtimeSocket != nil {
+		c.realtimeSocket.Disconnect()
+	}
 	if !c.connectionLoopStopped.WaitTimeout(5 * time.Second) {
 		c.Logger.Warn().Msg("Connection loop didn't stop in time")
 	}
@@ -426,19 +426,19 @@ func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
 	if c.Platform.IsMessenger() {
 		h.Set("sec-fetch-site", "same-origin") // header is required
 		h.Set("sec-fetch-user", "?1")
-		h.Set("host", c.getEndpoint("host"))
+		h.Set("host", c.GetEndpoint("host"))
 		h.Set("upgrade-insecure-requests", "1")
-		h.Set("origin", c.getEndpoint("base_url"))
+		h.Set("origin", c.GetEndpoint("base_url"))
 		h.Set("cookie", "_js_datr="+jsDatr)
-		h.Set("referer", c.getEndpoint("login_page"))
+		h.Set("referer", c.GetEndpoint("login_page"))
 		q := c.newHTTPQuery()
 		q.AcceptOnlyEssential = "false"
 		payloadQuery = q
 	} else {
 		h.Set("sec-fetch-site", "same-site") // header is required
-		h.Set("host", c.getEndpoint("host"))
-		h.Set("origin", c.getEndpoint("base_url"))
-		h.Set("referer", c.getEndpoint("base_url")+"/")
+		h.Set("host", c.GetEndpoint("host"))
+		h.Set("origin", c.GetEndpoint("base_url"))
+		h.Set("referer", c.GetEndpoint("base_url")+"/")
 		h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.BrowserConfigTable.SiteData.ServerRevision, 10))
 		variables, err := json.Marshal(&types.InstagramCookiesVariables{
 			FirstPartyTrackingOptIn: true,
@@ -465,7 +465,7 @@ func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
 	}
 
 	payload := []byte(form.Encode())
-	req, _, err := c.MakeRequest(ctx, c.getEndpoint("cookie_consent"), "POST", h, payload, types.FORM)
+	req, _, err := c.MakeRequest(ctx, c.GetEndpoint("cookie_consent"), "POST", h, payload, types.FORM)
 	if err != nil {
 		return err
 	}
@@ -482,7 +482,7 @@ func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
 	return nil
 }
 
-func (c *Client) getEndpoint(name string) string {
+func (c *Client) GetEndpoint(name string) string {
 	if endpoint, ok := c.endpoints[name]; ok {
 		return endpoint
 	}
@@ -490,7 +490,7 @@ func (c *Client) getEndpoint(name string) string {
 }
 
 func (c *Client) getEndpointForThreadID(threadID int64) string {
-	return c.getEndpoint("thread") + strconv.FormatInt(threadID, 10) + "/"
+	return c.GetEndpoint("thread") + strconv.FormatInt(threadID, 10) + "/"
 }
 
 func (c *Client) IsAuthenticated() bool {

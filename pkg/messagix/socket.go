@@ -116,7 +116,7 @@ func (s *Socket) CanConnect() error {
 	return nil
 }
 
-func (c *Client) getDialer() *websocket.Dialer {
+func (c *Client) GetDialer() *websocket.Dialer {
 	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
 	if c.httpProxy != nil {
 		dialer.Proxy = c.httpProxy
