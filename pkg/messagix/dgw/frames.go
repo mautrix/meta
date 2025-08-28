@@ -3,6 +3,7 @@ package dgw
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 )
 
 type FrameType uint8
@@ -15,10 +16,10 @@ const (
 	FrameType_DRAIN FrameType = 0x03 // Drain
 	FrameType_PING            = 0x09 // Ping
 	FrameType_PONG            = 0x0a // Pong
-	FrameType_ACK             = 0x12 // StreamGroup_Ack
-	FrameType_DATA            = 0x13 // StreamGroup_Data
-	FrameType_CLOSE           = 0x14 // StreamGroup_EndOfData
-	FrameType_OPEN            = 0x15 // StreamGroup_EstabStream
+	FrameType_ACK             = 0x0c // StreamGroup_Ack
+	FrameType_DATA            = 0x0d // StreamGroup_Data
+	FrameType_CLOSE           = 0x0e // StreamGroup_EndOfData
+	FrameType_OPEN            = 0x0f // StreamGroup_EstabStream
 )
 
 func CheckFrameType(b []byte) Frame {
@@ -116,10 +117,16 @@ func (f *DataFrame) Marshal() ([]byte, error) {
 }
 
 func (f *DataFrame) Unmarshal(b []byte) ([]byte, error) {
+	if len(b) < 8 {
+		return nil, fmt.Errorf("too short for DataFrame")
+	}
 	f.StreamID = StreamID(binary.LittleEndian.Uint16(b[1:3]))
-	payloadLength := binary.LittleEndian.Uint16(b[3:5])
+	payloadLength := binary.LittleEndian.Uint16(b[3:5]) - 2
 	f.AckID = binary.LittleEndian.Uint16(b[6:8]) & 0b0111_1111_1111_1111
 	f.RequiresAck = b[7]&0b1000_0000 > 0
+	if len(b) < int(8+payloadLength) {
+		return nil, fmt.Errorf("too short for DataFrame payload")
+	}
 	f.Payload = b[8 : 8+payloadLength]
 	return b[8+payloadLength:], nil
 }
@@ -139,8 +146,14 @@ func (f *AckFrame) Marshal() ([]byte, error) {
 }
 
 func (f *AckFrame) Unmarshal(b []byte) ([]byte, error) {
+	if len(b) < 8 {
+		return nil, fmt.Errorf("too short for AckFrame")
+	}
 	f.StreamID = StreamID(binary.LittleEndian.Uint16(b[1:3]))
-	payloadLength := binary.LittleEndian.Uint16(b[3:5]) // always 2
+	payloadLength := binary.LittleEndian.Uint16(b[3:5])
+	if payloadLength != 2 {
+		return nil, fmt.Errorf("unnatural ack frame")
+	}
 	f.AckID = binary.LittleEndian.Uint16(b[6:8])
 	return b[6+payloadLength:], nil
 }
@@ -157,7 +170,7 @@ type OpenFrameParams struct {
 	XRSAcceptAck    string `json:"x-dgw-app-XRS-Accept-Ack,omitempty"`
 	XRSSReferer     string `json:"x-dgw-app-XRSS-http_referer,omitempty"`
 
-	Status int `json:"status"`
+	StatusCode int `json:"code,omitempty"`
 }
 
 type OpenFrame struct {
@@ -183,9 +196,15 @@ func (f *OpenFrame) Marshal() ([]byte, error) {
 }
 
 func (f *OpenFrame) Unmarshal(b []byte) ([]byte, error) {
+	if len(b) < 6 {
+		return nil, fmt.Errorf("too short for OpenFrame")
+	}
 	f.Raw = b
 	f.StreamID = StreamID(binary.LittleEndian.Uint16(b[1:3]))
 	payloadLength := binary.LittleEndian.Uint16(b[3:5])
+	if len(b) < int(6+payloadLength) {
+		return nil, fmt.Errorf("too short for OpenFrame payload")
+	}
 	err := json.Unmarshal(b[6:6+payloadLength], &f.Parameters)
 	if err != nil {
 		return b, err

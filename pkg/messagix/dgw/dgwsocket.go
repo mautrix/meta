@@ -77,7 +77,7 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 }
 
 const AckTimeout = 5 * time.Second
-const PingInterval = 10 * time.Second
+const PingInterval = 15 * time.Second
 const PongTimeout = 30 * time.Second // from web client
 
 func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
@@ -85,7 +85,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	done := atomic.Bool{}
 	markDone := func() {
 		done.Store(true)
-		s.activity.Signal()
+		s.activity.Broadcast()
 	}
 	waitDone := func() <-chan struct{} {
 		ch := make(chan struct{})
@@ -126,7 +126,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		defer close(incoming)
 		for {
 			msgtype, data, err := conn.ReadMessage()
-			s.client.GetLogger().Error().Msgf("rrosborough: RECV msg %s", base64.StdEncoding.EncodeToString(data))
 			if err != nil {
 				fatalError(fmt.Errorf("reading message: %w", err))
 				return
@@ -139,7 +138,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 					frame := CheckFrameType(data)
 					data, err = frame.Unmarshal(data)
 					if err != nil {
-						s.client.GetLogger().Warn().Bytes("bytes", data).Msg("Failed to unmarshal DGW frame, dropping")
+						s.client.GetLogger().Warn().Bytes("bytes", data).Err(err).Msg("Failed to unmarshal DGW frame, dropping")
 						continue
 					}
 					incoming <- frame
@@ -162,7 +161,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 					s.client.GetLogger().Warn().Any("frame", frame).Msg("Failed to marshal outbound frame, dropping")
 					continue
 				}
-				s.client.GetLogger().Error().Msgf("rrosborough: SEND msg %s", base64.StdEncoding.EncodeToString(b))
 				err = conn.WriteMessage(websocket.BinaryMessage, b)
 				if err != nil {
 					fatalError(fmt.Errorf("writing message: %w", err))
@@ -209,15 +207,23 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 					s.client.GetLogger().Warn().Any("frame", f).Msg("Encountered EstabStream response for wrong stream, dropping")
 					continue
 				}
-				if f.Parameters.Status == 0 {
+				if f.Parameters.StatusCode == 0 {
 					s.client.GetLogger().Warn().Bytes("bytes", f.Raw).Msg("Encountered EstabStream response without status code, dropping")
 					continue
 				}
-				if f.Parameters.Status != 200 {
-					fatalError(fmt.Errorf("error %d from EstabStream response", f.Parameters.Status))
+				if f.Parameters.StatusCode != 200 {
+					fatalError(fmt.Errorf("error %d from EstabStream response", f.Parameters.StatusCode))
 					return
 				}
 				s.ackSubscription.Store(true)
+				s.activity.Broadcast()
+			case *DataFrame:
+				if f.RequiresAck {
+					outgoing <- &AckFrame{
+						StreamID: f.StreamID,
+						AckID:    f.AckID,
+					}
+				}
 			case *AckFrame:
 				if f.StreamID != Stream_TYPING {
 					s.client.GetLogger().Warn().Any("frame", f).Msg("Encountered ack for wrong stream, dropping")
@@ -228,6 +234,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 					continue
 				}
 				s.ackParameters.Store(true)
+				s.activity.Broadcast()
 			}
 		}
 	}()
@@ -251,7 +258,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		ackTimeout := atomic.Bool{}
 		time.AfterFunc(AckTimeout, func() {
 			ackTimeout.Store(true)
-			s.activity.Signal()
+			s.activity.Broadcast()
 		})
 		return &ackTimeout
 	}
@@ -353,7 +360,7 @@ func (s *Socket) getTypingIndicatorSubscriptionFrame() Frame {
 	return &OpenFrame{
 		StreamID: Stream_TYPING,
 		Parameters: OpenFrameParams{
-			XRSSMethod:      "FBGQLS:XDT_DIRECT_DGW_EVENT",
+			XRSSMethod:      "FBGQLS:XDT_DIRECT_REALTIME_EVENT",
 			XRSSDocID:       "9712315318850438", // ???
 			XRSSRoutingHint: "useIGDTypingIndicatorSubscription",
 			XRSBody:         "true",
