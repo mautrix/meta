@@ -146,7 +146,31 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			(*stopPeriodicReconnect)()
 		}
 	case *dgw.DGWEvent:
-		log.Info().Any("event", evt).Msg("Got activity indicator")
+		switch evt := evt.Event.(type) {
+		case dgw.DGWTypingActivityIndicator:
+			threadKey := m.igThreadIDs[evt.InstagramThreadID]
+			if threadKey == 0 {
+				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown thread ID")
+				return
+			}
+			timeout := 6 * time.Second
+			if !evt.IsTyping {
+				timeout = 0
+			}
+			log.Error().Any("event", evt).Int64("thread_key", threadKey).Msg("rrosborough: Activity indicator")
+			m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
+				EventMeta: simplevent.EventMeta{
+					Type:      bridgev2.RemoteEventTyping,
+					PortalKey: m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE),
+					Sender:    m.makeEventSender(evt.InstagramUserID),
+					Timestamp: evt.Timestamp,
+				},
+				Timeout: timeout,
+				Type:    bridgev2.TypingTypeText,
+			})
+		default:
+			log.Warn().Type("event_type", evt).Msg("Unrecognized DGW event type from messagix")
+		}
 	default:
 		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
@@ -308,6 +332,11 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 
 	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
 		m.igThreadIDs[igThread.IgThreadId] = igThread.ThreadKey
+	}
+
+	for _, igContact := range tbl.LSDeleteThenInsertIGContactInfo {
+		zerolog.Ctx(ctx).Error().Msgf("rrosborough: igContact %+v", igContact)
+		m.igUserIDs[igContact.IgId] = igContact.LinkedFbid
 	}
 
 	return
@@ -681,8 +710,4 @@ func collectPortalEvents[T ThreadKeyable](
 			*innerQueue = append(*innerQueue, evt)
 		}
 	}
-}
-
-func (m *MetaClient) GetThreadKeyForInstagramThread(igThreadID string) int64 {
-	return m.igThreadIDs[igThreadID]
 }

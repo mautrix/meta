@@ -96,11 +96,11 @@ type XDTData struct {
 }
 
 type ActivityIndicator struct {
-	TimestampNano  int `json:"timestamp"`
-	SenderID       int `json:"sender_id"`
-	TTL            int `json:"ttl"`
-	ActivityStatus int `json:"activity_status"`
-	Attribution    any `json:"attribution"` // always null?
+	TimestampNano  int64 `json:"timestamp"`
+	SenderID       int64 `json:"sender_id"`
+	TTL            int   `json:"ttl"`
+	ActivityStatus int   `json:"activity_status"`
+	Attribution    any   `json:"attribution"` // always null?
 }
 
 type DGWEvent struct {
@@ -109,8 +109,9 @@ type DGWEvent struct {
 
 type DGWTypingActivityIndicator struct {
 	InstagramThreadID string
-	UserID            int
+	InstagramUserID   int64
 	IsTyping          bool
+	Timestamp         time.Time
 }
 
 var activityIndicatorPathRegexp = regexp.MustCompile(`^/direct_v2/threads/([0-9]+)/activity_indicator_id/([0-9a-f-]+)$`)
@@ -284,8 +285,9 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 						s.client.HandleEvent(ctx, &DGWEvent{
 							Event: DGWTypingActivityIndicator{
 								InstagramThreadID: threadID,
-								UserID:            ind.SenderID,
+								InstagramUserID:   ind.SenderID,
 								IsTyping:          ind.ActivityStatus > 0,
+								Timestamp:         time.UnixMicro(ind.TimestampNano / 1000),
 							},
 						})
 					}
