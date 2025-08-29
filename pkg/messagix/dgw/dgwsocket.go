@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -100,6 +101,8 @@ type ActivityIndicator struct {
 	ActivityStatus int `json:"activity_status"`
 	Attribution    any `json:"attribution"` // always null?
 }
+
+var activityIndicatorPathRegexp = regexp.MustCompile(`^/direct_v2/threads/([0-9]+)/activity_indicator_id/([0-9a-f-]+)$`)
 
 func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
@@ -261,7 +264,13 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 							s.client.GetLogger().Warn().Err(err).Str("json", event.Value).Msg("Failed to parse XDT event op JSON, dropping")
 							continue
 						}
-						s.client.GetLogger().Info().Str("path", event.Path).Int("status", ind.ActivityStatus).Msg("Got activity indicator")
+						m := activityIndicatorPathRegexp.FindStringSubmatch(event.Path)
+						if len(m) == 0 {
+							s.client.GetLogger().Warn().Err(err).Str("json", event.Value).Msg("Failed to parse XDT event op path, dropping")
+							continue
+						}
+						threadID := m[1]
+						s.client.GetLogger().Info().Str("thread_id", threadID).Int("sender_id", ind.SenderID).Int("status", ind.ActivityStatus).Msg("Got activity indicator")
 					}
 				}
 			case *AckFrame:
