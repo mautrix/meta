@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -153,6 +155,11 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown thread ID")
 				return
 			}
+			userID := m.igUserIDs[fmt.Sprintf("%d", evt.InstagramUserID)]
+			if userID == 0 {
+				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown user ID")
+				return
+			}
 			timeout := 6 * time.Second
 			if !evt.IsTyping {
 				timeout = 0
@@ -230,11 +237,37 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 		}
 		m.syncGhost(ctx, contact)
 	}
+	contactsWithoutIGID := []int64{}
 	for _, contact := range tbl.LSVerifyContactRowExists {
 		if ctx.Err() != nil {
 			return
 		}
 		m.syncGhost(ctx, contact)
+		if m.igUserIDsReverse[contact.GetFBID()] == "" {
+			contactsWithoutIGID = append(contactsWithoutIGID, contact.GetFBID())
+		}
+	}
+	go func() {
+		for len(contactsWithoutIGID) > 0 {
+			// Web client seems to fetch in groups of up to five
+			contactsBatch := contactsWithoutIGID[:5]
+			tasks := []socket.Task{}
+			for _, contact := range contactsBatch {
+				tasks = append(tasks, &socket.GetContactsFullTask{
+					ContactID: contact,
+				})
+			}
+			resp, err := m.Client.ExecuteTasks(ctx, tasks...)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msgf("user info request failed")
+			}
+			for _, info := range resp.LSDeleteThenInsertIGContactInfo {
+				m.saveIGID(info)
+			}
+		}
+	}()
+	for _, info := range tbl.LSDeleteThenInsertIGContactInfo {
+		m.saveIGID(info)
 	}
 	for _, evt := range innerQueue {
 		if ctx.Err() != nil {
@@ -332,11 +365,6 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 
 	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
 		m.igThreadIDs[igThread.IgThreadId] = igThread.ThreadKey
-	}
-
-	for _, igContact := range tbl.LSDeleteThenInsertIGContactInfo {
-		zerolog.Ctx(ctx).Error().Msgf("rrosborough: igContact %+v", igContact)
-		m.igUserIDs[igContact.IgId] = igContact.LinkedFbid
 	}
 
 	return

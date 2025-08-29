@@ -11,10 +11,16 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 )
+
+func (m *MetaClient) saveIGID(info *table.LSDeleteThenInsertIGContactInfo) {
+	m.igUserIDs[info.IgId] = info.LinkedFbid
+	m.igUserIDsReverse[info.LinkedFbid] = info.IgId
+}
 
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost.Name == "" {
@@ -24,6 +30,9 @@ func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*b
 		})
 		if err != nil {
 			return nil, err
+		}
+		for _, info := range resp.LSDeleteThenInsertIGContactInfo {
+			m.saveIGID(info)
 		}
 		if len(resp.LSDeleteThenInsertContact) > 0 {
 			return m.wrapUserInfo(resp.LSDeleteThenInsertContact[0]), nil
