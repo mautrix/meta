@@ -260,7 +260,7 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			}
 			resp, err := m.Client.ExecuteTasks(ctx, tasks...)
 			if err != nil {
-				zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msgf("user info request failed")
+				zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msg("user info request failed")
 			}
 			for _, info := range resp.LSDeleteThenInsertIGContactInfo {
 				m.saveIGID(info)

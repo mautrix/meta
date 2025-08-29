@@ -35,12 +35,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/libsignal/ecc"
-	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waArmadilloICDC"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 type ICDCFetchResponse struct {
