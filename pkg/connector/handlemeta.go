@@ -15,6 +15,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -144,6 +145,8 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 			(*stopPeriodicReconnect)()
 		}
+	case *dgw.DGWEvent:
+		log.Info().Any("event", evt).Msg("Got activity indicator")
 	default:
 		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
@@ -302,6 +305,10 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
 	// TODO request more inbox if applicable
+
+	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
+		m.igThreadIDs[igThread.IgThreadId] = igThread.ThreadKey
+	}
 
 	return
 }
@@ -674,4 +681,8 @@ func collectPortalEvents[T ThreadKeyable](
 			*innerQueue = append(*innerQueue, evt)
 		}
 	}
+}
+
+func (m *MetaClient) GetThreadKeyForInstagramThread(igThreadID string) int64 {
+	return m.igThreadIDs[igThreadID]
 }

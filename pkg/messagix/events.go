@@ -23,7 +23,7 @@ func (s *Socket) handleReadyEvent(ctx context.Context, data *Event_Ready) error 
 		if err != nil {
 			return fmt.Errorf("failed to sync after reconnect: %w", err)
 		}
-		s.client.handleEvent(ctx, &Event_Reconnected{})
+		s.client.HandleEvent(ctx, &Event_Reconnected{})
 		return nil
 	}
 	appSettingPublishJSON, err := s.newAppSettingsPublishJSON(s.client.configs.VersionID)
@@ -111,7 +111,7 @@ func (s *Socket) handleReadyEvent(ctx context.Context, data *Event_Ready) error 
 	}
 
 	data.client = s.client
-	s.client.handleEvent(ctx, data.Finish())
+	s.client.HandleEvent(ctx, data.Finish())
 	s.previouslyConnected = true
 
 	return nil
@@ -159,7 +159,7 @@ func (s *Socket) handlePublishResponseEvent(ctx context.Context, resp *Event_Pub
 			if !isQueue {
 				return true
 			}
-			s.client.handleEvent(ctx, resp)
+			s.client.HandleEvent(ctx, resp)
 		} else {
 			s.client.Logger.Debug().Int64("packet_id", packetID).Msg("Got unexpected lightspeed publish response")
 		}

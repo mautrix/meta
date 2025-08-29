@@ -252,7 +252,7 @@ func (c *Client) SetEventHandler(handler EventHandler) {
 	c.eventHandler = handler
 }
 
-func (c *Client) handleEvent(ctx context.Context, evt any) {
+func (c *Client) HandleEvent(ctx context.Context, evt any) {
 	if c.eventHandler != nil {
 		c.eventHandler(ctx, evt)
 	}
@@ -308,11 +308,11 @@ func (c *Client) Connect(ctx context.Context) error {
 				errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) ||
 				// TODO server unavailable may mean a challenge state, should be checked somehow
 				errors.Is(err, CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
-				c.handleEvent(ctx, &Event_PermanentError{Err: err})
+				c.HandleEvent(ctx, &Event_PermanentError{Err: err})
 				return
 			}
 			connectionAttempts += 1
-			c.handleEvent(ctx, &Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
+			c.HandleEvent(ctx, &Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
 			if time.Since(connectStart) > 2*time.Minute {
 				reconnectIn = 2 * time.Second
 			} else {
