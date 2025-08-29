@@ -18,8 +18,8 @@ import (
 )
 
 func (m *MetaClient) saveIGID(info *table.LSDeleteThenInsertIGContactInfo) {
-	m.igUserIDs[info.IgId] = info.LinkedFbid
-	m.igUserIDsReverse[info.LinkedFbid] = info.IgId
+	m.igUserIDs[info.IgId] = info.ContactId
+	m.igUserIDsReverse[info.ContactId] = info.IgId
 }
 
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

@@ -164,12 +164,12 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			if !evt.IsTyping {
 				timeout = 0
 			}
-			log.Error().Any("event", evt).Int64("thread_key", threadKey).Msg("rrosborough: Activity indicator")
+			log.Error().Any("event", evt).Int64("thread_key", threadKey).Int64("user_id", userID).Msg("rrosborough: Activity indicator")
 			m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
 				EventMeta: simplevent.EventMeta{
 					Type:      bridgev2.RemoteEventTyping,
 					PortalKey: m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE),
-					Sender:    m.makeEventSender(evt.InstagramUserID),
+					Sender:    m.makeEventSender(userID),
 					Timestamp: evt.Timestamp,
 				},
 				Timeout: timeout,
@@ -250,7 +250,8 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 	go func() {
 		for len(contactsWithoutIGID) > 0 {
 			// Web client seems to fetch in groups of up to five
-			contactsBatch := contactsWithoutIGID[:5]
+			batchSize := 5
+			contactsBatch := contactsWithoutIGID[:batchSize]
 			tasks := []socket.Task{}
 			for _, contact := range contactsBatch {
 				tasks = append(tasks, &socket.GetContactsFullTask{
@@ -264,6 +265,10 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			for _, info := range resp.LSDeleteThenInsertIGContactInfo {
 				m.saveIGID(info)
 			}
+			if len(contactsWithoutIGID) <= batchSize {
+				return
+			}
+			contactsWithoutIGID = contactsWithoutIGID[batchSize:]
 		}
 	}()
 	for _, info := range tbl.LSDeleteThenInsertIGContactInfo {
