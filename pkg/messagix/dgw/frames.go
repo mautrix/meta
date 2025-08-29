@@ -14,16 +14,20 @@ const (
 	// There are some additional frame types in the web client
 	// enum but they are not used in the code.
 	FrameType_DRAIN FrameType = 0x03 // Drain
-	FrameType_PING            = 0x09 // Ping
-	FrameType_PONG            = 0x0a // Pong
-	FrameType_ACK             = 0x0c // StreamGroup_Ack
-	FrameType_DATA            = 0x0d // StreamGroup_Data
-	FrameType_CLOSE           = 0x0e // StreamGroup_EndOfData
-	FrameType_OPEN            = 0x0f // StreamGroup_EstabStream
+	FrameType_PING  FrameType = 0x09 // Ping
+	FrameType_PONG  FrameType = 0x0a // Pong
+	FrameType_ACK   FrameType = 0x0c // StreamGroup_Ack
+	FrameType_DATA  FrameType = 0x0d // StreamGroup_Data
+	FrameType_CLOSE FrameType = 0x0e // StreamGroup_EndOfData
+	FrameType_OPEN  FrameType = 0x0f // StreamGroup_EstabStream
 )
 
+func (ft FrameType) Marshal() []byte {
+	return []byte{byte(ft)}
+}
+
 func CheckFrameType(b []byte) Frame {
-	switch b[0] {
+	switch FrameType(b[0]) {
 	case FrameType_PING:
 		return &PingFrame{}
 	case FrameType_PONG:
@@ -41,8 +45,8 @@ func CheckFrameType(b []byte) Frame {
 
 const (
 	Stream_FALCO    StreamID = 0x00
-	Stream_TYPING            = 0x01
-	Stream_PRESENCE          = 0x02
+	Stream_TYPING   StreamID = 0x01
+	Stream_PRESENCE StreamID = 0x02
 )
 
 type Frame interface {
@@ -76,7 +80,7 @@ type PingFrame struct {
 }
 
 func (f *PingFrame) Marshal() ([]byte, error) {
-	return []byte{FrameType_PING}, nil
+	return FrameType_PING.Marshal(), nil
 }
 
 func (f *PingFrame) Unmarshal(b []byte) ([]byte, error) {
@@ -88,7 +92,7 @@ type PongFrame struct {
 }
 
 func (f *PongFrame) Marshal() ([]byte, error) {
-	return []byte{FrameType_PONG}, nil
+	return FrameType_PONG.Marshal(), nil
 }
 
 func (f *PongFrame) Unmarshal(b []byte) ([]byte, error) {
@@ -103,7 +107,7 @@ type DataFrame struct {
 }
 
 func (f *DataFrame) Marshal() ([]byte, error) {
-	b := []byte{FrameType_DATA}
+	b := FrameType_DATA.Marshal()
 	b = binary.LittleEndian.AppendUint16(b, uint16(f.StreamID))
 	b = binary.LittleEndian.AppendUint16(b, uint16(len(f.Payload)+2))
 	b = append(b, 0x00) // unknown function
@@ -137,7 +141,7 @@ type AckFrame struct {
 }
 
 func (f *AckFrame) Marshal() ([]byte, error) {
-	b := []byte{FrameType_ACK}
+	b := FrameType_ACK.Marshal()
 	b = binary.LittleEndian.AppendUint16(b, uint16(f.StreamID))
 	b = binary.LittleEndian.AppendUint16(b, 2)
 	b = append(b, 0x00) // unknown function
@@ -183,7 +187,7 @@ type OpenFrame struct {
 
 func (f *OpenFrame) Marshal() ([]byte, error) {
 	var err error
-	b := []byte{FrameType_OPEN}
+	b := FrameType_OPEN.Marshal()
 	b = binary.LittleEndian.AppendUint16(b, uint16(f.StreamID))
 	payload, err := json.Marshal(&f.Parameters)
 	if err != nil {
