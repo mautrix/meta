@@ -33,7 +33,7 @@ import (
 )
 
 var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
-	DisappearingMessages: false,
+	DisappearingMessages: true,
 	AggressiveUpdateInfo: false,
 }
 
@@ -42,7 +42,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 7
+	return 1, 9
 }
 
 const MaxTextLength = 20000
@@ -58,7 +58,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_04_21"
+	base := "fi.mau.meta.capabilities.2025_08_22"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -136,16 +136,17 @@ var metaCaps = &event.RoomFeatures{
 			MaxSize: MaxFileSize,
 		},
 	},
-	MaxTextLength: MaxTextLength,
-	Reply:         event.CapLevelFullySupported,
-	Edit:          event.CapLevelFullySupported,
-	EditMaxCount:  10,
-	EditMaxAge:    ptr.Ptr(jsontime.S(24 * time.Hour)),
-	Delete:        event.CapLevelFullySupported,
-	DeleteForMe:   false,
-	DeleteMaxAge:  ptr.Ptr(jsontime.S(10 * time.Minute)),
-	Reaction:      event.CapLevelFullySupported,
-	ReactionCount: 1,
+	MaxTextLength:       MaxTextLength,
+	Reply:               event.CapLevelFullySupported,
+	Edit:                event.CapLevelFullySupported,
+	EditMaxCount:        10,
+	EditMaxAge:          ptr.Ptr(jsontime.S(24 * time.Hour)),
+	Delete:              event.CapLevelFullySupported,
+	DeleteForMe:         false,
+	DeleteMaxAge:        ptr.Ptr(jsontime.S(10 * time.Minute)),
+	Reaction:            event.CapLevelFullySupported,
+	ReactionCount:       1,
+	TypingNotifications: true,
 	//LocationMessage: event.CapLevelPartialSupport,
 }
 
@@ -157,6 +158,7 @@ func init() {
 	metaCapsWithThreads = ptr.Clone(metaCaps)
 	metaCapsWithThreads.ID += "+communitygroup"
 	metaCapsWithThreads.Thread = event.CapLevelFullySupported
+	metaCapsWithThreads.TypingNotifications = false
 
 	metaCapsWithE2E = ptr.Clone(metaCaps)
 	metaCapsWithE2E.ID += "+e2e"

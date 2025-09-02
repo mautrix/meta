@@ -59,6 +59,8 @@ type MetaClient struct {
 
 	metaState status.BridgeState
 	waState   status.BridgeState
+
+	waLastPresence waTypes.Presence
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -226,6 +228,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      IGChallengeRequired,
+				UserAction: status.UserActionRestart,
 			})
 		} else if errors.Is(err, messagix.ErrAccountSuspended) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
@@ -236,6 +239,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBCheckpointRequired,
+				UserAction: status.UserActionRestart,
 			})
 		} else if errors.Is(err, messagix.ErrConsentRequired) {
 			code := IGConsentRequired
@@ -245,6 +249,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      code,
+				UserAction: status.UserActionRestart,
 			})
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			stateEvt := status.StateUnknownError
@@ -538,7 +543,7 @@ func (m *MetaClient) resetWADevice() {
 }
 
 func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeState {
-	if state.StateEvent == status.StateConnected {
+	if state.StateEvent == status.StateConnected || state.Error == WADisconnected {
 		var copyFrom *status.BridgeState
 		if m.waState.StateEvent != "" && m.waState.StateEvent != status.StateConnected {
 			copyFrom = &m.waState
@@ -561,4 +566,12 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.Info["login_user_agent"] = m.LoginMeta.LoginUA
 	}
 	return state
+}
+
+func (m *MetaClient) updateWAPresence(presence waTypes.Presence) error {
+	err := m.E2EEClient.SendPresence(presence)
+	if err == nil {
+		m.waLastPresence = presence
+	}
+	return err
 }

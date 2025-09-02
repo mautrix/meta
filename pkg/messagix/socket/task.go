@@ -5,6 +5,7 @@ package socket
 */
 
 var TaskLabels = map[string]string{
+	"UpdatePresence":               "3",
 	"ThreadMarkRead":               "21",
 	"AddParticipantsTask":          "23",
 	"UpdateAdminTask":              "25",
@@ -50,4 +51,10 @@ type TaskData struct {
 	Payload      interface{} `json:"payload,omitempty"`
 	QueueName    interface{} `json:"queue_name,omitempty"`
 	TaskId       int64       `json:"task_id"`
+}
+
+type StatelessTaskData struct {
+	Label   string      `json:"label,omitempty"`
+	Payload interface{} `json:"payload,omitempty"`
+	Version string      `json:"version,omitempty"`
 }
