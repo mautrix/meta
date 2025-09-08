@@ -130,11 +130,11 @@ func (db *MetaDB) PutFBIDForIGUser(ctx context.Context, igid string, fbid int64)
 	// If the fbid gets set to a new value for an existing row,
 	// that would be surprising. We don't currently expect these
 	// values ever to change.
-	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_user_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO UPDATE SET fbid = $2")
+	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_user_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO UPDATE SET fbid = $2", igid, fbid)
 	return err
 }
 
 func (db *MetaDB) PutFBIDForIGThread(ctx context.Context, igid string, fbid int64) error {
-	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_thread_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO UPDATE SET fbid = $2")
+	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_thread_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO UPDATE SET fbid = $2", igid, fbid)
 	return err
 }
