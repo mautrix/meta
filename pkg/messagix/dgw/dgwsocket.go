@@ -67,7 +67,11 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 
 	conn, resp, err := dialer.DialContext(ctx, socketURL, headers)
 	if err != nil {
-		return fmt.Errorf("DGW: %w: %w (status code %d)", socket.ErrDial, err, resp.StatusCode)
+		statusCode := 999
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+		return fmt.Errorf("DGW: %w: %w (status code %d)", socket.ErrDial, err, statusCode)
 	}
 	s.conn = conn
 
