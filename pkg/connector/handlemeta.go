@@ -150,12 +150,20 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 	case *dgw.DGWEvent:
 		switch evt := evt.Event.(type) {
 		case dgw.DGWTypingActivityIndicator:
-			threadKey := m.igThreadIDs[evt.InstagramThreadID]
+			threadKey, err := m.getFBIDForIGThread(ctx, evt.InstagramThreadID)
+			if err != nil {
+				log.Warn().Any("event", evt).Err(err).Msg("Error getting FBID for IG thread ID")
+				return
+			}
 			if threadKey == 0 {
 				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown thread ID")
 				return
 			}
-			userID := m.igUserIDs[fmt.Sprintf("%d", evt.InstagramUserID)]
+			userID, err := m.getFBIDForIGUser(ctx, fmt.Sprintf("%d", evt.InstagramUserID))
+			if err != nil {
+				log.Warn().Any("event", evt).Err(err).Msg("Error getting FBID for IG user ID")
+				return
+			}
 			if userID == 0 {
 				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown user ID")
 				return
@@ -243,7 +251,12 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			return
 		}
 		m.syncGhost(ctx, contact)
-		if m.igUserIDsReverse[contact.GetFBID()] == "" {
+		igid, err := m.getIGUserForFBID(ctx, contact.GetFBID())
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Error getting IG user for FBID")
+			continue
+		}
+		if igid == "" {
 			contactsWithoutIGID = append(contactsWithoutIGID, contact.GetFBID())
 		}
 	}
@@ -263,7 +276,10 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 				zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msg("user info request failed")
 			}
 			for _, info := range resp.LSDeleteThenInsertIGContactInfo {
-				m.saveIGID(info)
+				err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+				if err != nil {
+					zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+				}
 			}
 			if len(contactsWithoutIGID) <= batchSize {
 				return
@@ -272,7 +288,10 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 		}
 	}()
 	for _, info := range tbl.LSDeleteThenInsertIGContactInfo {
-		m.saveIGID(info)
+		err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+		}
 	}
 	for _, evt := range innerQueue {
 		if ctx.Err() != nil {
@@ -369,7 +388,10 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	// TODO request more inbox if applicable
 
 	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
-		m.igThreadIDs[igThread.IgThreadId] = igThread.ThreadKey
+		err := m.putFBIDForIGThread(ctx, igThread.IgThreadId, igThread.ThreadKey)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG thread")
+		}
 	}
 
 	return
