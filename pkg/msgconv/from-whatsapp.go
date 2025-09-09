@@ -623,6 +623,15 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 			cm.Parts = []*bridgev2.ConvertedMessagePart{{
 				Type:    event.EventMessage,
 				Content: bridgev2.DisappearingMessageNotice(cm.Disappear.Timer, false),
+				Extra: map[string]any{
+					"com.beeper.action_message": map[string]any{
+						"type":       "disappearing_timer",
+						"timer":      cm.Disappear.Timer.Milliseconds(),
+						"timer_type": cm.Disappear.Type,
+						"implicit":   false,
+					},
+				},
+				DontBridge: cm.Disappear == portal.Disappear,
 			}}
 		} else {
 			cm.Parts = []*bridgev2.ConvertedMessagePart{{
