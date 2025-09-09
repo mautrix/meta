@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.25.0
 
 require (
+	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c
 	github.com/gabriel-vasile/mimetype v1.4.9
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.6.0

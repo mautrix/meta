@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/go-querystring/query"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
@@ -45,15 +46,20 @@ const SecCHMobile = "?0"
 const SecCHModel = `""`
 const SecCHPrefersColorScheme = "light"
 
+const MessengerLiteAppId = "437626316973788"
+const MessengerLiteAccessToken = MessengerLiteAppId + "|3e1a7033ae7883bfb31f35375bad9c7a"
+const MessengerLiteUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/515.0.0.33.107;FBBV/759681175;FBDV/iPhone13,2;FBMD/iPhone;FBSN/iOS;FBSV/16.1.2;FBSS/3;FBCR/;FBID/phone;FBLC/en_US;FBOP/0]"
+
 var ErrClientIsNil = whatsmeow.ErrClientIsNil
 
 type EventHandler func(ctx context.Context, evt any)
 
 type Client struct {
-	Instagram *InstagramMethods
-	Facebook  *FacebookMethods
-	Logger    zerolog.Logger
-	Platform  types.Platform
+	Instagram     *InstagramMethods
+	Facebook      *FacebookMethods
+	MessengerLite *MessengerLiteMethods
+	Logger        zerolog.Logger
+	Platform      types.Platform
 
 	http         *http.Client
 	socket       *Socket
@@ -66,7 +72,9 @@ type Client struct {
 	socksProxy  proxy.Dialer
 	GetNewProxy func(reason string) (string, error)
 
-	device *store.Device
+	device    *store.Device
+	DeviceID  uuid.UUID // aka store.Device.FacebookUUID
+	machineId string
 
 	lsRequests      int
 	graphQLRequests int
@@ -225,6 +233,9 @@ func (c *Client) configurePlatformClient() {
 	case types.Messenger:
 		selectedEndpoints = endpoints.MessengerEndpoints
 		c.Facebook = &FacebookMethods{client: c}
+	case types.MessengerLite:
+		selectedEndpoints = endpoints.MessengerLiteEndpoints
+		c.MessengerLite = &MessengerLiteMethods{client: c}
 	case types.Instagram:
 		selectedEndpoints = endpoints.InstagramEndpoints
 		c.Instagram = &InstagramMethods{client: c}
