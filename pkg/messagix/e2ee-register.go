@@ -40,6 +40,8 @@ import (
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 type ICDCFetchResponse struct {
@@ -73,19 +75,19 @@ type ICDCRegisterResponse struct {
 }
 
 func (c *Client) doE2EERequest(ctx context.Context, endpoint string, body url.Values, into any) error {
-	addr := c.getEndpoint(endpoint)
+	addr := c.GetEndpoint(endpoint)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, addr, strings.NewReader(body.Encode()))
 	if err != nil {
 		return fmt.Errorf("failed to prepare request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 	req.Header.Set("accept-language", "en-US,en;q=0.9")
-	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("User-Agent", useragent.UserAgent)
 	req.Header.Set("sec-fetch-dest", "empty")
 	req.Header.Set("sec-fetch-mode", "cors")
 	req.Header.Set("sec-fetch-site", "cross-site")
-	req.Header.Set("origin", c.getEndpoint("base_url"))
-	req.Header.Set("referer", c.getEndpoint("messages")+"/")
+	req.Header.Set("origin", c.GetEndpoint("base_url"))
+	req.Header.Set("referer", c.GetEndpoint("messages")+"/")
 	zerolog.Ctx(ctx).Trace().
 		Str("url", addr).
 		Any("body", body).

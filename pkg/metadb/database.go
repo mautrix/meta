@@ -98,3 +98,43 @@ func (db *MetaDB) PopReconnectionState(ctx context.Context, loginID networkid.Us
 	}
 	return
 }
+
+func (db *MetaDB) GetFBIDForIGUser(ctx context.Context, igid string) (fbid int64, err error) {
+	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_user_id WHERE igid = $1", igid).Scan(&fbid)
+	if errors.Is(err, sql.ErrNoRows) {
+		// return 0 if not cached
+		err = nil
+	}
+	return
+}
+
+func (db *MetaDB) GetIGUserForFBID(ctx context.Context, fbid int64) (igid string, err error) {
+	err = db.QueryRow(ctx, "SELECT igid FROM meta_instagram_user_id WHERE fbid = $1", igid).Scan(&igid)
+	if errors.Is(err, sql.ErrNoRows) {
+		// return "" if not cached
+		err = nil
+	}
+	return
+}
+
+func (db *MetaDB) GetFBIDForIGThread(ctx context.Context, igid string) (fbid int64, err error) {
+	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_thread_id WHERE igid = $1", igid).Scan(&fbid)
+	if errors.Is(err, sql.ErrNoRows) {
+		// return 0 if not cached
+		err = nil
+	}
+	return
+}
+
+func (db *MetaDB) PutFBIDForIGUser(ctx context.Context, igid string, fbid int64) error {
+	// If the fbid gets set to a new value for an existing row,
+	// that would be surprising. We don't currently expect these
+	// values ever to change.
+	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_user_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO UPDATE SET fbid = $2", igid, fbid)
+	return err
+}
+
+func (db *MetaDB) PutFBIDForIGThread(ctx context.Context, igid string, fbid int64) error {
+	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_thread_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO UPDATE SET fbid = $2", igid, fbid)
+	return err
+}

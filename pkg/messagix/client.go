@@ -25,25 +25,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/endpoints"
+	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
-
-const DPR = "1"
-const BrowserName = "Chrome"
-const ChromeVersion = "138"
-const ChromeVersionFull = ChromeVersion + ".0.7204.92"
-const UserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + ChromeVersion + ".0.0.0 Safari/537.36"
-const SecCHUserAgent = `"Chromium";v="` + ChromeVersion + `", "Google Chrome";v="` + ChromeVersion + `", "Not-A.Brand";v="99"`
-const SecCHFullVersionList = `"Chromium";v="` + ChromeVersionFull + `", "Google Chrome";v="` + ChromeVersionFull + `", "Not-A.Brand";v="99.0.0.0"`
-const OSName = "Linux"
-const OSVersion = "6.8.0"
-const SecCHPlatform = `"` + OSName + `"`
-const SecCHPlatformVersion = `"` + OSVersion + `"`
-const SecCHMobile = "?0"
-const SecCHModel = `""`
-const SecCHPrefersColorScheme = "light"
 
 var ErrClientIsNil = whatsmeow.ErrClientIsNil
 
@@ -57,6 +43,7 @@ type Client struct {
 
 	http         *http.Client
 	socket       *Socket
+	dgwSocket    *dgw.Socket
 	eventHandler EventHandler
 	configs      *Configs
 	syncManager  *SyncManager
@@ -77,9 +64,9 @@ type Client struct {
 	catRefreshLock         sync.Mutex
 	unnecessaryCATRequests int
 
-	stopCurrentConnection atomic.Pointer[context.CancelFunc]
-	connectionLoopStopped *exsync.Event
-	canSendMessages       *exsync.Event
+	stopCurrentConnections atomic.Pointer[context.CancelFunc]
+	connectionLoopStopped  *exsync.Event
+	canSendMessages        *exsync.Event
 }
 
 var DisableTLSVerification = false
@@ -188,7 +175,7 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 	}
 
 	moduleLoader := &ModuleParser{client: c, LS: &table.LSTable{}}
-	err := moduleLoader.Load(ctx, c.getEndpoint("messages"))
+	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
 	}
@@ -209,7 +196,7 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 
 func (c *Client) loadLoginPage(ctx context.Context) *ModuleParser {
 	moduleLoader := &ModuleParser{client: c}
-	moduleLoader.Load(ctx, c.getEndpoint("login_page"))
+	moduleLoader.Load(ctx, c.GetEndpoint("login_page"))
 	return moduleLoader
 }
 
@@ -265,7 +252,7 @@ func (c *Client) SetEventHandler(handler EventHandler) {
 	c.eventHandler = handler
 }
 
-func (c *Client) handleEvent(ctx context.Context, evt any) {
+func (c *Client) HandleEvent(ctx context.Context, evt any) {
 	if c.eventHandler != nil {
 		c.eventHandler(ctx, evt)
 	}
@@ -292,14 +279,14 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	oldCancel := c.stopCurrentConnection.Swap(&cancel)
+	oldCancel := c.stopCurrentConnections.Swap(&cancel)
 	if oldCancel != nil {
 		(*oldCancel)()
 	}
 	c.connectionLoopStopped.Clear()
 	go func() {
 		defer func() {
-			if c.stopCurrentConnection.Load() == &cancel {
+			if c.stopCurrentConnections.Load() == &cancel {
 				c.connectionLoopStopped.Set()
 			}
 		}()
@@ -321,11 +308,11 @@ func (c *Client) Connect(ctx context.Context) error {
 				errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) ||
 				// TODO server unavailable may mean a challenge state, should be checked somehow
 				errors.Is(err, CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
-				c.handleEvent(ctx, &Event_PermanentError{Err: err})
+				c.HandleEvent(ctx, &Event_PermanentError{Err: err})
 				return
 			}
 			connectionAttempts += 1
-			c.handleEvent(ctx, &Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
+			c.HandleEvent(ctx, &Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
 			if time.Since(connectStart) > 2*time.Minute {
 				reconnectIn = 2 * time.Second
 			} else {
@@ -347,6 +334,51 @@ func (c *Client) Connect(ctx context.Context) error {
 			c.UpdateProxy("reconnect")
 		}
 	}()
+	if c.Platform == types.Instagram {
+		go c.connectDGW(ctx)
+	}
+	return nil
+}
+
+func (c *Client) connectDGW(ctx context.Context) error {
+	reconnectIn := 2 * time.Second
+	for {
+		connectStart := time.Now()
+		err := c.connectDGWOnce(ctx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if time.Since(connectStart) > 2*time.Minute {
+			reconnectIn = 2 * time.Second
+		} else {
+			reconnectIn *= 2
+			if reconnectIn > 5*time.Minute {
+				reconnectIn = 5 * time.Minute
+			}
+		}
+		if err != nil {
+			c.Logger.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in DGW connection, reconnecting")
+		} else {
+			c.Logger.Warn().Dur("reconnect_in", reconnectIn).Msg("DGW connection closed without error, reconnecting")
+		}
+		select {
+		case <-time.After(reconnectIn):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (c *Client) connectDGWOnce(ctx context.Context) error {
+	c.dgwSocket = dgw.NewSocketClient(c)
+	err := c.dgwSocket.CanConnect()
+	if err != nil {
+		return err
+	}
+	err = c.dgwSocket.Connect(ctx)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -354,10 +386,13 @@ func (c *Client) Disconnect() {
 	if c == nil {
 		return
 	}
-	if fn := c.stopCurrentConnection.Load(); fn != nil {
+	if fn := c.stopCurrentConnections.Load(); fn != nil {
 		(*fn)()
 	}
 	c.socket.Disconnect()
+	if c.dgwSocket != nil {
+		c.dgwSocket.Disconnect()
+	}
 	if !c.connectionLoopStopped.WaitTimeout(5 * time.Second) {
 		c.Logger.Warn().Msg("Connection loop didn't stop in time")
 	}
@@ -377,19 +412,19 @@ func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
 	if c.Platform.IsMessenger() {
 		h.Set("sec-fetch-site", "same-origin") // header is required
 		h.Set("sec-fetch-user", "?1")
-		h.Set("host", c.getEndpoint("host"))
+		h.Set("host", c.GetEndpoint("host"))
 		h.Set("upgrade-insecure-requests", "1")
-		h.Set("origin", c.getEndpoint("base_url"))
+		h.Set("origin", c.GetEndpoint("base_url"))
 		h.Set("cookie", "_js_datr="+jsDatr)
-		h.Set("referer", c.getEndpoint("login_page"))
+		h.Set("referer", c.GetEndpoint("login_page"))
 		q := c.newHTTPQuery()
 		q.AcceptOnlyEssential = "false"
 		payloadQuery = q
 	} else {
 		h.Set("sec-fetch-site", "same-site") // header is required
-		h.Set("host", c.getEndpoint("host"))
-		h.Set("origin", c.getEndpoint("base_url"))
-		h.Set("referer", c.getEndpoint("base_url")+"/")
+		h.Set("host", c.GetEndpoint("host"))
+		h.Set("origin", c.GetEndpoint("base_url"))
+		h.Set("referer", c.GetEndpoint("base_url")+"/")
 		h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.BrowserConfigTable.SiteData.ServerRevision, 10))
 		variables, err := json.Marshal(&types.InstagramCookiesVariables{
 			FirstPartyTrackingOptIn: true,
@@ -416,7 +451,7 @@ func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
 	}
 
 	payload := []byte(form.Encode())
-	req, _, err := c.MakeRequest(ctx, c.getEndpoint("cookie_consent"), "POST", h, payload, types.FORM)
+	req, _, err := c.MakeRequest(ctx, c.GetEndpoint("cookie_consent"), "POST", h, payload, types.FORM)
 	if err != nil {
 		return err
 	}
@@ -433,7 +468,7 @@ func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
 	return nil
 }
 
-func (c *Client) getEndpoint(name string) string {
+func (c *Client) GetEndpoint(name string) string {
 	if endpoint, ok := c.endpoints[name]; ok {
 		return endpoint
 	}
@@ -441,7 +476,7 @@ func (c *Client) getEndpoint(name string) string {
 }
 
 func (c *Client) getEndpointForThreadID(threadID int64) string {
-	return c.getEndpoint("thread") + strconv.FormatInt(threadID, 10) + "/"
+	return c.GetEndpoint("thread") + strconv.FormatInt(threadID, 10) + "/"
 }
 
 func (c *Client) IsAuthenticated() bool {
@@ -499,4 +534,8 @@ func (c *Client) WaitUntilCanSendMessages(ctx context.Context, timeout time.Dura
 	case <-c.canSendMessages.GetChan():
 		return nil
 	}
+}
+
+func (c *Client) GetLogger() *zerolog.Logger {
+	return &c.Logger
 }

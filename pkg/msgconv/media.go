@@ -33,7 +33,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 var mediaHTTPClient = http.Client{
@@ -78,9 +78,9 @@ func addDownloadHeaders(hdr http.Header, mime string) {
 	hdr.Set("Sec-Fetch-Site", "cross-site")
 	// Setting a referer seems to disable redirects for some reason
 	//hdr.Set("Referer", MediaReferer)
-	hdr.Set("User-Agent", messagix.UserAgent)
-	hdr.Set("sec-ch-ua", messagix.SecCHUserAgent)
-	hdr.Set("sec-ch-ua-platform", messagix.SecCHPlatform)
+	hdr.Set("User-Agent", useragent.UserAgent)
+	hdr.Set("sec-ch-ua", useragent.SecCHUserAgent)
+	hdr.Set("sec-ch-ua-platform", useragent.SecCHPlatform)
 }
 
 func DownloadAvatar(ctx context.Context, url string) ([]byte, error) {

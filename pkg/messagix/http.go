@@ -14,6 +14,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 type HttpQuery struct {
@@ -230,15 +231,15 @@ func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header 
 	headers := http.Header{}
 	headers.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 	headers.Set("accept-language", "en-US,en;q=0.9")
-	headers.Set("dpr", DPR)
-	headers.Set("user-agent", UserAgent)
-	headers.Set("sec-ch-ua", SecCHUserAgent)
-	headers.Set("sec-ch-ua-platform", SecCHPlatform)
-	headers.Set("sec-ch-prefers-color-scheme", SecCHPrefersColorScheme)
-	headers.Set("sec-ch-ua-full-version-list", SecCHFullVersionList)
-	headers.Set("sec-ch-ua-mobile", SecCHMobile)
-	headers.Set("sec-ch-ua-model", SecCHModel)
-	headers.Set("sec-ch-ua-platform-version", SecCHPlatformVersion)
+	headers.Set("dpr", useragent.DPR)
+	headers.Set("user-agent", useragent.UserAgent)
+	headers.Set("sec-ch-ua", useragent.SecCHUserAgent)
+	headers.Set("sec-ch-ua-platform", useragent.SecCHPlatform)
+	headers.Set("sec-ch-prefers-color-scheme", useragent.SecCHPrefersColorScheme)
+	headers.Set("sec-ch-ua-full-version-list", useragent.SecCHFullVersionList)
+	headers.Set("sec-ch-ua-mobile", useragent.SecCHMobile)
+	headers.Set("sec-ch-ua-model", useragent.SecCHModel)
+	headers.Set("sec-ch-ua-platform-version", useragent.SecCHPlatformVersion)
 
 	if isSecFetchDocument {
 		headers.Set("sec-fetch-dest", "document")
@@ -317,8 +318,8 @@ func (c *Client) buildLoginHeaders() http.Header {
 	} else {
 		h = c.addLoginInstagramHeaders(h)
 	}
-	h.Set("origin", c.getEndpoint("base_url"))
-	h.Set("referer", c.getEndpoint("login_page"))
+	h.Set("origin", c.GetEndpoint("base_url"))
+	h.Set("referer", c.GetEndpoint("login_page"))
 
 	return h
 }

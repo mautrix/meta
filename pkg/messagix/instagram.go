@@ -34,9 +34,9 @@ func (ig *InstagramMethods) Login(ctx context.Context, identifier, password stri
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin")
 	h.Set("x-requested-with", "XMLHttpRequest")
-	h.Set("referer", ig.client.getEndpoint("login_page"))
+	h.Set("referer", ig.client.GetEndpoint("login_page"))
 
-	login_page_v1 := ig.client.getEndpoint("web_login_page_v1")
+	login_page_v1 := ig.client.GetEndpoint("web_login_page_v1")
 	_, _, err := ig.client.MakeRequest(ctx, login_page_v1, "GET", h, nil, types.NONE)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", login_page_v1, err)
@@ -47,7 +47,7 @@ func (ig *InstagramMethods) Login(ctx context.Context, identifier, password stri
 		return nil, err
 	}
 
-	web_shared_data_v1 := ig.client.getEndpoint("web_shared_data_v1")
+	web_shared_data_v1 := ig.client.GetEndpoint("web_shared_data_v1")
 	req, respBody, err := ig.client.MakeRequest(ctx, web_shared_data_v1, "GET", h, nil, types.NONE) // returns actual machineId you're supposed to use
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", web_shared_data_v1, err)
@@ -83,7 +83,7 @@ func (ig *InstagramMethods) Login(ctx context.Context, identifier, password stri
 	if err != nil {
 		return nil, err
 	}
-	web_login_ajax_v1 := ig.client.getEndpoint("web_login_ajax_v1")
+	web_login_ajax_v1 := ig.client.GetEndpoint("web_login_ajax_v1")
 	loginResp, loginBody, err := ig.client.sendLoginRequest(ctx, form, web_login_ajax_v1)
 	if err != nil {
 		return nil, err
@@ -100,8 +100,8 @@ func (ig *InstagramMethods) Login(ctx context.Context, identifier, password stri
 func (ig *InstagramMethods) FetchProfile(ctx context.Context, username string) (*responses.ProfileInfoResponse, error) {
 	h := ig.client.buildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
-	h.Set("referer", ig.client.getEndpoint("base_url")+username+"/")
-	reqUrl := ig.client.getEndpoint("web_profile_info") + "username=" + username
+	h.Set("referer", ig.client.GetEndpoint("base_url")+username+"/")
+	reqUrl := ig.client.GetEndpoint("web_profile_info") + "username=" + username
 
 	resp, respBody, err := ig.client.MakeRequest(ctx, reqUrl, "GET", h, nil, types.NONE)
 	if err != nil {
@@ -122,13 +122,13 @@ func (ig *InstagramMethods) FetchProfile(ctx context.Context, username string) (
 func (ig *InstagramMethods) FetchMedia(ctx context.Context, mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
 	h := ig.client.buildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
-	referer := ig.client.getEndpoint("base_url")
+	referer := ig.client.GetEndpoint("base_url")
 	if mediaShortcode != "" {
 		referer = fmt.Sprintf("%s/p/%s/", referer, mediaShortcode)
 	}
 	h.Set("referer", referer)
 	h.Set("Accept", "*/*")
-	reqUrl := fmt.Sprintf(ig.client.getEndpoint("media_info"), mediaID)
+	reqUrl := fmt.Sprintf(ig.client.GetEndpoint("media_info"), mediaID)
 
 	resp, respBody, err := ig.client.MakeRequest(ctx, reqUrl, "GET", h, nil, types.NONE)
 	if err != nil {
@@ -149,7 +149,7 @@ func (ig *InstagramMethods) FetchMedia(ctx context.Context, mediaID, mediaShortc
 func (ig *InstagramMethods) FetchReel(ctx context.Context, reelIDs []string, mediaID string) (*responses.ReelInfoResponse, error) {
 	h := ig.client.buildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
-	h.Set("referer", ig.client.getEndpoint("base_url"))
+	h.Set("referer", ig.client.GetEndpoint("base_url"))
 	h.Set("Accept", "*/*")
 	query := url.Values{}
 	if mediaID != "" {
@@ -159,7 +159,7 @@ func (ig *InstagramMethods) FetchReel(ctx context.Context, reelIDs []string, med
 		query.Add("reel_ids", id)
 	}
 
-	reqUrl := ig.client.getEndpoint("reels_media") + query.Encode()
+	reqUrl := ig.client.GetEndpoint("reels_media") + query.Encode()
 	resp, respBody, err := ig.client.MakeRequest(ctx, reqUrl, "GET", h, nil, types.NONE)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch reels by ids %v: %w", reelIDs, err)
@@ -208,10 +208,10 @@ func (ig *InstagramMethods) RegisterPushNotifications(ctx context.Context, endpo
 
 	headers := c.buildHeaders(true, false)
 	headers.Set("x-requested-with", "XMLHttpRequest")
-	headers.Set("Referer", c.getEndpoint("base_url"))
+	headers.Set("Referer", c.GetEndpoint("base_url"))
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-	url := c.getEndpoint("web_push")
+	url := c.GetEndpoint("web_push")
 	resp, body, err := c.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
 	if err != nil {
 		return err

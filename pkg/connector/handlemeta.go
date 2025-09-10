@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -144,6 +147,44 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 			(*stopPeriodicReconnect)()
 		}
+	case *dgw.DGWEvent:
+		switch evt := evt.Event.(type) {
+		case dgw.DGWTypingActivityIndicator:
+			threadKey, err := m.getFBIDForIGThread(ctx, evt.InstagramThreadID)
+			if err != nil {
+				log.Warn().Any("event", evt).Err(err).Msg("Error getting FBID for IG thread ID")
+				return
+			}
+			if threadKey == 0 {
+				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown thread ID")
+				return
+			}
+			userID, err := m.getFBIDForIGUser(ctx, fmt.Sprintf("%d", evt.InstagramUserID))
+			if err != nil {
+				log.Warn().Any("event", evt).Err(err).Msg("Error getting FBID for IG user ID")
+				return
+			}
+			if userID == 0 {
+				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown user ID")
+				return
+			}
+			timeout := 6 * time.Second
+			if !evt.IsTyping {
+				timeout = 0
+			}
+			m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
+				EventMeta: simplevent.EventMeta{
+					Type:      bridgev2.RemoteEventTyping,
+					PortalKey: m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE),
+					Sender:    m.makeEventSender(userID),
+					Timestamp: evt.Timestamp,
+				},
+				Timeout: timeout,
+				Type:    bridgev2.TypingTypeText,
+			})
+		default:
+			log.Warn().Type("event_type", evt).Msg("Unrecognized DGW event type from messagix")
+		}
 	default:
 		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
 	}
@@ -208,6 +249,57 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			return
 		}
 		m.syncGhost(ctx, contact)
+	}
+	if m.Client.Platform == types.Instagram {
+		contactsWithoutIGID := []int64{}
+		for _, contact := range tbl.LSVerifyContactRowExists {
+			if ctx.Err() != nil {
+				return
+			}
+			igid, err := m.getIGUserForFBID(ctx, contact.GetFBID())
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Error getting IG user for FBID")
+				continue
+			}
+			if igid == "" {
+				contactsWithoutIGID = append(contactsWithoutIGID, contact.GetFBID())
+			}
+		}
+		go func() {
+			for len(contactsWithoutIGID) > 0 {
+				// Web client seems to fetch in groups of up to five
+				batchSize := 5
+				contactsBatch := contactsWithoutIGID[:batchSize]
+				tasks := []socket.Task{}
+				for _, contact := range contactsBatch {
+					tasks = append(tasks, &socket.GetContactsFullTask{
+						ContactID: contact,
+					})
+				}
+				resp, err := m.Client.ExecuteTasks(ctx, tasks...)
+				if err != nil {
+					zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msg("user info request failed")
+					return
+				}
+				for _, info := range resp.LSDeleteThenInsertIGContactInfo {
+					err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+					if err != nil {
+						zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+						return
+					}
+				}
+				if len(contactsWithoutIGID) <= batchSize {
+					return
+				}
+				contactsWithoutIGID = contactsWithoutIGID[batchSize:]
+			}
+		}()
+		for _, info := range tbl.LSDeleteThenInsertIGContactInfo {
+			err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+			}
+		}
 	}
 	for _, evt := range innerQueue {
 		if ctx.Err() != nil {
@@ -302,6 +394,13 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
 	// TODO request more inbox if applicable
+
+	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
+		err := m.putFBIDForIGThread(ctx, igThread.IgThreadId, igThread.ThreadKey)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG thread")
+		}
+	}
 
 	return
 }

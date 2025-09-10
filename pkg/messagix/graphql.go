@@ -49,10 +49,10 @@ func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables 
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
-	headers.Set("origin", c.getEndpoint("base_url"))
-	headers.Set("referer", c.getEndpoint("messages")+"/")
+	headers.Set("origin", c.GetEndpoint("base_url"))
+	headers.Set("referer", c.GetEndpoint("messages")+"/")
 
-	reqUrl := c.getEndpoint("graphql")
+	reqUrl := c.GetEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
 	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 	if err == nil && resp != nil {

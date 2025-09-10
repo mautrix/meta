@@ -30,6 +30,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 func (c *Client) PrepareE2EEClient() (*whatsmeow.Client, error) {
@@ -41,9 +42,9 @@ func (c *Client) PrepareE2EEClient() (*whatsmeow.Client, error) {
 	e2eeClient := whatsmeow.NewClient(c.device, waLog.Zerolog(c.Logger.With().Str("component", "whatsmeow").Logger()))
 	e2eeClient.GetClientPayload = c.getClientPayload
 	e2eeClient.MessengerConfig = &whatsmeow.MessengerConfig{
-		UserAgent:    UserAgent,
-		BaseURL:      c.getEndpoint("base_url"),
-		WebsocketURL: c.getEndpoint("e2ee_ws_url"),
+		UserAgent:    useragent.UserAgent,
+		BaseURL:      c.GetEndpoint("base_url"),
+		WebsocketURL: c.GetEndpoint("e2ee_ws_url"),
 	}
 	e2eeClient.RefreshCAT = c.refreshCAT
 	return e2eeClient, nil
@@ -119,7 +120,7 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 	return &waWa6.ClientPayload{
 		Device:      proto.Uint32(uint32(c.device.ID.Device)),
 		FbCat:       []byte(c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat),
-		FbUserAgent: []byte(UserAgent),
+		FbUserAgent: []byte(useragent.UserAgent),
 		Product:     waWa6.ClientPayload_MESSENGER.Enum(),
 		Username:    proto.Uint64(userID),
 
@@ -128,7 +129,7 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 		Passive:       proto.Bool(false),
 		Pull:          proto.Bool(true),
 		UserAgent: &waWa6.ClientPayload_UserAgent{
-			Device: proto.String(BrowserName),
+			Device: proto.String(useragent.BrowserName),
 			AppVersion: &waWa6.ClientPayload_UserAgent_AppVersion{
 				Primary:   proto.Uint32(301),
 				Secondary: proto.Uint32(0),
@@ -137,7 +138,7 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 			LocaleCountryIso31661Alpha2: proto.String("en"),
 			LocaleLanguageIso6391:       proto.String("en"),
 			//Hardware:                    proto.String("Linux"),
-			Manufacturer:  proto.String(OSName),
+			Manufacturer:  proto.String(useragent.OSName),
 			Mcc:           proto.String("000"),
 			Mnc:           proto.String("000"),
 			OsBuildNumber: proto.String(""),
