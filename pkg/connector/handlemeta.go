@@ -245,52 +245,54 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 		}
 		m.syncGhost(ctx, contact)
 	}
-	contactsWithoutIGID := []int64{}
-	for _, contact := range tbl.LSVerifyContactRowExists {
-		if ctx.Err() != nil {
-			return
-		}
-		m.syncGhost(ctx, contact)
-		igid, err := m.getIGUserForFBID(ctx, contact.GetFBID())
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Error getting IG user for FBID")
-			continue
-		}
-		if igid == "" {
-			contactsWithoutIGID = append(contactsWithoutIGID, contact.GetFBID())
-		}
-	}
-	go func() {
-		for len(contactsWithoutIGID) > 0 {
-			// Web client seems to fetch in groups of up to five
-			batchSize := 5
-			contactsBatch := contactsWithoutIGID[:batchSize]
-			tasks := []socket.Task{}
-			for _, contact := range contactsBatch {
-				tasks = append(tasks, &socket.GetContactsFullTask{
-					ContactID: contact,
-				})
-			}
-			resp, err := m.Client.ExecuteTasks(ctx, tasks...)
-			if err != nil {
-				zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msg("user info request failed")
-			}
-			for _, info := range resp.LSDeleteThenInsertIGContactInfo {
-				err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
-				if err != nil {
-					zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
-				}
-			}
-			if len(contactsWithoutIGID) <= batchSize {
+	if m.Client.Platform == types.Instagram {
+		contactsWithoutIGID := []int64{}
+		for _, contact := range tbl.LSVerifyContactRowExists {
+			if ctx.Err() != nil {
 				return
 			}
-			contactsWithoutIGID = contactsWithoutIGID[batchSize:]
+			m.syncGhost(ctx, contact)
+			igid, err := m.getIGUserForFBID(ctx, contact.GetFBID())
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Error getting IG user for FBID")
+				continue
+			}
+			if igid == "" {
+				contactsWithoutIGID = append(contactsWithoutIGID, contact.GetFBID())
+			}
 		}
-	}()
-	for _, info := range tbl.LSDeleteThenInsertIGContactInfo {
-		err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+		go func() {
+			for len(contactsWithoutIGID) > 0 {
+				// Web client seems to fetch in groups of up to five
+				batchSize := 5
+				contactsBatch := contactsWithoutIGID[:batchSize]
+				tasks := []socket.Task{}
+				for _, contact := range contactsBatch {
+					tasks = append(tasks, &socket.GetContactsFullTask{
+						ContactID: contact,
+					})
+				}
+				resp, err := m.Client.ExecuteTasks(ctx, tasks...)
+				if err != nil {
+					zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msg("user info request failed")
+				}
+				for _, info := range resp.LSDeleteThenInsertIGContactInfo {
+					err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+					if err != nil {
+						zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+					}
+				}
+				if len(contactsWithoutIGID) <= batchSize {
+					return
+				}
+				contactsWithoutIGID = contactsWithoutIGID[batchSize:]
+			}
+		}()
+		for _, info := range tbl.LSDeleteThenInsertIGContactInfo {
+			err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+			}
 		}
 	}
 	for _, evt := range innerQueue {
