@@ -172,7 +172,6 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			if !evt.IsTyping {
 				timeout = 0
 			}
-			log.Error().Any("event", evt).Int64("thread_key", threadKey).Int64("user_id", userID).Msg("rrosborough: Activity indicator")
 			m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
 				EventMeta: simplevent.EventMeta{
 					Type:      bridgev2.RemoteEventTyping,
@@ -245,13 +244,18 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 		}
 		m.syncGhost(ctx, contact)
 	}
+	for _, contact := range tbl.LSVerifyContactRowExists {
+		if ctx.Err() != nil {
+			return
+		}
+		m.syncGhost(ctx, contact)
+	}
 	if m.Client.Platform == types.Instagram {
 		contactsWithoutIGID := []int64{}
 		for _, contact := range tbl.LSVerifyContactRowExists {
 			if ctx.Err() != nil {
 				return
 			}
-			m.syncGhost(ctx, contact)
 			igid, err := m.getIGUserForFBID(ctx, contact.GetFBID())
 			if err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Error getting IG user for FBID")
@@ -275,11 +279,13 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 				resp, err := m.Client.ExecuteTasks(ctx, tasks...)
 				if err != nil {
 					zerolog.Ctx(ctx).Warn().Err(err).Ints64("fbids", contactsBatch).Msg("user info request failed")
+					return
 				}
 				for _, info := range resp.LSDeleteThenInsertIGContactInfo {
 					err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
 					if err != nil {
 						zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
+						return
 					}
 				}
 				if len(contactsWithoutIGID) <= batchSize {
