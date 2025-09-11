@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/mediaproxy"
 
@@ -28,7 +29,12 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 	}
 	zerolog.Ctx(ctx).Trace().Any("mediaInfo", mediaInfo).Any("err", err).Msg("download direct media")
 
-	msg, err := m.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
+	var msg *database.Message
+	if mediaInfo.PartID == "" {
+		msg, err = m.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
+	} else {
+		msg, err = m.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
+	}
 	if err != nil {
 		return nil, nil
 	} else if msg == nil {
@@ -41,7 +47,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 	}
 
 	switch mediaInfo.Type {
-	case metaid.DirectMediaTypeMeta:
+	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2:
 		var info *msgconv.DirectMediaMeta
 		err = json.Unmarshal(dmm, &info)
 		if err != nil {
@@ -58,7 +64,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 			ContentType:   info.MimeType,
 			ContentLength: size,
 		}, nil
-	case metaid.DirectMediaTypeWhatsApp:
+	case metaid.DirectMediaTypeWhatsAppV1, metaid.DirectMediaTypeWhatsAppV2:
 		var info *msgconv.DirectMediaWhatsApp
 		err = json.Unmarshal(dmm, &info)
 		if err != nil {

@@ -96,14 +96,17 @@ func (mc *MessageConverter) ToMatrix(
 	if msg.IsUnsent {
 		return cm
 	}
-	for _, blobAtt := range msg.BlobAttachments {
+	for i, blobAtt := range msg.BlobAttachments {
+		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("blob_attachment_%d", i)))
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt))
 	}
-	for _, legacyAtt := range msg.Attachments {
+	for i, legacyAtt := range msg.Attachments {
+		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("attachment_%d", i)))
 		cm.Parts = append(cm.Parts, mc.legacyAttachmentToMatrix(ctx, legacyAtt))
 	}
 	var urlPreviews []*table.WrappedXMA
-	for _, xmaAtt := range msg.XMAAttachments {
+	for i, xmaAtt := range msg.XMAAttachments {
+		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("xma_attachment_%d", i)))
 		if isProbablyURLPreview(xmaAtt) {
 			// URL previews are handled in the text section
 			urlPreviews = append(urlPreviews, xmaAtt)
@@ -114,7 +117,8 @@ func (mc *MessageConverter) ToMatrix(
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
 	}
-	for _, sticker := range msg.Stickers {
+	for i, sticker := range msg.Stickers {
+		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("sticker_%d", i)))
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
 	}
 	hasRelationSnippet := msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews)
@@ -133,6 +137,7 @@ func (mc *MessageConverter) ToMatrix(
 			content.BeeperLinkPreviews = make([]*event.BeeperLinkPreview, len(urlPreviews))
 			previewLinks := make([]string, len(urlPreviews))
 			for i, preview := range urlPreviews {
+				ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i)))
 				content.BeeperLinkPreviews[i] = mc.urlPreviewToBeeper(ctx, preview)
 				previewLinks[i] = content.BeeperLinkPreviews[i].CanonicalURL
 			}
@@ -198,7 +203,14 @@ func (mc *MessageConverter) ToMatrix(
 	}
 
 	for i, part := range cm.Parts {
-		part.ID = metaid.MakeMessagePartID(i)
+		// If part ID is already assigned, use the one that is given, as some code paths
+		// above generate message fragments with specific part IDs so that media can refer
+		// to those part IDs. Otherwise, assign a sequential integer. It is okay to my
+		// knowledge for two different schemas to co-exist in the same message for part IDs,
+		// as long as they are all mutually unique.
+		if part.ID == "" {
+			part.ID = metaid.MakeMessagePartID(i)
+		}
 		_, hasExternalURL := part.Extra["external_url"]
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
 		if unsupported && !hasExternalURL {
@@ -774,7 +786,11 @@ func (mc *MessageConverter) reuploadAttachment(
 
 	if mc.DirectMedia {
 		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
-		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeMeta, portal.Receiver, msgID)
+		var partID networkid.PartID
+		if ctx.Value(contextKeyPartID) != nil {
+			partID = ctx.Value(contextKeyPartID).(networkid.PartID)
+		}
+		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeMetaV2, portal.Receiver, msgID, partID)
 		var err error
 		content.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
 		if err != nil {
@@ -790,6 +806,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		content.Info.Size = fileSize
 		fillMetadata()
 		return &bridgev2.ConvertedMessagePart{
+			ID:      partID,
 			Type:    eventType,
 			Content: content,
 			Extra:   extra,
