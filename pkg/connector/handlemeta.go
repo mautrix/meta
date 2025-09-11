@@ -269,6 +269,9 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			for len(contactsWithoutIGID) > 0 {
 				// Web client seems to fetch in groups of up to five
 				batchSize := 5
+				if len(contactsWithoutIGID) < batchSize {
+					batchSize = len(contactsWithoutIGID)
+				}
 				contactsBatch := contactsWithoutIGID[:batchSize]
 				tasks := []socket.Task{}
 				for _, contact := range contactsBatch {
