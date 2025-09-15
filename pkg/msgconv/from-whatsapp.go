@@ -159,7 +159,11 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 
 	if mc.DirectMedia {
 		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
-		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsApp, portal.Receiver, msgID)
+		var partID networkid.PartID
+		if ctx.Value(contextKeyPartID) != nil {
+			partID = ctx.Value(contextKeyPartID).(networkid.PartID)
+		}
+		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsAppV2, portal.Receiver, msgID, partID)
 		content := &event.MessageEventContent{
 			Info: &event.FileInfo{
 				MimeType: transport.GetAncillary().GetMimetype(),

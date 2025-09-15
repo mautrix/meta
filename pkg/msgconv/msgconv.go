@@ -73,4 +73,5 @@ const (
 	contextKeyPortal
 	contextKeyFetchXMA
 	contextKeyMsgID
+	contextKeyPartID
 )
