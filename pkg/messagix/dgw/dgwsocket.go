@@ -225,6 +225,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 				fatalError(fmt.Errorf("pong timeout"))
 				return
 			case <-waitDoneCh:
+				return
 			case <-ctx.Done():
 				return
 			}
