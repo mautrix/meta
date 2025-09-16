@@ -354,6 +354,8 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
 	wg.Wait()
 
+	s.client.GetLogger().Debug().Msg("DGW socket closed")
+
 	// Return the error, if any, saved from another goroutine.
 	return *s.err.Load()
 }
