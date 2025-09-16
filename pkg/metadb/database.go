@@ -109,7 +109,7 @@ func (db *MetaDB) GetFBIDForIGUser(ctx context.Context, igid string) (fbid int64
 }
 
 func (db *MetaDB) GetIGUserForFBID(ctx context.Context, fbid int64) (igid string, err error) {
-	err = db.QueryRow(ctx, "SELECT igid FROM meta_instagram_user_id WHERE fbid = $1", igid).Scan(&igid)
+	err = db.QueryRow(ctx, "SELECT igid FROM meta_instagram_user_id WHERE fbid = $1", fbid).Scan(&igid)
 	if errors.Is(err, sql.ErrNoRows) {
 		// return "" if not cached
 		err = nil
