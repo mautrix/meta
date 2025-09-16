@@ -118,22 +118,23 @@ var activityIndicatorPathRegexp = regexp.MustCompile(`^/direct_v2/threads/([0-9]
 
 func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	done := make(chan struct{})
-	markDone := sync.OnceFunc(func() {
-		close(done)
-	})
+	var errorOnce sync.Once
 	var wg sync.WaitGroup
 
 	// Setup a function to call if we get a fatal error, that will
 	// close the connection and store the error so that it can be
-	// returned from the main loop.
+	// returned from the main loop. It's wrapped in Once so only
+	// the first error is stored.
 
 	fatalError := func(err error) {
-		s.err.Store(&err)
-		markDone()
-		closeErr := conn.Close()
-		if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
-			s.client.GetLogger().Debug().Err(closeErr).Msg("Error closing DGW connection after " + err.Error())
-		}
+		errorOnce.Do(func() {
+			s.err.Store(&err)
+			close(done)
+			closeErr := conn.Close()
+			if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+				s.client.GetLogger().Debug().Err(closeErr).Msg("Error closing DGW connection after " + err.Error())
+			}
+		})
 	}
 
 	// Setup channels for inbound and outbound frames, so that
