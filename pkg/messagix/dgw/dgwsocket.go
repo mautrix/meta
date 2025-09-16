@@ -312,8 +312,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 				outgoing <- &PingFrame{}
 			case <-done:
 				return
-			case <-ctx.Done():
-				return
 			}
 		}
 	}()
