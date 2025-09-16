@@ -60,8 +60,8 @@ github.com/zyedidia/clipboard v1.0.4 h1:r6GUQOyPtIaApRLeD56/U+2uJbXis6ANGbKWCljU
 github.com/zyedidia/clipboard v1.0.4/go.mod h1:zykFnZUXX0ErxqvYLUFEq7QDJKId8rmh2FgD0/Y8cjA=
 go.mau.fi/libsignal v0.2.0 h1:oRXj3OHhEJq51BFEM8/50UZblmWiTYH93hsNTPcbk90=
 go.mau.fi/libsignal v0.2.0/go.mod h1:tvjoDsMejgT38CXTXwqaYu8itBiY8O2Mb6biWvZBb9k=
-go.mau.fi/util v0.9.0 h1:ya3s3pX+Y8R2fgp0DbE7a0o3FwncoelDX5iyaeVE8ls=
-go.mau.fi/util v0.9.0/go.mod h1:pdL3lg2aaeeHIreGXNnPwhJPXkXdc3ZxsI6le8hOWEA=
+go.mau.fi/util v0.9.1-0.20250916094949-914cf963df1d h1:bXXmFKHQcBEc18/cIbXy3fmr70nW2J9fHVwBkdK3Ho4=
+go.mau.fi/util v0.9.1-0.20250916094949-914cf963df1d/go.mod h1:pdL3lg2aaeeHIreGXNnPwhJPXkXdc3ZxsI6le8hOWEA=
 go.mau.fi/whatsmeow v0.0.0-20250826144440-85e30ecab38b h1:E7KTA46O96g4PVMhVeJrkghA+6S/pFizo4xDMvv8PdQ=
 go.mau.fi/whatsmeow v0.0.0-20250826144440-85e30ecab38b/go.mod h1:xD0DR3s4T6PDd3BzgQG05AzLWxdKCmnvdCP3UuQvn9w=
 go.mau.fi/zeroconfig v0.2.0 h1:e/OGEERqVRRKlgaro7E6bh8xXiKFSXB3eNNIud7FUjU=
