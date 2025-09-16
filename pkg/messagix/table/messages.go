@@ -56,7 +56,7 @@ type LSUpsertMessage struct {
 	HasQuickReplies                 bool                       `index:"45" json:",omitempty"`
 	AdminMsgCtaId                   int64                      `index:"46" json:",omitempty"`
 	AdminMsgCtaTitle                string                     `index:"47" json:",omitempty"`
-	AdminMsgCtaType                 int64                      `index:"48" json:",omitempty"`
+	AdminMsgCtaType                 string                     `index:"48" json:",omitempty"`
 	CannotUnsendReason              MessageUnsendabilityStatus `index:"49" json:",omitempty"`
 	TextHasLinks                    bool                       `index:"50" json:",omitempty"`
 	ViewFlags                       int64                      `index:"51" json:",omitempty"`
@@ -77,15 +77,19 @@ type LSUpsertMessage struct {
 	BotResponseID                   int64                      `index:"66" json:",omitempty"`
 	MetadataDataclass               any                        `index:"67" json:",omitempty"` // int?
 	EditCount                       int64                      `index:"68" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"69" json:",omitempty"`
-	AdminSignatureName              string                     `index:"70" json:",omitempty"`
-	AdminSignatureProfileURL        string                     `index:"71" json:",omitempty"`
-	AdminSignatureCreatorType       any                        `index:"72" json:",omitempty"`
-	TranslatedText                  string                     `index:"73" json:",omitempty"`
-	TextDialect                     string                     `index:"74" json:",omitempty"`
-	TranslatedTextDialect           string                     `index:"75" json:",omitempty"`
-	ScheduledTimestamp              int64                      `index:"76" json:",omitempty"`
-	IsVideoQuickSend                bool                       `index:"77" json:",omitempty"`
+	IsPaidPartnership               any                        `index:"69" json:",omitempty"`
+	MessageHiddenState              any                        `index:"70" json:",omitempty"`
+	AdminSignatureName              any                        `index:"71" json:",omitempty"`
+	AdminSignatureProfileURL        string                     `index:"72" json:",omitempty"`
+	AdminSignatureCreatorType       any                        `index:"73" json:",omitempty"`
+	ReplyMessageHiddenState         any                        `index:"74" json:",omitempty"`
+	TranslatedText                  string                     `index:"75" json:",omitempty"`
+	TextDialect                     any                        `index:"76" json:",omitempty"`
+	TranslatedTextDialect           any                        `index:"77" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"78" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"79" json:",omitempty"`
+	SubthreadParentMessageID        string                     `index:"80" json:",omitempty"`
+	IsExclusiveToSubthread          bool                       `index:"81" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -161,11 +165,14 @@ func (um *LSUpsertMessage) ToInsert() *LSInsertMessage {
 		AdminSignatureName:              um.AdminSignatureName,
 		AdminSignatureProfileURL:        um.AdminSignatureProfileURL,
 		AdminSignatureCreatorType:       um.AdminSignatureCreatorType,
+		ReplyMessageHiddenState:         um.ReplyMessageHiddenState,
 		TranslatedText:                  um.TranslatedText,
 		TextDialect:                     um.TextDialect,
 		TranslatedTextDialect:           um.TranslatedTextDialect,
 		ScheduledTimestamp:              um.ScheduledTimestamp,
 		IsVideoQuickSend:                um.IsVideoQuickSend,
+		SubthreadParentMessageID:        um.SubthreadParentMessageID,
+		IsExclusiveToSubthread:          um.IsExclusiveToSubthread,
 	}
 }
 
@@ -311,7 +318,7 @@ type LSInsertMessage struct {
 	HasQuickReplies                 bool                       `index:"45" json:",omitempty"`
 	AdminMsgCtaId                   int64                      `index:"46" json:",omitempty"`
 	AdminMsgCtaTitle                string                     `index:"47" json:",omitempty"`
-	AdminMsgCtaType                 int64                      `index:"48" json:",omitempty"`
+	AdminMsgCtaType                 string                     `index:"48" json:",omitempty"`
 	CannotUnsendReason              MessageUnsendabilityStatus `index:"49" json:",omitempty"`
 	TextHasLinks                    bool                       `index:"50" json:",omitempty"`
 	ViewFlags                       int64                      `index:"51" json:",omitempty"`
@@ -332,15 +339,18 @@ type LSInsertMessage struct {
 	BotResponseID                   int64                      `index:"66" json:",omitempty"`
 	MetadataDataclass               any                        `index:"67" json:",omitempty"`
 	EditCount                       int64                      `index:"68" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"69" json:",omitempty"`
-	AdminSignatureName              string                     `index:"70" json:",omitempty"`
+	IsPaidPartnership               any                        `index:"69" json:",omitempty"`
+	AdminSignatureName              any                        `index:"70" json:",omitempty"`
 	AdminSignatureProfileURL        string                     `index:"71" json:",omitempty"`
 	AdminSignatureCreatorType       any                        `index:"72" json:",omitempty"`
-	TranslatedText                  string                     `index:"73" json:",omitempty"`
-	TextDialect                     string                     `index:"74" json:",omitempty"`
-	TranslatedTextDialect           string                     `index:"75" json:",omitempty"`
-	ScheduledTimestamp              int64                      `index:"76" json:",omitempty"`
-	IsVideoQuickSend                bool                       `index:"77" json:",omitempty"`
+	ReplyMessageHiddenState         any                        `index:"73" json:",omitempty"`
+	TranslatedText                  string                     `index:"74" json:",omitempty"`
+	TextDialect                     any                        `index:"75" json:",omitempty"`
+	TranslatedTextDialect           any                        `index:"76" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"77" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"78" json:",omitempty"`
+	SubthreadParentMessageID        string                     `index:"79" json:",omitempty"`
+	IsExclusiveToSubthread          bool                       `index:"80" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -507,7 +517,7 @@ type LSDeleteThenInsertMessage struct {
 	HasQuickReplies                 bool                       `index:"44" json:",omitempty"`
 	AdminMsgCtaId                   int64                      `index:"45" json:",omitempty"`
 	AdminMsgCtaTitle                string                     `index:"46" json:",omitempty"`
-	AdminMsgCtaType                 int64                      `index:"47" json:",omitempty"`
+	AdminMsgCtaType                 string                     `index:"47" json:",omitempty"`
 	CannotUnsendReason              MessageUnsendabilityStatus `index:"48" json:",omitempty"`
 	TextHasLinks                    bool                       `index:"49" json:",omitempty"`
 	ViewFlags                       int64                      `index:"50" json:",omitempty"`
@@ -528,15 +538,18 @@ type LSDeleteThenInsertMessage struct {
 	BotResponseID                   int64                      `index:"65" json:",omitempty"`
 	MetadataDataclass               any                        `index:"66" json:",omitempty"`
 	EditCount                       int64                      `index:"67" json:",omitempty"`
-	IsPaidPartnership               bool                       `index:"68" json:",omitempty"`
-	AdminSignatureName              string                     `index:"69" json:",omitempty"`
+	IsPaidPartnership               any                        `index:"68" json:",omitempty"`
+	AdminSignatureName              any                        `index:"69" json:",omitempty"`
 	AdminSignatureProfileURL        string                     `index:"70" json:",omitempty"`
 	AdminSignatureCreatorType       any                        `index:"71" json:",omitempty"`
-	TranslatedText                  string                     `index:"72" json:",omitempty"`
-	TextDialect                     string                     `index:"73" json:",omitempty"`
-	TranslatedTextDialect           string                     `index:"74" json:",omitempty"`
-	ScheduledTimestamp              int64                      `index:"75" json:",omitempty"`
-	IsVideoQuickSend                bool                       `index:"76" json:",omitempty"`
+	ReplyMessageHiddenState         any                        `index:"72" json:",omitempty"`
+	TranslatedText                  string                     `index:"73" json:",omitempty"`
+	TextDialect                     any                        `index:"74" json:",omitempty"`
+	TranslatedTextDialect           any                        `index:"75" json:",omitempty"`
+	ScheduledTimestamp              int64                      `index:"76" json:",omitempty"`
+	IsVideoQuickSend                bool                       `index:"77" json:",omitempty"`
+	SubthreadParentMessageID        string                     `index:"78" json:",omitempty"`
+	IsExclusiveToSubthread          bool                       `index:"79" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

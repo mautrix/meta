@@ -95,7 +95,7 @@ type LSDeleteThenInsertThread struct {
 	DisappearingModeInitiator             int64      `index:"58" json:",omitempty"`
 	UnreadDisappearingMessageCount        int64      `index:"59" json:",omitempty"`
 	LastMessageCtaId                      int64      `index:"61" json:",omitempty"`
-	LastMessageCtaType                    int64      `index:"62" json:",omitempty"`
+	LastMessageCtaType                    string     `index:"62" json:",omitempty"`
 	ConsistentThreadFbid                  int64      `index:"63" json:",omitempty"`
 	ThreadDescription                     string     `index:"64" json:",omitempty"`
 	UnsendLimitMs                         int64      `index:"65" json:",omitempty"`
@@ -116,10 +116,12 @@ type LSDeleteThenInsertThread struct {
 	IgFolder                              int64      `index:"80" json:",omitempty"`
 	InviterId                             int64      `index:"81" json:",omitempty"`
 	ThreadTags                            int64      `index:"82" json:",omitempty"`
-	ThreadStatus                          int64      `index:"83" json:",omitempty"`
-	ThreadSubtype                         int64      `index:"84" json:",omitempty"`
-	PauseThreadTimestamp                  int64      `index:"85" json:",omitempty"`
-	Metadata                              any        `index:"86" json:",omitempty"`
+	ReadReceiptsDisabledV2                any        `index:"83" json:",omitempty"`
+	ThreadStatus                          int64      `index:"84" json:",omitempty"`
+	ThreadSubtype                         int64      `index:"85" json:",omitempty"`
+	PauseThreadTimestamp                  int64      `index:"86" json:",omitempty"`
+	Metadata                              any        `index:"87" json:",omitempty"`
+	SyncSource                            any        `index:"88" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -535,7 +537,7 @@ type LSUpdateOrInsertThread struct {
 	DisappearingModeInitiator              int64      `index:"61" json:",omitempty"`
 	UnreadDisappearingMessageCount         int64      `index:"62" json:",omitempty"`
 	LastMessageCtaId                       int64      `index:"64" json:",omitempty"`
-	LastMessageCtaType                     int64      `index:"65" json:",omitempty"`
+	LastMessageCtaType                     string     `index:"65" json:",omitempty"`
 	LastMessageCtaTimestampMs              int64      `index:"66" json:",omitempty"`
 	ConsistentThreadFbid                   int64      `index:"67" json:",omitempty"`
 	ThreadDescription                      string     `index:"69" json:",omitempty"`
