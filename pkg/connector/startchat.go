@@ -55,8 +55,10 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 			PortalInfo: m.makeMinimalChatInfo(id, table.ONE_TO_ONE),
 		}
 	}
+	ghost, _ := m.Main.Bridge.GetGhostByID(ctx, metaid.MakeUserID(id))
 	return &bridgev2.ResolveIdentifierResponse{
 		UserID: metaid.MakeUserID(id),
+		Ghost:  ghost,
 		Chat:   chat,
 	}, nil
 }
@@ -104,8 +106,11 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 
 	for _, result := range resp.LSInsertSearchResult {
 		if result.ThreadType == table.ONE_TO_ONE && result.CanViewerMessage && result.GetFBID() != 0 {
+			userID := metaid.MakeUserID(result.GetFBID())
+			ghost, _ := m.Main.Bridge.GetGhostByID(ctx, userID)
 			users = append(users, &bridgev2.ResolveIdentifierResponse{
-				UserID:   metaid.MakeUserID(result.GetFBID()),
+				UserID:   userID,
+				Ghost:    ghost,
 				UserInfo: m.wrapUserInfo(result),
 			})
 		}
