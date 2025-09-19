@@ -492,7 +492,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 		}
 	}
 	threadID := metaid.ParseFBPortalID(receipt.Portal.ID)
-	if !fbMessageToReadTS.IsZero() && threadID != 0 {
+	if !fbMessageToReadTS.IsZero() && threadID != 0 && !receipt.Implicit {
 		var syncGroup int64 = 1
 		// TODO set sync group to 104 for community groups?
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.ThreadMarkReadTask{

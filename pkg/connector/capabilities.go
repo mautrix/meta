@@ -35,6 +35,7 @@ import (
 var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	DisappearingMessages: true,
 	AggressiveUpdateInfo: false,
+	ImplicitReadReceipts: true,
 }
 
 func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
