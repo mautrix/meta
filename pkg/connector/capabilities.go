@@ -36,6 +36,13 @@ var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	DisappearingMessages: true,
 	AggressiveUpdateInfo: false,
 	ImplicitReadReceipts: true,
+	Provisioning: bridgev2.ProvisioningCapabilities{
+		ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
+			CreateDM: true,
+			Search:   true,
+		},
+		GroupCreation: nil, // TODO
+	},
 }
 
 func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
