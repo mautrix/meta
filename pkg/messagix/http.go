@@ -30,7 +30,7 @@ type HttpQuery struct {
 	S                    string `url:"__s,omitempty"`         // not required
 	Hsi                  string `url:"__hsi,omitempty"`       // not required
 	Dyn                  string `url:"__dyn,omitempty"`       // not required
-	Csr                  string `url:"__csr,omitempty"`                 // not required
+	Csr                  string `url:"__csr,omitempty"`       // not required
 	CometReq             string `url:"__comet_req,omitempty"` // not required but idk what this is
 	FbDtsg               string `url:"fb_dtsg,omitempty"`
 	Jazoest              string `url:"jazoest,omitempty"`                  // not required
@@ -58,12 +58,12 @@ type HttpQuery struct {
 	Pretty string `url:"pretty,omitempty"` // "true" or "false"
 	Format string `url:"format,omitempty"`
 	// ServerTimestamps
-	Locale string `url:"locale,omitempty"`
+	Locale  string `url:"locale,omitempty"`
 	Purpose string `url:"purpose,omitempty"`
 	// FbAPIReqFriendlyName
-	ClientDocID string `url:"client_doc_id,omitempty"`
-	EnableCanonicalNaming string `url:"enable_canonical_naming,omitempty"` // "true" or "false"
-	EnableCanonicalVariableOverrides string `url:"enable_canonical_variable_overrides,omitempty"` // "true" or "false"
+	ClientDocID                                 string `url:"client_doc_id,omitempty"`
+	EnableCanonicalNaming                       string `url:"enable_canonical_naming,omitempty"`                          // "true" or "false"
+	EnableCanonicalVariableOverrides            string `url:"enable_canonical_variable_overrides,omitempty"`              // "true" or "false"
 	EnableCanonicalNamingAmbiguousTypePrefixing string `url:"enable_canonical_naming_ambiguous_type_prefixing,omitempty"` // "true" or "false"
 	// Variables
 }
@@ -283,7 +283,7 @@ func (c *Client) buildMessengerLiteHeaders() http.Header {
 	// This isn't from a browser, so we don't include most of the usual headers
 	headers := http.Header{}
 	//headers.Set("accept", "application/json")
-	headers.Set("user-agent", MessengerLiteUserAgent)
+	headers.Set("user-agent", useragent.MessengerLiteUserAgent)
 	headers.Set("x-fb-http-engine", "Tigon+iOS")
 	headers.Set("accept", "*/*")
 	headers.Set("priority", "u=3, i")

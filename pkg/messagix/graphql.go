@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
+
 	//"golang.org/x/net/context"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
@@ -18,6 +19,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 func (c *Client) makeWrappedBloksRequest(ctx context.Context, name string, serverParams map[string]any, clientParams map[string]any) (*http.Response, []byte, error) {
@@ -41,7 +43,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 		return nil, nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
 	}
 
-	payload := &HttpQuery {}
+	payload := &HttpQuery{}
 	payload.Method = "post"
 	payload.Pretty = "false"
 	payload.Format = "json"
@@ -68,9 +70,9 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
 
-	headers.Set("Authorization", "OAuth " + MessengerLiteAccessToken)
+	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
 
-	reqUrl := c.getEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
+	reqUrl := c.GetEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
 	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 
 	// TODO: Do some kind of response processing?
