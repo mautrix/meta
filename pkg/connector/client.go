@@ -60,7 +60,10 @@ type MetaClient struct {
 	metaState status.BridgeState
 	waState   status.BridgeState
 
-	waLastPresence waTypes.Presence
+	waLastPresence   waTypes.Presence
+	igThreadIDs      map[string]int64
+	igUserIDs        map[string]int64
+	igUserIDsReverse map[int64]string
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -83,6 +86,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 		connectWaiter:     exsync.NewEvent(),
 		e2eeConnectWaiter: exsync.NewEvent(),
+		igThreadIDs:       map[string]int64{},
+		igUserIDs:         map[string]int64{},
+		igUserIDsReverse:  map[int64]string{},
 	}
 	if messagixClient != nil {
 		messagixClient.SetEventHandler(c.handleMetaEvent)

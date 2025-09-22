@@ -9,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -55,10 +56,42 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 			PortalInfo: m.makeMinimalChatInfo(id, table.ONE_TO_ONE),
 		}
 	}
+	ghost, _ := m.Main.Bridge.GetGhostByID(ctx, metaid.MakeUserID(id))
 	return &bridgev2.ResolveIdentifierResponse{
 		UserID: metaid.MakeUserID(id),
+		Ghost:  ghost,
 		Chat:   chat,
 	}, nil
+}
+
+func (m *MetaClient) CreateWhatsAppDM(ctx context.Context, threadID int64) error {
+	log := zerolog.Ctx(ctx)
+	resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateWhatsAppThreadTask{
+		WAJID:            threadID,
+		OfflineThreadKey: methods.GenerateEpochID(),
+		ThreadType:       table.ENCRYPTED_OVER_WA_ONE_TO_ONE,
+		FolderType:       table.INBOX,
+		BumpTimestampMS:  time.Now().UnixMilli(),
+		TAMThreadSubtype: 0,
+	})
+	if err != nil {
+		return err
+	}
+	log.Trace().Any("create_resp", resp).Msg("Create WhatsApp thread response")
+	if len(resp.LSIssueNewTask) > 0 {
+		tasks := make([]socket.Task, len(resp.LSIssueNewTask))
+		for i, task := range resp.LSIssueNewTask {
+			log.Trace().Any("task", task).Msg("Create WhatsApp thread response task")
+			tasks[i] = task
+		}
+		resp, err = m.Client.ExecuteTasks(ctx, tasks...)
+		if err != nil {
+			return fmt.Errorf("failed to run WhatsApp thread create subtasks: %w", err)
+		} else {
+			log.Trace().Any("create_resp", resp).Msg("Create thread response")
+		}
+	}
+	return nil
 }
 
 func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev2.ResolveIdentifierResponse, error) {
@@ -104,8 +137,11 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 
 	for _, result := range resp.LSInsertSearchResult {
 		if result.ThreadType == table.ONE_TO_ONE && result.CanViewerMessage && result.GetFBID() != 0 {
+			userID := metaid.MakeUserID(result.GetFBID())
+			ghost, _ := m.Main.Bridge.GetGhostByID(ctx, userID)
 			users = append(users, &bridgev2.ResolveIdentifierResponse{
-				UserID:   metaid.MakeUserID(result.GetFBID()),
+				UserID:   userID,
+				Ghost:    ghost,
 				UserInfo: m.wrapUserInfo(result),
 			})
 		}

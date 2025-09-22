@@ -297,10 +297,12 @@ type LSInsertXmaAttachment struct {
 	CaptionBodyText                            string         `index:"122" json:",omitempty"`
 	IsPublicXma                                bool           `index:"123" json:",omitempty"`
 	ReplyCount                                 int64          `index:"124" json:",omitempty"`
-	XmaDataclass                               string         `index:"125" json:",omitempty"`
-	PreviewOverlayCountdownExpiry              int64          `index:"126" json:",omitempty"`
-	StickerType                                any            `index:"127" json:",omitempty"`
-	AuthorityLevel                             int64          `index:"128" json:",omitempty"`
+	PlayableAudioURL                           string         `index:"125" json:",omitempty"`
+	XmaDataclass                               string         `index:"126" json:",omitempty"`
+	PreviewOverlayCountdownExpiry              string         `index:"127" json:",omitempty"`
+	StickerType                                any            `index:"128" json:",omitempty"`
+	LoggingGenericXMAContentType               string         `index:"129" json:",omitempty"`
+	AuthorityLevel                             int64          `index:"130" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
