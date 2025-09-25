@@ -41,3 +41,9 @@ disable_xma_always: false
 # notifications? Currently, this only has an effect for E2EE chats on
 # Facebook/Messenger. Full presence bridging is not supported.
 send_presence_on_typing: false
+# Should the bridge, when operating in Instagram mode, subscribe to an
+# additional websocket to receive typing indicators from other users?
+# An additional connection is only needed for receiving Instagram
+# typing indicators; the existing connection(s) are sufficient to send
+# and receive typing indicators in all other cases.
+receive_instagram_typing_indicators: true
