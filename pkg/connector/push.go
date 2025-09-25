@@ -105,6 +105,12 @@ type connectBackgroundEvent struct {
 }
 
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
+	data, err := m.decryptPush(params.RawData)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decrypt web push")
+	} else {
+		zerolog.Ctx(ctx).Debug().Bytes("data", data).Msg("Decrypted web push")
+	}
 	log := zerolog.Ctx(ctx)
 
 	evtChan := make(chan connectBackgroundEvent, 8)
