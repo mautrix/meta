@@ -35,6 +35,10 @@ var ErrClientIsNil = whatsmeow.ErrClientIsNil
 
 type EventHandler func(ctx context.Context, evt any)
 
+type Config struct {
+	MayConnectToDGW bool
+}
+
 type Client struct {
 	Instagram *InstagramMethods
 	Facebook  *FacebookMethods
@@ -48,10 +52,11 @@ type Client struct {
 	configs      *Configs
 	syncManager  *SyncManager
 
-	cookies     *cookies.Cookies
-	httpProxy   func(*http.Request) (*url.URL, error)
-	socksProxy  proxy.Dialer
-	GetNewProxy func(reason string) (string, error)
+	cookies         *cookies.Cookies
+	httpProxy       func(*http.Request) (*url.URL, error)
+	socksProxy      proxy.Dialer
+	GetNewProxy     func(reason string) (string, error)
+	mayConnectToDGW bool
 
 	device *store.Device
 
@@ -71,7 +76,7 @@ type Client struct {
 
 var DisableTLSVerification = false
 
-func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
+func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Client {
 	if cookies.Platform == types.Unset {
 		panic("messagix: platform must be set in cookies")
 	}
@@ -111,6 +116,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger) *Client {
 		CSRBitmap:          crypto.NewBitmap(),
 	}
 	cli.socket = cli.newSocketClient()
+	cli.mayConnectToDGW = cfg.MayConnectToDGW
 
 	return cli
 }
@@ -334,7 +340,7 @@ func (c *Client) Connect(ctx context.Context) error {
 			c.UpdateProxy("reconnect")
 		}
 	}()
-	if c.Platform == types.Instagram {
+	if c.Platform == types.Instagram && c.mayConnectToDGW {
 		go c.connectDGW(ctx)
 	}
 	return nil
