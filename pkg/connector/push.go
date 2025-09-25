@@ -108,6 +108,9 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 	data, err := m.decryptPush(params.RawData)
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decrypt web push")
+		zerolog.Ctx(ctx).Debug().
+			Any("keys", m.UserLogin.Metadata.(*metaid.UserLoginMetadata).PushKeys).
+			Msg("Push keys")
 	} else {
 		zerolog.Ctx(ctx).Debug().Bytes("data", data).Msg("Decrypted web push")
 	}
