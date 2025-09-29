@@ -138,28 +138,11 @@ func (m *MetaClient) igPushToMessageID(pd *decryptedPushData) (*methods.MetaMess
 	}, nil
 }
 
-func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *decryptedPushData) {
-	if pd == nil {
+func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *decryptedPushData, parsed *methods.MetaMessageID) {
+	if pd == nil || parsed == nil {
 		return
 	}
 	log := zerolog.Ctx(ctx)
-	var parsed *methods.MetaMessageID
-	var err error
-	if strings.HasPrefix(pd.MessageID, "mid.") {
-		parsed, err = methods.ParseMessageIDFull(pd.MessageID)
-	} else {
-		parsed, err = m.igPushToMessageID(pd)
-	}
-	if err != nil || parsed == nil {
-		log.Warn().
-			Err(err).
-			Str("orig_id", pd.MessageID).
-			Str("ts_param", pd.Params["ts"]).
-			Str("cc_param", pd.Params["cc"]).
-			Str("f_param", pd.Params["f"]).
-			Msg("Failed to parse push message ID")
-		return
-	}
 	msgID := parsed.String()
 	part, err := m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
 	if err != nil {
@@ -216,9 +199,31 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *decrypte
 
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	log := zerolog.Ctx(ctx)
+	var parsedMsgID *methods.MetaMessageID
 	data, err := m.decryptPush(params.RawData)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
+	} else if data != nil {
+		if strings.HasPrefix(data.MessageID, "mid.") {
+			parsedMsgID, err = methods.ParseMessageIDFull(data.MessageID)
+		} else {
+			parsedMsgID, err = m.igPushToMessageID(data)
+		}
+		if err != nil || parsedMsgID == nil {
+			log.Warn().
+				Err(err).
+				Str("orig_id", data.MessageID).
+				Str("ts_param", data.Params["ts"]).
+				Str("cc_param", data.Params["cc"]).
+				Str("f_param", data.Params["f"]).
+				Msg("Failed to parse push message ID")
+		} else {
+			log.Debug().
+				Str("message_id", parsedMsgID.String()).
+				Str("orig_id", data.MessageID).
+				Str("f_param", data.Params["f"]).
+				Msg("Parsed message ID from push notification")
+		}
 	}
 
 	evtChan := make(chan connectBackgroundEvent, 8)
@@ -246,7 +251,7 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to timeout")
-			m.ensurePushMessageReceived(ctx, data)
+			m.ensurePushMessageReceived(ctx, data, parsedMsgID)
 			return nil
 		case <-ctx.Done():
 			log.Debug().
