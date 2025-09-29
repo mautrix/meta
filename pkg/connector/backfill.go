@@ -240,6 +240,9 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		if params.Forward && bridgev2.PortalEventBuffer == 0 {
 			timeout = 15 * time.Second
 		}
+		if m.Main.Bridge.Background {
+			timeout = 8 * time.Second
+		}
 		ticker := time.NewTicker(timeout)
 		prevMinTS := collector.UpsertMessages.Range.MinTimestampMs
 	Loop:

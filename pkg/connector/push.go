@@ -20,13 +20,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -104,8 +109,117 @@ type connectBackgroundEvent struct {
 	isProcessing bool
 }
 
+func (m *MetaClient) igPushToMessageID(pd *decryptedPushData) (*methods.MetaMessageID, error) {
+	ts, err := strconv.ParseInt(pd.Params["ts"], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ts param: %w", err)
+	}
+	cc, err := strconv.ParseInt(pd.Params["cc"], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse cc param: %w", err)
+	}
+	chatID, err := strconv.ParseInt(pd.Params["f"], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse f param: %w", err)
+	}
+	isGroup := pd.Params["aud_gn"] != "" || strings.Contains(pd.Params["network_classification"], "group")
+	chatType := 'c'
+	if isGroup {
+		chatType = 'g'
+	} else {
+		// For DMs, the chat ID is our ID XOR their ID
+		chatID ^= metaid.ParseUserLoginID(m.UserLogin.ID)
+	}
+	return &methods.MetaMessageID{
+		ChatType: chatType,
+		ChatID:   chatID,
+		Time:     time.UnixMilli(ts),
+		TxnID:    cc,
+	}, nil
+}
+
+func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *decryptedPushData) {
+	if pd == nil {
+		return
+	}
+	log := zerolog.Ctx(ctx)
+	var parsed *methods.MetaMessageID
+	var err error
+	if strings.HasPrefix(pd.MessageID, "mid.") {
+		parsed, err = methods.ParseMessageIDFull(pd.MessageID)
+	} else {
+		parsed, err = m.igPushToMessageID(pd)
+	}
+	if err != nil || parsed == nil {
+		log.Warn().
+			Err(err).
+			Str("orig_id", pd.MessageID).
+			Str("ts_param", pd.Params["ts"]).
+			Str("cc_param", pd.Params["cc"]).
+			Str("f_param", pd.Params["f"]).
+			Msg("Failed to parse push message ID")
+		return
+	}
+	msgID := parsed.String()
+	part, err := m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
+	if err != nil {
+		log.Err(err).Str("message_id", msgID).
+			Msg("Failed to look up push message in database")
+		return
+	} else if part != nil {
+		log.Debug().
+			Str("message_id", msgID).
+			Str("chat_id", string(part.Room.ID)).
+			Str("f_param", pd.Params["f"]).
+			Stringer("event_id", part.MXID).
+			Msg("Confirmed push message was bridged")
+		return
+	}
+	threadType := table.ONE_TO_ONE
+	chatID := parsed.ChatID
+	if parsed.ChatType == 'g' {
+		threadType = table.GROUP_THREAD
+	} else if parsed.ChatType == 'c' {
+		chatID ^= metaid.ParseUserLoginID(m.UserLogin.ID)
+	}
+	log.Warn().
+		Str("message_id", msgID).
+		Int64("chat_id", chatID).
+		Str("f_param", pd.Params["f"]).
+		Msg("Push message wasn't bridged, trying to backfill")
+	res := m.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventChatResync,
+			LogContext:   nil,
+			PortalKey:    m.makeFBPortalKey(chatID, threadType),
+			CreatePortal: true,
+		},
+		LatestMessageTS: parsed.Time,
+	})
+	log.Debug().Any("result", res).Msg("Event handling result for push backfill")
+	part, err = m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
+	if err != nil {
+		log.Err(err).Str("message_id", msgID).
+			Msg("Failed to look up push message in database after backfill")
+	} else if part != nil {
+		log.Debug().
+			Str("message_id", msgID).
+			Str("chat_id", string(part.Room.ID)).
+			Stringer("event_id", part.MXID).
+			Msg("Confirmed push message was bridged after backfill")
+	} else {
+		log.Warn().
+			Str("message_id", msgID).
+			Msg("Push message still wasn't bridged after backfill")
+	}
+}
+
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	log := zerolog.Ctx(ctx)
+	data, err := m.decryptPush(params.RawData)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to decrypt web push")
+	}
 
 	evtChan := make(chan connectBackgroundEvent, 8)
 	m.connectBackgroundWAOfflineSync.Clear()
@@ -132,6 +246,7 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to timeout")
+			m.ensurePushMessageReceived(ctx, data)
 			return nil
 		case <-ctx.Done():
 			log.Debug().

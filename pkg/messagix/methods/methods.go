@@ -82,18 +82,68 @@ func NeedUpdateSyncGroups(data *table.LSTable) bool {
 
 const MetaEpochMS = 1072915200000
 
-func ParseMessageID(messageID string) (int64, error) {
-	if !strings.HasPrefix(messageID, "mid.$") || len(messageID) < 10 {
-		return 0, fmt.Errorf("invalid message ID prefix")
+// Message ID format:
+// Prefix: mid.$
+// Chat type (1 character):
+// - c: DM
+// - g: Group
+// - o, m: ??? (only old FB messages?)
+// Body: 21 bytes, base64url encoded without padding
+// - 8 bytes: chat ID (for DMs, our ID XOR their ID)
+// - 5 bytes: timestamp (milliseconds since Meta epoch)
+// - 8 bytes: client-provided transaction ID (aka offline threading ID on FB, client context on IG)
+//
+// Some old FB messages have also been observed in the formats:
+// * 16 bytes of unpadded standard base64 with no prefix
+// * "id." + unknown number
+// * "mid." + unix milliseconds + 5 or 9 bytes of random? hex
+
+type MetaMessageID struct {
+	ChatType rune
+	ChatID   int64
+	Time     time.Time
+	TxnID    int64
+}
+
+func (mmi *MetaMessageID) String() string {
+	if mmi == nil {
+		return ""
 	}
-	rawMessageID, err := base64.RawURLEncoding.DecodeString(messageID[len("mid.$c"):])
+	body := make([]byte, 21)
+	binary.BigEndian.PutUint64(body[5:13], uint64(mmi.Time.UnixMilli()-MetaEpochMS))
+	binary.BigEndian.PutUint64(body[0:8], uint64(mmi.ChatID))
+	binary.BigEndian.PutUint64(body[13:21], uint64(mmi.TxnID))
+	return fmt.Sprintf("mid.$%c%s", mmi.ChatType, base64.RawURLEncoding.EncodeToString(body))
+}
+
+func ParseMessageIDFull(messageID string) (*MetaMessageID, error) {
+	if !strings.HasPrefix(messageID, "mid.$") || len(messageID) < 6 {
+		return nil, fmt.Errorf("invalid message ID prefix")
+	}
+	chatType := rune(messageID[5])
+	payload, err := base64.RawURLEncoding.DecodeString(messageID[6:])
 	if err != nil {
-		return 0, fmt.Errorf("failed to decode message ID: %w", err)
-	} else if len(rawMessageID) != 21 {
-		return 0, fmt.Errorf("unexpected decoded length %d", len(rawMessageID))
+		return nil, fmt.Errorf("failed to decode message ID: %w", err)
+	} else if len(payload) != 21 {
+		return nil, fmt.Errorf("unexpected decoded length %d", len(payload))
 	}
+	chatID := int64(binary.BigEndian.Uint64(payload[0:8]))
 	timestampBuf := make([]byte, 8)
-	copy(timestampBuf[3:], rawMessageID[8:13])
-	timestamp := binary.BigEndian.Uint64(timestampBuf)
-	return int64(timestamp) + MetaEpochMS, nil
+	copy(timestampBuf[3:], payload[8:13])
+	timestamp := int64(binary.BigEndian.Uint64(timestampBuf)) + MetaEpochMS
+	txnID := int64(binary.BigEndian.Uint64(payload[13:21]))
+	return &MetaMessageID{
+		ChatType: chatType,
+		ChatID:   chatID,
+		Time:     time.UnixMilli(timestamp),
+		TxnID:    txnID,
+	}, nil
+}
+
+func ParseMessageID(messageID string) (int64, error) {
+	id, err := ParseMessageIDFull(messageID)
+	if err != nil {
+		return 0, err
+	}
+	return id.Time.UnixMilli(), nil
 }
