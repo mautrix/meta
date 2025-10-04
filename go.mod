@@ -13,14 +13,14 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/zyedidia/clipboard v1.0.4
-	go.mau.fi/libsignal v0.2.0
+	go.mau.fi/libsignal v0.2.1-0.20251004173110-6e0a3f2435ed
 	go.mau.fi/util v0.9.2-0.20251001114608-d99877b9cc10
-	go.mau.fi/whatsmeow v0.0.0-20251004125807-565fd64f96bd
+	go.mau.fi/whatsmeow v0.0.0-20251004173248-359e39387ad3
 	golang.org/x/crypto v0.42.0
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621
 	golang.org/x/image v0.31.0
 	golang.org/x/net v0.44.0
-	google.golang.org/protobuf v1.36.9
+	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.25.2-0.20251003001451-4be60a002169
 )
