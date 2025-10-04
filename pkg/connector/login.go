@@ -24,9 +24,12 @@ const (
 	FlowIDFacebookCookies  = "facebook"
 	FlowIDMessengerCookies = "messenger"
 	FlowIDInstagramCookies = "instagram"
+	FlowIDMessengerLite    = "messenger-lite"
 
 	LoginStepIDCookies  = "fi.mau.meta.cookies"
 	LoginStepIDComplete = "fi.mau.meta.complete"
+
+	LoginStepIDCredentials = "fi.mau.meta.credentials"
 )
 
 func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
@@ -41,6 +44,13 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 		plat = types.Messenger
 	case FlowIDInstagramCookies:
 		plat = types.Instagram
+	case FlowIDMessengerLite:
+		plat = types.MessengerLite
+		return &MetaNativeLogin{
+			Mode: plat,
+			User: user,
+			Main: m,
+		}, nil
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
@@ -95,12 +105,17 @@ var (
 		Description: "Login using cookies from instagram.com",
 		ID:          FlowIDInstagramCookies,
 	}
+	loginFlowMessengerLite = bridgev2.LoginFlow{
+		Name:        "Messenger iOS",
+		Description: "Login in using Messenger mobile API",
+		ID:          FlowIDMessengerLite,
+	}
 )
 
 func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	switch m.Config.Mode {
 	case types.Unset:
-		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram}
+		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram, loginFlowMessengerLite}
 	case types.Facebook:
 		if m.Config.AllowMessengerComOnFB {
 			return []bridgev2.LoginFlow{loginFlowMessenger, loginFlowFacebook}
@@ -269,3 +284,118 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		},
 	}, nil
 }
+
+type MetaNativeLogin struct {
+	Mode types.Platform
+	User *bridgev2.User
+	Main *MetaConnector
+}
+
+func (m *MetaNativeLogin) Cancel() {
+	panic("unimplemented")
+}
+
+func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	step := &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeUserInput,
+		StepID:       LoginStepIDCredentials,
+		Instructions: "Enter your Messenger credentials",
+		UserInputParams: &bridgev2.LoginUserInputParams{
+			Fields: []bridgev2.LoginInputDataField{
+				{ID: "username", Name: "Username", Type: bridgev2.LoginInputFieldTypeEmail},
+				{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+			},
+		},
+	}
+	return step, nil
+}
+
+func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	log := m.User.Log.With().Str("component", "messagix").Logger()
+	fakeCookies := &cookies.Cookies{
+		Platform: m.Mode,
+	}
+	client := messagix.NewClient(fakeCookies, log)
+	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
+		client.GetNewProxy = m.Main.getProxy
+		if !client.UpdateProxy("login") {
+			return nil, fmt.Errorf("failed to update proxy")
+		}
+	}
+
+	cookies, err := client.MessengerLite.Login(ctx, input["username"], input["password"])
+	if err != nil {
+		return nil, fmt.Errorf("failed to login: %w", err)
+	}
+
+	newCookies, err := cookies.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal cookies: %w", err)
+	}
+	client.GetCookies().UnmarshalJSON(newCookies)
+
+	log.Debug().Any("cookies", cookies).Msg("Logged in with Messenger Lite")
+
+	user, tbl, err := client.LoadMessagesPage(ctx)
+	if err != nil {
+		log.Err(err).Msg("Failed to load messages page for login")
+		if errors.Is(err, messagix.ErrChallengeRequired) {
+			return nil, ErrLoginChallenge
+		} else if errors.Is(err, messagix.ErrCheckpointRequired) {
+			return nil, ErrLoginCheckpoint
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			return nil, ErrLoginConsent
+		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+			return nil, ErrLoginTokenInvalidated
+		} else {
+			return nil, fmt.Errorf("%w: %w", ErrLoginUnknown, err)
+		}
+	}
+
+	log.Debug().Any("user", user).Any("tbl", tbl).Msg("Loaded user after Messenger Lite login")
+	id := user.GetFBID()
+
+	loginID := metaid.MakeUserLoginID(id)
+	var loginUA string
+	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {
+		loginUA = req.Header.Get("User-Agent")
+	}
+
+	ul, err := m.User.NewLogin(ctx, &database.UserLogin{
+		ID:         loginID,
+		RemoteName: user.GetName(),
+		RemoteProfile: status.RemoteProfile{
+			Name: user.GetName(),
+		},
+		Metadata: &metaid.UserLoginMetadata{
+			Platform: client.GetCookies().Platform,
+			Cookies:  client.GetCookies(),
+			LoginUA:  loginUA,
+		},
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save new login: %w", err)
+	}
+
+	metaClient := ul.Client.(*MetaClient)
+	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
+	client.Logger = metaClient.Client.Logger
+	client.SetEventHandler(metaClient.handleMetaEvent)
+	metaClient.lastFullReconnect = time.Time{}
+	metaClient.Client = client
+
+	backgroundCtx := ul.Log.WithContext(m.Main.Bridge.BackgroundCtx)
+	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
+	go metaClient.connectWithTable(backgroundCtx, tbl, user)
+	return &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeComplete,
+		StepID:       LoginStepIDComplete,
+		Instructions: fmt.Sprintf("Logged in as %s (%d)", user.GetName(), id),
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: ul.ID,
+			UserLogin:   ul,
+		},
+	}, nil
+}
+
+var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
