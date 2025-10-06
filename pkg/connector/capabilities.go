@@ -41,7 +41,12 @@ var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 			CreateDM: true,
 			Search:   true,
 		},
-		GroupCreation: nil, // TODO
+		GroupCreation: map[string]bridgev2.GroupTypeCapabilities{
+			"group": {
+				TypeDescription: "a group",
+				Participants:    bridgev2.GroupFieldCapability{Allowed: true, Required: true, MinLength: 2, MaxLength: 250},
+			},
+		},
 	},
 }
 

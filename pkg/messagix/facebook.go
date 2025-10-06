@@ -129,7 +129,8 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 	}
 
 	if !r.Payload.Success {
-		return errors.New("failed to register for push notifications")
+		c.Logger.Err(err).Bytes("body", body).Msg("non-success push registration response")
+		return errors.New("non-success response payload")
 	}
 
 	return nil

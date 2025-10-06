@@ -66,12 +66,18 @@ type MetaClient struct {
 	igUserIDsReverse map[int64]string
 }
 
+func (m *MetaConnector) getMessagixConfig() *messagix.Config {
+	return &messagix.Config{
+		MayConnectToDGW: m.Config.ReceiveInstagramTypingIndicators,
+	}
+}
+
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
 	var messagixClient *messagix.Client
 	if loginMetadata.Cookies != nil {
 		loginMetadata.Cookies.Platform = loginMetadata.Platform
-		messagixClient = messagix.NewClient(loginMetadata.Cookies, login.Log.With().Str("component", "messagix").Logger())
+		messagixClient = messagix.NewClient(loginMetadata.Cookies, login.Log.With().Str("component", "messagix").Logger(), m.getMessagixConfig())
 	}
 	c := &MetaClient{
 		Main:      m,
@@ -537,7 +543,7 @@ func (m *MetaClient) FullReconnect() {
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)
-	m.Client = messagix.NewClient(m.LoginMeta.Cookies, m.UserLogin.Log.With().Str("component", "messagix").Logger())
+	m.Client = messagix.NewClient(m.LoginMeta.Cookies, m.UserLogin.Log.With().Str("component", "messagix").Logger(), m.Main.getMessagixConfig())
 	m.Client.SetEventHandler(m.handleMetaEvent)
 	m.Connect(ctx)
 	m.lastFullReconnect = time.Now()

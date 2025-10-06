@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -18,6 +19,7 @@ import (
 var (
 	_ bridgev2.IdentifierResolvingNetworkAPI = (*MetaClient)(nil)
 	_ bridgev2.UserSearchingNetworkAPI       = (*MetaClient)(nil)
+	_ bridgev2.GroupCreatingNetworkAPI       = (*MetaClient)(nil)
 	_ bridgev2.IdentifierValidatingNetwork   = (*MetaConnector)(nil)
 )
 
@@ -61,6 +63,55 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 		UserID: metaid.MakeUserID(id),
 		Ghost:  ghost,
 		Chat:   chat,
+	}, nil
+}
+
+func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCreateParams) (*bridgev2.CreateChatResponse, error) {
+	threadID := methods.GenerateEpochID()
+	otid := methods.GenerateEpochID()
+	participants := make([]int64, len(params.Participants))
+	for i, pcp := range params.Participants {
+		participants[i] = metaid.ParseUserID(pcp)
+	}
+	resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateGroupTask{
+		Participants: participants,
+		SendPayload: socket.CreateGroupPayload{
+			ThreadID: threadID,
+			OTID:     strconv.FormatInt(otid, 10),
+			Source:   0,
+			SendType: 8,
+		},
+	})
+	if err != nil {
+		return nil, err
+	} else if len(resp.LSReplaceOptimisticThread) == 0 {
+		zerolog.Ctx(ctx).Debug().Any("data", resp).Msg("Unexpected create group response")
+		return nil, fmt.Errorf("no optimistic replace thread in response")
+	}
+	repl := resp.LSReplaceOptimisticThread[0]
+	if repl.ThreadKey1 != threadID {
+		zerolog.Ctx(ctx).Debug().Any("data", resp).Msg("Unexpected create group response")
+		return nil, fmt.Errorf("unexpected thread key in response: %d != %d", repl.ThreadKey1, threadID)
+	}
+	realThreadID := repl.ThreadKey2
+	portal, err := m.Main.Bridge.GetPortalByKey(ctx, m.makeFBPortalKey(realThreadID, table.GROUP_THREAD))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get portal: %w", err)
+	}
+	if params.RoomID != "" {
+		err = portal.UpdateMatrixRoomID(ctx, params.RoomID, bridgev2.UpdateMatrixRoomIDParams{
+			OverwriteOldPortal: true,
+			TombstoneOldRoom:   true,
+			DeleteOldRoom:      true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to update room ID after creating group: %w", err)
+		}
+	}
+	// TODO fetch or generate info?
+	return &bridgev2.CreateChatResponse{
+		PortalKey: portal.PortalKey,
+		Portal:    portal,
 	}, nil
 }
 
