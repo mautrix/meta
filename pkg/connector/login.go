@@ -315,7 +315,7 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-	client := messagix.NewClient(fakeCookies, log)
+	client := messagix.NewClient(fakeCookies, log, m.Main.getMessagixConfig())
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
 		client.GetNewProxy = m.Main.getProxy
 		if !client.UpdateProxy("login") {
