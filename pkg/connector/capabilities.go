@@ -18,7 +18,6 @@ package connector
 
 import (
 	"context"
-	"maps"
 	"time"
 
 	"go.mau.fi/util/ffmpeg"
@@ -71,7 +70,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_08_22"
+	base := "fi.mau.meta.capabilities.2025_10_06"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -168,30 +167,26 @@ var metaCapsWithE2E *event.RoomFeatures
 var igCaps *event.RoomFeatures
 
 func init() {
-	metaCapsWithThreads = ptr.Clone(metaCaps)
+	metaCapsWithThreads = metaCaps.Clone()
 	metaCapsWithThreads.ID += "+communitygroup"
 	metaCapsWithThreads.Thread = event.CapLevelFullySupported
 	metaCapsWithThreads.TypingNotifications = false
 
-	metaCapsWithE2E = ptr.Clone(metaCaps)
+	metaCapsWithE2E = metaCaps.Clone()
 	metaCapsWithE2E.ID += "+e2e"
-	metaCapsWithE2E.File = maps.Clone(metaCapsWithE2E.File)
-	for key, value := range metaCapsWithE2E.File {
-		metaCapsWithE2E.File[key] = ptr.Clone(value)
-		metaCapsWithE2E.File[key].MaxSize = MaxFileSizeWithE2E
+	for _, value := range metaCapsWithE2E.File {
+		value.MaxSize = MaxFileSizeWithE2E
 		// Messenger Web doesn't render captions on images in e2ee chats 3:<
 		// (works fine on Messenger iOS and Android though)
-		metaCapsWithE2E.File[key].Caption = event.CapLevelDropped
+		value.Caption = event.CapLevelDropped
 	}
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
 
-	igCaps = ptr.Clone(metaCaps)
-	igCaps.File = maps.Clone(igCaps.File)
+	igCaps = metaCaps.Clone()
 	delete(igCaps.File, event.MsgFile)
-	for key, value := range igCaps.File {
-		igCaps.File[key] = ptr.Clone(value)
-		igCaps.File[key].Caption = event.CapLevelDropped
+	for _, value := range igCaps.File {
+		value.Caption = event.CapLevelDropped
 	}
 	igCaps.ID += "+instagram-p2"
 }
