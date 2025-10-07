@@ -171,7 +171,8 @@ func (m *MetaClient) Connect(ctx context.Context) {
 const MaxConnectRetries = 10
 
 func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts int) {
-	if m.Client == nil {
+	cli := m.Client
+	if cli == nil {
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      MetaNotLoggedIn,
@@ -192,7 +193,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 	} else if state != nil {
 		if !m.Main.Config.CacheConnectionState {
 			zerolog.Ctx(ctx).Debug().Msg("Not using saved reconnection state as it's disabled in the config")
-		} else if err = m.Client.LoadState(state); err != nil {
+		} else if err = cli.LoadState(state); err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to load reconnection state")
 		} else {
 			zerolog.Ctx(ctx).Debug().Msg("Reconnecting with cached state")
@@ -203,8 +204,8 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
-		m.Client.GetNewProxy = m.Main.getProxy
-		if !m.Client.UpdateProxy("connect") {
+		cli.GetNewProxy = m.Main.getProxy
+		if !cli.UpdateProxy("connect") {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaProxyUpdateFail,
@@ -212,7 +213,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			return
 		}
 	}
-	currentUser, initialTable, err := m.Client.LoadMessagesPage(ctx)
+	currentUser, initialTable, err := cli.LoadMessagesPage(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load messages page")
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {

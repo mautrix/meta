@@ -134,7 +134,7 @@ type dumpedState struct {
 }
 
 func (c *Client) DumpState() (json.RawMessage, error) {
-	if c.configs == nil || c.syncManager == nil || c.socket == nil || c.socket.packetsSent == 0 || !c.socket.previouslyConnected {
+	if c == nil || c.configs == nil || c.syncManager == nil || c.socket == nil || c.socket.packetsSent == 0 || !c.socket.previouslyConnected {
 		return nil, nil
 	}
 	return json.Marshal(&dumpedState{
@@ -151,6 +151,9 @@ const MaxCachedStateAge = 24 * time.Hour
 var ErrCachedStateTooOld = errors.New("cached state is too old")
 
 func (c *Client) LoadState(state json.RawMessage) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
 	var dumped dumpedState
 	if err := json.Unmarshal(state, &dumped); err != nil {
 		return err
@@ -206,6 +209,13 @@ func (c *Client) loadLoginPage(ctx context.Context) *ModuleParser {
 	return moduleLoader
 }
 
+func (c *Client) GetPlatform() types.Platform {
+	if c == nil {
+		return types.Unset
+	}
+	return c.Platform
+}
+
 func (c *Client) configurePlatformClient() {
 	var selectedEndpoints map[string]string
 	switch c.Platform {
@@ -255,6 +265,9 @@ func (c *Client) SetProxy(proxyAddr string) error {
 }
 
 func (c *Client) SetEventHandler(handler EventHandler) {
+	if c == nil {
+		return
+	}
 	c.eventHandler = handler
 }
 

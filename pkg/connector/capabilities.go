@@ -198,7 +198,7 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE, table.ENCRYPTED_OVER_WA_GROUP:
 		return metaCapsWithE2E
 	}
-	if (m.Client != nil && m.Client.Platform == types.Instagram) || m.Main.Config.Mode == types.Instagram {
+	if m.Client.GetPlatform() == types.Instagram || m.Main.Config.Mode == types.Instagram {
 		return igCaps
 	}
 	return metaCaps

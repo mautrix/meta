@@ -250,7 +250,10 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 		}
 		m.syncGhost(ctx, contact)
 	}
-	if m.Client.Platform == types.Instagram {
+	if ctx.Err() != nil {
+		return
+	}
+	if m.Client.GetPlatform() == types.Instagram {
 		contactsWithoutIGID := []int64{}
 		for _, contact := range tbl.LSVerifyContactRowExists {
 			if ctx.Err() != nil {

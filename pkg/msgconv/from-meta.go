@@ -215,7 +215,7 @@ func (mc *MessageConverter) ToMatrix(
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
 		if unsupported && !hasExternalURL {
 			var threadURL, protocolName string
-			switch client.Platform {
+			switch client.GetPlatform() {
 			case types.Instagram:
 				threadURL = fmt.Sprintf("https://www.instagram.com/direct/t/%s/", portal.ID)
 				protocolName = "Instagram"
