@@ -34,6 +34,7 @@ var (
 	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
 	_ bridgev2.ChatViewingNetworkAPI         = (*MetaClient)(nil)
 	_ bridgev2.TypingHandlingNetworkAPI      = (*MetaClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*MetaClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*MetaConnector)(nil)
@@ -596,4 +597,20 @@ func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.Matri
 		SyncGroup:     1,
 		ThreadType:    int64(portalMeta.ThreadType),
 	})
+}
+
+func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.MatrixDeleteChat) error {
+	platform := t.LoginMeta.Platform
+	threadID := metaid.ParseFBPortalID(chat.Portal.ID)
+	if platform == types.Instagram {
+		return t.Client.Instagram.DeleteThread(ctx, strconv.FormatInt(threadID, 10))
+	} else if platform == types.Facebook || platform == types.Messenger {
+		_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
+			ThreadKey:  threadID,
+			RemoveType: 0,
+			SyncGroup:  95,
+		})
+		return err
+	}
+	return fmt.Errorf("unknown platform for deleting chat: %v", platform)
 }
