@@ -613,7 +613,7 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		zerolog.Ctx(ctx).Trace().
 			Int64("thread_id", threadID).
 			Any("resp_data", resp).
-			Msg("Response data for deleting threads")
+			Msg("Response data for deleting thread")
 		return err
 	}
 	return fmt.Errorf("unknown platform for deleting chat: %v", platform)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -273,7 +274,11 @@ func (ig *InstagramMethods) DeleteThread(ctx context.Context, threadID string) e
 		ThreadID:                       threadID,
 		ShouldMoveFutureRequestsToSpam: false,
 	}
-	_, _, err := ig.client.makeGraphQLRequest(ctx, "IGDeleteThread", &igVariables)
+	_, respBody, err := ig.client.makeGraphQLRequest(ctx, "IGDeleteThread", &igVariables)
+	zerolog.Ctx(ctx).Trace().
+		Str("thread_id", threadID).
+		Any("resp_data", respBody).
+		Msg("Response data for deleting threads")
 	// TODO: parse respBody to check for error
 	return err
 }
