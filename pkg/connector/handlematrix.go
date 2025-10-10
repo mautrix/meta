@@ -605,11 +605,15 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 	if platform == types.Instagram {
 		return t.Client.Instagram.DeleteThread(ctx, strconv.FormatInt(threadID, 10))
 	} else if platform == types.Facebook || platform == types.Messenger {
-		_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
+		resp, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
 			ThreadKey:  threadID,
 			RemoveType: 0,
 			SyncGroup:  95,
 		})
+		zerolog.Ctx(ctx).Trace().
+			Int64("thread_id", threadID).
+			Any("resp_data", resp).
+			Msg("Response data for deleting threads")
 		return err
 	}
 	return fmt.Errorf("unknown platform for deleting chat: %v", platform)
