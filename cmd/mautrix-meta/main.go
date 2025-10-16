@@ -18,7 +18,8 @@ var m = mxmain.BridgeMain{
 	Name:        "mautrix-meta",
 	URL:         "https://github.com/mautrix/meta",
 	Description: "A Matrix-Meta puppeting bridge.",
-	Version:     "0.5.3",
+	Version:     "25.10",
+	SemCalVer:   true,
 	Connector:   &connector.MetaConnector{},
 }
 
