@@ -10,10 +10,12 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/responses"
+	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -265,4 +267,18 @@ func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.L
 	}
 
 	return newFBID, nil
+}
+
+func (ig *InstagramMethods) DeleteThread(ctx context.Context, threadID string) error {
+	igVariables := &graphql.IGDeleteThreadGraphQLRequestPayload{
+		ThreadID:                       threadID,
+		ShouldMoveFutureRequestsToSpam: false,
+	}
+	_, respBody, err := ig.client.makeGraphQLRequest(ctx, "IGDeleteThread", &igVariables)
+	zerolog.Ctx(ctx).Trace().
+		Str("thread_id", threadID).
+		Any("resp_data", respBody).
+		Msg("Response data for deleting threads")
+	// TODO: parse respBody to check for error
+	return err
 }
