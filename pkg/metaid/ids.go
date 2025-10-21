@@ -21,6 +21,9 @@ func MakeUserID(user int64) networkid.UserID {
 }
 
 func ParseIDFromString(id string) (int64, error) {
+	if strings.HasPrefix(id, "+") || strings.HasPrefix(id, "-") {
+		return 0, fmt.Errorf("identifier can't have a sign")
+	}
 	i, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return 0, err
