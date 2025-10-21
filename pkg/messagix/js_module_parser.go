@@ -20,7 +20,7 @@ import (
 )
 
 var jsDatrPattern = regexp.MustCompile(`"_js_datr","([^"]+)"`)
-var versionPattern = regexp.MustCompile(`__d\("LSVersion"[^)]+\)\{e\.exports="(\d+)"\}`)
+var versionPattern = regexp.MustCompile(`__d\("LSVersion"[^)]+\)\{\w\.exports="(\d+)"\}`)
 
 type BBoxContainer struct {
 	BBox *BBox `json:"__bbox,omitempty"`
