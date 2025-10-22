@@ -305,7 +305,7 @@ func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waC
 		converted.Content.Info.Height = int(metadata.GetHeight())
 		converted.Content.Info.Duration = int(metadata.GetSeconds() * 1000)
 		// FB is annoying and sends images in video containers sometimes
-		if converted.Content.Info.MimeType == "image/gif" {
+		if strings.HasPrefix(converted.Content.Info.MimeType, "image/") {
 			converted.Content.MsgType = event.MsgImage
 		} else if metadata.GetGifPlayback() {
 			converted.Extra["info"] = map[string]any{
