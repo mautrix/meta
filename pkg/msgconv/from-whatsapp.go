@@ -26,8 +26,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
@@ -123,7 +121,11 @@ type AttachmentMessageWithCaption[Integral MediaTransportContainer, Ancillary an
 type convertFunc func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error)
 
 type userVisibleError struct {
-	error
+	Message string
+}
+
+func (u userVisibleError) Error() string {
+	return u.Message
 }
 
 func convertWhatsAppAttachment[
@@ -145,7 +147,7 @@ func convertWhatsAppAttachment[
 	untypedTransport := any(typedTransport)
 	if stickerTransport, ok := untypedTransport.(*waMediaTransport.StickerTransport); ok {
 		if stickerTransport.Ancillary.GetReceiverFetchID() != "" {
-			err = userVisibleError{error: fmt.Errorf("unsupported sticker, view in Messenger")}
+			err = userVisibleError{Message: "Unsupported sticker, view in Messenger"}
 			return
 		}
 	}
@@ -367,15 +369,6 @@ func (mc *MessageConverter) appName() string {
 	}
 }
 
-// https://stackoverflow.com/a/70259366
-func capitalize(text string) string {
-	r, size := utf8.DecodeRuneInString(text)
-	if r == utf8.RuneError {
-		return text // well, we tried
-	}
-	return string(unicode.ToTitle(r)) + text[size:]
-}
-
 func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (parts []*bridgev2.ConvertedMessagePart) {
 	parts = make([]*bridgev2.ConvertedMessagePart, 0, 2)
 	switch content := rawContent.GetContent().(type) {
@@ -396,7 +389,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to convert media message")
 			errmsg := "Failed to transfer media"
 			if _, ok := err.(userVisibleError); ok {
-				errmsg = capitalize(err.Error())
+				errmsg = err.Error()
 			}
 			converted = &bridgev2.ConvertedMessagePart{
 				Type: event.EventMessage,
