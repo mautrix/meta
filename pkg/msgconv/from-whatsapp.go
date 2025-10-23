@@ -120,6 +120,10 @@ type AttachmentMessageWithCaption[Integral MediaTransportContainer, Ancillary an
 
 type convertFunc func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error)
 
+type userVisibleError struct {
+	error
+}
+
 func convertWhatsAppAttachment[
 	Transport AttachmentTransport[Integral, Ancillary],
 	Integral MediaTransportContainer,
@@ -135,6 +139,13 @@ func convertWhatsAppAttachment[
 	typedTransport, err = msg.Decode()
 	if err != nil {
 		return
+	}
+	untypedTransport := any(typedTransport)
+	if stickerTransport, ok := untypedTransport.(*waMediaTransport.StickerTransport); ok {
+		if stickerTransport.Ancillary.GetReceiverFetchID() != "" {
+			err = userVisibleError{error: fmt.Errorf("Unsupported sticker, view in Messenger")}
+			return
+		}
 	}
 	msgWithCaption, ok := msg.(AttachmentMessageWithCaption[Integral, Ancillary, Transport])
 	if ok && len(msgWithCaption.GetCaption().GetText()) > 0 {
@@ -372,11 +383,15 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 		converted, caption, err := mc.convertWhatsAppMedia(ctx, rawContent)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to convert media message")
+			errmsg := "Failed to transfer media"
+			if _, ok := err.(userVisibleError); ok {
+				errmsg = err.Error()
+			}
 			converted = &bridgev2.ConvertedMessagePart{
 				Type: event.EventMessage,
 				Content: &event.MessageEventContent{
 					MsgType: event.MsgNotice,
-					Body:    "Failed to transfer media",
+					Body:    errmsg,
 				},
 			}
 		}
