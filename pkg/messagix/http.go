@@ -52,6 +52,11 @@ type HttpQuery struct {
 	DeviceType           string `url:"device_type,omitempty"`       // not required
 	Mid                  string `url:"mid,omitempty"`               // not required
 	Aaid                 string `url:"__aaid,omitempty"`
+
+	ClientPreviousActorID string `url:"client_previous_actor_id,omitempty"` // not required
+	RouteURL              string `url:"route_url,omitempty"`                // not required
+	RoutingNamespace      string `url:"routing_namespace,omitempty"`        // not required
+	Crn                   string `url:"__crn,omitempty"`                    // not required
 }
 
 func (c *Client) newHTTPQuery() *HttpQuery {
