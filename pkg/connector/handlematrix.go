@@ -606,7 +606,7 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 
 	zerolog.Ctx(ctx).Info().
 		Int64("thread_id", threadID).
-		Str("platform", string(platform)).
+		Any("platform", platform).
 		Bool("is_whatsapp_e2ee", portalMeta.ThreadType.IsWhatsApp()).
 		Msg("Deleting chat")
 

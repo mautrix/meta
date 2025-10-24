@@ -183,6 +183,7 @@ func init() {
 	}
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
+	metaCapsWithE2E.DeleteChat = false
 
 	igCaps = metaCaps.Clone()
 	delete(igCaps.File, event.MsgFile)

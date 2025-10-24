@@ -278,6 +278,9 @@ func (ig *InstagramMethods) fetchRouteDefinition(ctx context.Context, threadID s
 	payload.Crn = "comet.igweb.PolarisDirectInboxRoute"
 
 	form, err := query.Values(&payload)
+	if err != nil {
+		return "", err
+	}
 	form.Add("trace_policy", "")
 	payloadBytes := []byte(form.Encode())
 
