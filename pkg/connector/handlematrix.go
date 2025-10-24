@@ -600,21 +600,38 @@ func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.Matri
 }
 
 func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.MatrixDeleteChat) error {
+	portalMeta := chat.Portal.Metadata.(*metaid.PortalMetadata)
 	platform := t.LoginMeta.Platform
 	threadID := metaid.ParseFBPortalID(chat.Portal.ID)
+
+	zerolog.Ctx(ctx).Info().
+		Int64("thread_id", threadID).
+		Str("platform", string(platform)).
+		Bool("is_whatsapp_e2ee", portalMeta.ThreadType.IsWhatsApp()).
+		Msg("Deleting chat")
+
 	if platform == types.Instagram {
 		return t.Client.Instagram.DeleteThread(ctx, strconv.FormatInt(threadID, 10))
 	} else if platform == types.Facebook || platform == types.Messenger {
-		resp, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
+		_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
 			ThreadKey:  threadID,
 			RemoveType: 0,
-			SyncGroup:  95,
+			SyncGroup:  1,
 		})
-		zerolog.Ctx(ctx).Trace().
-			Int64("thread_id", threadID).
-			Any("resp_data", resp).
-			Msg("Response data for deleting thread")
-		return err
+		if err != nil {
+			return err
+		}
+		if portalMeta.ThreadType.IsWhatsApp() {
+			_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
+				ThreadKey:  threadID, // TODO: use e2ee thread ID
+				RemoveType: 0,
+				SyncGroup:  95,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	return fmt.Errorf("unknown platform for deleting chat: %v", platform)
 }
