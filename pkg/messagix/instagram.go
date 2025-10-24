@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -269,16 +270,98 @@ func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.L
 	return newFBID, nil
 }
 
+func (ig *InstagramMethods) fetchRouteDefinition(ctx context.Context, threadID string) (id string, err error) {
+	payload := ig.client.newHTTPQuery()
+	payload.ClientPreviousActorID = "17841477657023246"
+	payload.RouteURL = fmt.Sprintf("/direct/t/%s/", threadID)
+	payload.RoutingNamespace = ig.client.configs.RoutingNamespace
+	payload.Crn = "comet.igweb.PolarisDirectInboxRoute"
+
+	form, err := query.Values(&payload)
+	form.Add("trace_policy", "")
+	payloadBytes := []byte(form.Encode())
+
+	headers := ig.client.buildHeaders(true, false)
+	headers.Set("accept", "*/*")
+	headers.Set("origin", ig.client.GetEndpoint("base_url"))
+	headers.Set("accept", "*/*")
+	headers.Set("referer", ig.client.GetEndpoint("messages"))
+	headers.Set("priority", "u=1, i")
+	headers.Set("sec-fetch-dest", "empty")
+	headers.Set("sec-fetch-mode", "cors")
+	headers.Set("sec-fetch-site", "same-origin")
+
+	url := ig.client.GetEndpoint("route_definition")
+	resp, body, err := ig.client.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch route definition for thread %s: %w", threadID, err)
+	}
+
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return "", fmt.Errorf("bad status code when fetching route definition for thread %s: %d", threadID, resp.StatusCode)
+	}
+
+	parts := bytes.Split(body, []byte("\r\n"))
+	if len(parts) < 1 {
+		return "", fmt.Errorf("invalid route definition response for thread %s", threadID)
+	}
+
+	responseBody := bytes.TrimPrefix(parts[0], antiJSPrefix)
+
+	var routeDefResp fetchRouteDefinitionResponse
+	err = json.Unmarshal(responseBody, &routeDefResp)
+	if err != nil {
+		return "", fmt.Errorf("failed to unmarshal route definition response for thread %s: %w", threadID, err)
+	}
+
+	if routeDefResp.Payload.Error {
+		return "", fmt.Errorf("route definition response returned error for thread %s", threadID)
+	}
+	threadFBID := routeDefResp.Payload.Result.Exports.RootView.Props.ThreadFBID
+	if threadFBID == "" {
+		return "", fmt.Errorf("thread_fbid not found in route definition response for thread %s", threadID)
+	}
+
+	zerolog.Ctx(ctx).Info().
+		Str("thread_id", threadID).
+		Str("thread_fbid", threadFBID).
+		Msg("Successfully fetched route definition")
+
+	return threadFBID, nil
+}
+
 func (ig *InstagramMethods) DeleteThread(ctx context.Context, threadID string) error {
+	id, err := ig.fetchRouteDefinition(ctx, threadID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch route definition for thread %s: %w", threadID, err)
+	}
 	igVariables := &graphql.IGDeleteThreadGraphQLRequestPayload{
-		ThreadID:                       threadID,
+		ThreadID:                       id,
 		ShouldMoveFutureRequestsToSpam: false,
 	}
-	_, respBody, err := ig.client.makeGraphQLRequest(ctx, "IGDeleteThread", &igVariables)
-	zerolog.Ctx(ctx).Trace().
-		Str("thread_id", threadID).
-		Any("resp_data", respBody).
-		Msg("Response data for deleting threads")
-	// TODO: parse respBody to check for error
-	return err
+	resp, _, err := ig.client.makeGraphQLRequest(ctx, "IGDeleteThread", &igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to delete thread %s: %w", threadID, err)
+	}
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return fmt.Errorf("failed to delete thread with bad status code %d", resp.StatusCode)
+	}
+	return nil
+}
+
+type fetchRouteDefinitionResponsePayload struct {
+	Error  bool `json:"error"`
+	Result struct {
+		Exports struct {
+			RootView struct {
+				Props struct {
+					ThreadFBID string `json:"thread_fbid"`
+				} `json:"props"`
+			} `json:"rootView"`
+		} `json:"exports"`
+	} `json:"result"`
+}
+
+type fetchRouteDefinitionResponse struct {
+	Payload fetchRouteDefinitionResponsePayload `json:"payload"`
 }
