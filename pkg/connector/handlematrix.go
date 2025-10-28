@@ -510,7 +510,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 	portalJID := receipt.Portal.Metadata.(*metaid.PortalMetadata).JID(receipt.Portal.ID)
 	if len(waMessagesToRead) > 0 && !portalJID.IsEmpty() {
 		for messageSender, ids := range waMessagesToRead {
-			err = m.E2EEClient.MarkRead(ids, receipt.Receipt.Timestamp, portalJID, messageSender)
+			err = m.E2EEClient.MarkRead(ctx, ids, receipt.Receipt.Timestamp, portalJID, messageSender)
 			if err != nil {
 				log.Err(err).Strs("ids", ids).Msg("Failed to mark messages as read")
 			}
@@ -541,7 +541,7 @@ func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.
 	}
 
 	if m.waLastPresence != presence {
-		err := m.updateWAPresence(presence)
+		err := m.updateWAPresence(ctx, presence)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence when viewing chat")
 		}
@@ -572,12 +572,12 @@ func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.Matri
 		}
 
 		if m.Main.Config.SendPresenceOnTyping {
-			err := m.updateWAPresence(waTypes.PresenceAvailable)
+			err := m.updateWAPresence(ctx, waTypes.PresenceAvailable)
 			if err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
 			}
 		}
-		return m.E2EEClient.SendChatPresence(portalJID, chatPresence, mediaPresence)
+		return m.E2EEClient.SendChatPresence(ctx, portalJID, chatPresence, mediaPresence)
 	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
 	isGroupThread := int64(1)

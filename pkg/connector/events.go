@@ -261,7 +261,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_GROUP),
 			}, nil
 		}
-		groupInfo, err := evt.m.E2EEClient.GetGroupInfo(evt.JID)
+		groupInfo, err := evt.m.E2EEClient.GetGroupInfo(ctx, evt.JID)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to fetch WhatsApp group info")
 			return nil, err

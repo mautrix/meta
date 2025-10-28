@@ -577,8 +577,8 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 	return state
 }
 
-func (m *MetaClient) updateWAPresence(presence waTypes.Presence) error {
-	err := m.E2EEClient.SendPresence(presence)
+func (m *MetaClient) updateWAPresence(ctx context.Context, presence waTypes.Presence) error {
+	err := m.E2EEClient.SendPresence(ctx, presence)
 	if err == nil {
 		m.waLastPresence = presence
 	}
