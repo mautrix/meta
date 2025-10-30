@@ -274,7 +274,7 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 		attachmentID, err = mc.reuploadVideoToMetaFallback(ctx, client, data, mime)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment via Instagram Android fallback")
-			return 0, err
+			return 0, fmt.Errorf("%w: fallback upload failed: %w", bridgev2.ErrMediaReuploadFailed, err)
 		} else {
 			zerolog.Ctx(ctx).Info().Msg("Uploaded attachment via Instagram Android fallback")
 		}
