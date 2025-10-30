@@ -117,28 +117,9 @@ func (mc *MessageConverter) ToMeta(
 			task.Text = content.Body
 		}
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
-		resp, err := mc.reuploadFileToMeta(ctx, client, portal, content)
+		attachmentID, err := mc.reuploadFileToMeta(ctx, client, portal, content)
 		if err != nil {
 			return nil, err
-		}
-		attachmentID := resp.Payload.RealMetadata.GetFbId()
-		// There is a subset of Instagram accounts that are for some reason unable to upload
-		// videos through the Instagram web API (even using the official Instagram website).
-		// All other uploads and messages work fine (image, audio, file), it is specifically
-		// videos. For these accounts, the Instagram Android API still works and we use it
-		// as a fallback.
-		if attachmentID == 0 && content.MsgType == event.MsgVideo && client.Platform == types.Instagram {
-			attachmentID, err = mc.reuploadVideoToMetaFallback(ctx, client, content)
-			if err != nil {
-				zerolog.Ctx(ctx).Warn().Err(err).Msg("failed to upload attachment via Instagram Android fallback")
-				attachmentID = 0
-			} else {
-				zerolog.Ctx(ctx).Info().Msg("uploaded attachment via Instagram Android fallback")
-			}
-		}
-		if attachmentID == 0 {
-			zerolog.Ctx(ctx).Warn().RawJSON("response", resp.Raw).Msg("No fbid received for upload")
-			return nil, fmt.Errorf("failed to upload attachment: fbid not received")
 		}
 		task.SendType = table.MEDIA
 		task.AttachmentFBIds = []int64{attachmentID}
@@ -248,7 +229,7 @@ func (mc *MessageConverter) parseFormattedBody(ctx context.Context, content *eve
 	task.Text = parsed
 }
 
-func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *messagix.Client, portal *bridgev2.Portal, content *event.MessageEventContent) (*types.MercuryUploadResponse, error) {
+func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *messagix.Client, portal *bridgev2.Portal, content *event.MessageEventContent) (int64, error) {
 	threadID := metaid.ParseFBPortalID(portal.ID)
 	mime := content.Info.MimeType
 	fileName := content.Body
@@ -257,7 +238,7 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 	}
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+		return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
 	if mime == "" {
 		mime = http.DetectContentType(data)
@@ -266,7 +247,7 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 	if isVoice && ffmpeg.Supported() {
 		data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mime)
 		if err != nil {
-			return nil, fmt.Errorf("%w (ogg to m4a): %w", bridgev2.ErrMediaConvertFailed, err)
+			return 0, fmt.Errorf("%w (ogg to m4a): %w", bridgev2.ErrMediaConvertFailed, err)
 		}
 		mime = "audio/mp4"
 		fileName += ".m4a"
@@ -283,9 +264,25 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 			Str("mime_type", mime).
 			Bool("is_voice_clip", isVoice).
 			Msg("Failed upload metadata")
-		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+		return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
-	return resp, nil
+	attachmentID := resp.Payload.RealMetadata.GetFbId()
+	if attachmentID == 0 {
+		zerolog.Ctx(ctx).Warn().RawJSON("response", resp.Raw).Msg("No fbid received for upload")
+	}
+	if attachmentID == 0 && content.MsgType == event.MsgVideo && client.Platform == types.Instagram {
+		attachmentID, err = mc.reuploadVideoToMetaFallback(ctx, client, data, mime)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment via Instagram Android fallback")
+			return 0, err
+		} else {
+			zerolog.Ctx(ctx).Info().Msg("Uploaded attachment via Instagram Android fallback")
+		}
+	}
+	if attachmentID == 0 {
+		return 0, fmt.Errorf("failed to upload attachment: fbid not received")
+	}
+	return attachmentID, nil
 }
 
 type ruploadToken struct {
@@ -298,15 +295,12 @@ type ruploadResponse struct {
 	MediaID int64 `json:"media_id"`
 }
 
-func (mc *MessageConverter) reuploadVideoToMetaFallback(ctx context.Context, client *messagix.Client, content *event.MessageEventContent) (int64, error) {
-	mime := content.Info.MimeType
-	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
-	}
-	if mime == "" {
-		mime = http.DetectContentType(data)
-	}
+// There is a subset of Instagram accounts that are for some reason unable to upload
+// videos through the Instagram web API (even using the official Instagram website).
+// All other uploads and messages work fine (image, audio, file), it is specifically
+// videos. For these accounts, the Instagram Android API still works and we use it as
+// a fallback.
+func (mc *MessageConverter) reuploadVideoToMetaFallback(ctx context.Context, client *messagix.Client, data []byte, mime string) (int64, error) {
 	uploadID := fmt.Sprintf(
 		"%s-%d-%d-%d-%d",
 		hex.EncodeToString(random.Bytes(16)),
