@@ -14,3 +14,5 @@ const SecCHPlatformVersion = `"` + OSVersion + `"`
 const SecCHMobile = "?0"
 const SecCHModel = `""`
 const SecCHPrefersColorScheme = "light"
+
+const AndroidUserAgent = "Instagram 404.0.0.48.76 Android (35/15; 420dpi; 1080x2400; Google/google; Pixel 7; panther; panther; en_US; 813748018)"

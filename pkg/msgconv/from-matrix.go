@@ -18,6 +18,9 @@ package msgconv
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -36,6 +39,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -118,6 +122,20 @@ func (mc *MessageConverter) ToMeta(
 			return nil, err
 		}
 		attachmentID := resp.Payload.RealMetadata.GetFbId()
+		// There is a subset of Instagram accounts that are for some reason unable to upload
+		// videos through the Instagram web API (even using the official Instagram website).
+		// All other uploads and messages work fine (image, audio, file), it is specifically
+		// videos. For these accounts, the Instagram Android API still works and we use it
+		// as a fallback.
+		if attachmentID == 0 && content.MsgType == event.MsgVideo && client.Platform == types.Instagram {
+			attachmentID, err = mc.reuploadFileToMetaFallback(ctx, client, content)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("failed to upload attachment via Instagram Android fallback")
+				attachmentID = 0
+			} else {
+				zerolog.Ctx(ctx).Info().Msg("uploaded attachment via Instagram Android fallback")
+			}
+		}
 		if attachmentID == 0 {
 			zerolog.Ctx(ctx).Warn().RawJSON("response", resp.Raw).Msg("No fbid received for upload")
 			return nil, fmt.Errorf("failed to upload attachment: fbid not received")
@@ -268,4 +286,87 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
 	return resp, nil
+}
+
+type ruploadToken struct {
+	DSUserID  string `json:"ds_user_id"`
+	SessionID string `json:"sessionid"`
+}
+
+type ruploadResponse struct {
+	ID      int   `json:"id"`
+	MediaID int64 `json:"media_id"`
+}
+
+func (mc *MessageConverter) reuploadFileToMetaFallback(ctx context.Context, client *messagix.Client, content *event.MessageEventContent) (int64, error) {
+	mime := content.Info.MimeType
+	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+	}
+	if mime == "" {
+		mime = http.DetectContentType(data)
+	}
+	uploadID := fmt.Sprintf(
+		"%s-%d-%d-%d-%d",
+		hex.EncodeToString(random.Bytes(16)),
+		0, // maybe this will change some day
+		len(data),
+		time.Now().Unix()*1000,
+		time.Now().UnixMilli(),
+	)
+	token, err := json.Marshal(ruploadToken{
+		DSUserID:  client.GetCookies().Get("ds_user_id"),
+		SessionID: client.GetCookies().Get("sessionid"),
+	})
+	if err != nil {
+		return 0, err
+	}
+	h := http.Header{}
+	// required headers are: authorization, ig-u-ds-user-id,
+	// offset, user-agent, video_type, x-entity-length, x-entity-name
+	//
+	// omitted headers include: x-fb-request-analytics-tags,
+	// x-ig-salt-ids, x-mid, x_fb_video_waterfall_id,
+	// x-fb-conn-uuid-client
+	h.Add("accept-language", "en-US")
+	h.Add("authorization", fmt.Sprintf("Bearer IGT:2:%s", base64.StdEncoding.EncodeToString(token)))
+	h.Add("ig-intended-user-id", client.GetCookies().Get("ds_user_id"))
+	h.Add("ig-u-ds-user-id", client.GetCookies().Get("ds_user_id"))
+	h.Add("ig-u-rur", client.GetCookies().Get("rur"))
+	h.Add("offset", "0")
+	h.Add("segment-start-offset", "0")
+	h.Add("segment-type", "3")
+	h.Add("user-agent", useragent.AndroidUserAgent)
+	h.Add("video_type", "FILE_ATTACHMENT")
+	h.Add("x-entity-length", fmt.Sprintf("%d", len(data)))
+	h.Add("x-entity-name", uploadID)
+	h.Add("x-entity-type", mime)
+	h.Add("x-fb-client-ip", "True")
+	h.Add("x-fb-friendly-name", "undefined:media-upload")
+	h.Add("x-fb-http-engine", "Tigon/MNS/TCP")
+	h.Add("x-fb-rmd", "state=URL_ELIGIBLE")
+	h.Add("x-fb-server-cluster", "True")
+	h.Add("x-zero-balance", "INIT")
+	h.Add("x-zero-eh", "")
+	resp, body, err := client.MakeRequest(
+		ctx,
+		fmt.Sprintf("https://rupload.facebook.com/messenger_video/%s", uploadID),
+		"POST",
+		h,
+		data,
+		"application/octet-stream",
+	)
+	if err != nil {
+		return 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("bad status: %d", resp.StatusCode)
+	}
+	var respData ruploadResponse
+	err = json.Unmarshal(body, &respData)
+	if err != nil {
+		return 0, err
+	}
+	return respData.MediaID, nil
 }
