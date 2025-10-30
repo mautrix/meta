@@ -22,6 +22,7 @@ type Configs struct {
 	VersionID          int64
 	Jazoest            string
 	WebSessionID       string
+	RoutingNamespace   string
 	Bitmap             *crypto.Bitmap
 	CSRBitmap          *crypto.Bitmap
 }
