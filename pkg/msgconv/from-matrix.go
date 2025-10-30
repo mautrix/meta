@@ -280,7 +280,7 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 		}
 	}
 	if attachmentID == 0 {
-		return 0, fmt.Errorf("failed to upload attachment: fbid not received")
+		return 0, fmt.Errorf("%w: fbid not received", bridgev2.ErrMediaReuploadFailed)
 	}
 	return attachmentID, nil
 }
