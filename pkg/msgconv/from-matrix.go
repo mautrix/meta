@@ -128,7 +128,7 @@ func (mc *MessageConverter) ToMeta(
 		// videos. For these accounts, the Instagram Android API still works and we use it
 		// as a fallback.
 		if attachmentID == 0 && content.MsgType == event.MsgVideo && client.Platform == types.Instagram {
-			attachmentID, err = mc.reuploadFileToMetaFallback(ctx, client, content)
+			attachmentID, err = mc.reuploadVideoToMetaFallback(ctx, client, content)
 			if err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("failed to upload attachment via Instagram Android fallback")
 				attachmentID = 0
@@ -298,7 +298,7 @@ type ruploadResponse struct {
 	MediaID int64 `json:"media_id"`
 }
 
-func (mc *MessageConverter) reuploadFileToMetaFallback(ctx context.Context, client *messagix.Client, content *event.MessageEventContent) (int64, error) {
+func (mc *MessageConverter) reuploadVideoToMetaFallback(ctx context.Context, client *messagix.Client, content *event.MessageEventContent) (int64, error) {
 	mime := content.Info.MimeType
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	if err != nil {
