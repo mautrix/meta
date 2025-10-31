@@ -11,6 +11,7 @@ const (
 	Instagram
 	Facebook
 	Messenger
+	MessengerLite
 	FacebookTor
 )
 
@@ -24,6 +25,8 @@ func PlatformFromString(s string) Platform {
 		return Messenger
 	case "facebook-tor":
 		return FacebookTor
+	case "messenger-lite":
+		return MessengerLite
 	default:
 		return Unset
 	}
@@ -39,6 +42,8 @@ func (p *Platform) UnmarshalJSON(data []byte) error {
 		*p = Messenger
 	case `"facebook-tor"`, `4`:
 		*p = FacebookTor
+	case `"messenger-lite"`, `5`:
+		*p = MessengerLite
 	default:
 		*p = Unset
 	}
@@ -55,6 +60,8 @@ func (p Platform) String() string {
 		return "messenger"
 	case FacebookTor:
 		return "facebook-tor"
+	case MessengerLite:
+		return "messenger-lite"
 	default:
 		return ""
 	}
@@ -65,9 +72,9 @@ func (p Platform) MarshalJSON() ([]byte, error) {
 }
 
 func (p Platform) IsMessenger() bool {
-	return p == Facebook || p == FacebookTor || p == Messenger
+	return p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLite
 }
 
 func (p Platform) IsValid() bool {
-	return p == Instagram || p == Facebook || p == FacebookTor || p == Messenger
+	return p == Instagram || p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLite
 }
