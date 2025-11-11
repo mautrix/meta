@@ -274,6 +274,9 @@ func (ig *InstagramMethods) fetchRouteDefinition(ctx context.Context, threadID s
 	payload := ig.client.newHTTPQuery()
 	payload.ClientPreviousActorID = "17841477657023246"
 	payload.RouteURL = fmt.Sprintf("/direct/t/%s/", threadID)
+	if ig.client.configs.RoutingNamespace == "" {
+		return "", fmt.Errorf("routing namespace is empty, cannot fetch route definition for thread %s", threadID)
+	}
 	payload.RoutingNamespace = ig.client.configs.RoutingNamespace
 	payload.Crn = "comet.igweb.PolarisDirectInboxRoute"
 
