@@ -25,6 +25,16 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "MAWCatQuery",
 		Jsessw:       "1",
 	},
+	"IGDeleteThread": {
+		DocId:        "23915602751379354",
+		CallerClass:  "RelayModern",
+		FriendlyName: "IGDInboxInfoDeleteThreadDialogOffMsysMutation",
+	},
+}
+
+type IGDeleteThreadGraphQLRequestPayload struct {
+	ThreadID                       string `json:"thread_fbid"`
+	ShouldMoveFutureRequestsToSpam bool   `json:"should_move_future_requests_to_spam"`
 }
 
 type LSPlatformGraphQLLightspeedRequestPayload struct {
