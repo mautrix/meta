@@ -1,3 +1,10 @@
+# v25.11
+
+* Added workaround for users who are unable to send videos even on the native
+  Instagram website.
+* Fixed bridge connection failing with certain FB/IG accounts.
+* Fixed bridging animated webp images received in encrypted chats.
+
 # v25.10
 
 * Switched to calendar versioning.

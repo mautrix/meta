@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
-	"golang.org/x/net/context"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"

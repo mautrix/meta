@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
-	"golang.org/x/net/context"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
