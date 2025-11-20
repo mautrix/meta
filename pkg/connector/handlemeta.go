@@ -120,16 +120,16 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 				Error:      MetaConnectionUnauthorized,
 			}
 		} else if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
-			if m.Main.Config.Mode.IsMessenger() {
-				m.metaState = status.BridgeState{
-					StateEvent: status.StateUnknownError,
-					Error:      MetaServerUnavailable,
-				}
-				if m.canReconnect() {
-					log.Debug().Msg("Doing full reconnect after server unavailable error")
-					go m.FullReconnect()
-				}
-			} else {
+			m.metaState = status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      MetaServerUnavailable,
+			}
+			if m.canReconnect() {
+				log.Debug().Msg("Doing full reconnect after server unavailable error")
+				go m.FullReconnect()
+			} else if !m.Main.Config.Mode.IsMessenger() {
+				// Instagram server unavailables have historically been more likely to be bad credentials,
+				// so default to that if we reconnected too recently.
 				m.metaState = status.BridgeState{
 					StateEvent: status.StateBadCredentials,
 					Error:      IGChallengeRequiredMaybe,
