@@ -139,6 +139,9 @@ func (s *Socket) postHandlePublishResponse(tbl *table.LSTable) {
 }
 
 func (c *Client) PostHandlePublishResponse(tbl *table.LSTable) {
+	if c == nil {
+		return
+	}
 	if s := c.socket; s != nil {
 		s.postHandlePublishResponse(tbl)
 	}
