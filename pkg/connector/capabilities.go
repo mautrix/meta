@@ -70,7 +70,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_10_07"
+	base := "fi.mau.meta.capabilities.2025_11_24"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -107,7 +107,6 @@ var metaCaps = &event.RoomFeatures{
 		},
 		event.MsgAudio: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
-				"audio/m4a":  event.CapLevelFullySupported,
 				"audio/mpeg": event.CapLevelFullySupported,
 				"audio/mp4":  event.CapLevelFullySupported,
 				"audio/wav":  event.CapLevelFullySupported,
