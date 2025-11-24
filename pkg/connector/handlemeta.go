@@ -696,11 +696,13 @@ func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage, 
 	} else if originalMsg == nil {
 		zerolog.Ctx(ctx).Warn().Str("message_id", edit.MessageID).Msg("Edit target message not found")
 	} else {
-		*innerQueue = append(*innerQueue, &FBEditEvent{
+		editEv := &FBEditEvent{
 			LSEditMessage: edit,
 			orig:          originalMsg,
 			m:             m,
-		})
+		}
+		*innerQueue = append(*innerQueue, editEv)
+		m.responseHandler.handleEdit(editEv)
 	}
 }
 

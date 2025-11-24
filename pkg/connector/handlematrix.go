@@ -371,6 +371,22 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 
 		newEditCount := int64(edit.EditTarget.EditCount) + 1
 
+		edits := m.responseHandler.subscribeToEdits(editTask.MessageID)
+
+		// Meta can return multiple inconsistent responses regarding the status of an edit,
+		// as long as at least one response is successful then the edit succeeded. That's
+		// why there are two booleans here. Sometimes you submit a request ID for an edit
+		// and you get a response for that request ID indicating your edit was reverted, but
+		// it actually wasn't, and you get a subsequent message, not associated with your
+		// request ID, telling you that the edit was successful.
+		successfulEdit := false
+		failedEdit := false
+
+		// Use ExecuteTasks, which returns a response, but we won't actually look at the
+		// response. Because we will also need to look at later messages, so we are using
+		// subscribeToEdits in addition, and if we use that, then that interface will
+		// automatically return the direct response as well, so there is no need to check it
+		// in addition.
 		var resp *table.LSTable
 		resp, err = m.Client.ExecuteTasks(ctx, editTask)
 		log.Trace().Any("response", resp).Msg("Meta edit response")
@@ -378,25 +394,57 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 			return fmt.Errorf("failed to send edit to Meta: %w", err)
 		}
 
-		if len(resp.LSEditMessage) > 0 {
-			edit.EditTarget.EditCount = int(resp.LSEditMessage[0].EditCount)
-		}
-
+		// Even though we do not look at the contents for the most part, we will do some
+		// basic sanity checks on it for debugging.
 		if len(resp.LSEditMessage) == 0 {
 			log.Debug().Msg("Edit response didn't contain new edit?")
 		} else if resp.LSEditMessage[0].MessageID != editTask.MessageID {
 			log.Debug().Msg("Edit response contained different message ID")
-		} else if resp.LSEditMessage[0].Text != editTask.Text {
-			log.Warn().Msg("Server returned edit with different text")
-			return fmt.Errorf("edit reverted")
-		} else if resp.LSEditMessage[0].EditCount != newEditCount {
-			log.Warn().
-				Int64("expected_edit_count", newEditCount).
-				Int64("actual_edit_count", resp.LSEditMessage[0].EditCount).
-				Msg("Edit count mismatch")
 		}
 
-		return nil
+		// Wait at most 5 seconds for a success acknowledgment to show up. It usually shows
+		// up after around 100ms, but in case of network delays, it could be longer. Abort
+		// immediately in case we do receive a success acknowledgment, so that the delay
+		// only occurs in the rare case that an edit actually is rejected.
+		after := time.After(5 * time.Second)
+
+	loop:
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-after:
+				break loop
+			case editMsg := <-edits:
+				edit.EditTarget.EditCount = int(resp.LSEditMessage[0].EditCount)
+				if editMsg.Text != editTask.Text {
+					log.Warn().Msg("Server returned edit with different text")
+					failedEdit = true
+					break
+				}
+				if editMsg.EditCount != newEditCount {
+					log.Warn().
+						Int64("expected_edit_count", newEditCount).
+						Int64("actual_edit_count", resp.LSEditMessage[0].EditCount).
+						Msg("Edit count mismatch")
+				}
+				if failedEdit {
+					log.Info().Msg("Server accepted edit after previously rejecting it")
+				} else {
+					log.Debug().Msg("Server accepted edit")
+				}
+				successfulEdit = true
+				break loop
+			}
+		}
+
+		if successfulEdit {
+			return nil
+		}
+		if failedEdit {
+			return fmt.Errorf("edit reverted")
+		}
+		return fmt.Errorf("did not receive edit response")
 	case metaid.ParsedWAMessageID:
 		if !m.e2eeConnectWaiter.WaitTimeout(ConnectWaitTimeout) {
 			return ErrNotConnected
