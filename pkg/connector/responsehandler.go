@@ -34,10 +34,11 @@ func (r *responseHandler) handleEdit(ev *FBEditEvent) {
 }
 
 // subscribeToEdits returns a channel that will receive every
-// LightSpeed edit event that is targeted at the given message ID. Any
-// previous channel returned for the same message ID will stop
-// receiving events. This is for simplicity based on the assumption
-// that the user only makes one edit at a time to the same message.
+// LightSpeed edit event that is targeted at the given message ID but
+// that does NOT correspond to a specific request ID. Any previous
+// channel returned for the same message ID will stop receiving
+// events. This is for simplicity based on the assumption that the
+// user only makes one edit at a time to the same message.
 func (r *responseHandler) subscribeToEdits(messageID string) chan *FBEditEvent {
 	r.lock.Lock()
 	defer r.lock.Unlock()
