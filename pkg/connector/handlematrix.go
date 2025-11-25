@@ -381,6 +381,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		// initial response and tell if it is real or fake. ^_^
 		cursedExtraEdits := make(chan *FBEditEvent, 1)
 		m.editChannels.Set(editTask.MessageID, cursedExtraEdits)
+		defer m.editChannels.Delete(editTask.MessageID)
 
 		var resp *table.LSTable
 		resp, err = m.Client.ExecuteTasks(ctx, editTask)
