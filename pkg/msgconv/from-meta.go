@@ -177,6 +177,12 @@ func (mc *MessageConverter) ToMatrix(
 			Type:    event.EventMessage,
 			Content: content,
 			Extra:   extra,
+			// These duplicate information about people joining and leaving a room,
+			// which would generally be rendered already by a Matrix client. There may
+			// be other "admin" messages that are important, but there is no structured
+			// data from Meta about what kind of message it is, so we can't really tell.
+			// Drop them all for now.
+			DontBridge: msg.IsAdminMessage,
 		})
 	}
 	if len(cm.Parts) == 0 {
