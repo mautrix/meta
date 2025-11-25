@@ -41,7 +41,8 @@ type MetaClient struct {
 	backfillLock       sync.Mutex
 	connectLock        sync.Mutex
 	stopConnectAttempt atomic.Pointer[context.CancelFunc]
-	responseHandler    responseHandler
+
+	editChannels *exsync.Map[string, chan *FBEditEvent]
 
 	connectBackgroundEvt           chan connectBackgroundEvent
 	connectBackgroundWAOfflineSync *exsync.Event
@@ -96,7 +97,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		igUserIDs:         map[string]int64{},
 		igUserIDsReverse:  map[int64]string{},
 	}
-	c.responseHandler = newResponseHandler(c)
+	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
 	if messagixClient != nil {
 		messagixClient.SetEventHandler(c.handleMetaEvent)
 	}

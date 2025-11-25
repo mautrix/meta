@@ -702,7 +702,15 @@ func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage, 
 			m:             m,
 		}
 		*innerQueue = append(*innerQueue, editEv)
-		m.responseHandler.handleEdit(editEv)
+		if ch, ok := m.editChannels.Get(editEv.MessageID); ok {
+			select {
+			case ch <- editEv:
+				return
+			case <-time.After(1 * time.Second):
+				zerolog.Ctx(ctx).Warn().Msg("Dropped LSEditMessage from channel due to internal error")
+				return
+			}
+		}
 	}
 }
 

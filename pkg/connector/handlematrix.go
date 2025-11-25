@@ -379,7 +379,8 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		// case the normal response is bad, we have to wait a bit to see if there is a
 		// follow-up response that corrects it. AFAICT, there is no way to look at the
 		// initial response and tell if it is real or fake. ^_^
-		cursedExtraEdits := m.responseHandler.subscribeToEdits(editTask.MessageID)
+		cursedExtraEdits := make(chan *FBEditEvent, 1)
+		m.editChannels.Set(editTask.MessageID, cursedExtraEdits)
 
 		var resp *table.LSTable
 		resp, err = m.Client.ExecuteTasks(ctx, editTask)
