@@ -28,6 +28,7 @@ const (
 	WAPermanentError           status.BridgeStateErrorCode = "wa-unknown-permanent-error"
 	WACATError                 status.BridgeStateErrorCode = "wa-cat-refresh-error"
 	WAConnectError             status.BridgeStateErrorCode = "wa-unknown-connect-error"
+	WAOutage                   status.BridgeStateErrorCode = "wa-outage"
 	MetaConnectionUnauthorized status.BridgeStateErrorCode = "meta-connection-unauthorized"
 	MetaPermanentError         status.BridgeStateErrorCode = "meta-unknown-permanent-error"
 	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"

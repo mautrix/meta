@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -388,10 +389,26 @@ func (m *MetaClient) periodicReconnect() {
 	}
 }
 
+var got5xxRegexp = regexp.MustCompile(`got 5[0-9][0-9]$`)
+
 func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 	err := m.connectE2EE()
 	if err != nil {
-		if m.waState.StateEvent != status.StateBadCredentials && m.waState.StateEvent != status.StateUnknownError {
+		if m.waState.StateEvent == status.StateUnknownError || m.waState.StateEvent == status.StateBadCredentials {
+			goto next
+		}
+		if got5xxRegexp.MatchString(err.Error()) {
+			if m.waState.StateEvent != status.StateTransientDisconnect {
+				m.waState = status.BridgeState{
+					StateEvent: status.StateTransientDisconnect,
+					Error:      WAOutage,
+					Info: map[string]any{
+						"go_error": err.Error(),
+					},
+				}
+				m.UserLogin.BridgeState.Send(m.waState)
+			}
+		} else {
 			m.waState = status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      WAConnectError,
@@ -401,6 +418,7 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 			}
 			m.UserLogin.BridgeState.Send(m.waState)
 		}
+	next:
 		if fromConnectFailure {
 			m.UserLogin.Log.Err(err).Msg("Failed to connect to e2ee after 415 error")
 		} else {
