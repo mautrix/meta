@@ -706,7 +706,7 @@ func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage, 
 			select {
 			case ch <- editEv:
 				return
-			case <-time.After(1 * time.Second):
+			default:
 				zerolog.Ctx(ctx).Warn().Msg("Dropped LSEditMessage from channel due to internal error")
 				return
 			}
