@@ -24,6 +24,7 @@ import (
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -54,7 +55,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 10
+	return 1, 11
 }
 
 const MaxTextLength = 20000
@@ -70,7 +71,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_11_24"
+	base := "fi.mau.meta.capabilities.2025_11_25"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -200,7 +201,23 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 		return metaCapsWithE2E
 	}
 	if m.Client.GetPlatform() == types.Instagram || m.Main.Config.Mode == types.Instagram {
-		return igCaps
+		if portal.RoomType == database.RoomTypeDM {
+			return igCaps
+		}
+		igCapsGroup := igCaps.Clone()
+		igCapsGroup.ID += "+instagram-group"
+		igCapsGroup.State = event.StateFeatureMap{
+			event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
+		}
+		return igCapsGroup
 	}
-	return metaCaps
+	if portal.RoomType == database.RoomTypeDM {
+		return metaCaps
+	}
+	metaCapsGroup := metaCaps.Clone()
+	metaCapsGroup.ID += "+group"
+	metaCapsGroup.State = event.StateFeatureMap{
+		event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
+	}
+	return metaCapsGroup
 }

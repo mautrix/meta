@@ -30,11 +30,21 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		CallerClass:  "RelayModern",
 		FriendlyName: "IGDInboxInfoDeleteThreadDialogOffMsysMutation",
 	},
+	"IGEditGroupTitle": {
+		DocId:        "29088580780787855",
+		CallerClass:  "RelayModern",
+		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {
 	ThreadID                       string `json:"thread_fbid"`
 	ShouldMoveFutureRequestsToSpam bool   `json:"should_move_future_requests_to_spam"`
+}
+
+type IGEditGroupTitleGraphQLRequestPayload struct {
+	ThreadID string `json:"thread_fbid"`
+	NewTitle string `json:"new_title"`
 }
 
 type LSPlatformGraphQLLightspeedRequestPayload struct {

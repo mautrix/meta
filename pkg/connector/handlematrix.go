@@ -35,6 +35,7 @@ var (
 	_ bridgev2.ChatViewingNetworkAPI         = (*MetaClient)(nil)
 	_ bridgev2.TypingHandlingNetworkAPI      = (*MetaClient)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*MetaClient)(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI    = (*MetaClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*MetaConnector)(nil)
@@ -675,4 +676,30 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		return nil
 	}
 	return fmt.Errorf("unknown platform for deleting chat: %v", platform)
+}
+
+func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
+	if msg.Portal.RoomType == database.RoomTypeDM {
+		return false, fmt.Errorf("renaming not supported in DMs")
+	}
+	platform := m.LoginMeta.Platform
+	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+	if platform == types.Instagram {
+		err := m.Client.Instagram.EditGroupTitle(ctx, strconv.FormatInt(threadID, 10), msg.Content.Name)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	} else if platform == types.Facebook || platform == types.Messenger {
+		_, err := m.Client.ExecuteTasks(ctx, &socket.RenameThreadTask{
+			ThreadKey:  threadID,
+			ThreadName: msg.Content.Name,
+			SyncGroup:  1,
+		})
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, fmt.Errorf("unknown platform for renaming chat: %v", platform)
 }
