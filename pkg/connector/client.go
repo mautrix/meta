@@ -394,9 +394,14 @@ var got5xxRegexp = regexp.MustCompile(`got 5[0-9][0-9]$`)
 func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 	err := m.connectE2EE()
 	if err != nil {
+		// If bridge state is already in unknown-error or bad-credentials, leave it there.
 		if m.waState.StateEvent == status.StateUnknownError || m.waState.StateEvent == status.StateBadCredentials {
 			goto next
 		}
+		// If we get a 5xx back from connecting to the websocket, interpret it as a
+		// transient disconnect, so the bridge can try reconnecting later. There is
+		// unfortunately no structured error value we can inspect, so we have to look at the
+		// message: https://github.com/coder/websocket/blob/v1.8.14/dial.go#L243-L245
 		if got5xxRegexp.MatchString(err.Error()) {
 			if m.waState.StateEvent != status.StateTransientDisconnect {
 				m.waState = status.BridgeState{
@@ -409,6 +414,7 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 				m.UserLogin.BridgeState.Send(m.waState)
 			}
 		} else {
+			// Any other connection error we treat as unknown.
 			m.waState = status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      WAConnectError,
