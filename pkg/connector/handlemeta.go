@@ -696,11 +696,21 @@ func (m *MetaClient) handleEdit(ctx context.Context, edit *table.LSEditMessage, 
 	} else if originalMsg == nil {
 		zerolog.Ctx(ctx).Warn().Str("message_id", edit.MessageID).Msg("Edit target message not found")
 	} else {
-		*innerQueue = append(*innerQueue, &FBEditEvent{
+		editEv := &FBEditEvent{
 			LSEditMessage: edit,
 			orig:          originalMsg,
 			m:             m,
-		})
+		}
+		*innerQueue = append(*innerQueue, editEv)
+		if ch, ok := m.editChannels.Get(editEv.MessageID); ok {
+			select {
+			case ch <- editEv:
+				return
+			default:
+				zerolog.Ctx(ctx).Warn().Msg("Dropped LSEditMessage from channel due to internal error")
+				return
+			}
+		}
 	}
 }
 
