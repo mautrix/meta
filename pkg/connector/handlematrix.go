@@ -452,7 +452,10 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
 			ID: strconv.FormatInt(otid, 10),
 		})
-		log.Trace().Any("response", resp).Msg("WhatsApp edit response")
+		// Edit response payload does not appear to contain any message contents, log it for
+		// debugging sporadic cases where edit bridged from Matrix appears to succeed but is
+		// actually not reflected on Facebook side
+		log.Debug().Any("response", resp).Msg("WhatsApp edit response")
 		return err
 	default:
 		return fmt.Errorf("invalid message ID")
