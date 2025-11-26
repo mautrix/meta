@@ -217,7 +217,8 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	metaCapsGroup := metaCaps.Clone()
 	metaCapsGroup.ID += "+group"
 	metaCapsGroup.State = event.StateFeatureMap{
-		event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
+		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
+		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
 	}
 	return metaCapsGroup
 }

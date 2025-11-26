@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -36,6 +37,7 @@ var (
 	_ bridgev2.TypingHandlingNetworkAPI      = (*MetaClient)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*MetaClient)(nil)
 	_ bridgev2.RoomNameHandlingNetworkAPI    = (*MetaClient)(nil)
+	_ bridgev2.RoomAvatarHandlingNetworkAPI  = (*MetaClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*MetaConnector)(nil)
@@ -702,4 +704,45 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 		return true, nil
 	}
 	return false, fmt.Errorf("unknown platform for renaming chat: %v", platform)
+}
+
+func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
+	if msg.Portal.RoomType == database.RoomTypeDM {
+		return false, fmt.Errorf("changing avatar not supported in DMs")
+	}
+	if m.LoginMeta.Platform == types.Instagram {
+		// TODO: implement Instagram avatar changing. IG Web doesn't support this.
+		return false, fmt.Errorf("changing avatar not supported on Instagram")
+	}
+	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+	var imageID int64
+	if msg.Content.URL == "" && msg.Content.MSC3414File == nil {
+		// TODO: handle removing avatar. Messenger web doesn't have a remove option?
+		return false, fmt.Errorf("removing avatar not implemented")
+	} else {
+		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, msg.Content.MSC3414File)
+		if err != nil {
+			return false, fmt.Errorf("failed to download avatar: %w", err)
+		}
+		mimeType := http.DetectContentType(data)
+		resp, err := m.Client.SendMercuryUploadRequest(ctx, threadID, &messagix.MercuryUploadMedia{
+			Filename:  "avatar.jpg",
+			MimeType:  mimeType,
+			MediaData: data,
+		})
+		if err != nil {
+			return false, fmt.Errorf("failed to upload avatar: %w", err)
+		}
+
+		imageID = resp.Payload.RealMetadata.GetFbId()
+		if imageID == 0 {
+			return false, fmt.Errorf("no image ID received from upload")
+		}
+	}
+	_, err := m.Client.ExecuteTasks(ctx, &socket.SetThreadImageTask{
+		ThreadKey: threadID,
+		ImageID:   imageID,
+		SyncGroup: 1,
+	})
+	return err == nil, err
 }
