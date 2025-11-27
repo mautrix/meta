@@ -166,6 +166,8 @@ var metaCaps = &event.RoomFeatures{
 var metaCapsWithThreads *event.RoomFeatures
 var metaCapsWithE2E *event.RoomFeatures
 var igCaps *event.RoomFeatures
+var igCapsGroup *event.RoomFeatures
+var metaCapsGroup *event.RoomFeatures
 
 func init() {
 	metaCapsWithThreads = metaCaps.Clone()
@@ -185,12 +187,24 @@ func init() {
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
 	metaCapsWithE2E.DeleteChat = false
 
+	metaCapsGroup = metaCaps.Clone()
+	metaCapsGroup.ID += "+group"
+	metaCapsGroup.State = event.StateFeatureMap{
+		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
+		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
+	}
+
 	igCaps = metaCaps.Clone()
 	delete(igCaps.File, event.MsgFile)
 	for _, value := range igCaps.File {
 		value.Caption = event.CapLevelDropped
 	}
 	igCaps.ID += "+instagram-p2"
+	igCapsGroup = igCaps.Clone()
+	igCapsGroup.ID += "+instagram-group"
+	igCapsGroup.State = event.StateFeatureMap{
+		event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
+	}
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
@@ -204,21 +218,10 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 		if portal.RoomType == database.RoomTypeDM {
 			return igCaps
 		}
-		igCapsGroup := igCaps.Clone()
-		igCapsGroup.ID += "+instagram-group"
-		igCapsGroup.State = event.StateFeatureMap{
-			event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
-		}
 		return igCapsGroup
 	}
 	if portal.RoomType == database.RoomTypeDM {
 		return metaCaps
-	}
-	metaCapsGroup := metaCaps.Clone()
-	metaCapsGroup.ID += "+group"
-	metaCapsGroup.State = event.StateFeatureMap{
-		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
-		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
 	}
 	return metaCapsGroup
 }
