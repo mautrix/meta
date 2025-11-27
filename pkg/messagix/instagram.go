@@ -371,3 +371,18 @@ type fetchRouteDefinitionResponsePayload struct {
 type fetchRouteDefinitionResponse struct {
 	Payload fetchRouteDefinitionResponsePayload `json:"payload"`
 }
+
+func (ig *InstagramMethods) EditGroupTitle(ctx context.Context, threadID, newTitle string) error {
+	igVariables := &graphql.IGEditGroupTitleGraphQLRequestPayload{
+		ThreadID: threadID,
+		NewTitle: newTitle,
+	}
+	resp, _, err := ig.client.makeGraphQLRequest(ctx, "IGEditGroupTitle", &igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to edit group title for thread %s: %w", threadID, err)
+	}
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return fmt.Errorf("failed to edit group title with bad status code %d", resp.StatusCode)
+	}
+	return nil
+}
