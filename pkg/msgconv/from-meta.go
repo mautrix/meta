@@ -288,6 +288,24 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 }
 
 func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *table.LSInsertAttachment) *bridgev2.ConvertedMessagePart {
+	if mc.DisableViewOnce && (att.EphemeralMediaViewMode == table.EphemeralMediaViewOnce || att.EphemeralMediaViewMode == table.EphemeralMediaReplayable) {
+		mediaType := "photo"
+		viewed := "viewed"
+		if att.EphemeralMediaViewMode == table.EphemeralMediaReplayable {
+			viewed = "replayed"
+		}
+		if att.AttachmentType == table.AttachmentTypeEphemeralVideo {
+			mediaType = "video"
+		}
+		body := fmt.Sprintf("This %s can only be %s once. Use the Instagram mobile app to view.", mediaType, viewed)
+		return &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    body,
+			},
+		}
+	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	if mime == "" {

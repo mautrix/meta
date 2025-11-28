@@ -47,3 +47,5 @@ send_presence_on_typing: false
 # typing indicators; the existing connection(s) are sufficient to send
 # and receive typing indicators in all other cases.
 receive_instagram_typing_indicators: true
+# Should view-once messages be disabled entirely?
+disable_view_once: false

@@ -36,6 +36,7 @@ func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
 	m.Bridge.Commands.(*commands.Processor).AddHandlers(cmdToggleEncryption)
 	m.DB = metadb.New(bridge.ID, bridge.DB.Database, m.Bridge.Log.With().Str("db_section", "meta").Logger())
 	m.MsgConv = msgconv.New(bridge, m.DB)
+	m.MsgConv.DisableViewOnce = m.Config.DisableViewOnce
 	if m.Config.ProxyMedia && m.Config.Proxy != "" {
 		msgconv.SetProxy(m.Config.Proxy)
 	}

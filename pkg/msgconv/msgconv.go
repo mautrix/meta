@@ -25,13 +25,14 @@ import (
 )
 
 type MessageConverter struct {
-	Bridge      *bridgev2.Bridge
-	MaxFileSize int64
-	AsyncFiles  bool
-	BridgeMode  types.Platform
-	HTMLParser  *format.HTMLParser
-	DB          *metadb.MetaDB
-	DirectMedia bool
+	Bridge          *bridgev2.Bridge
+	MaxFileSize     int64
+	AsyncFiles      bool
+	DisableViewOnce bool
+	BridgeMode      types.Platform
+	HTMLParser      *format.HTMLParser
+	DB              *metadb.MetaDB
+	DirectMedia     bool
 }
 
 func New(br *bridgev2.Bridge, db *metadb.MetaDB) *MessageConverter {
