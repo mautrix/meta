@@ -13,8 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
-	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -24,80 +22,6 @@ import (
 // specific methods for insta api, not socket related
 type InstagramMethods struct {
 	client *Client
-}
-
-func (ig *InstagramMethods) Login(ctx context.Context, identifier, password string) (*cookies.Cookies, error) {
-	ig.client.loadLoginPage(ctx)
-	if _, err := ig.client.configs.SetupConfigs(ctx, nil); err != nil {
-		return nil, err
-	}
-	h := ig.client.buildHeaders(false, false)
-	h.Set("x-web-device-id", ig.client.cookies.Get(cookies.IGCookieDeviceID))
-	h.Set("sec-fetch-dest", "empty")
-	h.Set("sec-fetch-mode", "cors")
-	h.Set("sec-fetch-site", "same-origin")
-	h.Set("x-requested-with", "XMLHttpRequest")
-	h.Set("referer", ig.client.GetEndpoint("login_page"))
-
-	login_page_v1 := ig.client.GetEndpoint("web_login_page_v1")
-	_, _, err := ig.client.MakeRequest(ctx, login_page_v1, "GET", h, nil, types.NONE)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", login_page_v1, err)
-	}
-
-	err = ig.client.sendCookieConsent(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
-	web_shared_data_v1 := ig.client.GetEndpoint("web_shared_data_v1")
-	req, respBody, err := ig.client.MakeRequest(ctx, web_shared_data_v1, "GET", h, nil, types.NONE) // returns actual machineId you're supposed to use
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", web_shared_data_v1, err)
-	}
-
-	ig.client.cookies.UpdateFromResponse(req)
-
-	err = json.Unmarshal(respBody, &ig.client.configs.BrowserConfigTable.XIGSharedData.ConfigData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal web_shared_data_v1 resp body into *XIGSharedData.ConfigData: %w", err)
-	}
-
-	encryptionConfig := ig.client.configs.BrowserConfigTable.XIGSharedData.ConfigData.Encryption
-	pubKeyId, err := strconv.Atoi(encryptionConfig.KeyID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert keyId for instagram password encryption to int: %w", err)
-	}
-
-	encryptedPw, err := crypto.EncryptPassword(int(types.Instagram), pubKeyId, encryptionConfig.PublicKey, password)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt password for instagram: %w", err)
-	}
-
-	loginForm := &types.InstagramLoginPayload{
-		Password:             encryptedPw,
-		OptIntoOneTap:        false,
-		QueryParams:          "{}",
-		TrustedDeviceRecords: "{}",
-		Username:             identifier,
-	}
-
-	form, err := query.Values(&loginForm)
-	if err != nil {
-		return nil, err
-	}
-	web_login_ajax_v1 := ig.client.GetEndpoint("web_login_ajax_v1")
-	loginResp, loginBody, err := ig.client.sendLoginRequest(ctx, form, web_login_ajax_v1)
-	if err != nil {
-		return nil, err
-	}
-
-	loginResult := ig.client.processLogin(loginResp, loginBody)
-	if loginResult != nil {
-		return nil, loginResult
-	}
-
-	return ig.client.cookies, nil
 }
 
 func (ig *InstagramMethods) FetchProfile(ctx context.Context, username string) (*responses.ProfileInfoResponse, error) {

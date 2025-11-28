@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -293,56 +292,4 @@ func (c *Client) addInstagramHeaders(h *http.Header) {
 			h.Set("x-ig-app-id", c.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
 		}
 	}
-}
-
-func (c *Client) findCookie(cookies []*http.Cookie, name string) *http.Cookie {
-	for _, c := range cookies {
-		if c.Name == name {
-			return c
-		}
-	}
-	return nil
-}
-
-func (c *Client) sendLoginRequest(ctx context.Context, form url.Values, loginUrl string) (*http.Response, []byte, error) {
-	h := c.buildLoginHeaders()
-	loginPayload := []byte(form.Encode())
-
-	resp, respBody, err := c.MakeRequest(ctx, loginUrl, "POST", h, loginPayload, types.FORM)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send login request: %w", err)
-	}
-
-	return resp, respBody, nil
-}
-
-func (c *Client) buildLoginHeaders() http.Header {
-	h := c.buildHeaders(true, false)
-	if c.Platform.IsMessenger() {
-		h = c.addLoginFacebookHeaders(h)
-	} else {
-		h = c.addLoginInstagramHeaders(h)
-	}
-	h.Set("origin", c.GetEndpoint("base_url"))
-	h.Set("referer", c.GetEndpoint("login_page"))
-
-	return h
-}
-
-func (c *Client) addLoginFacebookHeaders(h http.Header) http.Header {
-	h.Set("sec-fetch-dest", "document")
-	h.Set("sec-fetch-mode", "navigate")
-	h.Set("sec-fetch-site", "same-origin") // header is required
-	h.Set("sec-fetch-user", "?1")
-	h.Set("upgrade-insecure-requests", "1")
-	return h
-}
-
-func (c *Client) addLoginInstagramHeaders(h http.Header) http.Header {
-	h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.BrowserConfigTable.SiteData.ServerRevision, 10))
-	h.Set("sec-fetch-dest", "empty")
-	h.Set("sec-fetch-mode", "cors")
-	h.Set("sec-fetch-site", "same-origin") // header is required
-	h.Set("x-requested-with", "XMLHttpRequest")
-	return h
 }

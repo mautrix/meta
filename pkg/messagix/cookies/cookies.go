@@ -129,12 +129,6 @@ func (c *Cookies) GetUserID() int64 {
 	return userID
 }
 
-func (c *Cookies) Set(key MetaCookieName, value string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.values[key] = value
-}
-
 func (c *Cookies) Get(key MetaCookieName) string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()

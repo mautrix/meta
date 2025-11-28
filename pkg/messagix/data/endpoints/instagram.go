@@ -10,7 +10,6 @@ const (
 var InstagramEndpoints = map[string]string{
 	"host":            instaHost,
 	"base_url":        instaBaseUrl, //+ "/",
-	"login_page":      instaBaseUrl + "/accounts/login/",
 	"messages":        instaBaseUrl + "/direct/inbox/",
 	"thread":          instaBaseUrl + "/direct/t/",
 	"graphql":         instaBaseUrl + "/api/graphql",
@@ -23,10 +22,6 @@ var InstagramEndpoints = map[string]string{
 
 	"media_upload":     instaBaseUrl + "/ajax/mercury/upload.php?",
 	"route_definition": instaBaseUrl + "/ajax/route-definition/",
-
-	"web_login_page_v1":  instaWebApiV1Url + "/login_page/",
-	"web_shared_data_v1": instaWebApiV1Url + "/data/shared_data/",
-	"web_login_ajax_v1":  instaWebApiV1Url + "/accounts/login/ajax/",
 
 	"web_profile_info": instaApiV1Url + "/users/web_profile_info/?",
 	"reels_media":      instaApiV1Url + "/feed/reels_media/?",

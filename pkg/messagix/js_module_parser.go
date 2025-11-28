@@ -13,7 +13,6 @@ import (
 
 	"golang.org/x/net/html"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -61,20 +60,13 @@ type LinkTag struct {
 	Attributes AttributeMap
 }
 
-type FormTag struct {
-	Attributes AttributeMap
-	Inputs     []InputTag
-}
-
 type InputTag struct {
 	Attributes AttributeMap
 }
 
 type ModuleParser struct {
-	client      *Client
-	FormTags    []FormTag
-	LoginInputs []InputTag
-	JSDatr      string
+	client *Client
+	JSDatr string
 
 	LS *table.LSTable
 }
@@ -183,28 +175,6 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 		if !doneCrawling {
 			return ErrVersionIDNotFound
 		}
-	}
-
-	if m.client.Platform == types.Instagram {
-		sharedData := m.client.configs.BrowserConfigTable.XIGSharedData
-		err = sharedData.ParseRaw()
-		if err != nil {
-			m.client.Logger.Debug().Err(err).Str("raw_data", sharedData.Raw).Msg("Errored raw XIGSharedData")
-		}
-		m.client.Logger.Debug().Any("authenticated", authenticated).Msg("Instagram Authentication Status")
-		if !authenticated && err == nil {
-			m.client.cookies.Set(cookies.IGCookieCSRFToken, sharedData.ConfigData.Config.CsrfToken)
-			m.client.cookies.Set(cookies.IGCookieDeviceID, sharedData.Native.DeviceID)
-			m.client.cookies.Set(cookies.IGCookieMachineID, methods.GenerateMachineID())
-		}
-	}
-
-	formTags := m.findFormTags(doc)
-	m.FormTags = formTags
-	if !authenticated && m.client.Platform.IsMessenger() {
-		loginNode := m.findNodeByID(doc, "loginform")
-		loginInputs := m.findInputTags(loginNode)
-		m.LoginInputs = loginInputs
 	}
 
 	return nil
@@ -408,66 +378,4 @@ func (m *ModuleParser) findLinkTags(n *html.Node) []LinkTag {
 		linkTags[i] = t.(LinkTag)
 	}
 	return linkTags
-}
-
-// For Form Tags:
-func (m *ModuleParser) findFormTags(n *html.Node) []FormTag {
-	processor := func(n *html.Node) interface{} {
-		formAttributes := make(AttributeMap)
-		for _, a := range n.Attr {
-			formAttributes[a.Key] = a.Val
-		}
-		var formInputs []InputTag
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if c.Type == html.ElementNode && c.Data == "input" {
-				inputAttributes := make(AttributeMap)
-				for _, a := range c.Attr {
-					inputAttributes[a.Key] = a.Val
-				}
-				formInputs = append(formInputs, InputTag{Attributes: inputAttributes})
-			}
-		}
-		return FormTag{Attributes: formAttributes, Inputs: formInputs}
-	}
-
-	tags := m.findTags("form", processor, n)
-	formTags := make([]FormTag, len(tags))
-	for i, t := range tags {
-		formTags[i] = t.(FormTag)
-	}
-	return formTags
-}
-
-func (m *ModuleParser) findInputTags(n *html.Node) []InputTag {
-	processor := func(n *html.Node) interface{} {
-		attributes := make(AttributeMap)
-		for _, a := range n.Attr {
-			attributes[a.Key] = a.Val
-		}
-		return InputTag{Attributes: attributes}
-	}
-
-	tags := m.findTags("input", processor, n)
-	inputTags := make([]InputTag, len(tags))
-	for i, t := range tags {
-		inputTags[i] = t.(InputTag)
-	}
-	return inputTags
-}
-
-func (m *ModuleParser) findNodeByID(n *html.Node, id string) *html.Node {
-	if n.Type == html.ElementNode {
-		for _, a := range n.Attr {
-			if a.Key == "id" && a.Val == id {
-				return n
-			}
-		}
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		result := m.findNodeByID(c, id)
-		if result != nil {
-			return result
-		}
-	}
-	return nil
 }
