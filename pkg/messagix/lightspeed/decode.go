@@ -320,7 +320,7 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 			// TODO
 			fallthrough
 		default:
-			badGlobalLog.Warn().Stringer("kind", kind).Any("val", val).Type("val_type", val).Msg("Unknown kind")
+			badGlobalLog.Warn().Stringer("kind", kind).Any("val", redactForLog(val)).Type("val_type", val).Msg("Unknown kind")
 			//os.Exit(1)
 		}
 		decodedData[index] = nil
