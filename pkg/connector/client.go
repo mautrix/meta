@@ -555,21 +555,16 @@ func (m *MetaClient) resetWADevice() {
 }
 
 func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeState {
-	if state.StateEvent == status.StateConnected || state.Error == WADisconnected {
-		var copyFrom *status.BridgeState
-		if m.waState.StateEvent != "" && m.waState.StateEvent != status.StateConnected {
-			copyFrom = &m.waState
-		}
-		if m.metaState.StateEvent != "" && m.metaState.StateEvent != status.StateConnected {
-			copyFrom = &m.metaState
-		}
-		if copyFrom != nil {
-			state.StateEvent = copyFrom.StateEvent
-			state.Error = copyFrom.Error
-			state.Message = copyFrom.Message
-			state.Info = copyFrom.Info
-		}
+	// The Meta bridge internally has two states - one for connection to meta and one for whatsapp;
+	// as such we need to merge the two states when sending updates and pick the "worst case".
+	copyFrom := m.pickWorstCaseBridgeState(state)
+	if copyFrom != nil {
+		state.StateEvent = copyFrom.StateEvent
+		state.Error = copyFrom.Error
+		state.Message = copyFrom.Message
+		state.Info = copyFrom.Info
 	}
+
 	if state.Info == nil {
 		state.Info = make(map[string]any)
 	}
@@ -578,6 +573,32 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.Info["login_user_agent"] = m.LoginMeta.LoginUA
 	}
 	return state
+}
+
+func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState) *status.BridgeState {
+	if state.StateEvent == m.waState.StateEvent && state.StateEvent == m.metaState.StateEvent {
+		// If both states are the same as the input, we can use as-is
+		return nil
+	}
+
+	// Now find the worst case state in order (BAD_CREDENTIALS being worst), prefer the input state
+	// if matches or fallback to either metaState or waState.
+	for _, status := range []status.BridgeStateEvent{
+		status.StateBadCredentials,
+		status.StateUnknownError,
+		status.StateTransientDisconnect,
+		status.StateConnecting,
+	} {
+		if state.StateEvent == status {
+			return nil
+		} else if m.waState.StateEvent == status {
+			return &m.waState
+		} else if m.metaState.StateEvent == status {
+			return &m.metaState
+		}
+	}
+
+	return nil
 }
 
 func (m *MetaClient) updateWAPresence(ctx context.Context, presence waTypes.Presence) error {
