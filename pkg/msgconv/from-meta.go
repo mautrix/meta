@@ -324,12 +324,14 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 		mime = att.AttachmentMimeType
 	}
 	duration := att.PlayableDurationMs
+	var width, height int64
 	if url == "" {
 		url = att.PreviewUrl
 		mime = att.PreviewUrlMimeType
+		width, height = att.PreviewWidth, att.PreviewHeight
 	}
 	converted, err := mc.reuploadAttachment(
-		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(att.PreviewWidth), int(att.PreviewHeight), int(duration),
+		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
 	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
