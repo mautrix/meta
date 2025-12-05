@@ -76,6 +76,11 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid
 	return ghost.Intent.GetMXID(), ghost.Name, nil
 }
 
+// The fake sticker that's sent when someone presses the thumbs-up
+// button in Messenger. It's handled specially by the Messenger web
+// client instead of being displayed as a normal sticker.
+const facebookThumbsUpStickerID = 369239263222822
+
 func (mc *MessageConverter) ToMatrix(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -95,6 +100,13 @@ func (mc *MessageConverter) ToMatrix(
 	}
 	if msg.IsUnsent {
 		return cm
+	}
+	// Display the thumbs-up sticker as a simple emoji message,
+	// which is the same way that it is displayed for encrypted
+	// chats, to be consistent between the two types of chats.
+	if msg.StickerId == facebookThumbsUpStickerID && len(msg.Stickers) == 1 {
+		msg.Text = "👍"
+		msg.Stickers = nil
 	}
 	for i, blobAtt := range msg.BlobAttachments {
 		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("blob_attachment_%d", i)))
@@ -312,14 +324,12 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 		mime = att.AttachmentMimeType
 	}
 	duration := att.PlayableDurationMs
-	var width, height int64
 	if url == "" {
 		url = att.PreviewUrl
 		mime = att.PreviewUrlMimeType
-		width, height = att.PreviewWidth, att.PreviewHeight
 	}
 	converted, err := mc.reuploadAttachment(
-		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
+		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(att.PreviewWidth), int(att.PreviewHeight), int(duration),
 	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer media")
@@ -328,17 +338,21 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 	return converted
 }
 
+// All stickers are rendered in the Messenger web client as 96x96
+// pixels no matter what. For example you'll have a 240x240 pixel
+// sticker image, and the PreviewWidth attribute says it's 128x128,
+// nonetheless it's displayed at 96x96 like everything else.
+const stickerSize = 96
+
 func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSInsertStickerAttachment) *bridgev2.ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
-	var width, height int64
 	if url == "" {
 		url = att.PreviewUrl
 		mime = att.PreviewUrlMimeType
-		width, height = att.PreviewWidth, att.PreviewHeight
 	}
 	converted, err := mc.reuploadAttachment(
-		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, int(width), int(height), 0,
+		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, stickerSize, stickerSize, 0,
 	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")
