@@ -74,6 +74,7 @@ type Client struct {
 }
 
 var DisableTLSVerification = false
+var MaxConnectBackoff = 5 * time.Minute
 
 func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Client {
 	if cookies.Platform == types.Unset {
@@ -329,8 +330,8 @@ func (c *Client) Connect(ctx context.Context) error {
 				reconnectIn = 2 * time.Second
 			} else {
 				reconnectIn *= 2
-				if reconnectIn > 5*time.Minute {
-					reconnectIn = 5 * time.Minute
+				if reconnectIn > MaxConnectBackoff {
+					reconnectIn = MaxConnectBackoff
 				}
 			}
 			if err != nil {
@@ -364,8 +365,8 @@ func (c *Client) connectDGW(ctx context.Context) error {
 			reconnectIn = 2 * time.Second
 		} else {
 			reconnectIn *= 2
-			if reconnectIn > 5*time.Minute {
-				reconnectIn = 5 * time.Minute
+			if reconnectIn > MaxConnectBackoff {
+				reconnectIn = MaxConnectBackoff
 			}
 		}
 		if err != nil {
