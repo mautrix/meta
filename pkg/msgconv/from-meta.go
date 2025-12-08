@@ -76,10 +76,16 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid
 	return ghost.Intent.GetMXID(), ghost.Name, nil
 }
 
-// The fake sticker that's sent when someone presses the thumbs-up
-// button in Messenger. It's handled specially by the Messenger web
-// client instead of being displayed as a normal sticker.
-const facebookThumbsUpStickerID = 369239263222822
+// The fake stickers that are sent when someone presses the thumbs-up
+// button in Messenger. They are handled specially by the Messenger
+// web client instead of being displayed as normal stickers. There are
+// three variants depending on how long the sending user held down the
+// send button.
+const (
+	facebookThumbsUpSmallStickerID  = 369239263222822
+	facebookThumbsUpMediumStickerID = 369239343222814
+	facebookThumbsUpLargeStickerID  = 369239383222810
+)
 
 func (mc *MessageConverter) ToMatrix(
 	ctx context.Context,
@@ -104,9 +110,12 @@ func (mc *MessageConverter) ToMatrix(
 	// Display the thumbs-up sticker as a simple emoji message,
 	// which is the same way that it is displayed for encrypted
 	// chats, to be consistent between the two types of chats.
-	if msg.StickerId == facebookThumbsUpStickerID && len(msg.Stickers) == 1 {
-		msg.Text = "👍"
-		msg.Stickers = nil
+	switch msg.StickerId {
+	case facebookThumbsUpLargeStickerID, facebookThumbsUpMediumStickerID, facebookThumbsUpSmallStickerID:
+		if len(msg.Stickers) == 1 {
+			msg.Text = "👍"
+			msg.Stickers = nil
+		}
 	}
 	for i, blobAtt := range msg.BlobAttachments {
 		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("blob_attachment_%d", i)))
