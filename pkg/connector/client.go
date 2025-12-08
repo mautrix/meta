@@ -163,7 +163,9 @@ func (m *MetaClient) Connect(ctx context.Context) {
 	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
 		// Ensure both states start at CONNECTING now
 		m.metaState.StateEvent = status.StateConnecting
-		m.waState.StateEvent = status.StateConnecting
+		if m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE {
+			m.waState.StateEvent = status.StateConnecting
+		}
 		m.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	}
 	retryCtx, cancel := context.WithCancel(ctx)
