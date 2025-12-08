@@ -17,7 +17,7 @@ require (
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.2.1
 	go.mau.fi/util v0.9.4-0.20251128195053-c7fab4d88a04
-	go.mau.fi/whatsmeow v0.0.0-20251116104239-3aca43070cd4
+	go.mau.fi/whatsmeow v0.0.0-20251205211405-fd6170ac96e5
 	golang.org/x/crypto v0.45.0
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
 	golang.org/x/image v0.33.0
