@@ -481,6 +481,8 @@ func (m *MetaClient) Disconnect() {
 			m.UserLogin.Log.Debug().Msg("Saved reconnection state")
 		}
 	}
+	m.metaState = status.BridgeState{}
+	m.waState = status.BridgeState{}
 }
 
 func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
@@ -504,8 +506,6 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 		ecli.Disconnect()
 		m.E2EEClient = nil
 	}
-	m.metaState = status.BridgeState{}
-	m.waState = status.BridgeState{}
 	if stopTableLoop := m.stopHandlingTables.Swap(nil); stopTableLoop != nil {
 		(*stopTableLoop)()
 	}
@@ -532,6 +532,8 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 		}
 	}
 	m.resetWADevice()
+	m.metaState = status.BridgeState{}
+	m.waState = status.BridgeState{}
 	m.LoginMeta.Cookies = nil
 	m.lastFullReconnect = time.Time{}
 }
