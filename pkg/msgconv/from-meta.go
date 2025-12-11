@@ -117,17 +117,27 @@ func (mc *MessageConverter) ToMatrix(
 			msg.Stickers = nil
 		}
 	}
+	// Keep track of any part IDs that are important and must be
+	// kept the same in order for the message to render correctly.
+	// We have to ensure that these part IDs are not overwritten
+	// by later code.
+	importantPartIDs := []networkid.PartID{}
 	for i, blobAtt := range msg.BlobAttachments {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("blob_attachment_%d", i)))
+		partID := networkid.PartID(fmt.Sprintf("blob_attachment_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt))
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	for i, legacyAtt := range msg.Attachments {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("attachment_%d", i)))
+		partID := networkid.PartID(fmt.Sprintf("attachment_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.legacyAttachmentToMatrix(ctx, legacyAtt))
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	var urlPreviews []*table.WrappedXMA
 	for i, xmaAtt := range msg.XMAAttachments {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("xma_attachment_%d", i)))
+		partID := networkid.PartID(fmt.Sprintf("xma_attachment_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		if isProbablyURLPreview(xmaAtt) {
 			// URL previews are handled in the text section
 			urlPreviews = append(urlPreviews, xmaAtt)
@@ -137,10 +147,13 @@ func (mc *MessageConverter) ToMatrix(
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	for i, sticker := range msg.Stickers {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("sticker_%d", i)))
+		partID := networkid.PartID(fmt.Sprintf("sticker_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	hasRelationSnippet := msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews)
 	if msg.Text != "" || hasRelationSnippet || len(urlPreviews) > 0 {
@@ -158,9 +171,11 @@ func (mc *MessageConverter) ToMatrix(
 			content.BeeperLinkPreviews = make([]*event.BeeperLinkPreview, len(urlPreviews))
 			previewLinks := make([]string, len(urlPreviews))
 			for i, preview := range urlPreviews {
-				ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i)))
+				partID := networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i))
+				ctx := context.WithValue(ctx, contextKeyPartID, partID)
 				content.BeeperLinkPreviews[i] = mc.urlPreviewToBeeper(ctx, preview)
 				previewLinks[i] = content.BeeperLinkPreviews[i].CanonicalURL
+				importantPartIDs = append(importantPartIDs, partID)
 			}
 			// TODO do more fancy detection of whether the link is in the body?
 			if len(content.Body) == 0 {
@@ -262,7 +277,14 @@ func (mc *MessageConverter) ToMatrix(
 			part.Content.Mentions = &event.Mentions{}
 		}
 	}
-	cm.MergeCaption()
+
+	if cm.MergeCaption() {
+		// The MergeCaption method only does something if there are exactly two
+		// parts in the message, and we don't add text parts to the "important"
+		// slice, so we are safe to assume that if it returns true, then there is
+		// exactly one item in the slice and it is the media part ID.
+		cm.Parts[0].ID = importantPartIDs[0]
+	}
 	return cm
 }
 
