@@ -122,7 +122,24 @@ func (mc *MessageConverter) ToMatrix(
 	// We have to ensure that these part IDs are not overwritten
 	// by later code.
 	importantPartIDs := []networkid.PartID{}
+	seenBlobFBIDs := map[string]bool{}
 	for i, blobAtt := range msg.BlobAttachments {
+		// Sometimes Facebook literally sends two exact copies
+		// of LSInsertBlobAttachment, byte for byte identical,
+		// for the same media, one right after the other. This
+		// in particular seems to happen with the initial
+		// Lightspeed table if the latest message in a thread
+		// in your inbox happens to be a media. Detect this
+		// and don't include two copies of the media. Note: if
+		// you literally attach the exact same image to your
+		// message twice, it shows up as different fbids in
+		// LSInsertBlobAttachment, so that use case won't be
+		// affected by this check.
+		if blobAtt.AttachmentFbid != "" && seenBlobFBIDs[blobAtt.AttachmentFbid] {
+			continue
+		} else {
+			seenBlobFBIDs[blobAtt.AttachmentFbid] = true
+		}
 		partID := networkid.PartID(fmt.Sprintf("blob_attachment_%d", i))
 		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt))
