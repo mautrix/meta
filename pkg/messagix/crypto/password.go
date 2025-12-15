@@ -10,8 +10,10 @@ import (
 	"strconv"
 	"time"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"golang.org/x/crypto/nacl/box"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+
 	// We're replacing golang.org/x/crypto with a fork for "legacy chacha20poly1305" (8 byte nonce)
 	//"golang.org/x/crypto/chacha20poly1305"
 	"github.com/beeper/poly1305/chacha20poly1305"

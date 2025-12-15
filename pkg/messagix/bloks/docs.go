@@ -1,6 +1,5 @@
 package bloks
 
-
 type BloksDoc struct {
 	ClientDocId  string
 	AppID        string // used in inner layer
