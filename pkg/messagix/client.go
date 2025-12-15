@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
@@ -39,10 +40,11 @@ type Config struct {
 }
 
 type Client struct {
-	Instagram *InstagramMethods
-	Facebook  *FacebookMethods
-	Logger    zerolog.Logger
-	Platform  types.Platform
+	Instagram     *InstagramMethods
+	Facebook      *FacebookMethods
+	MessengerLite *MessengerLiteMethods
+	Logger        zerolog.Logger
+	Platform      types.Platform
 
 	http         *http.Client
 	socket       *Socket
@@ -57,7 +59,9 @@ type Client struct {
 	GetNewProxy     func(reason string) (string, error)
 	mayConnectToDGW bool
 
-	device *store.Device
+	device    *store.Device
+	DeviceID  uuid.UUID // aka store.Device.FacebookUUID
+	machineId string
 
 	lsRequests      int
 	graphQLRequests int
@@ -222,6 +226,9 @@ func (c *Client) configurePlatformClient() {
 	case types.Messenger:
 		selectedEndpoints = endpoints.MessengerEndpoints
 		c.Facebook = &FacebookMethods{client: c}
+	case types.MessengerLite:
+		selectedEndpoints = endpoints.MessengerLiteEndpoints
+		c.MessengerLite = &MessengerLiteMethods{client: c}
 	case types.Instagram:
 		selectedEndpoints = endpoints.InstagramEndpoints
 		c.Instagram = &InstagramMethods{client: c}

@@ -135,6 +135,12 @@ func (c *Cookies) Get(key MetaCookieName) string {
 	return c.values[key]
 }
 
+func (c *Cookies) Set(key MetaCookieName, value string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.values[key] = value
+}
+
 func (c *Cookies) UpdateFromResponse(r *http.Response) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
