@@ -89,10 +89,12 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 			return fmt.Errorf("failed to register e2ee notifications: %w", err)
 		}
 	}
-	if m.Client.Platform.IsMessenger() {
-		return m.Client.Facebook.RegisterPushNotifications(ctx, token, keys)
+	if cli := m.Client; cli == nil {
+		return messagix.ErrClientIsNil
+	} else if cli.Platform.IsMessenger() {
+		return cli.Facebook.RegisterPushNotifications(ctx, token, keys)
 	} else {
-		return m.Client.Instagram.RegisterPushNotifications(ctx, token, keys)
+		return cli.Instagram.RegisterPushNotifications(ctx, token, keys)
 	}
 }
 

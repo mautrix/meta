@@ -17,6 +17,7 @@
 package messagix
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -26,7 +27,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	"golang.org/x/net/context"
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"

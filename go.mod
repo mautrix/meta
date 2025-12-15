@@ -2,11 +2,13 @@ module go.mau.fi/mautrix-meta
 
 go 1.24.0
 
-toolchain go1.25.1
+toolchain go1.25.4
+
+tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c
-	github.com/gabriel-vasile/mimetype v1.4.10
+	github.com/gabriel-vasile/mimetype v1.4.11
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.0
@@ -14,16 +16,16 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/zyedidia/clipboard v1.0.4
-	go.mau.fi/libsignal v0.2.1-0.20251004173110-6e0a3f2435ed
-	go.mau.fi/util v0.9.2-0.20251001114608-d99877b9cc10
-	go.mau.fi/whatsmeow v0.0.0-20251005090451-fb1caa3db194
-	golang.org/x/crypto v0.42.0
-	golang.org/x/exp v0.0.0-20250911091902-df9299821621
-	golang.org/x/image v0.31.0
-	golang.org/x/net v0.44.0
+	go.mau.fi/libsignal v0.2.1
+	go.mau.fi/util v0.9.4-0.20251128195053-c7fab4d88a04
+	go.mau.fi/whatsmeow v0.0.0-20251205211405-fd6170ac96e5
+	golang.org/x/crypto v0.45.0
+	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
+	golang.org/x/image v0.33.0
+	golang.org/x/net v0.47.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.25.2-0.20251003001451-4be60a002169
+	maunium.net/go/mautrix v0.26.1-0.20251203195941-02ce6ff91851
 )
 
 require (
@@ -35,7 +37,7 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v1.14.32 // indirect
-	github.com/petermattis/goid v0.0.0-20250904145737-900bdf8bb490 // indirect
+	github.com/petermattis/goid v0.0.0-20251121121749-a11dd1a45f9a // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -44,9 +46,10 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
 	github.com/yuin/goldmark v1.7.13 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/mod v0.30.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )

@@ -77,8 +77,8 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 		}
 		client := ul.Client.(*MetaClient)
 		return &mediaproxy.GetMediaResponseFile{
-			Callback: func(f *os.File) error {
-				return client.E2EEClient.DownloadToFile(ctx, info, f)
+			Callback: func(f *os.File) (*mediaproxy.FileMeta, error) {
+				return &mediaproxy.FileMeta{}, client.E2EEClient.DownloadToFile(ctx, info, f)
 			},
 		}, nil
 	}

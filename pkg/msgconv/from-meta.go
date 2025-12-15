@@ -76,6 +76,17 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid
 	return ghost.Intent.GetMXID(), ghost.Name, nil
 }
 
+// The fake stickers that are sent when someone presses the thumbs-up
+// button in Messenger. They are handled specially by the Messenger
+// web client instead of being displayed as normal stickers. There are
+// three variants depending on how long the sending user held down the
+// send button.
+const (
+	facebookThumbsUpSmallStickerID  = 369239263222822
+	facebookThumbsUpMediumStickerID = 369239343222814
+	facebookThumbsUpLargeStickerID  = 369239383222810
+)
+
 func (mc *MessageConverter) ToMatrix(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -96,17 +107,54 @@ func (mc *MessageConverter) ToMatrix(
 	if msg.IsUnsent {
 		return cm
 	}
+	// Display the thumbs-up sticker as a simple emoji message,
+	// which is the same way that it is displayed for encrypted
+	// chats, to be consistent between the two types of chats.
+	switch msg.StickerId {
+	case facebookThumbsUpLargeStickerID, facebookThumbsUpMediumStickerID, facebookThumbsUpSmallStickerID:
+		if len(msg.Stickers) == 1 {
+			msg.Text = "👍"
+			msg.Stickers = nil
+		}
+	}
+	// Keep track of any part IDs that are important and must be
+	// kept the same in order for the message to render correctly.
+	// We have to ensure that these part IDs are not overwritten
+	// by later code.
+	importantPartIDs := []networkid.PartID{}
+	seenBlobFBIDs := map[string]bool{}
 	for i, blobAtt := range msg.BlobAttachments {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("blob_attachment_%d", i)))
+		// Sometimes Facebook literally sends two exact copies
+		// of LSInsertBlobAttachment, byte for byte identical,
+		// for the same media, one right after the other. This
+		// in particular seems to happen with the initial
+		// Lightspeed table if the latest message in a thread
+		// in your inbox happens to be a media. Detect this
+		// and don't include two copies of the media. Note: if
+		// you literally attach the exact same image to your
+		// message twice, it shows up as different fbids in
+		// LSInsertBlobAttachment, so that use case won't be
+		// affected by this check.
+		if blobAtt.AttachmentFbid != "" && seenBlobFBIDs[blobAtt.AttachmentFbid] {
+			continue
+		} else {
+			seenBlobFBIDs[blobAtt.AttachmentFbid] = true
+		}
+		partID := networkid.PartID(fmt.Sprintf("blob_attachment_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt))
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	for i, legacyAtt := range msg.Attachments {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("attachment_%d", i)))
+		partID := networkid.PartID(fmt.Sprintf("attachment_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.legacyAttachmentToMatrix(ctx, legacyAtt))
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	var urlPreviews []*table.WrappedXMA
 	for i, xmaAtt := range msg.XMAAttachments {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("xma_attachment_%d", i)))
+		partID := networkid.PartID(fmt.Sprintf("xma_attachment_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		if isProbablyURLPreview(xmaAtt) {
 			// URL previews are handled in the text section
 			urlPreviews = append(urlPreviews, xmaAtt)
@@ -116,10 +164,13 @@ func (mc *MessageConverter) ToMatrix(
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	for i, sticker := range msg.Stickers {
-		ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("sticker_%d", i)))
+		partID := networkid.PartID(fmt.Sprintf("sticker_%d", i))
+		ctx := context.WithValue(ctx, contextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
+		importantPartIDs = append(importantPartIDs, partID)
 	}
 	hasRelationSnippet := msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews)
 	if msg.Text != "" || hasRelationSnippet || len(urlPreviews) > 0 {
@@ -137,9 +188,11 @@ func (mc *MessageConverter) ToMatrix(
 			content.BeeperLinkPreviews = make([]*event.BeeperLinkPreview, len(urlPreviews))
 			previewLinks := make([]string, len(urlPreviews))
 			for i, preview := range urlPreviews {
-				ctx := context.WithValue(ctx, contextKeyPartID, networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i)))
+				partID := networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i))
+				ctx := context.WithValue(ctx, contextKeyPartID, partID)
 				content.BeeperLinkPreviews[i] = mc.urlPreviewToBeeper(ctx, preview)
 				previewLinks[i] = content.BeeperLinkPreviews[i].CanonicalURL
+				importantPartIDs = append(importantPartIDs, partID)
 			}
 			// TODO do more fancy detection of whether the link is in the body?
 			if len(content.Body) == 0 {
@@ -177,6 +230,12 @@ func (mc *MessageConverter) ToMatrix(
 			Type:    event.EventMessage,
 			Content: content,
 			Extra:   extra,
+			// These duplicate information about people joining and leaving a room,
+			// which would generally be rendered already by a Matrix client. There may
+			// be other "admin" messages that are important, but there is no structured
+			// data from Meta about what kind of message it is, so we can't really tell.
+			// Drop them all for now.
+			DontBridge: msg.IsAdminMessage,
 		})
 	}
 	if len(cm.Parts) == 0 {
@@ -215,7 +274,7 @@ func (mc *MessageConverter) ToMatrix(
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
 		if unsupported && !hasExternalURL {
 			var threadURL, protocolName string
-			switch client.Platform {
+			switch client.GetPlatform() {
 			case types.Instagram:
 				threadURL = fmt.Sprintf("https://www.instagram.com/direct/t/%s/", portal.ID)
 				protocolName = "Instagram"
@@ -235,7 +294,14 @@ func (mc *MessageConverter) ToMatrix(
 			part.Content.Mentions = &event.Mentions{}
 		}
 	}
-	cm.MergeCaption()
+
+	if cm.MergeCaption() {
+		// The MergeCaption method only does something if there are exactly two
+		// parts in the message, and we don't add text parts to the "important"
+		// slice, so we are safe to assume that if it returns true, then there is
+		// exactly one item in the slice and it is the media part ID.
+		cm.Parts[0].ID = importantPartIDs[0]
+	}
 	return cm
 }
 
@@ -282,6 +348,24 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 }
 
 func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *table.LSInsertAttachment) *bridgev2.ConvertedMessagePart {
+	if mc.DisableViewOnce && (att.EphemeralMediaViewMode == table.EphemeralMediaViewOnce || att.EphemeralMediaViewMode == table.EphemeralMediaReplayable) {
+		mediaType := "photo"
+		viewed := "viewed"
+		if att.EphemeralMediaViewMode == table.EphemeralMediaReplayable {
+			viewed = "replayed"
+		}
+		if att.AttachmentType == table.AttachmentTypeEphemeralVideo {
+			mediaType = "video"
+		}
+		body := fmt.Sprintf("This %s can only be %s once. Use the Instagram mobile app to view.", mediaType, viewed)
+		return &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    body,
+			},
+		}
+	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	if mime == "" {
@@ -304,17 +388,21 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 	return converted
 }
 
+// All stickers are rendered in the Messenger web client as 96x96
+// pixels no matter what. For example you'll have a 240x240 pixel
+// sticker image, and the PreviewWidth attribute says it's 128x128,
+// nonetheless it's displayed at 96x96 like everything else.
+const stickerSize = 96
+
 func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSInsertStickerAttachment) *bridgev2.ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
-	var width, height int64
 	if url == "" {
 		url = att.PreviewUrl
 		mime = att.PreviewUrlMimeType
-		width, height = att.PreviewWidth, att.PreviewHeight
 	}
 	converted, err := mc.reuploadAttachment(
-		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, int(width), int(height), 0,
+		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, stickerSize, stickerSize, 0,
 	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")

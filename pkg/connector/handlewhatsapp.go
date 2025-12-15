@@ -98,7 +98,6 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		if m.canReconnect() {
 			go m.FullReconnect()
 		}
-		//go m.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	case events.PermanentDisconnect:
 		switch e := evt.(type) {
 		case *events.LoggedOut:
@@ -133,7 +132,6 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Message:    evt.PermanentDisconnectDescription(),
 		}
 		m.UserLogin.BridgeState.Send(m.waState)
-		//go m.sendMarkdownBridgeAlert(context.TODO(), "Error in WhatsApp connection: %s", evt.PermanentDisconnectDescription())
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}

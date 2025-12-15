@@ -107,6 +107,11 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 		if err != nil {
 			return nil, fmt.Errorf("failed to update room ID after creating group: %w", err)
 		}
+	} else {
+		err = portal.RoomCreated.WaitTimeoutCtx(ctx, 10*time.Second)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("New group chat portal wasn't created automatically")
+		}
 	}
 	// TODO fetch or generate info?
 	return &bridgev2.CreateChatResponse{

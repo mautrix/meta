@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,10 +11,10 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
-	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/responses"
+	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -21,80 +22,6 @@ import (
 // specific methods for insta api, not socket related
 type InstagramMethods struct {
 	client *Client
-}
-
-func (ig *InstagramMethods) Login(ctx context.Context, identifier, password string) (*cookies.Cookies, error) {
-	ig.client.loadLoginPage(ctx)
-	if _, err := ig.client.configs.SetupConfigs(ctx, nil); err != nil {
-		return nil, err
-	}
-	h := ig.client.buildHeaders(false, false)
-	h.Set("x-web-device-id", ig.client.cookies.Get(cookies.IGCookieDeviceID))
-	h.Set("sec-fetch-dest", "empty")
-	h.Set("sec-fetch-mode", "cors")
-	h.Set("sec-fetch-site", "same-origin")
-	h.Set("x-requested-with", "XMLHttpRequest")
-	h.Set("referer", ig.client.GetEndpoint("login_page"))
-
-	login_page_v1 := ig.client.GetEndpoint("web_login_page_v1")
-	_, _, err := ig.client.MakeRequest(ctx, login_page_v1, "GET", h, nil, types.NONE)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", login_page_v1, err)
-	}
-
-	err = ig.client.sendCookieConsent(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
-	web_shared_data_v1 := ig.client.GetEndpoint("web_shared_data_v1")
-	req, respBody, err := ig.client.MakeRequest(ctx, web_shared_data_v1, "GET", h, nil, types.NONE) // returns actual machineId you're supposed to use
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s for instagram login: %w", web_shared_data_v1, err)
-	}
-
-	ig.client.cookies.UpdateFromResponse(req)
-
-	err = json.Unmarshal(respBody, &ig.client.configs.BrowserConfigTable.XIGSharedData.ConfigData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal web_shared_data_v1 resp body into *XIGSharedData.ConfigData: %w", err)
-	}
-
-	encryptionConfig := ig.client.configs.BrowserConfigTable.XIGSharedData.ConfigData.Encryption
-	pubKeyId, err := strconv.Atoi(encryptionConfig.KeyID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert keyId for instagram password encryption to int: %w", err)
-	}
-
-	encryptedPw, err := crypto.EncryptPassword(int(types.Instagram), pubKeyId, encryptionConfig.PublicKey, password)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt password for instagram: %w", err)
-	}
-
-	loginForm := &types.InstagramLoginPayload{
-		Password:             encryptedPw,
-		OptIntoOneTap:        false,
-		QueryParams:          "{}",
-		TrustedDeviceRecords: "{}",
-		Username:             identifier,
-	}
-
-	form, err := query.Values(&loginForm)
-	if err != nil {
-		return nil, err
-	}
-	web_login_ajax_v1 := ig.client.GetEndpoint("web_login_ajax_v1")
-	loginResp, loginBody, err := ig.client.sendLoginRequest(ctx, form, web_login_ajax_v1)
-	if err != nil {
-		return nil, err
-	}
-
-	loginResult := ig.client.processLogin(loginResp, loginBody)
-	if loginResult != nil {
-		return nil, loginResult
-	}
-
-	return ig.client.cookies, nil
 }
 
 func (ig *InstagramMethods) FetchProfile(ctx context.Context, username string) (*responses.ProfileInfoResponse, error) {
@@ -265,4 +192,121 @@ func (ig *InstagramMethods) ExtractFBID(currentUser types.UserInfo, tbl *table.L
 	}
 
 	return newFBID, nil
+}
+
+func (ig *InstagramMethods) fetchRouteDefinition(ctx context.Context, threadID string) (id string, err error) {
+	payload := ig.client.newHTTPQuery()
+	payload.ClientPreviousActorID = "17841477657023246"
+	payload.RouteURL = fmt.Sprintf("/direct/t/%s/", threadID)
+	if ig.client.configs.RoutingNamespace == "" {
+		return "", fmt.Errorf("routing namespace is empty, cannot fetch route definition for thread %s", threadID)
+	}
+	payload.RoutingNamespace = ig.client.configs.RoutingNamespace
+	payload.Crn = "comet.igweb.PolarisDirectInboxRoute"
+
+	form, err := query.Values(&payload)
+	if err != nil {
+		return "", err
+	}
+	form.Add("trace_policy", "")
+	payloadBytes := []byte(form.Encode())
+
+	headers := ig.client.buildHeaders(true, false)
+	headers.Set("accept", "*/*")
+	headers.Set("origin", ig.client.GetEndpoint("base_url"))
+	headers.Set("accept", "*/*")
+	headers.Set("referer", ig.client.GetEndpoint("messages"))
+	headers.Set("priority", "u=1, i")
+	headers.Set("sec-fetch-dest", "empty")
+	headers.Set("sec-fetch-mode", "cors")
+	headers.Set("sec-fetch-site", "same-origin")
+
+	url := ig.client.GetEndpoint("route_definition")
+	resp, body, err := ig.client.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch route definition for thread %s: %w", threadID, err)
+	}
+
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return "", fmt.Errorf("bad status code when fetching route definition for thread %s: %d", threadID, resp.StatusCode)
+	}
+
+	parts := bytes.Split(body, []byte("\r\n"))
+	if len(parts) < 1 {
+		return "", fmt.Errorf("invalid route definition response for thread %s", threadID)
+	}
+
+	responseBody := bytes.TrimPrefix(parts[0], antiJSPrefix)
+
+	var routeDefResp fetchRouteDefinitionResponse
+	err = json.Unmarshal(responseBody, &routeDefResp)
+	if err != nil {
+		return "", fmt.Errorf("failed to unmarshal route definition response for thread %s: %w", threadID, err)
+	}
+
+	if routeDefResp.Payload.Error {
+		return "", fmt.Errorf("route definition response returned error for thread %s", threadID)
+	}
+	threadFBID := routeDefResp.Payload.Result.Exports.RootView.Props.ThreadFBID
+	if threadFBID == "" {
+		return "", fmt.Errorf("thread_fbid not found in route definition response for thread %s", threadID)
+	}
+
+	zerolog.Ctx(ctx).Info().
+		Str("thread_id", threadID).
+		Str("thread_fbid", threadFBID).
+		Msg("Successfully fetched route definition")
+
+	return threadFBID, nil
+}
+
+func (ig *InstagramMethods) DeleteThread(ctx context.Context, threadID string) error {
+	id, err := ig.fetchRouteDefinition(ctx, threadID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch route definition for thread %s: %w", threadID, err)
+	}
+	igVariables := &graphql.IGDeleteThreadGraphQLRequestPayload{
+		ThreadID:                       id,
+		ShouldMoveFutureRequestsToSpam: false,
+	}
+	resp, _, err := ig.client.makeGraphQLRequest(ctx, "IGDeleteThread", &igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to delete thread %s: %w", threadID, err)
+	}
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return fmt.Errorf("failed to delete thread with bad status code %d", resp.StatusCode)
+	}
+	return nil
+}
+
+type fetchRouteDefinitionResponsePayload struct {
+	Error  bool `json:"error"`
+	Result struct {
+		Exports struct {
+			RootView struct {
+				Props struct {
+					ThreadFBID string `json:"thread_fbid"`
+				} `json:"props"`
+			} `json:"rootView"`
+		} `json:"exports"`
+	} `json:"result"`
+}
+
+type fetchRouteDefinitionResponse struct {
+	Payload fetchRouteDefinitionResponsePayload `json:"payload"`
+}
+
+func (ig *InstagramMethods) EditGroupTitle(ctx context.Context, threadID, newTitle string) error {
+	igVariables := &graphql.IGEditGroupTitleGraphQLRequestPayload{
+		ThreadID: threadID,
+		NewTitle: newTitle,
+	}
+	resp, _, err := ig.client.makeGraphQLRequest(ctx, "IGEditGroupTitle", &igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to edit group title for thread %s: %w", threadID, err)
+	}
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return fmt.Errorf("failed to edit group title with bad status code %d", resp.StatusCode)
+	}
+	return nil
 }

@@ -43,6 +43,8 @@ type MetaClient struct {
 	connectLock        sync.Mutex
 	stopConnectAttempt atomic.Pointer[context.CancelFunc]
 
+	editChannels *exsync.Map[string, chan *FBEditEvent]
+
 	connectBackgroundEvt           chan connectBackgroundEvent
 	connectBackgroundWAOfflineSync *exsync.Event
 	connectBackgroundWAEventCount  atomic.Uint32
@@ -96,6 +98,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		igUserIDs:         map[string]int64{},
 		igUserIDsReverse:  map[int64]string{},
 	}
+	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
 	if messagixClient != nil {
 		messagixClient.SetEventHandler(c.handleMetaEvent)
 	}
@@ -159,6 +162,11 @@ func (m *MetaClient) Connect(ctx context.Context) {
 	}
 	defer m.connectLock.Unlock()
 	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
+		// Ensure both states start at CONNECTING now
+		m.metaState.StateEvent = status.StateConnecting
+		if m.LoginMeta.Platform.IsMessenger() || m.Main.Config.IGE2EE {
+			m.waState.StateEvent = status.StateConnecting
+		}
 		m.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	}
 	retryCtx, cancel := context.WithCancel(ctx)
@@ -172,7 +180,8 @@ func (m *MetaClient) Connect(ctx context.Context) {
 const MaxConnectRetries = 10
 
 func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts int) {
-	if m.Client == nil {
+	cli := m.Client
+	if cli == nil {
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      MetaNotLoggedIn,
@@ -193,7 +202,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 	} else if state != nil {
 		if !m.Main.Config.CacheConnectionState {
 			zerolog.Ctx(ctx).Debug().Msg("Not using saved reconnection state as it's disabled in the config")
-		} else if err = m.Client.LoadState(state); err != nil {
+		} else if err = cli.LoadState(state); err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to load reconnection state")
 		} else {
 			zerolog.Ctx(ctx).Debug().Msg("Reconnecting with cached state")
@@ -204,8 +213,8 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
 	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
-		m.Client.GetNewProxy = m.Main.getProxy
-		if !m.Client.UpdateProxy("connect") {
+		cli.GetNewProxy = m.Main.getProxy
+		if !cli.UpdateProxy("connect") {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaProxyUpdateFail,
@@ -213,7 +222,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			return
 		}
 	}
-	currentUser, initialTable, err := m.Client.LoadMessagesPage(ctx)
+	currentUser, initialTable, err := cli.LoadMessagesPage(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load messages page")
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
@@ -476,6 +485,8 @@ func (m *MetaClient) Disconnect() {
 			m.UserLogin.Log.Debug().Msg("Saved reconnection state")
 		}
 	}
+	m.metaState = status.BridgeState{}
+	m.waState = status.BridgeState{}
 }
 
 func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
@@ -499,8 +510,6 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 		ecli.Disconnect()
 		m.E2EEClient = nil
 	}
-	m.metaState = status.BridgeState{}
-	m.waState = status.BridgeState{}
 	if stopTableLoop := m.stopHandlingTables.Swap(nil); stopTableLoop != nil {
 		(*stopTableLoop)()
 	}
@@ -527,6 +536,8 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 		}
 	}
 	m.resetWADevice()
+	m.metaState = status.BridgeState{}
+	m.waState = status.BridgeState{}
 	m.LoginMeta.Cookies = nil
 	m.lastFullReconnect = time.Time{}
 }
@@ -555,21 +566,16 @@ func (m *MetaClient) resetWADevice() {
 }
 
 func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeState {
-	if state.StateEvent == status.StateConnected || state.Error == WADisconnected {
-		var copyFrom *status.BridgeState
-		if m.waState.StateEvent != "" && m.waState.StateEvent != status.StateConnected {
-			copyFrom = &m.waState
-		}
-		if m.metaState.StateEvent != "" && m.metaState.StateEvent != status.StateConnected {
-			copyFrom = &m.metaState
-		}
-		if copyFrom != nil {
-			state.StateEvent = copyFrom.StateEvent
-			state.Error = copyFrom.Error
-			state.Message = copyFrom.Message
-			state.Info = copyFrom.Info
-		}
+	// The Meta bridge internally has two states - one for connection to meta and one for whatsapp;
+	// as such we need to merge the two states when sending updates and pick the "worst case".
+	copyFrom := m.pickWorstCaseBridgeState(state)
+	if copyFrom != nil {
+		state.StateEvent = copyFrom.StateEvent
+		state.Error = copyFrom.Error
+		state.Message = copyFrom.Message
+		state.Info = copyFrom.Info
 	}
+
 	if state.Info == nil {
 		state.Info = make(map[string]any)
 	}
@@ -580,8 +586,34 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 	return state
 }
 
-func (m *MetaClient) updateWAPresence(presence waTypes.Presence) error {
-	err := m.E2EEClient.SendPresence(presence)
+func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState) *status.BridgeState {
+	if state.StateEvent == m.waState.StateEvent && state.StateEvent == m.metaState.StateEvent {
+		// If both states are the same as the input, we can use as-is
+		return nil
+	}
+
+	// Now find the worst case state in order (BAD_CREDENTIALS being worst), prefer the input state
+	// if matches or fallback to either metaState or waState.
+	for _, status := range []status.BridgeStateEvent{
+		status.StateBadCredentials,
+		status.StateUnknownError,
+		status.StateTransientDisconnect,
+		status.StateConnecting,
+	} {
+		if state.StateEvent == status {
+			return nil
+		} else if m.waState.StateEvent == status {
+			return &m.waState
+		} else if m.metaState.StateEvent == status {
+			return &m.metaState
+		}
+	}
+
+	return nil
+}
+
+func (m *MetaClient) updateWAPresence(ctx context.Context, presence waTypes.Presence) error {
+	err := m.E2EEClient.SendPresence(ctx, presence)
 	if err == nil {
 		m.waLastPresence = presence
 	}

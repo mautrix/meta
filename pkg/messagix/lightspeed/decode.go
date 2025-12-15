@@ -279,14 +279,14 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 		case reflect.Int64:
 			i64, ok := val.(int64)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int64")
+				badGlobalLog.Warn().Any("val", redactForLog(val)).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int64")
 				continue
 			}
 			newDepInstance.Field(i).SetInt(i64)
 		case reflect.String:
 			str, ok := val.(string)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set string")
+				badGlobalLog.Warn().Any("val", redactForLog(val)).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set string")
 				continue
 			}
 			newDepInstance.Field(i).SetString(str)
@@ -298,21 +298,21 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 		case reflect.Bool:
 			boolean, ok := val.(bool)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set bool")
+				badGlobalLog.Warn().Any("val", redactForLog(val)).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set bool")
 				continue
 			}
 			newDepInstance.Field(i).SetBool(boolean)
 		case reflect.Int:
 			integer, ok := val.(int)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int")
+				badGlobalLog.Warn().Any("val", redactForLog(val)).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set int")
 				continue
 			}
 			newDepInstance.Field(i).SetInt(int64(integer))
 		case reflect.Float64:
 			floatVal, ok := val.(float64)
 			if !ok {
-				badGlobalLog.Warn().Any("val", val).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set float64")
+				badGlobalLog.Warn().Any("val", redactForLog(val)).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set float64")
 				continue
 			}
 			newDepInstance.Field(i).SetFloat(floatVal)
@@ -320,7 +320,7 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 			// TODO
 			fallthrough
 		default:
-			badGlobalLog.Warn().Stringer("kind", kind).Any("val", val).Type("val_type", val).Msg("Unknown kind")
+			badGlobalLog.Warn().Stringer("kind", kind).Any("val", redactForLog(val)).Type("val_type", val).Msg("Unknown kind")
 			//os.Exit(1)
 		}
 		decodedData[index] = nil
@@ -341,6 +341,14 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 	}
 	newSlice := reflect.Append(depField, newDepInstancePtr)
 	depField.Set(newSlice)
+}
+
+func redactForLog(val any) any {
+	strVal, isString := val.(string)
+	if badGlobalLog.Logger.GetLevel() != zerolog.TraceLevel && isString && len(strVal) > 0 {
+		return "<redacted string>"
+	}
+	return val
 }
 
 // conditionVal ? trueIndex : falseIndex

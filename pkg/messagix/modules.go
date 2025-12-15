@@ -25,6 +25,7 @@ func (m *ModuleParser) HandleRawJSON(data []byte, id string) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse data from types.EnvJSON: %w", err)
 		}
+		m.client.configs.RoutingNamespace = d.RoutingNamespace
 	case "__eqmc":
 		var d types.Eqmc
 		err = json.Unmarshal(data, &d)

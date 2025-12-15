@@ -120,6 +120,14 @@ type AttachmentMessageWithCaption[Integral MediaTransportContainer, Ancillary an
 
 type convertFunc func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error)
 
+type userVisibleError struct {
+	Message string
+}
+
+func (u userVisibleError) Error() string {
+	return u.Message
+}
+
 func convertWhatsAppAttachment[
 	Transport AttachmentTransport[Integral, Ancillary],
 	Integral MediaTransportContainer,
@@ -135,6 +143,13 @@ func convertWhatsAppAttachment[
 	typedTransport, err = msg.Decode()
 	if err != nil {
 		return
+	}
+	untypedTransport := any(typedTransport)
+	if stickerTransport, ok := untypedTransport.(*waMediaTransport.StickerTransport); ok {
+		if stickerTransport.Ancillary.GetReceiverFetchID() != "" {
+			err = userVisibleError{Message: "Unsupported sticker, view in Messenger"}
+			return
+		}
 	}
 	msgWithCaption, ok := msg.(AttachmentMessageWithCaption[Integral, Ancillary, Transport])
 	if ok && len(msgWithCaption.GetCaption().GetText()) > 0 {
@@ -305,7 +320,7 @@ func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waC
 		converted.Content.Info.Height = int(metadata.GetHeight())
 		converted.Content.Info.Duration = int(metadata.GetSeconds() * 1000)
 		// FB is annoying and sends images in video containers sometimes
-		if converted.Content.Info.MimeType == "image/gif" {
+		if strings.HasPrefix(converted.Content.Info.MimeType, "image/") {
 			converted.Content.MsgType = event.MsgImage
 		} else if metadata.GetGifPlayback() {
 			converted.Extra["info"] = map[string]any{
@@ -372,11 +387,15 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 		converted, caption, err := mc.convertWhatsAppMedia(ctx, rawContent)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to convert media message")
+			errmsg := "Failed to transfer media"
+			if _, ok := err.(userVisibleError); ok {
+				errmsg = err.Error()
+			}
 			converted = &bridgev2.ConvertedMessagePart{
 				Type: event.EventMessage,
 				Content: &event.MessageEventContent{
 					MsgType: event.MsgNotice,
-					Body:    "Failed to transfer media",
+					Body:    errmsg,
 				},
 			}
 		}

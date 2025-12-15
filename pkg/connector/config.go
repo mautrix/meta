@@ -37,9 +37,9 @@ type Config struct {
 	displaynameTemplate *template.Template `yaml:"-"`
 
 	// Only affects E2EE chats right now.
-	SendPresenceOnTyping bool `yaml:"send_presence_on_typing"`
-
+	SendPresenceOnTyping             bool `yaml:"send_presence_on_typing"`
 	ReceiveInstagramTypingIndicators bool `yaml:"receive_instagram_typing_indicators"`
+	DisableViewOnce                  bool `yaml:"disable_view_once"`
 }
 
 type umConfig Config
@@ -73,6 +73,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_xma_always")
 	helper.Copy(up.Bool, "send_presence_on_typing")
 	helper.Copy(up.Bool, "receive_instagram_typing_indicators")
+	helper.Copy(up.Bool, "disable_view_once")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {

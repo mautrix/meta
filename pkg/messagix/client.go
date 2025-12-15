@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
@@ -79,6 +78,7 @@ type Client struct {
 }
 
 var DisableTLSVerification = false
+var MaxConnectBackoff = 5 * time.Minute
 
 func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Client {
 	if cookies.Platform == types.Unset {
@@ -138,7 +138,7 @@ type dumpedState struct {
 }
 
 func (c *Client) DumpState() (json.RawMessage, error) {
-	if c.configs == nil || c.syncManager == nil || c.socket == nil || c.socket.packetsSent == 0 || !c.socket.previouslyConnected {
+	if c == nil || c.configs == nil || c.syncManager == nil || c.socket == nil || c.socket.packetsSent == 0 || !c.socket.previouslyConnected {
 		return nil, nil
 	}
 	return json.Marshal(&dumpedState{
@@ -155,6 +155,9 @@ const MaxCachedStateAge = 24 * time.Hour
 var ErrCachedStateTooOld = errors.New("cached state is too old")
 
 func (c *Client) LoadState(state json.RawMessage) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
 	var dumped dumpedState
 	if err := json.Unmarshal(state, &dumped); err != nil {
 		return err
@@ -204,10 +207,11 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 	return currentUser, ls, nil
 }
 
-func (c *Client) loadLoginPage(ctx context.Context) *ModuleParser {
-	moduleLoader := &ModuleParser{client: c}
-	moduleLoader.Load(ctx, c.GetEndpoint("login_page"))
-	return moduleLoader
+func (c *Client) GetPlatform() types.Platform {
+	if c == nil {
+		return types.Unset
+	}
+	return c.Platform
 }
 
 func (c *Client) configurePlatformClient() {
@@ -262,6 +266,9 @@ func (c *Client) SetProxy(proxyAddr string) error {
 }
 
 func (c *Client) SetEventHandler(handler EventHandler) {
+	if c == nil {
+		return
+	}
 	c.eventHandler = handler
 }
 
@@ -330,8 +337,8 @@ func (c *Client) Connect(ctx context.Context) error {
 				reconnectIn = 2 * time.Second
 			} else {
 				reconnectIn *= 2
-				if reconnectIn > 5*time.Minute {
-					reconnectIn = 5 * time.Minute
+				if reconnectIn > MaxConnectBackoff {
+					reconnectIn = MaxConnectBackoff
 				}
 			}
 			if err != nil {
@@ -365,8 +372,8 @@ func (c *Client) connectDGW(ctx context.Context) error {
 			reconnectIn = 2 * time.Second
 		} else {
 			reconnectIn *= 2
-			if reconnectIn > 5*time.Minute {
-				reconnectIn = 5 * time.Minute
+			if reconnectIn > MaxConnectBackoff {
+				reconnectIn = MaxConnectBackoff
 			}
 		}
 		if err != nil {
@@ -413,72 +420,6 @@ func (c *Client) Disconnect() {
 
 func (c *Client) IsConnected() bool {
 	return c != nil && c.socket.conn != nil
-}
-
-func (c *Client) sendCookieConsent(ctx context.Context, jsDatr string) error {
-
-	var payloadQuery interface{}
-	h := c.buildHeaders(false, false)
-	h.Set("sec-fetch-dest", "empty")
-	h.Set("sec-fetch-mode", "cors")
-
-	if c.Platform.IsMessenger() {
-		h.Set("sec-fetch-site", "same-origin") // header is required
-		h.Set("sec-fetch-user", "?1")
-		h.Set("host", c.GetEndpoint("host"))
-		h.Set("upgrade-insecure-requests", "1")
-		h.Set("origin", c.GetEndpoint("base_url"))
-		h.Set("cookie", "_js_datr="+jsDatr)
-		h.Set("referer", c.GetEndpoint("login_page"))
-		q := c.newHTTPQuery()
-		q.AcceptOnlyEssential = "false"
-		payloadQuery = q
-	} else {
-		h.Set("sec-fetch-site", "same-site") // header is required
-		h.Set("host", c.GetEndpoint("host"))
-		h.Set("origin", c.GetEndpoint("base_url"))
-		h.Set("referer", c.GetEndpoint("base_url")+"/")
-		h.Set("x-instagram-ajax", strconv.FormatInt(c.configs.BrowserConfigTable.SiteData.ServerRevision, 10))
-		variables, err := json.Marshal(&types.InstagramCookiesVariables{
-			FirstPartyTrackingOptIn: true,
-			IgDid:                   c.cookies.Get("ig_did"),
-			ThirdPartyTrackingOptIn: true,
-			Input: struct {
-				ClientMutationID int `json:"client_mutation_id,omitempty"`
-			}{0},
-		})
-		h.Del("x-csrftoken")
-		if err != nil {
-			return fmt.Errorf("failed to marshal *types.InstagramCookiesVariables into bytes: %w", err)
-		}
-		q := &HttpQuery{
-			DocID:     "3810865872362889",
-			Variables: string(variables),
-		}
-		payloadQuery = q
-	}
-
-	form, err := query.Values(payloadQuery)
-	if err != nil {
-		return err
-	}
-
-	payload := []byte(form.Encode())
-	req, _, err := c.MakeRequest(ctx, c.GetEndpoint("cookie_consent"), "POST", h, payload, types.FORM)
-	if err != nil {
-		return err
-	}
-
-	if c.Platform.IsMessenger() {
-		datr := c.findCookie(req.Cookies(), "datr")
-		if datr == nil {
-			return fmt.Errorf("consenting to facebook cookies failed, could not find datr cookie in set-cookie header")
-		}
-
-		c.cookies.Set(cookies.MetaCookieDatr, datr.Value)
-		c.cookies.Set(cookies.FBCookieWindowDimensions, "1920x1003")
-	}
-	return nil
 }
 
 func (c *Client) GetEndpoint(name string) string {

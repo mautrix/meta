@@ -20,6 +20,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -166,7 +167,11 @@ func (evt *FBMessageEvent) GetStreamOrder() int64 {
 }
 
 func (evt *FBMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, evt.m.Client, intent, evt.GetID(), evt.WrappedMessage, evt.m.Main.Config.DisableXMAAlways), nil
+	cli := evt.m.Client
+	if cli == nil {
+		return nil, messagix.ErrClientIsNil
+	}
+	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, cli, intent, evt.GetID(), evt.WrappedMessage, evt.m.Main.Config.DisableXMAAlways), nil
 }
 
 type FBEditEvent struct {
@@ -256,7 +261,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_GROUP),
 			}, nil
 		}
-		groupInfo, err := evt.m.E2EEClient.GetGroupInfo(evt.JID)
+		groupInfo, err := evt.m.E2EEClient.GetGroupInfo(ctx, evt.JID)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to fetch WhatsApp group info")
 			return nil, err

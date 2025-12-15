@@ -1,3 +1,24 @@
+# v25.11
+
+* Added workaround for users who are unable to send videos even on the native
+  Instagram website.
+* Fixed bridge connection failing with certain FB/IG accounts.
+* Fixed bridging animated webp images received in encrypted chats.
+
+# v25.10
+
+* Switched to calendar versioning.
+* Removed legacy provisioning API and database legacy migration.
+  Upgrading directly from versions prior to v0.4.0 is not supported.
+  * If you've been using the bridge since before v0.4.0 and have prevented the
+    bridge from writing to the config, you must either update the config
+    manually or allow the bridge to update it for you **before** upgrading to
+    this release (i.e. run v0.5.3 once with config writing allowed).
+* Added support for bridging replies to Facebook stories in encrypted chats.
+* Added support for disappearing messages in encrypted chats.
+* Added support for typing notifications in all directions.
+* Added initial support for creating unencrypted groups.
+
 # v0.5.3 (2025-08-16)
 
 * Deprecated legacy provisioning API. The `/_matrix/provision/v1` endpoints will

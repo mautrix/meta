@@ -18,13 +18,13 @@ package connector
 
 import (
 	"context"
-	"maps"
 	"time"
 
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -55,7 +55,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 9
+	return 1, 11
 }
 
 const MaxTextLength = 20000
@@ -71,7 +71,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_08_22"
+	base := "fi.mau.meta.capabilities.2025_11_25"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -108,7 +108,6 @@ var metaCaps = &event.RoomFeatures{
 		},
 		event.MsgAudio: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
-				"audio/m4a":  event.CapLevelFullySupported,
 				"audio/mpeg": event.CapLevelFullySupported,
 				"audio/mp4":  event.CapLevelFullySupported,
 				"audio/wav":  event.CapLevelFullySupported,
@@ -161,39 +160,51 @@ var metaCaps = &event.RoomFeatures{
 	ReactionCount:       1,
 	TypingNotifications: true,
 	//LocationMessage: event.CapLevelPartialSupport,
+	DeleteChat: true,
 }
 
 var metaCapsWithThreads *event.RoomFeatures
 var metaCapsWithE2E *event.RoomFeatures
 var igCaps *event.RoomFeatures
+var igCapsGroup *event.RoomFeatures
+var metaCapsGroup *event.RoomFeatures
 
 func init() {
-	metaCapsWithThreads = ptr.Clone(metaCaps)
+	metaCapsWithThreads = metaCaps.Clone()
 	metaCapsWithThreads.ID += "+communitygroup"
 	metaCapsWithThreads.Thread = event.CapLevelFullySupported
 	metaCapsWithThreads.TypingNotifications = false
 
-	metaCapsWithE2E = ptr.Clone(metaCaps)
+	metaCapsWithE2E = metaCaps.Clone()
 	metaCapsWithE2E.ID += "+e2e"
-	metaCapsWithE2E.File = maps.Clone(metaCapsWithE2E.File)
-	for key, value := range metaCapsWithE2E.File {
-		metaCapsWithE2E.File[key] = ptr.Clone(value)
-		metaCapsWithE2E.File[key].MaxSize = MaxFileSizeWithE2E
+	for _, value := range metaCapsWithE2E.File {
+		value.MaxSize = MaxFileSizeWithE2E
 		// Messenger Web doesn't render captions on images in e2ee chats 3:<
 		// (works fine on Messenger iOS and Android though)
-		metaCapsWithE2E.File[key].Caption = event.CapLevelDropped
+		value.Caption = event.CapLevelDropped
 	}
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
+	metaCapsWithE2E.DeleteChat = false
 
-	igCaps = ptr.Clone(metaCaps)
-	igCaps.File = maps.Clone(igCaps.File)
+	metaCapsGroup = metaCaps.Clone()
+	metaCapsGroup.ID += "+group"
+	metaCapsGroup.State = event.StateFeatureMap{
+		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
+		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
+	}
+
+	igCaps = metaCaps.Clone()
 	delete(igCaps.File, event.MsgFile)
-	for key, value := range igCaps.File {
-		igCaps.File[key] = ptr.Clone(value)
-		igCaps.File[key].Caption = event.CapLevelDropped
+	for _, value := range igCaps.File {
+		value.Caption = event.CapLevelDropped
 	}
 	igCaps.ID += "+instagram-p2"
+	igCapsGroup = igCaps.Clone()
+	igCapsGroup.ID += "+instagram-group"
+	igCapsGroup.State = event.StateFeatureMap{
+		event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
+	}
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
@@ -203,8 +214,14 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE, table.ENCRYPTED_OVER_WA_GROUP:
 		return metaCapsWithE2E
 	}
-	if (m.Client != nil && m.Client.Platform == types.Instagram) || m.Main.Config.Mode == types.Instagram {
-		return igCaps
+	if m.Client.GetPlatform() == types.Instagram || m.Main.Config.Mode == types.Instagram {
+		if portal.RoomType == database.RoomTypeDM {
+			return igCaps
+		}
+		return igCapsGroup
 	}
-	return metaCaps
+	if portal.RoomType == database.RoomTypeDM {
+		return metaCaps
+	}
+	return metaCapsGroup
 }
