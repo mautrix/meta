@@ -299,8 +299,7 @@ func (c *Client) parseBloksActionPayload(actionPayload string) (*BloksLoginActio
 	match := re.FindString(actionPayload)
 
 	if match == "" {
-		fmt.Println("No match found in action string.")
-		return nil, nil
+		return nil, fmt.Errorf("no json found in action string")
 	}
 
 	match = strings.TrimSuffix(match, `"`)
