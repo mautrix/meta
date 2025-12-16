@@ -847,6 +847,11 @@ func (mc *MessageConverter) reuploadAttachment(
 			content.MsgType = event.MsgFile
 		case table.AttachmentTypeAudio:
 			content.MsgType = event.MsgAudio
+			content.MSC3245Voice = &event.MSC3245Voice{}
+			content.MSC1767Audio = &event.MSC1767Audio{
+				Duration: duration,
+				Waveform: []int{},
+			}
 		default:
 			switch strings.Split(mimeType, "/")[0] {
 			case "image":
@@ -954,11 +959,6 @@ func (mc *MessageConverter) reuploadAttachment(
 			}
 			fileName += ".ogg"
 			mimeType = "audio/ogg"
-			content.MSC3245Voice = &event.MSC3245Voice{}
-			content.MSC1767Audio = &event.MSC1767Audio{
-				Duration: duration,
-				Waveform: []int{},
-			}
 		} else if needImageSize {
 			destRS := dest.(io.ReadSeeker)
 			_, err = destRS.Seek(0, io.SeekStart)
