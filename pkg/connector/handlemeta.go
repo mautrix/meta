@@ -108,7 +108,8 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.metaState)
 	case *messagix.Event_PermanentError:
-		if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNAUTHORIZED) {
+		if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNAUTHORIZED) ||
+			errors.Is(evt.Err, messagix.CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) {
 			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      MetaConnectionUnauthorized,
