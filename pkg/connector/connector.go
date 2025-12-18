@@ -60,7 +60,7 @@ func (m *MetaConnector) SetMaxFileSize(maxSize int64) {
 
 func (m *MetaConnector) GetName() bridgev2.BridgeName {
 	switch m.Config.Mode {
-	case types.Facebook, types.FacebookTor, types.Messenger:
+	case types.Facebook, types.FacebookTor, types.Messenger, types.MessengerLite:
 		return bridgev2.BridgeName{
 			DisplayName:      "Facebook Messenger",
 			NetworkURL:       "https://www.facebook.com/messenger",

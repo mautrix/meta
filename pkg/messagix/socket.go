@@ -32,10 +32,11 @@ var (
 	protocolLevel    = 3
 	keepAliveTimeout = 15
 	connectionTypes  = map[types.Platform]string{
-		types.Instagram:   "cookie_auth",
-		types.Facebook:    "websocket",
-		types.Messenger:   "websocket",
-		types.FacebookTor: "websocket",
+		types.Instagram:     "cookie_auth",
+		types.Facebook:      "websocket",
+		types.Messenger:     "websocket",
+		types.MessengerLite: "websocket",
+		types.FacebookTor:   "websocket",
 	}
 
 	//lint:ignore U1000 - alternatives for minimal*Sync
@@ -53,16 +54,18 @@ var (
 	minimalFBReconnectSync = []int64{1, 2, 104}
 
 	initialSync = map[types.Platform][]int64{
-		types.Instagram:   minimalInitialSync,   // igInitialSync,
-		types.Facebook:    minimalFBInitialSync, // fbInitialSync,
-		types.Messenger:   minimalFBInitialSync, // fbInitialSync,
-		types.FacebookTor: minimalFBInitialSync, // fbInitialSync,
+		types.Instagram:     minimalInitialSync,   // igInitialSync,
+		types.Facebook:      minimalFBInitialSync, // fbInitialSync,
+		types.Messenger:     minimalFBInitialSync, // fbInitialSync,
+		types.MessengerLite: minimalFBInitialSync, // fbInitialSync,
+		types.FacebookTor:   minimalFBInitialSync, // fbInitialSync,
 	}
 	reconnectSync = map[types.Platform][]int64{
-		types.Instagram:   minimalReconnectSync,   // igReconnectSync,
-		types.Facebook:    minimalFBReconnectSync, // fbReconnectSync,
-		types.Messenger:   minimalFBReconnectSync, // fbReconnectSync,
-		types.FacebookTor: minimalFBReconnectSync, // fbReconnectSync,
+		types.Instagram:     minimalReconnectSync,   // igReconnectSync,
+		types.Facebook:      minimalFBReconnectSync, // fbReconnectSync,
+		types.Messenger:     minimalFBReconnectSync, // fbReconnectSync,
+		types.MessengerLite: minimalFBReconnectSync, // fbReconnectSync,
+		types.FacebookTor:   minimalFBReconnectSync, // fbReconnectSync,
 	}
 
 	shouldRecurseDatabase = map[int64]bool{

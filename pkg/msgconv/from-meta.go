@@ -281,7 +281,7 @@ func (mc *MessageConverter) ToMatrix(
 			case types.Facebook, types.FacebookTor:
 				threadURL = fmt.Sprintf("https://www.facebook.com/messages/t/%s/", portal.ID)
 				protocolName = "Facebook"
-			case types.Messenger:
+			case types.Messenger, types.MessengerLite:
 				threadURL = fmt.Sprintf("https://www.messenger.com/t/%s/", portal.ID)
 				protocolName = "Messenger"
 			}
