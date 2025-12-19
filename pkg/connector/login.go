@@ -291,12 +291,10 @@ type MetaNativeLogin struct {
 	Main *MetaConnector
 }
 
-func (m *MetaNativeLogin) Cancel() {
-	panic("unimplemented")
-}
+func (m *MetaNativeLogin) Cancel() {}
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
-	step := &bridgev2.LoginStep{
+	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
 		StepID:       LoginStepIDCredentials,
 		Instructions: "Enter your Messenger credentials",
@@ -306,8 +304,7 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 				{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
 			},
 		},
-	}
-	return step, nil
+	}, nil
 }
 
 func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
