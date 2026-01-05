@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
@@ -107,7 +108,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		Type:         ptr.Ptr(database.RoomTypeDefault),
 		Disappear:    &disappear,
 		CanBackfill:  false,
-		ExtraUpdates: updateServerAndThreadType(chatInfo.JID, table.ENCRYPTED_OVER_WA_GROUP),
+		ExtraUpdates: bridgev2.MergeExtraUpdaters(updateServerAndThreadType(chatInfo.JID, table.ENCRYPTED_OVER_WA_GROUP), updatePortalSyncMeta),
 	}
 }
 
@@ -124,6 +125,12 @@ func updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(
 		}
 		return
 	}
+}
+
+func updatePortalSyncMeta(ctx context.Context, portal *bridgev2.Portal) bool {
+	meta := portal.Metadata.(*metaid.PortalMetadata)
+	meta.LastSync = jsontime.UnixNow()
+	return true
 }
 
 func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.ThreadType) *bridgev2.ChatInfo {

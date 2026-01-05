@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -564,11 +565,51 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 	return nil
 }
 
-// Note: the handling of typing notifications for facebook E2EE is
-// very similar to the handling of typing notifications in the
-// whatsapp bridge, because they both use the same API.
+// When to trigger user/group refresh on chat view
+var ViewChatUserInfoRefreshInterval = 5 * time.Minute
+var ViewChatGroupInfoRefreshInterval = 24 * time.Hour
 
 func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
+	if msg.Portal == nil {
+		return nil
+	}
+
+	// Sync the other users ghost in DMs
+	if msg.Portal.OtherUserID != "" {
+		ghost, err := m.Main.Bridge.GetExistingGhostByID(ctx, msg.Portal.OtherUserID)
+		if err != nil {
+			return fmt.Errorf("failed to get ghost for sync: %w", err)
+		} else if ghost == nil {
+			zerolog.Ctx(ctx).Warn().
+				Str("other_user_id", string(msg.Portal.OtherUserID)).
+				Msg("No ghost found for other user in portal")
+		} else {
+			meta := ghost.Metadata.(*metaid.GhostMetadata)
+			if meta.ProfileFetchedAt.Time.Add(ViewChatUserInfoRefreshInterval).Before(time.Now()) {
+				info, err := m.GetUserInfo(ctx, ghost)
+				if err != nil {
+					return fmt.Errorf("failed to get user info: %w", err)
+				}
+				ghost.UpdateInfo(ctx, info)
+			}
+		}
+	}
+
+	// always resync the portal if its stale
+	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
+	if portalMeta.LastSync.Add(ViewChatGroupInfoRefreshInterval).Before(time.Now()) {
+		m.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatResync,
+				PortalKey: msg.Portal.PortalKey,
+			},
+			GetChatInfoFunc: m.GetChatInfo,
+		})
+	}
+
+	// Note: the handling of typing notifications for facebook E2EE is
+	// very similar to the handling of typing notifications in the
+	// whatsapp bridge, because they both use the same API.
 	if m.E2EEClient == nil {
 		return nil
 	}
@@ -578,11 +619,8 @@ func (m *MetaClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.
 	// therefore we need to set online status for typing
 	// notifications to work properly.
 	presence := waTypes.PresenceUnavailable
-	if msg.Portal != nil {
-		portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
-		if portalMeta.ThreadType.IsWhatsApp() {
-			presence = waTypes.PresenceAvailable
-		}
+	if portalMeta.ThreadType.IsWhatsApp() {
+		presence = waTypes.PresenceAvailable
 	}
 
 	if m.waLastPresence != presence {
