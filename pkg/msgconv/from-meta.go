@@ -550,6 +550,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
+				addExternalURLCaption(secondConverted.Content, externalURL)
 			}
 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
@@ -564,20 +565,22 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", att.HeaderTitle, match[1])
 		}
 		minimalConverted.Extra["external_url"] = externalURL
-		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
 			log.Debug().Msg("Not fetching XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
+			addExternalURLCaption(minimalConverted.Content, externalURL)
 			return minimalConverted
 		}
 
 		if len(match) != 3 {
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
+			addExternalURLCaption(minimalConverted.Content, externalURL)
 			return minimalConverted
 		} else if resp, err := ig.FetchReel(ctx, []string{match[2]}, match[1]); err != nil {
 			log.Err(err).Str("action_url", att.CTA.ActionUrl).Msg("Failed to fetch XMA story")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+			addExternalURLCaption(minimalConverted.Content, externalURL)
 			return minimalConverted
 		} else if reel, ok := resp.Reels[match[2]]; !ok {
 			log.Trace().
@@ -591,6 +594,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				Str("response_status", resp.Status).
 				Msg("Got empty XMA story response")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+			addExternalURLCaption(minimalConverted.Content, externalURL)
 			return minimalConverted
 		} else {
 			log.Trace().
@@ -603,6 +607,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			// Update external URL to use username so it works on mobile
 			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", reel.User.Username, match[1])
 			minimalConverted.Extra["external_url"] = externalURL
+			addExternalURLCaption(minimalConverted.Content, externalURL)
 			var relevantItem *responses.Items
 			foundIDs := make([]string, len(reel.Items))
 			for i, item := range reel.Items {
@@ -636,6 +641,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
+				addExternalURLCaption(secondConverted.Content, externalURL)
 			}
 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
@@ -698,6 +704,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
+				addExternalURLCaption(secondConverted.Content, externalURL)
 			}
 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
