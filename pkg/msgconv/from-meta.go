@@ -550,6 +550,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Extra["com.beeper.instagram_item_username"] = targetItem.User.Username
 			if externalURL != "" {
 				secondConverted.Extra["external_url"] = externalURL
+				addExternalURLCaption(secondConverted.Content, externalURL)
 			}
 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
