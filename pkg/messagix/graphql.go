@@ -65,17 +65,15 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 
 	payloadBytes := []byte(form.Encode())
 
-	analHdr, err := makeRequestAnalyticsHeader()
+	headers, err := c.buildMessengerLiteHeaders()
 	if err != nil {
 		return nil, err
 	}
 
-	headers := c.buildMessengerLiteHeaders()
 	headers.Set("x-fb-friendly-name", doc.FriendlyName)
 	headers.Set("x-root-field-name", "bloks_action")
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
-	headers.Set("x-fb-request-analytics-tags", analHdr)
 
 	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
 

@@ -57,7 +57,8 @@ type HttpQuery struct {
 	RoutingNamespace      string `url:"routing_namespace,omitempty"`        // not required
 	Crn                   string `url:"__crn,omitempty"`                    // not required
 
-	// Messenger Lite:
+	// The following keys are used for Messenger Lite:
+
 	Method string `url:"method,omitempty"`
 	Pretty string `url:"pretty,omitempty"` // "true" or "false"
 	Format string `url:"format,omitempty"`
@@ -283,18 +284,23 @@ func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header 
 	return headers
 }
 
-func (c *Client) buildMessengerLiteHeaders() http.Header {
+func (c *Client) buildMessengerLiteHeaders() (http.Header, error) {
+
+	analHdr, err := makeRequestAnalyticsHeader()
+	if err != nil {
+		return nil, err
+	}
+
 	// This isn't from a browser, so we don't include most of the usual headers
 	headers := http.Header{}
-	//headers.Set("accept", "application/json")
 	headers.Set("user-agent", useragent.MessengerLiteUserAgent)
 	headers.Set("x-fb-http-engine", "Tigon+iOS")
 	headers.Set("accept", "*/*")
 	headers.Set("priority", "u=3, i")
 	headers.Set("accept-language", "en-US,en;q=0.9")
-	// TODO: Analytics headers
+	headers.Set("x-fb-request-analytics-tags", analHdr)
 
-	return headers
+	return headers, nil
 }
 
 func (c *Client) addFacebookHeaders(h *http.Header) {

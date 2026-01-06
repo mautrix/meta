@@ -51,8 +51,12 @@ func makeRequestAnalyticsHeader() (string, error) {
 	return string(hdr), nil
 }
 
-func (c *Client) fetchLightspeedKey(ctx context.Context) (int, string, error) {
-	// pwd_key
+type LightspeedKeyResponse struct {
+	KeyID     int    `json:"key_id"`
+	PublicKey string `json:"public_key"`
+}
+
+func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
 	endpoint := c.GetEndpoint("pwd_key")
 
 	params := map[string]any{
@@ -70,14 +74,14 @@ func (c *Client) fetchLightspeedKey(ctx context.Context) (int, string, error) {
 
 	analHdr, err := makeRequestAnalyticsHeader()
 	if err != nil {
-		return 0, "", err
+		return nil, err
 	}
 
 	headers := map[string]string{
 		"accept":                      "*/*",
 		"x-fb-appid":                  useragent.MessengerLiteAppId,
 		"x-fb-request-analytics-tags": analHdr,
-		"user-agent":                  useragent.UserAgent,
+		"user-agent":                  useragent.MessengerLiteUserAgent,
 		"accept-language":             "en-US,en;q=0.9",
 		"request_token":               uuid.New().String(),
 	}
@@ -89,18 +93,16 @@ func (c *Client) fetchLightspeedKey(ctx context.Context) (int, string, error) {
 
 	_, responseBytes, err := c.MakeRequest(ctx, fullURL, "GET", httpHeaders, nil, types.NONE)
 	if err != nil {
-		return 0, "", err
+		return nil, err
 	}
 
-	var response map[string]any
+	var response LightspeedKeyResponse
 	err = json.Unmarshal(responseBytes, &response)
 	if err != nil {
-		return 0, "", err
+		return nil, err
 	}
 
-	key_id := response["key_id"].(float64)
-	public_key := response["public_key"].(string)
-	return int(key_id), public_key, nil
+	return &response, nil
 }
 
 func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
@@ -307,32 +309,26 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
 	// TODO: Extract info from login page
-	fb.client.Logger.Debug().Msg("Loading Messenger Lite login page")
 	err := fb.client.loadMessengerLiteLoginPage(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
 	}
 
-	fb.client.Logger.Debug().Msg("Fetching Lightspeed key for Messenger Lite")
-	keyId, pubKey, err := fb.client.fetchLightspeedKey(ctx)
+	key, err := fb.client.fetchLightspeedKey(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
 	}
 
-	fb.client.Logger.Debug().Msg("Encrypting password for Messenger Lite")
-	encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), keyId, pubKey, password)
+	encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt password for facebook: %w", err)
+		return nil, fmt.Errorf("encrypting password for messenger lite: %w", err)
 	}
 
 	data, err := fb.client.sendAsyncLoginRequest(ctx, username, encryptedPW)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sending bloks login request: %w", err)
 	}
 
 	newCookies := convertCookies(data)
-
-	fb.client.Logger.Debug().Any("data", data).Msg("Processed Messenger Lite login response")
-
 	return newCookies, nil
 }

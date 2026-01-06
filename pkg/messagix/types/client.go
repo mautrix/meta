@@ -71,6 +71,14 @@ func (p Platform) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, p.String())), nil
 }
 
+func (p Platform) IsViaFacebook() bool {
+	return p == Facebook || p == FacebookTor
+}
+
+func (p Platform) IsViaMessenger() bool {
+	return p == Messenger || p == MessengerLite
+}
+
 func (p Platform) IsMessenger() bool {
 	return p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLite
 }

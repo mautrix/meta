@@ -48,7 +48,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -274,14 +273,13 @@ func (mc *MessageConverter) ToMatrix(
 		unsupported, _ := part.Extra["fi.mau.unsupported"].(bool)
 		if unsupported && !hasExternalURL {
 			var threadURL, protocolName string
-			switch client.GetPlatform() {
-			case types.Instagram:
+			if client.GetPlatform().IsInstagram() {
 				threadURL = fmt.Sprintf("https://www.instagram.com/direct/t/%s/", portal.ID)
 				protocolName = "Instagram"
-			case types.Facebook, types.FacebookTor:
+			} else if client.GetPlatform().IsViaFacebook() {
 				threadURL = fmt.Sprintf("https://www.facebook.com/messages/t/%s/", portal.ID)
 				protocolName = "Facebook"
-			case types.Messenger, types.MessengerLite:
+			} else if client.GetPlatform().IsViaMessenger() {
 				threadURL = fmt.Sprintf("https://www.messenger.com/t/%s/", portal.ID)
 				protocolName = "Messenger"
 			}

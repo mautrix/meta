@@ -20,8 +20,6 @@ import (
 	"github.com/beeper/poly1305/chacha20poly1305"
 )
 
-var FacebookPubKey = "70425d9c3279f0fd3855dd64cd5588d2dfd0fe77163bd7b650e1304b5f25135b"
-var FacebookPubKeyId int = 180
 var (
 	ErrRandomReadFailed = errors.New("failed to encrypt pw: random read failed")
 	ErrAESCreation      = errors.New("failed to encrypt pw: AES cipher creation failed")
