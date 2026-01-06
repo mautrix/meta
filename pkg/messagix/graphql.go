@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
@@ -20,15 +21,15 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-func (c *Client) makeWrappedBloksRequest(ctx context.Context, name string, serverParams map[string]any, clientParams map[string]any) (*http.Response, []byte, error) {
+func (c *Client) makeWrappedBloksRequest(ctx context.Context, name string, serverParams map[string]any, clientParams map[string]any) (*bloks.BloksPayload, error) {
 	bloksDoc, ok := bloks.BloksDocs[name]
 	if !ok {
-		return nil, nil, fmt.Errorf("could not find bloks doc by the name of: %s", name)
+		return nil, fmt.Errorf("could not find bloks doc by the name of: %s", name)
 	}
 
-	wrappedBloksRequest, err := bloks.MakeWrappedBloksRequest(bloksDoc.AppID, serverParams, clientParams)
+	wrappedBloksRequest, err := bloks.NewWrappedBloksRequest(bloksDoc.AppID, serverParams, clientParams)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create wrapped bloks request: %w", err)
+		return nil, fmt.Errorf("failed to create wrapped bloks request: %w", err)
 	}
 
 	return c.makeBloksRequest(ctx, bloksDoc, wrappedBloksRequest)
@@ -38,10 +39,10 @@ func (c *Client) makeWrappedBloksRequest(ctx context.Context, name string, serve
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, variables interface{}) (*http.Response, []byte, error) {
+func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, variables interface{}) (*bloks.BloksPayload, error) {
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
+		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
 	}
 
 	payload := &HttpQuery{}
@@ -60,14 +61,14 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 
 	form, err := query.Values(payload)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	payloadBytes := []byte(form.Encode())
 
 	analHdr, err := makeRequestAnalyticsHeader()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	headers := c.buildMessengerLiteHeaders()
@@ -80,11 +81,44 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
 
 	reqUrl := c.GetEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
-	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
+	_, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 
-	// TODO: Do some kind of response processing?
+	if err != nil {
+		return nil, err
+	}
 
-	return resp, respData, err
+	var respOuter bloks.BloksResponse
+	err = json.Unmarshal(respData, &respOuter)
+	if err != nil {
+		return nil, fmt.Errorf("parsing outer bloks payload: %w", err)
+	}
+
+	var respIntermediateStr json.RawMessage
+	for key, val := range respOuter.Data {
+		if !strings.Contains(key, "$") {
+			continue
+		}
+		respIntermediateStr = val
+	}
+
+	if respIntermediateStr == nil {
+		return nil, fmt.Errorf("couldn't find intermediate bloks payload")
+	}
+
+	var respIntermediate bloks.BloksResponseData
+	err = json.Unmarshal(respIntermediateStr, &respIntermediate)
+	if err != nil {
+		return nil, fmt.Errorf("parsing intermediate bloks payload: %w", err)
+	}
+
+	var respInner bloks.BloksBundleAction
+	err = json.Unmarshal([]byte(respIntermediate.Action.Bundle.BundleAction), &respInner)
+	if err != nil {
+		c.Logger.Trace().Bytes("response", respData).Msg("failed to parse inner bloks payload")
+		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
+	}
+
+	return &respInner.Layout.Payload, nil
 }
 
 func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {

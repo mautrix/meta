@@ -55,7 +55,7 @@ func makeWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID stri
 	return wrappedRequest, nil
 }
 
-func MakeWrappedBloksRequest(appID string, serverParams map[string]any, clientParams map[string]any) (*WrappedBloksRequest, error) {
+func NewWrappedBloksRequest(appID string, serverParams map[string]any, clientParams map[string]any) (*WrappedBloksRequest, error) {
 	return makeWrappedBloksRequest(3, BloksVersion, appID, wrappedBloksParams{
 		ServerParams:      serverParams,
 		ClientInputParams: clientParams,
@@ -63,7 +63,7 @@ func MakeWrappedBloksRequest(appID string, serverParams map[string]any, clientPa
 }
 
 type BloksResponse struct {
-	Data map[string]BloksResponseData `json:"data"`
+	Data map[string]json.RawMessage `json:"data"` // BloksResponseData or string
 }
 
 type BloksResponseData struct {

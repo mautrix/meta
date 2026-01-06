@@ -118,7 +118,7 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 		c.DeviceID = uuid.New()
 	}
 
-	_, respBytes, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_HOME_PAGE", map[string]any{
+	_, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_HOME_PAGE", map[string]any{
 		"is_from_logged_out":                0,
 		"flow_source":                       "aymh_single_profile_native_integration_point",
 		"offline_experiment_group":          "caa_iteration_v2_perf_ls_ios_test_1",
@@ -140,13 +140,12 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 		"should_show_nested_nta_from_aymh": 1,
 	})
 
-	c.Logger.Debug().Any("respBytes", respBytes).Msg("Loaded Messenger Lite login page")
 	return err
 }
 
 func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password string) (*BloksLoginActionResponsePayload, error) {
 	deviceId := strings.ToUpper(c.DeviceID.String())
-	_, respBytes, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_ASYNC_SEND_LOGIN_REQUEST", map[string]any{
+	payload, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_ASYNC_SEND_LOGIN_REQUEST", map[string]any{
 		"family_device_id": deviceId,
 		"is_from_aymh":     0,
 		"should_trigger_override_login_success_action": 0,
@@ -224,61 +223,9 @@ func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password s
 		return nil, err
 	}
 
-	// TODO: Clean up this parsing with structs
+	c.Logger.Debug().Any("actionPayload", payload.Action).Msg("Processed Messenger Lite login response")
 
-	// Parse respBytes as JSON
-	var respData map[string]any
-	err = json.Unmarshal(respBytes, &respData)
-	if err != nil {
-		return nil, err
-	}
-
-	// Safely extract nested fields using type assertions
-	data, ok := respData["data"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing 'data'")
-	}
-	bloksAction, ok := data["1$bloks_action(bk_context:$bk_context,params:$params)"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing '1$bloks_action(bk_context:$bk_context,params:$params)'")
-	}
-	action, ok := bloksAction["action"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing 'action'")
-	}
-	actionBundle, ok := action["action_bundle"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing 'action_bundle'")
-	}
-	inner, ok := actionBundle["bloks_bundle_action"]
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing 'bloks_bundle_action'")
-	}
-
-	// Parse inner as JSON
-	var innerData map[string]any
-	err = json.Unmarshal([]byte(inner.(string)), &innerData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse 'bloks_bundle_action' as JSON: %w", err)
-	}
-	// ['layout']['bloks_payload']['action']
-	actionLayout, ok := innerData["layout"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing 'layout'")
-	}
-	actionBloksPayload, ok := actionLayout["bloks_payload"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing 'bloks_payload'")
-	}
-	actionPayload, ok := actionBloksPayload["action"]
-	if !ok {
-		return nil, fmt.Errorf("unexpected response format: missing 'action'")
-	}
-
-	c.Logger.Debug().Any("actionPayload", actionPayload).Msg("Processed Messenger Lite login response")
-
-	// Parse the action payload
-	payloadData, err := c.parseBloksActionPayload(actionPayload.(string))
+	payloadData, err := c.parseBloksActionPayload(payload.Action)
 	if err != nil {
 		return nil, err
 	}
