@@ -102,7 +102,6 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 
 	if innerData == "" {
 		c.Logger.Trace().Bytes("response", respData).Msg("failed to find inner bloks payload")
-		c.Logger.Trace().Any("parsed", respOuter).Msg("failed to find inner bloks payload")
 		return nil, fmt.Errorf("couldn't find inner bloks payload")
 	}
 

@@ -2,6 +2,7 @@ package bloks
 
 import (
 	"encoding/json"
+	"reflect"
 )
 
 const BloksVersion = "3988ff4cdf5ca5de647ba84aa74b5bd2fcd4ffd768e0faec8adc3e53492f3f87"
@@ -69,6 +70,28 @@ type BloksResponse struct {
 type BloksResponseData struct {
 	BloksApp    *BloksAppData    `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
 	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
+}
+
+// Workaround https://github.com/golang/go/issues/15000
+func (b *BloksResponseData) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
+	v := reflect.ValueOf(b)
+	t := reflect.TypeOf(BloksResponseData{})
+	for i := 0; i < t.NumField(); i++ {
+		key := t.Field(i).Tag.Get("json")
+		if raw[key] == nil {
+			continue
+		}
+		err := json.Unmarshal(raw[key], v.Elem().Field(i).Addr().Interface())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type BloksAppData struct {
