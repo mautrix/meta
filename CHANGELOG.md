@@ -1,3 +1,16 @@
+# v25.12
+
+* Added support for changing unencrypted group names and avatars.
+* Added option to stop view-once media being bridged.
+* Changed thumbs-up stickers to be bridged as the emoji even in unencrypted
+  chats to be consistent with encrypted ones.
+* Fixed false negatives when editing messages if the server lies about the
+  result.
+* Fixed Instagram logins getting stuck disconnected in some cases after internal
+  errors on Meta's servers.
+* Fixed duplicate attachments being bridged when the server sends duplicate
+  attachments in a message for no apparent reason.
+
 # v25.11
 
 * Added workaround for users who are unable to send videos even on the native
