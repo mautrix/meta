@@ -19,7 +19,11 @@ import (
 func (s *Socket) handleReadyEvent(ctx context.Context, data *Event_Ready) error {
 	if s.previouslyConnected {
 		s.client.canSendMessages.Set()
-		err := s.client.syncManager.EnsureSyncedSocket(ctx, reconnectSync[s.client.Platform])
+		reconnectSync := minimalFBReconnectSync
+		if s.client.Platform.IsInstagram() {
+			reconnectSync = minimalReconnectSync
+		}
+		err := s.client.syncManager.EnsureSyncedSocket(ctx, reconnectSync)
 		if err != nil {
 			return fmt.Errorf("failed to sync after reconnect: %w", err)
 		}
@@ -105,7 +109,11 @@ func (s *Socket) handleReadyEvent(ctx context.Context, data *Event_Ready) error 
 		return fmt.Errorf("failed to report app state: %w", err)
 	}
 
-	err = s.client.syncManager.EnsureSyncedSocket(ctx, initialSync[s.client.Platform])
+	initialSync := minimalFBInitialSync
+	if s.client.Platform.IsInstagram() {
+		initialSync = minimalInitialSync
+	}
+	err = s.client.syncManager.EnsureSyncedSocket(ctx, initialSync)
 	if err != nil {
 		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
 	}
