@@ -73,6 +73,8 @@ type BloksResponseData struct {
 }
 
 // Workaround https://github.com/golang/go/issues/15000
+// Could also upgrade to json/v2 and use single quotes in the struct
+// tag, once that is released and stabilized
 func (b *BloksResponseData) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	err := json.Unmarshal(data, &raw)
