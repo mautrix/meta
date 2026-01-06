@@ -63,10 +63,31 @@ func NewWrappedBloksRequest(appID string, serverParams map[string]any, clientPar
 }
 
 type BloksResponse struct {
-	Data map[string]json.RawMessage `json:"data"` // BloksResponseData or string
+	Data BloksResponseData `json:"data"`
 }
 
 type BloksResponseData struct {
+	BloksApp    *BloksAppData    `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
+	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
+}
+
+type BloksAppData struct {
+	Screen BloksScreenContent `json:"screen_content"`
+}
+
+type BloksScreenContent struct {
+	Component BloksComponent `json:"component"`
+}
+
+type BloksComponent struct {
+	Bundle BloksAppBundle `json:"bundle"`
+}
+
+type BloksAppBundle struct {
+	Tree string `json:"bloks_bundle_tree"` // BloksInnerData
+}
+
+type BloksActionData struct {
 	Action BloksAction `json:"action"`
 }
 
@@ -75,10 +96,10 @@ type BloksAction struct {
 }
 
 type BloksActionBundle struct {
-	BundleAction string `json:"bloks_bundle_action"` // stringified json
+	BundleAction string `json:"bloks_bundle_action"` // BloksInnerData
 }
 
-type BloksBundleAction struct {
+type BloksInnerData struct {
 	Layout BloksLayout `json:"layout"`
 }
 

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
@@ -93,26 +92,22 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 		return nil, fmt.Errorf("parsing outer bloks payload: %w", err)
 	}
 
-	var respIntermediateStr json.RawMessage
-	for key, val := range respOuter.Data {
-		if !strings.Contains(key, "$") {
-			continue
-		}
-		respIntermediateStr = val
+	innerData := ""
+	if respOuter.Data.BloksApp != nil {
+		innerData = respOuter.Data.BloksApp.Screen.Component.Bundle.Tree
+	}
+	if respOuter.Data.BloksAction != nil {
+		innerData = respOuter.Data.BloksAction.Action.Bundle.BundleAction
 	}
 
-	if respIntermediateStr == nil {
-		return nil, fmt.Errorf("couldn't find intermediate bloks payload")
+	if innerData == "" {
+		c.Logger.Trace().Bytes("response", respData).Msg("failed to find inner bloks payload")
+		c.Logger.Trace().Any("parsed", respOuter).Msg("failed to find inner bloks payload")
+		return nil, fmt.Errorf("couldn't find inner bloks payload")
 	}
 
-	var respIntermediate bloks.BloksResponseData
-	err = json.Unmarshal(respIntermediateStr, &respIntermediate)
-	if err != nil {
-		return nil, fmt.Errorf("parsing intermediate bloks payload: %w", err)
-	}
-
-	var respInner bloks.BloksBundleAction
-	err = json.Unmarshal([]byte(respIntermediate.Action.Bundle.BundleAction), &respInner)
+	var respInner bloks.BloksInnerData
+	err = json.Unmarshal([]byte(innerData), &respInner)
 	if err != nil {
 		c.Logger.Trace().Bytes("response", respData).Msg("failed to parse inner bloks payload")
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
