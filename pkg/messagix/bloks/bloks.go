@@ -6,20 +6,6 @@ import (
 
 const BloksVersion = "3988ff4cdf5ca5de647ba84aa74b5bd2fcd4ffd768e0faec8adc3e53492f3f87"
 
-// TODO: Fix analytics
-type NetworkTags struct {
-	Product         string `json:"product"`
-	Purpose         string `json:"purpose,omitempty"`
-	RequestCategory string `json:"request_category,omitempty"`
-	RetryAttempt    string `json:"retry_attempt"`
-}
-
-type RequestAnalytics struct {
-	NetworkTags NetworkTags `json:"network_tags"`
-}
-
-// WrappedBloks:
-
 type wrappedBloksParams struct {
 	ServerParams      map[string]any `json:"server_params"`
 	ClientInputParams map[string]any `json:"client_input_params"`
@@ -35,6 +21,7 @@ type wrappedBloksOuterParams struct {
 	AppID             string `json:"app_id"`
 	Params            string `json:"params"`
 }
+
 type WrappedBloksRequest struct {
 	BkContext *wrappedBloksBkContext   `json:"bk_context,omitempty"`
 	Params    *wrappedBloksOuterParams `json:"params,omitempty"`
@@ -68,10 +55,38 @@ func makeWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID stri
 	return wrappedRequest, nil
 }
 
-// WrappedBloks is very cursed
 func MakeWrappedBloksRequest(appID string, serverParams map[string]any, clientParams map[string]any) (*WrappedBloksRequest, error) {
 	return makeWrappedBloksRequest(3, BloksVersion, appID, wrappedBloksParams{
 		ServerParams:      serverParams,
 		ClientInputParams: clientParams,
 	})
+}
+
+type BloksResponse struct {
+	Data map[string]BloksResponseData `json:"data"`
+}
+
+type BloksResponseData struct {
+	Action BloksAction `json:"action"`
+}
+
+type BloksAction struct {
+	Bundle BloksActionBundle `json:"action_bundle"`
+}
+
+type BloksActionBundle struct {
+	BundleAction string `json:"bloks_bundle_action"` // stringified json
+}
+
+type BloksBundleAction struct {
+	Layout BloksLayout `json:"layout"`
+}
+
+type BloksLayout struct {
+	Payload BloksPayload `json:"bloks_payload"`
+}
+
+type BloksPayload struct {
+	Action string `json:"action"` // scuffed lisp
+	// ... more fields that we don't use
 }

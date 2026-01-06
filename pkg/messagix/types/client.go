@@ -75,6 +75,10 @@ func (p Platform) IsMessenger() bool {
 	return p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLite
 }
 
+func (p Platform) IsInstagram() bool {
+	return p == Instagram
+}
+
 func (p Platform) IsValid() bool {
 	return p == Instagram || p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLite
 }

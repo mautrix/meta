@@ -12,8 +12,6 @@ import (
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
 
-	//"golang.org/x/net/context"
-
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
@@ -36,7 +34,10 @@ func (c *Client) makeWrappedBloksRequest(ctx context.Context, name string, serve
 	return c.makeBloksRequest(ctx, bloksDoc, wrappedBloksRequest)
 }
 
-// TODO: Should this be layered on top of makeGraphQLRequest?
+// This has some overlap with makeGraphQLRequest but it's really a
+// completely different API that takes a ton of different parameters
+// and is used by a different client, despite also being called
+// "graphql" in the url.
 func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, variables interface{}) (*http.Response, []byte, error) {
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
@@ -64,11 +65,17 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 
 	payloadBytes := []byte(form.Encode())
 
+	analHdr, err := makeRequestAnalyticsHeader()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	headers := c.buildMessengerLiteHeaders()
 	headers.Set("x-fb-friendly-name", doc.FriendlyName)
 	headers.Set("x-root-field-name", "bloks_action")
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
+	headers.Set("x-fb-request-analytics-tags", analHdr)
 
 	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
 

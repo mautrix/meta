@@ -24,6 +24,33 @@ type MessengerLiteMethods struct {
 	client *Client
 }
 
+type NetworkTags struct {
+	Product         string `json:"product"`
+	Purpose         string `json:"purpose,omitempty"`
+	RequestCategory string `json:"request_category,omitempty"`
+	RetryAttempt    string `json:"retry_attempt"`
+}
+
+type RequestAnalytics struct {
+	NetworkTags NetworkTags `json:"network_tags"`
+}
+
+func makeRequestAnalyticsHeader() (string, error) {
+	anal := RequestAnalytics{
+		NetworkTags: NetworkTags{
+			Product:         useragent.MessengerLiteAppId,
+			RequestCategory: "graphql",
+			Purpose:         "fetch",
+			RetryAttempt:    "0",
+		},
+	}
+	hdr, err := json.Marshal(anal)
+	if err != nil {
+		return "", fmt.Errorf("make analytics header: %w", err)
+	}
+	return string(hdr), nil
+}
+
 func (c *Client) fetchLightspeedKey(ctx context.Context) (int, string, error) {
 	// pwd_key
 	endpoint := c.GetEndpoint("pwd_key")
@@ -41,13 +68,18 @@ func (c *Client) fetchLightspeedKey(ctx context.Context) (int, string, error) {
 	}
 	fullURL := endpoint + "?" + query.Encode()
 
+	analHdr, err := makeRequestAnalyticsHeader()
+	if err != nil {
+		return 0, "", err
+	}
+
 	headers := map[string]string{
-		"accept": "*/*",
-		// TODO: Analytics
-		"x-fb-appid":      useragent.MessengerLiteAppId,
-		"user-agent":      useragent.UserAgent,
-		"accept-language": "en-US,en;q=0.9",
-		"request_token":   uuid.New().String(),
+		"accept":                      "*/*",
+		"x-fb-appid":                  useragent.MessengerLiteAppId,
+		"x-fb-request-analytics-tags": analHdr,
+		"user-agent":                  useragent.UserAgent,
+		"accept-language":             "en-US,en;q=0.9",
+		"request_token":               uuid.New().String(),
 	}
 
 	httpHeaders := http.Header{}

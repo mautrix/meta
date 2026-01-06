@@ -300,7 +300,7 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		Instructions: "Enter your Messenger credentials",
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: []bridgev2.LoginInputDataField{
-				{ID: "username", Name: "Username", Type: bridgev2.LoginInputFieldTypeEmail},
+				{ID: "username", Name: "Email address", Type: bridgev2.LoginInputFieldTypeEmail},
 				{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
 			},
 		},

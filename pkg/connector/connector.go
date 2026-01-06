@@ -8,7 +8,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 )
@@ -59,8 +58,7 @@ func (m *MetaConnector) SetMaxFileSize(maxSize int64) {
 }
 
 func (m *MetaConnector) GetName() bridgev2.BridgeName {
-	switch m.Config.Mode {
-	case types.Facebook, types.FacebookTor, types.Messenger, types.MessengerLite:
+	if m.Config.Mode.IsMessenger() {
 		return bridgev2.BridgeName{
 			DisplayName:      "Facebook Messenger",
 			NetworkURL:       "https://www.facebook.com/messenger",
@@ -69,7 +67,8 @@ func (m *MetaConnector) GetName() bridgev2.BridgeName {
 			BeeperBridgeType: "facebookgo",
 			DefaultPort:      29319,
 		}
-	case types.Instagram:
+	}
+	if m.Config.Mode.IsInstagram() {
 		return bridgev2.BridgeName{
 			DisplayName:      "Instagram",
 			NetworkURL:       "https://instagram.com",
@@ -78,14 +77,13 @@ func (m *MetaConnector) GetName() bridgev2.BridgeName {
 			BeeperBridgeType: "instagramgo",
 			DefaultPort:      29319,
 		}
-	default:
-		return bridgev2.BridgeName{
-			DisplayName:      "Meta",
-			NetworkURL:       "https://meta.com",
-			NetworkIcon:      "mxc://maunium.net/DxpVrwwzPUwaUSazpsjXgcKB",
-			NetworkID:        "meta",
-			BeeperBridgeType: "meta",
-			DefaultPort:      29319,
-		}
+	}
+	return bridgev2.BridgeName{
+		DisplayName:      "Meta",
+		NetworkURL:       "https://meta.com",
+		NetworkIcon:      "mxc://maunium.net/DxpVrwwzPUwaUSazpsjXgcKB",
+		NetworkID:        "meta",
+		BeeperBridgeType: "meta",
+		DefaultPort:      29319,
 	}
 }

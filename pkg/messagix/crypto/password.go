@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -99,7 +100,7 @@ func encryptPasswordLightspeed(pubKeyId int, pubKey, password string) (string, e
 	if err != nil {
 		return "", err
 	}
-	buf.Write([]byte{0x50, 0x00}) // TODO: I assume this is length?
+	buf.Write(binary.LittleEndian.AppendUint16(nil, uint16(len(boxed))))
 	buf.Write(boxed)
 
 	cipher, err := chacha20poly1305.NewLegacy(encryptionKey)
