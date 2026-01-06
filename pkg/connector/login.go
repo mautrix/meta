@@ -331,7 +331,7 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 	}
 	client.GetCookies().UnmarshalJSON(newCookies)
 
-	log.Debug().Any("cookies", cookies).Msg("Logged in with Messenger Lite")
+	log.Trace().Any("cookies", cookies).Msg("Logged in with Messenger Lite")
 
 	user, tbl, err := client.LoadMessagesPage(ctx)
 	if err != nil {
@@ -349,7 +349,7 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 		}
 	}
 
-	log.Debug().Any("user", user).Any("tbl", tbl).Msg("Loaded user after Messenger Lite login")
+	log.Trace().Any("user", user).Any("tbl", tbl).Msg("Loaded user after Messenger Lite login")
 	id := user.GetFBID()
 
 	loginID := metaid.MakeUserLoginID(id)
