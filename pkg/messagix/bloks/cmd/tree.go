@@ -100,7 +100,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if str, ok := literal.BloksJavascriptValue.(string); ok && strings.HasPrefix(str, "\t") {
+	if str, ok := literal.BloksJavascriptValue.(string); ok && (strings.HasPrefix(str, "\t") || strings.HasPrefix(str, "(")) {
 		script := BloksTreeScript{}
 		err := script.Parse(str)
 		if err != nil {

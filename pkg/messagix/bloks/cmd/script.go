@@ -16,7 +16,7 @@ var ParseEndOfFuncall = errors.New("end of funcall")
 func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 	for idx := start; idx < len(code); idx++ {
 		switch code[idx] {
-		case '\t', ' ':
+		case '\t', ' ', ',':
 			continue
 		case '(':
 			funcall := BloksScriptFuncall{}
@@ -47,7 +47,7 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 	start += 1
 	for idx := start; idx < len(code); idx++ {
 		switch code[idx] {
-		case '\t', ' ':
+		case '\t', ' ', ',':
 			continue
 		}
 		start = idx
@@ -64,11 +64,11 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 		if code[idx] >= '0' && code[idx] <= '9' {
 			continue
 		}
-		// Apparently comma is allowed in function names ?????????
-		if code[idx] == ',' {
+		// Some more chars are used in the unminified version
+		if code[idx] == '.' || code[idx] == '_' {
 			continue
 		}
-		if code[idx] == ' ' || code[idx] == '(' || code[idx] == ')' {
+		if code[idx] == ' ' || code[idx] == '(' || code[idx] == ')' || code[idx] == ',' {
 			if idx == start {
 				return idx, fmt.Errorf("bad char %q instead of func name", code[idx])
 			}
@@ -90,7 +90,7 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 		if errors.Is(err, ParseEndOfFuncall) {
 			for idx := next; idx < len(code); idx++ {
 				switch code[idx] {
-				case '\t', ' ':
+				case '\t', ' ', ',':
 					continue
 				case ')':
 					return idx + 1, nil
@@ -124,7 +124,7 @@ type BloksScriptLiteral struct {
 func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 	for idx := start; idx < len(code); idx++ {
 		switch code[idx] {
-		case '\t', ' ':
+		case '\t', ' ', ',':
 			continue
 		}
 		start = idx
@@ -143,7 +143,7 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 			break
 		}
 		switch code[idx] {
-		case ' ', '(', ')':
+		case ' ', '(', ')', ',':
 			if decimal {
 				val, err := strconv.ParseFloat(code[start:idx], 64)
 				if err != nil {
