@@ -214,11 +214,11 @@ type BloksTreeLiteral struct {
 	BloksJavascriptValue
 }
 
-func (btl BloksTreeLiteral) UnmarshalJSON(data []byte) error {
+func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &btl.BloksJavascriptValue)
 }
 
-func (btl BloksTreeLiteral) Print(indent string) error {
+func (btl *BloksTreeLiteral) Print(indent string) error {
 	str, err := json.Marshal(btl.BloksJavascriptValue)
 	if err != nil {
 		return err
