@@ -111,7 +111,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 			}
 			err := json.Unmarshal(subdata, &comp)
 			if err != nil {
-				return err
+				return fmt.Errorf("component %q: %w", id, err)
 			}
 			btn.BloksTreeNodeContent = &comp
 		}
@@ -149,7 +149,29 @@ func (btc *BloksTreeComponent) Print() {
 	//
 }
 
-type BloksTreeComponentList []BloksTreeComponent
+type BloksTreeComponentList []*BloksTreeComponent
+
+func (btcl *BloksTreeComponentList) UnmarshalJSON(data []byte) error {
+	var rawComps = []json.RawMessage{}
+	err := json.Unmarshal(data, &rawComps)
+	if err != nil {
+		return err
+	}
+	*btcl = BloksTreeComponentList{}
+	for idx, subdata := range rawComps {
+		var node BloksTreeNode
+		err := json.Unmarshal(subdata, &node)
+		if err != nil {
+			return fmt.Errorf("item %d: %w", idx, err)
+		}
+		comp, ok := node.BloksTreeNodeContent.(*BloksTreeComponent)
+		if !ok {
+			return fmt.Errorf("item %d: unexpected type %T", idx, node.BloksTreeNodeContent)
+		}
+		*btcl = append(*btcl, comp)
+	}
+	return nil
+}
 
 func (btcl BloksTreeComponentList) Print() {
 	//
@@ -159,12 +181,32 @@ type BloksTreeLiteral struct {
 	BloksJavascriptValue
 }
 
+func (btl BloksTreeLiteral) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &btl.BloksJavascriptValue)
+}
+
 func (btl BloksTreeLiteral) Print() {
 	//
 }
 
+// This could just unmarshal the whole map directly, but I wrote it
+// explicitly to add better error messaging.
 func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &btc.Attributes)
+	var rawAttrs = map[BloksAttributeID]json.RawMessage{}
+	err := json.Unmarshal(data, &rawAttrs)
+	if err != nil {
+		return err
+	}
+	btc.Attributes = map[BloksAttributeID]BloksTreeNode{}
+	for attr, subdata := range rawAttrs {
+		var node BloksTreeNode
+		err := json.Unmarshal(subdata, &node)
+		if err != nil {
+			return fmt.Errorf("attribute %q: %w", attr, err)
+		}
+		btc.Attributes[attr] = node
+	}
+	return nil
 }
 
 func mainE() error {
