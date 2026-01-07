@@ -107,9 +107,40 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("script: %w", err)
 		}
 		btn.BloksTreeNodeContent = &script
-	} else {
-		btn.BloksTreeNodeContent = &literal
+		return nil
 	}
+	if arr, ok := literal.BloksJavascriptValue.([]any); ok {
+		set := BloksTreeScriptSet{
+			Scripts: []BloksTreeScript{},
+		}
+		good := len(arr) > 1
+		for idx := 0; idx < len(arr); idx++ {
+			str, ok := arr[idx].(string)
+			if !ok {
+				good = false
+				break
+			}
+			if idx == 0 {
+				set.Identifier = BloksAttributeID(str)
+				continue
+			}
+			if !strings.HasPrefix(str, "\t") {
+				good = false
+				break
+			}
+			script := BloksTreeScript{}
+			err := script.Parse(str)
+			if err != nil {
+				return fmt.Errorf("script: %w", err)
+			}
+			set.Scripts = append(set.Scripts, script)
+		}
+		if good {
+			btn.BloksTreeNodeContent = &set
+			return nil
+		}
+	}
+	btn.BloksTreeNodeContent = &literal
 	return nil
 }
 
@@ -143,43 +174,37 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 }
 
 func (btc *BloksTreeComponent) Print(indent string) error {
-	fmt.Printf("%s<Component id=%q>\n", indent, btc.ComponentID)
+	fmt.Printf("%s<Component type=%q>\n", indent, btc.ComponentID)
 	attrs := []BloksAttributeID{}
 	for attr := range btc.Attributes {
 		attrs = append(attrs, attr)
 	}
 	sort.Slice(attrs, func(i, j int) bool { return attrs[i] < attrs[j] })
 	for attr, value := range btc.Attributes {
-		switch node := value.BloksTreeNodeContent.(type) {
+		attrtype := ""
+		trailer := ""
+		switch value.BloksTreeNodeContent.(type) {
 		case *BloksTreeComponent:
-			fmt.Printf("%s  <Attribute type=\"component\" id=%q>\n", indent, attr)
-			err := node.Print(indent + "    ")
-			if err != nil {
-				return err
-			}
-			fmt.Printf("%s  </Attribute type=\"component\" id=%q>\n", indent, attr)
+			attrtype = "component"
 		case *BloksTreeComponentList:
-			fmt.Printf("%s  <Attribute type=\"component-list\" id=%q>\n", indent, attr)
-			err := node.Print(indent + "    ")
-			if err != nil {
-				return err
-			}
-			fmt.Printf("%s  </Attribute type=\"component-list\" id=%q>\n", indent, attr)
+			attrtype = "component-list"
 		case *BloksTreeLiteral:
-			fmt.Printf("%s  <Attribute type=\"literal\" id=%q>\n", indent, attr)
-			err := node.Print(indent + "    ")
-			if err != nil {
-				return err
-			}
-			fmt.Printf("%s  </Attribute type=\"literal\" id=%q>\n", indent, attr)
+			attrtype = "literal"
 		case *BloksTreeScript:
-			fmt.Printf("%s  <Attribute type=\"script\" id=%q>\n", indent, attr)
-			err := node.Print(indent + "    ")
-			if err != nil {
-				return err
-			}
-			fmt.Printf("\n%s  </Attribute type=\"script\" id=%q>\n", indent, attr)
+			attrtype = "script"
+			trailer = "\n"
+		case *BloksTreeScriptSet:
+			attrtype = "script-set"
+			trailer = "\n"
+		default:
+			panic("missing case in bloks tree switch")
 		}
+		fmt.Printf("%s  <Attribute type=%q type=%q>\n", indent, attrtype, attr)
+		err := value.BloksTreeNodeContent.Print(indent + "    ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s%s  </Attribute type=%q class=%q>\n", trailer, indent, attrtype, attr)
 	}
 	fmt.Printf("%s</Component>\n", indent)
 	return nil
@@ -233,5 +258,43 @@ func (btl *BloksTreeLiteral) Print(indent string) error {
 		return err
 	}
 	fmt.Printf("%s%s\n", indent, str)
+	return nil
+}
+
+type BloksTreeScript struct {
+	AST BloksScriptNode
+}
+
+func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
+	err := bs.Parse(string(data))
+	if err != nil {
+		return fmt.Errorf("script: %w", err)
+	}
+	return nil
+}
+
+func (bst *BloksTreeScript) Parse(code string) error {
+	_, err := bst.AST.ParseAny(code, 0)
+	return err
+}
+
+func (bst *BloksTreeScript) Print(indent string) error {
+	return bst.AST.Print(indent)
+}
+
+type BloksTreeScriptSet struct {
+	Identifier BloksAttributeID
+	Scripts    []BloksTreeScript
+}
+
+func (bst *BloksTreeScriptSet) Print(indent string) error {
+	fmt.Printf("%s<ScriptSet type=%q>\n", indent, bst.Identifier)
+	for _, script := range bst.Scripts {
+		err := script.Print(indent + "  ")
+		if err != nil {
+			return err
+		}
+	}
+	fmt.Printf("\n%s</ScriptSet type=%q>\n", indent, bst.Identifier)
 	return nil
 }

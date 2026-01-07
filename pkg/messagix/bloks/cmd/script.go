@@ -7,27 +7,6 @@ import (
 	"strconv"
 )
 
-type BloksTreeScript struct {
-	AST BloksScriptNode
-}
-
-func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
-	err := bs.Parse(string(data))
-	if err != nil {
-		return fmt.Errorf("script: %w", err)
-	}
-	return nil
-}
-
-func (bst *BloksTreeScript) Parse(code string) error {
-	_, err := bst.AST.ParseAny(code, 0)
-	return err
-}
-
-func (bst *BloksTreeScript) Print(indent string) error {
-	return bst.AST.Print(indent)
-}
-
 type BloksScriptNode struct {
 	BloksScriptNodeContent
 }
