@@ -90,7 +90,53 @@ type BloksErrorAttribution struct {
 	SourceMapID string `json:"source_map_id"`
 }
 
-type BloksTreeNode interface {
+type BloksTreeNode struct {
+	BloksTreeNodeContent
+}
+
+func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
+	var mapType map[BloksComponentID]json.RawMessage
+	mapErr := json.Unmarshal(data, &mapType)
+	if mapErr == nil {
+		if len(mapType) != 1 {
+			ids := []BloksComponentID{}
+			for id := range mapType {
+				ids = append(ids, id)
+			}
+			return fmt.Errorf("not exactly one component in map, ids: %q", ids)
+		}
+		for id, subdata := range mapType {
+			comp := BloksTreeComponent{
+				ComponentID: id,
+			}
+			err := json.Unmarshal(subdata, &comp)
+			if err != nil {
+				return err
+			}
+			btn.BloksTreeNodeContent = &comp
+		}
+		return nil
+	}
+	sliceErr := json.Unmarshal(data, &[]map[BloksComponentID]json.RawMessage{})
+	if sliceErr == nil {
+		var comps BloksTreeComponentList
+		err := json.Unmarshal(data, &comps)
+		if err != nil {
+			return err
+		}
+		btn.BloksTreeNodeContent = &comps
+		return nil
+	}
+	var literal BloksTreeLiteral
+	err := json.Unmarshal(data, &literal)
+	if err != nil {
+		return err
+	}
+	btn.BloksTreeNodeContent = &literal
+	return nil
+}
+
+type BloksTreeNodeContent interface {
 	Print()
 }
 
@@ -118,61 +164,7 @@ func (btl BloksTreeLiteral) Print() {
 }
 
 func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
-	btc.Attributes = map[BloksAttributeID]BloksTreeNode{}
-	var raw map[string]json.RawMessage
-	err := json.Unmarshal(data, &raw)
-	if err != nil {
-		return err
-	}
-	for key, val := range raw {
-		attr := BloksAttributeID(key)
-		var mapType map[BloksComponentID]json.RawMessage
-		mapErr := json.Unmarshal(val, &mapType)
-		if mapErr == nil {
-			if len(mapType) != 1 {
-				return fmt.Errorf("bare components, length %d", len(mapType))
-			}
-			for id, subval := range mapType {
-				comp := BloksTreeComponent{
-					ComponentID: id,
-				}
-				btc.Attributes[attr] = &comp
-				err := json.Unmarshal(subval, &comp)
-				if err != nil {
-					return err
-				}
-			}
-			continue
-		}
-		var sliceType []map[BloksComponentID]json.RawMessage
-		sliceErr := json.Unmarshal(val, &sliceType)
-		if sliceErr == nil {
-			children := []BloksTreeComponent{}
-			for _, child := range sliceType {
-				if len(child) != 1 {
-					return fmt.Errorf("bare components, length %d", len(child))
-				}
-				for id, subval := range child {
-					comp := BloksTreeComponent{
-						ComponentID: id,
-					}
-					err := json.Unmarshal(subval, &comp)
-					if err != nil {
-						return err
-					}
-					children = append(children, comp)
-				}
-			}
-			btc.Attributes[attr] = BloksTreeComponentList(children)
-		}
-		var literal BloksTreeLiteral
-		err := json.Unmarshal(val, &literal)
-		if err != nil {
-			return err
-		}
-		btc.Attributes[attr] = literal
-	}
-	return nil
+	return json.Unmarshal(data, &btc.Attributes)
 }
 
 func mainE() error {
