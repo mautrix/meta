@@ -716,11 +716,11 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
 	var imageID int64
-	if msg.Content.URL == "" && msg.Content.MSC3414File == nil {
+	if msg.Content.URL == "" {
 		// TODO: handle removing avatar. Messenger web doesn't have a remove option?
 		return false, fmt.Errorf("removing avatar not implemented")
 	} else {
-		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, msg.Content.MSC3414File)
+		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
 		if err != nil {
 			return false, fmt.Errorf("failed to download avatar: %w", err)
 		}
@@ -744,5 +744,9 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		ImageID:   imageID,
 		SyncGroup: 1,
 	})
-	return err == nil, err
+	if err != nil {
+		return false, err
+	}
+	// TODO update portal metadata
+	return true, nil
 }
