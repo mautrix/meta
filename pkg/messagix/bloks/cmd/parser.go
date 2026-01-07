@@ -43,8 +43,8 @@ type BloksBundle struct {
 	Layout BloksLayout `json:"layout"`
 }
 
-func (bb *BloksBundle) Print() {
-	bb.Layout.Payload.Tree.Print()
+func (bb *BloksBundle) Print(indent string) error {
+	return bb.Layout.Payload.Tree.Print(indent)
 }
 
 type BloksLayout struct {
@@ -137,7 +137,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 }
 
 type BloksTreeNodeContent interface {
-	Print()
+	Print(prefix string) error
 }
 
 type BloksTreeComponent struct {
@@ -145,8 +145,35 @@ type BloksTreeComponent struct {
 	Attributes  map[BloksAttributeID]BloksTreeNode
 }
 
-func (btc *BloksTreeComponent) Print() {
-	//
+func (btc *BloksTreeComponent) Print(indent string) error {
+	fmt.Printf("%s<Component id=%q>\n", indent, btc.ComponentID)
+	for attr, value := range btc.Attributes {
+		switch node := value.BloksTreeNodeContent.(type) {
+		case *BloksTreeComponent:
+			fmt.Printf("%s  <Attribute type=\"component\" id=%q>\n", indent, attr)
+			err := node.Print(indent + "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%s  </Attribute type=\"component\" id=%q>\n", indent, attr)
+		case *BloksTreeComponentList:
+			fmt.Printf("%s  <Attribute type=\"component-list\" id=%q>\n", indent, attr)
+			err := node.Print(indent + "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%s  </Attribute type=\"component-list\" id=%q>\n", indent, attr)
+		case *BloksTreeLiteral:
+			fmt.Printf("%s  <Attribute type=\"literal\" id=%q>\n", indent, attr)
+			err := node.Print(indent + "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%s  </Attribute type=\"literal\" id=%q>\n", indent, attr)
+		}
+	}
+	fmt.Printf("%s</Component>\n", indent)
+	return nil
 }
 
 type BloksTreeComponentList []*BloksTreeComponent
@@ -173,8 +200,14 @@ func (btcl *BloksTreeComponentList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (btcl BloksTreeComponentList) Print() {
-	//
+func (btcl BloksTreeComponentList) Print(indent string) error {
+	for _, comp := range btcl {
+		err := comp.Print(indent)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type BloksTreeLiteral struct {
@@ -185,8 +218,13 @@ func (btl BloksTreeLiteral) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &btl.BloksJavascriptValue)
 }
 
-func (btl BloksTreeLiteral) Print() {
-	//
+func (btl BloksTreeLiteral) Print(indent string) error {
+	str, err := json.Marshal(btl.BloksJavascriptValue)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s%s\n", indent, str)
+	return nil
 }
 
 // This could just unmarshal the whole map directly, but I wrote it
@@ -228,6 +266,5 @@ func mainE() error {
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
-	bundle.Print()
-	return nil
+	return bundle.Print("")
 }
