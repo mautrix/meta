@@ -1,5 +1,6 @@
 # v25.12
 
+* Updated Docker image to Alpine 3.23.
 * Added support for changing unencrypted group names and avatars.
 * Added option to stop view-once media being bridged.
 * Changed thumbs-up stickers to be bridged as the emoji even in unencrypted
