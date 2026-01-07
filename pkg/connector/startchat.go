@@ -43,19 +43,27 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 
 	var chat *bridgev2.CreateChatResponse
 	if createChat {
-		resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
-			ThreadFBID:                id,
-			ForceUpsert:               0,
-			UseOpenMessengerTransport: 0,
-			SyncGroup:                 1,
-			MetadataOnly:              0,
-			PreviewOnly:               0,
-		})
-
-		log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
+		tableType := table.ONE_TO_ONE
+		if m.LoginMeta.Platform.IsMessenger() {
+			tableType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
+			err = m.CreateWhatsAppDM(ctx, id)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to create WhatsApp DM")
+			}
+		} else {
+			resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
+				ThreadFBID:                id,
+				ForceUpsert:               0,
+				UseOpenMessengerTransport: 0,
+				SyncGroup:                 1,
+				MetadataOnly:              0,
+				PreviewOnly:               0,
+			})
+			log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
+		}
 		chat = &bridgev2.CreateChatResponse{
-			PortalKey:  m.makeFBPortalKey(id, table.ONE_TO_ONE),
-			PortalInfo: m.makeMinimalChatInfo(id, table.ONE_TO_ONE),
+			PortalKey:  m.makeFBPortalKey(id, tableType),
+			PortalInfo: m.makeMinimalChatInfo(id, tableType),
 		}
 	}
 	ghost, _ := m.Main.Bridge.GetGhostByID(ctx, metaid.MakeUserID(id))
