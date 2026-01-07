@@ -335,9 +335,13 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 		if code[idx] >= '0' && code[idx] <= '9' {
 			continue
 		}
-		if code[idx] == ' ' || code[idx] == '(' {
+		// Apparently comma is allowed in function names ?????????
+		if code[idx] == ',' {
+			continue
+		}
+		if code[idx] == ' ' || code[idx] == '(' || code[idx] == ')' {
 			if idx == start {
-				return idx, fmt.Errorf("open paren in func name")
+				return idx, fmt.Errorf("bad char %q instead of func name", code[idx])
 			}
 			end = idx
 			break
