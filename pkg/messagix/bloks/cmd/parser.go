@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"sort"
+	"strings"
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
@@ -27,6 +29,7 @@ type BloksTemplateID string
 type BloksComponentID string
 type BloksClassID string
 type BloksAttributeID string
+type BloksFunctionID string
 
 type BloksScript struct {
 	Raw string
@@ -132,6 +135,14 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	err := json.Unmarshal(data, &literal)
 	if err != nil {
 		return err
+	}
+	if str, ok := literal.BloksJavascriptValue.(string); ok && strings.HasPrefix(str, "\t") {
+		script := BloksTreeScript{}
+		err := script.Parse(str)
+		if err != nil {
+			return fmt.Errorf("script: %w", err)
+		}
+		btn.BloksTreeNodeContent = &script
 	}
 	btn.BloksTreeNodeContent = &literal
 	return nil
@@ -239,6 +250,113 @@ func (btcl BloksTreeComponentList) Print(indent string) error {
 type BloksTreeLiteral struct {
 	BloksJavascriptValue
 }
+
+type BloksTreeScript struct {
+	AST BloksScriptNode
+}
+
+func (bst *BloksTreeScript) Parse(code string) error {
+	_, err := bst.AST.ParseAny(code, 0)
+	return err
+}
+
+func (bst *BloksTreeScript) Print(indent string) error {
+	return bst.AST.Print(indent)
+}
+
+type BloksScriptNode struct {
+	BloksScriptNodeContent
+}
+
+var ParseEndOfFuncall = errors.New("end of funcall")
+
+func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
+	for idx := start; idx < len(code); idx++ {
+		switch code[idx] {
+		case '\t', ' ':
+			continue
+		case '(':
+			funcall := BloksScriptFuncall{}
+			node.BloksScriptNodeContent = &funcall
+			return funcall.Parse(code, idx)
+		case ')':
+			return idx, ParseEndOfFuncall
+		default:
+			return idx, fmt.Errorf("unexpected char %q", code[idx])
+		}
+	}
+	return len(code), fmt.Errorf("eof at toplevel")
+}
+
+type BloksScriptNodeContent interface {
+	Parse(code string, start int) (int, error)
+	Print(indent string) error
+}
+
+type BloksScriptFuncall struct {
+	Function BloksFunctionID
+	Args     []BloksScriptNode
+}
+
+func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
+	for idx := start; idx < len(code); idx++ {
+		switch code[idx] {
+		case '\t', ' ':
+			continue
+		}
+		start = idx
+		break
+	}
+	end := start
+	for idx := start; idx < len(code); idx++ {
+		if code[idx] >= 'a' && code[idx] <= 'z' {
+			continue
+		}
+		if code[idx] >= 'A' && code[idx] <= 'Z' {
+			continue
+		}
+		if code[idx] >= '0' && code[idx] <= '9' {
+			continue
+		}
+		if code[idx] == ' ' || code[idx] == '(' {
+			end = idx
+			break
+		}
+		return idx, fmt.Errorf("unexpected char %q in func name", code[idx])
+	}
+	if start == end {
+		return len(code), fmt.Errorf("eof during func name")
+	}
+	call.Function = BloksFunctionID(code[start:end])
+	call.Args = []BloksScriptNode{}
+	next := end
+	for {
+		arg := BloksScriptNode{}
+		var err error
+		next, err = arg.ParseAny(code, next)
+		if errors.Is(err, ParseEndOfFuncall) {
+			for idx := next; idx < len(code); idx++ {
+				switch code[idx] {
+				case '\t', ' ':
+					continue
+				case ')':
+					return idx + 1, nil
+				}
+				return idx, fmt.Errorf("eof during close paren")
+			}
+		}
+		if err != nil {
+			return next, err
+		}
+		call.Args = append(call.Args, arg)
+	}
+}
+
+func (call *BloksScriptFuncall) Print(indent string) error {
+	return nil
+}
+
+type BloksScriptLiteral any
 
 func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &btl.BloksJavascriptValue)
