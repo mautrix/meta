@@ -32,14 +32,10 @@ type BloksClassID string
 type BloksAttributeID string
 type BloksFunctionID string
 
-type BloksScript struct {
-	Raw string
-}
-
-func (bs *BloksScript) UnmarshalJSON(data []byte) error {
-	err := json.Unmarshal(data, &bs.Raw)
+func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
+	err := bs.Parse(string(data))
 	if err != nil {
-		return fmt.Errorf("parse bloks script: %w", err)
+		return fmt.Errorf("script: %w", err)
 	}
 	return nil
 }
@@ -57,7 +53,7 @@ type BloksLayout struct {
 }
 
 type BloksPayload struct {
-	Scripts     map[BloksScriptID]BloksScript     `json:"ft"`
+	Scripts     map[BloksScriptID]BloksTreeScript `json:"ft"`
 	Data        []BloksDatum                      `json:"data"`
 	Embedded    []BloksEmbeddedPayload            `json:"embedded_payloads"`
 	Props       []BloksProp                       `json:"props"`
