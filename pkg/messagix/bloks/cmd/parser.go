@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -251,6 +252,19 @@ type BloksTreeLiteral struct {
 	BloksJavascriptValue
 }
 
+func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &btl.BloksJavascriptValue)
+}
+
+func (btl *BloksTreeLiteral) Print(indent string) error {
+	str, err := json.Marshal(btl.BloksJavascriptValue)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s%s\n", indent, str)
+	return nil
+}
+
 type BloksTreeScript struct {
 	AST BloksScriptNode
 }
@@ -282,7 +296,9 @@ func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 		case ')':
 			return idx, ParseEndOfFuncall
 		default:
-			return idx, fmt.Errorf("unexpected char %q", code[idx])
+			var literal BloksScriptLiteral
+			node.BloksScriptNodeContent = &literal
+			return literal.Parse(code, idx)
 		}
 	}
 	return len(code), fmt.Errorf("eof at toplevel")
@@ -299,6 +315,7 @@ type BloksScriptFuncall struct {
 }
 
 func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
+	start += 1
 	for idx := start; idx < len(code); idx++ {
 		switch code[idx] {
 		case '\t', ' ':
@@ -319,10 +336,13 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 			continue
 		}
 		if code[idx] == ' ' || code[idx] == '(' {
+			if idx == start {
+				return idx, fmt.Errorf("open paren in func name")
+			}
 			end = idx
 			break
 		}
-		return idx, fmt.Errorf("unexpected char %q in func name", code[idx])
+		return idx, fmt.Errorf("unexpected char %q in func name %q", code[idx], code[start:idx])
 	}
 	if start == end {
 		return len(code), fmt.Errorf("eof during func name")
@@ -356,18 +376,86 @@ func (call *BloksScriptFuncall) Print(indent string) error {
 	return nil
 }
 
-type BloksScriptLiteral any
-
-func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &btl.BloksJavascriptValue)
+type BloksScriptLiteral struct {
+	BloksJavascriptValue
 }
 
-func (btl *BloksTreeLiteral) Print(indent string) error {
-	str, err := json.Marshal(btl.BloksJavascriptValue)
-	if err != nil {
-		return err
+func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
+	for idx := start; idx < len(code); idx++ {
+		switch code[idx] {
+		case '\t', ' ':
+			continue
+		}
+		start = idx
+		break
 	}
-	fmt.Printf("%s%s\n", indent, str)
+	decimal := false
+	for idx := start; idx < len(code); idx++ {
+		if code[idx] >= '0' && code[idx] <= '9' {
+			continue
+		}
+		if code[idx] == '.' {
+			decimal = true
+			continue
+		}
+		if idx == start {
+			break
+		}
+		switch code[idx] {
+		case ' ', '(', ')':
+			if decimal {
+				val, err := strconv.ParseFloat(code[start:idx], 64)
+				if err != nil {
+					return idx, err
+				}
+				lit.BloksJavascriptValue = val
+			} else {
+				val, err := strconv.ParseInt(code[start:idx], 10, 64)
+				if err != nil {
+					return idx, err
+				}
+				lit.BloksJavascriptValue = val
+			}
+			return idx, nil
+		}
+		return idx, fmt.Errorf("unexpected char %q in numeric literal", code[idx])
+	}
+	if code[start] == '"' {
+		idx := start + 1
+		chars := []byte{}
+		for idx < len(code) {
+			switch code[idx] {
+			case '\\':
+				if idx+1 >= len(code) {
+					return len(code), fmt.Errorf("backslash at eof")
+				}
+				chars = append(chars, code[idx+1])
+				idx += 2
+				continue
+			case '"':
+				lit.BloksJavascriptValue = string(chars)
+				return idx + 1, nil
+			}
+			chars = append(chars, code[idx])
+			idx += 1
+		}
+		return idx, fmt.Errorf("unterminated string literal")
+	}
+	if start+4 < len(code) && code[start:start+4] == "null" {
+		return start + 4, nil
+	}
+	if start+4 < len(code) && code[start:start+4] == "true" {
+		lit.BloksJavascriptValue = true
+		return start + 4, nil
+	}
+	if start+5 < len(code) && code[start:start+5] == "false" {
+		lit.BloksJavascriptValue = false
+		return start + 5, nil
+	}
+	return start, fmt.Errorf("unknown char %q", code[start])
+}
+
+func (lit *BloksScriptLiteral) Print(indent string) error {
 	return nil
 }
 
