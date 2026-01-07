@@ -44,22 +44,21 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 	var chat *bridgev2.CreateChatResponse
 	if createChat {
 		tableType := table.ONE_TO_ONE
+		resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
+			ThreadFBID:                id,
+			ForceUpsert:               0,
+			UseOpenMessengerTransport: 0,
+			SyncGroup:                 1,
+			MetadataOnly:              0,
+			PreviewOnly:               0,
+		})
+		log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
 		if m.LoginMeta.Platform.IsMessenger() {
 			tableType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
 			err = m.CreateWhatsAppDM(ctx, id)
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to create WhatsApp DM")
 			}
-		} else {
-			resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
-				ThreadFBID:                id,
-				ForceUpsert:               0,
-				UseOpenMessengerTransport: 0,
-				SyncGroup:                 1,
-				MetadataOnly:              0,
-				PreviewOnly:               0,
-			})
-			log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
 		}
 		chat = &bridgev2.CreateChatResponse{
 			PortalKey:  m.makeFBPortalKey(id, tableType),
