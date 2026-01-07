@@ -203,8 +203,19 @@ func downloadChunkedVideo(ctx context.Context, mime, url string, maxSize int64) 
 }
 
 type DirectMediaMeta struct {
-	MimeType string `json:"mime_type"`
-	URL      string `json:"url"`
+	MimeType  string `json:"mime_type"`
+	URL       string `json:"url"`
+	ExpiresAt int64  `json:"expires_at,omitempty"` // Unix ms timestamp
+
+	// For blob attachments (message re-fetch):
+	AttachmentFbid string `json:"attachment_fbid,omitempty"`
+	PartIndex      int    `json:"part_index,omitempty"`
+
+	// For XMA attachments (Instagram API refresh):
+	XMATargetId  int64  `json:"xma_target_id,omitempty"`
+	XMAShortcode string `json:"xma_shortcode,omitempty"`
+	XMAActionUrl string `json:"xma_action_url,omitempty"` // for stories
+	MediaType    string `json:"media_type,omitempty"`     // "video", "image", "story"
 }
 
 type DirectMediaWhatsApp struct {
