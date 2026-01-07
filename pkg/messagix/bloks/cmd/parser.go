@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
@@ -167,6 +168,11 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 
 func (btc *BloksTreeComponent) Print(indent string) error {
 	fmt.Printf("%s<Component id=%q>\n", indent, btc.ComponentID)
+	attrs := []BloksAttributeID{}
+	for attr := range btc.Attributes {
+		attrs = append(attrs, attr)
+	}
+	sort.Slice(attrs, func(i, j int) bool { return attrs[i] < attrs[j] })
 	for attr, value := range btc.Attributes {
 		switch node := value.BloksTreeNodeContent.(type) {
 		case *BloksTreeComponent:
