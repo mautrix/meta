@@ -214,7 +214,8 @@ func (m *MetaConnector) refreshXMAMedia(
 	return "", fmt.Errorf("no XMA identifiers available for refresh")
 }
 
-// refreshBlobMedia re-fetches the message to get fresh attachment URLs
+// refreshBlobMedia re-fetches messages to get fresh attachment URLs.
+// It updates all fetched messages in the database, not just the one we need.
 func (m *MetaConnector) refreshBlobMedia(
 	ctx context.Context,
 	client *MetaClient,
@@ -229,7 +230,7 @@ func (m *MetaConnector) refreshBlobMedia(
 		return "", fmt.Errorf("invalid thread key")
 	}
 
-	// Parse message ID
+	// Parse message ID for the target message
 	parsedMsgID := metaid.ParseMessageID(msg.ID)
 	fbMsgID, ok := parsedMsgID.(metaid.ParsedFBMessageID)
 	if !ok {
@@ -241,9 +242,9 @@ func (m *MetaConnector) refreshBlobMedia(
 		Str("message_id", fbMsgID.ID).
 		Str("attachment_fbid", info.AttachmentFbid).
 		Int("part_index", info.PartIndex).
-		Msg("Refreshing blob media by re-fetching message")
+		Msg("Refreshing blob media by re-fetching messages")
 
-	// Re-fetch the message
+	// Re-fetch messages around the target
 	resp, err := client.Client.ExecuteTasks(ctx, &socket.FetchMessagesTask{
 		ThreadKey:            threadKey,
 		Direction:            0,
@@ -256,68 +257,141 @@ func (m *MetaConnector) refreshBlobMedia(
 		return "", fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
-	// Find matching message and attachment
+	// Collect all fetched messages
 	upsertMap, insertMsgs := resp.WrapMessages()
-
-	// Collect all messages to search through
 	var allMessages []*table.WrappedMessage
 	for _, upsert := range upsertMap {
 		allMessages = append(allMessages, upsert.Messages...)
 	}
 	allMessages = append(allMessages, insertMsgs...)
 
+	var resultURL string
+	var updatedCount int
+
+	// Process ALL fetched messages, updating their URLs in the database
 	for _, wrappedMsg := range allMessages {
-		if wrappedMsg.MessageId != fbMsgID.ID {
+		// Build attachment URL map: AttachmentFbid -> fresh URL
+		attachmentURLs := make(map[string]string)
+		attachmentExpiry := make(map[string]int64)
+
+		for _, att := range wrappedMsg.BlobAttachments {
+			if att.AttachmentFbid == "" {
+				continue
+			}
+			url := att.PlayableUrl
+			expiry := att.PlayableUrlExpirationTimestampMs
+			if url == "" {
+				url = att.PreviewUrl
+				expiry = att.PreviewUrlExpirationTimestampMs
+			}
+			if url != "" {
+				attachmentURLs[att.AttachmentFbid] = url
+				attachmentExpiry[att.AttachmentFbid] = expiry
+			}
+		}
+
+		for _, att := range wrappedMsg.Attachments {
+			if att.AttachmentFbid == "" {
+				continue
+			}
+			url := att.PlayableUrl
+			expiry := att.PlayableUrlExpirationTimestampMs
+			if url == "" {
+				url = att.PreviewUrl
+				expiry = att.PreviewUrlExpirationTimestampMs
+			}
+			if url != "" {
+				attachmentURLs[att.AttachmentFbid] = url
+				attachmentExpiry[att.AttachmentFbid] = expiry
+			}
+		}
+
+		if len(attachmentURLs) == 0 {
 			continue
 		}
 
-		// Try to match by AttachmentFbid first
-		if info.AttachmentFbid != "" {
-			for _, att := range wrappedMsg.BlobAttachments {
-				if att.AttachmentFbid == info.AttachmentFbid {
-					url := att.PlayableUrl
-					if url == "" {
-						url = att.PreviewUrl
-					}
-					if url != "" {
-						log.Debug().Str("matched_by", "attachment_fbid").Msg("Found refreshed URL")
-						return url, nil
-					}
-				}
+		// Look up all message parts in the database for this message
+		networkMsgID := metaid.MakeFBMessageID(wrappedMsg.MessageId)
+		dbMessages, err := m.Bridge.DB.Message.GetAllPartsByID(ctx, msg.Room.Receiver, networkMsgID)
+		if err != nil {
+			log.Warn().Err(err).Str("message_id", wrappedMsg.MessageId).Msg("Failed to get message parts from database")
+			continue
+		}
+
+		for _, dbMsg := range dbMessages {
+			meta, ok := dbMsg.Metadata.(*metaid.MessageMetadata)
+			if !ok || meta.DirectMediaMeta == nil {
+				continue
 			}
-			// Also check legacy attachments
-			for _, att := range wrappedMsg.Attachments {
-				if att.AttachmentFbid == info.AttachmentFbid {
-					url := att.PlayableUrl
-					if url == "" {
-						url = att.PreviewUrl
-					}
-					if url != "" {
-						log.Debug().Str("matched_by", "attachment_fbid").Msg("Found refreshed URL")
-						return url, nil
-					}
-				}
+
+			var dmm msgconv.DirectMediaMeta
+			if err := json.Unmarshal(meta.DirectMediaMeta, &dmm); err != nil {
+				continue
+			}
+
+			// Check if this attachment has a fresh URL
+			if dmm.AttachmentFbid == "" {
+				continue
+			}
+
+			freshURL, hasFreshURL := attachmentURLs[dmm.AttachmentFbid]
+			freshExpiry := attachmentExpiry[dmm.AttachmentFbid]
+
+			if !hasFreshURL || freshURL == dmm.URL {
+				// No update needed
+				continue
+			}
+
+			// Update the stored URL and expiry
+			dmm.URL = freshURL
+			dmm.ExpiresAt = freshExpiry
+
+			updatedMeta, err := json.Marshal(dmm)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to marshal updated DirectMediaMeta")
+				continue
+			}
+
+			meta.DirectMediaMeta = updatedMeta
+			if err := m.Bridge.DB.Message.Update(ctx, dbMsg); err != nil {
+				log.Warn().Err(err).Str("message_id", string(dbMsg.ID)).Msg("Failed to update message in database")
+				continue
+			}
+
+			updatedCount++
+			log.Debug().
+				Str("message_id", wrappedMsg.MessageId).
+				Str("attachment_fbid", dmm.AttachmentFbid).
+				Msg("Updated attachment URL in database")
+
+			// Check if this is the attachment we're looking for
+			if wrappedMsg.MessageId == fbMsgID.ID && dmm.AttachmentFbid == info.AttachmentFbid {
+				resultURL = freshURL
 			}
 		}
 
-		// Fallback: match by part index
-		if info.PartIndex >= 0 && info.PartIndex < len(wrappedMsg.BlobAttachments) {
-			att := wrappedMsg.BlobAttachments[info.PartIndex]
-			url := att.PlayableUrl
-			if url == "" {
-				url = att.PreviewUrl
-			}
-			if url != "" {
-				log.Debug().Str("matched_by", "part_index").Msg("Found refreshed URL")
-				return url, nil
+		// Also check by part index for the target message if we haven't found our result
+		if wrappedMsg.MessageId == fbMsgID.ID && resultURL == "" {
+			if info.PartIndex >= 0 && info.PartIndex < len(wrappedMsg.BlobAttachments) {
+				att := wrappedMsg.BlobAttachments[info.PartIndex]
+				url := att.PlayableUrl
+				if url == "" {
+					url = att.PreviewUrl
+				}
+				if url != "" {
+					resultURL = url
+				}
 			}
 		}
-
-		// Message found but no matching attachment
-		return "", fmt.Errorf("attachment not found in re-fetched message")
 	}
 
-	return "", fmt.Errorf("message not found in fetch response")
+	log.Debug().Int("updated_count", updatedCount).Msg("Finished refreshing blob media URLs")
+
+	if resultURL != "" {
+		return resultURL, nil
+	}
+
+	return "", fmt.Errorf("target attachment not found in re-fetched messages")
 }
 
 // extractBestURL selects the highest resolution URL from Instagram media response
