@@ -106,6 +106,7 @@ var (
 	ErrAccountSuspended         = errors.New("account suspended")
 	ErrRequestFailed            = errors.New("failed to send request")
 	ErrResponseReadFailed       = errors.New("failed to read response body")
+	ErrServerError              = errors.New("server returned 5xx error")
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
 	ErrVersionIDNotFound        = errors.New("version ID not found")
@@ -226,6 +227,10 @@ func (c *Client) makeRequestDirect(ctx context.Context, url string, method strin
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, err)
+	}
+
+	if response.StatusCode >= 500 {
+		return nil, nil, fmt.Errorf("%w: %d", ErrServerError, response.StatusCode)
 	}
 
 	return response, responseBody, nil
