@@ -289,6 +289,11 @@ type BloksTreeScriptSet struct {
 }
 
 func (bst *BloksTreeScriptSet) Print(indent string) error {
+	ids := []BloksAttributeID{}
+	for id := range bst.Scripts {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	for key, script := range bst.Scripts {
 		fmt.Printf("%s<Script class=%q>\n", indent, key)
 		err := script.Print(indent + "  ")
