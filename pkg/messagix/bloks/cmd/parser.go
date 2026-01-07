@@ -145,6 +145,26 @@ type BloksTreeComponent struct {
 	Attributes  map[BloksAttributeID]BloksTreeNode
 }
 
+// This could just unmarshal the whole map directly, but I wrote it
+// explicitly to add better error messaging.
+func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
+	var rawAttrs = map[BloksAttributeID]json.RawMessage{}
+	err := json.Unmarshal(data, &rawAttrs)
+	if err != nil {
+		return err
+	}
+	btc.Attributes = map[BloksAttributeID]BloksTreeNode{}
+	for attr, subdata := range rawAttrs {
+		var node BloksTreeNode
+		err := json.Unmarshal(subdata, &node)
+		if err != nil {
+			return fmt.Errorf("attribute %q: %w", attr, err)
+		}
+		btc.Attributes[attr] = node
+	}
+	return nil
+}
+
 func (btc *BloksTreeComponent) Print(indent string) error {
 	fmt.Printf("%s<Component id=%q>\n", indent, btc.ComponentID)
 	for attr, value := range btc.Attributes {
@@ -224,26 +244,6 @@ func (btl *BloksTreeLiteral) Print(indent string) error {
 		return err
 	}
 	fmt.Printf("%s%s\n", indent, str)
-	return nil
-}
-
-// This could just unmarshal the whole map directly, but I wrote it
-// explicitly to add better error messaging.
-func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
-	var rawAttrs = map[BloksAttributeID]json.RawMessage{}
-	err := json.Unmarshal(data, &rawAttrs)
-	if err != nil {
-		return err
-	}
-	btc.Attributes = map[BloksAttributeID]BloksTreeNode{}
-	for attr, subdata := range rawAttrs {
-		var node BloksTreeNode
-		err := json.Unmarshal(subdata, &node)
-		if err != nil {
-			return fmt.Errorf("attribute %q: %w", attr, err)
-		}
-		btc.Attributes[attr] = node
-	}
 	return nil
 }
 
