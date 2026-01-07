@@ -421,6 +421,11 @@ func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThr
 }
 
 func (m *MetaClient) handleUpdateReadReceipt(tk handlerParams, msg *table.LSUpdateReadReceipt) bridgev2.RemoteEvent {
+	// Only set timestamp if Instagram provides a valid one
+	var timestamp time.Time
+	if msg.ReadActionTimestampMs > 0 {
+		timestamp = time.UnixMilli(msg.ReadActionTimestampMs)
+	}
 	return &simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventReadReceipt,
@@ -430,7 +435,7 @@ func (m *MetaClient) handleUpdateReadReceipt(tk handlerParams, msg *table.LSUpda
 			PortalKey:         tk.Portal,
 			UncertainReceiver: tk.UncertainReceiver,
 			Sender:            m.makeEventSender(msg.ContactId),
-			Timestamp:         time.UnixMilli(msg.ReadActionTimestampMs),
+			Timestamp:         timestamp,
 		},
 		ReadUpTo: time.UnixMilli(msg.ReadWatermarkTimestampMs),
 	}
