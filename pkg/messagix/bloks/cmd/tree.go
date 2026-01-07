@@ -111,31 +111,34 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	}
 	if arr, ok := literal.BloksJavascriptValue.([]any); ok {
 		set := BloksTreeScriptSet{
-			Scripts: []BloksTreeScript{},
+			Scripts: map[BloksAttributeID]BloksTreeScript{},
 		}
-		good := len(arr) > 1
-		for idx := 0; idx < len(arr); idx++ {
-			str, ok := arr[idx].(string)
-			if !ok {
-				good = false
-				break
-			}
-			if idx == 0 {
-				set.Identifier = BloksAttributeID(str)
-				continue
-			}
-			if !strings.HasPrefix(str, "\t") {
-				good = false
-				break
-			}
-			script := BloksTreeScript{}
-			err := script.Parse(str)
-			if err != nil {
-				return fmt.Errorf("script: %w", err)
-			}
-			set.Scripts = append(set.Scripts, script)
-		}
+		good := len(arr) > 0 && len(arr)%2 == 0
 		if good {
+			for idx := 0; idx < len(arr); idx += 2 {
+				key, ok := arr[idx].(string)
+				if !ok {
+					good = false
+					break
+				}
+				str, ok := arr[idx+1].(string)
+				if !ok {
+					good = false
+					break
+				}
+				if !strings.HasPrefix(str, "\t") {
+					good = false
+					break
+				}
+				script := BloksTreeScript{}
+				err := script.Parse(str)
+				if err != nil {
+					return fmt.Errorf("script: %w", err)
+				}
+				set.Scripts[BloksAttributeID(key)] = script
+			}
+		}
+		if len(arr) > 0 && good {
 			btn.BloksTreeNodeContent = &set
 			return nil
 		}
@@ -195,18 +198,17 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 			trailer = "\n"
 		case *BloksTreeScriptSet:
 			attrtype = "script-set"
-			trailer = "\n"
 		default:
 			panic("missing case in bloks tree switch")
 		}
-		fmt.Printf("%s  <Attribute type=%q type=%q>\n", indent, attrtype, attr)
+		fmt.Printf("%s  <Attribute type=%q class=%q>\n", indent, attrtype, attr)
 		err := value.BloksTreeNodeContent.Print(indent + "    ")
 		if err != nil {
 			return err
 		}
 		fmt.Printf("%s%s  </Attribute type=%q class=%q>\n", trailer, indent, attrtype, attr)
 	}
-	fmt.Printf("%s</Component>\n", indent)
+	fmt.Printf("%s</Component type=%q>\n", indent, btc.ComponentID)
 	return nil
 }
 
@@ -283,18 +285,17 @@ func (bst *BloksTreeScript) Print(indent string) error {
 }
 
 type BloksTreeScriptSet struct {
-	Identifier BloksAttributeID
-	Scripts    []BloksTreeScript
+	Scripts map[BloksAttributeID]BloksTreeScript
 }
 
 func (bst *BloksTreeScriptSet) Print(indent string) error {
-	fmt.Printf("%s<ScriptSet type=%q>\n", indent, bst.Identifier)
-	for _, script := range bst.Scripts {
+	for key, script := range bst.Scripts {
+		fmt.Printf("%s<Script class=%q>\n", indent, key)
 		err := script.Print(indent + "  ")
 		if err != nil {
 			return err
 		}
+		fmt.Printf("\n%s</Script class=%q>\n", indent, key)
 	}
-	fmt.Printf("\n%s</ScriptSet type=%q>\n", indent, bst.Identifier)
 	return nil
 }
