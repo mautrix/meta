@@ -55,7 +55,7 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
-		_ = minify
+		bundle.Unminify(minify)
 	}
 	return bundle.Print("")
 }

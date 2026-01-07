@@ -35,6 +35,7 @@ func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 
 type BloksScriptNodeContent interface {
 	Parse(code string, start int) (int, error)
+	Unminify(m *Minification)
 	Print(indent string) error
 }
 
@@ -105,8 +106,20 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 	}
 }
 
+func (call *BloksScriptFuncall) Unminify(m *Minification) {
+	if real, ok := m.Functions[call.Function]; ok && len(real) > 0 {
+		call.Function = real
+	}
+	for _, arg := range call.Args {
+		arg.Unminify(m)
+	}
+}
+
 func (call *BloksScriptFuncall) Print(indent string) error {
-	fmt.Printf("%s(%s\n", indent, call.Function)
+	fmt.Printf("%s(%s", indent, call.Function)
+	if len(call.Args) >= 1 {
+		fmt.Printf("\n")
+	}
 	for idx, arg := range call.Args {
 		if idx > 0 {
 			fmt.Printf("\n")
@@ -194,6 +207,10 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 		return start + 5, nil
 	}
 	return start, fmt.Errorf("unknown char %q", code[start])
+}
+
+func (lit *BloksScriptLiteral) Unminify(m *Minification) {
+	//
 }
 
 func (lit *BloksScriptLiteral) Print(indent string) error {

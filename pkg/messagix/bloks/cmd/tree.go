@@ -11,6 +11,10 @@ type BloksBundle struct {
 	Layout BloksLayout `json:"layout"`
 }
 
+func (bb *BloksBundle) Unminify(m *Minification) {
+	bb.Layout.Payload.Tree.Unminify(m)
+}
+
 func (bb *BloksBundle) Print(indent string) error {
 	return bb.Layout.Payload.Tree.Print(indent)
 }
@@ -148,6 +152,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 }
 
 type BloksTreeNodeContent interface {
+	Unminify(m *Minification)
 	Print(prefix string) error
 }
 
@@ -174,6 +179,12 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 		btc.Attributes[attr] = node
 	}
 	return nil
+}
+
+func (btc *BloksTreeComponent) Unminify(m *Minification) {
+	for _, value := range btc.Attributes {
+		value.Unminify(m)
+	}
 }
 
 func (btc *BloksTreeComponent) Print(indent string) error {
@@ -236,6 +247,12 @@ func (btcl *BloksTreeComponentList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (btcl *BloksTreeComponentList) Unminify(m *Minification) {
+	for _, value := range *btcl {
+		value.Unminify(m)
+	}
+}
+
 func (btcl BloksTreeComponentList) Print(indent string) error {
 	for _, comp := range btcl {
 		err := comp.Print(indent)
@@ -252,6 +269,10 @@ type BloksTreeLiteral struct {
 
 func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &btl.BloksJavascriptValue)
+}
+
+func (btl *BloksTreeLiteral) Unminify(m *Minification) {
+	//
 }
 
 func (btl *BloksTreeLiteral) Print(indent string) error {
@@ -275,6 +296,10 @@ func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (bs *BloksTreeScript) Unminify(m *Minification) {
+	bs.AST.Unminify(m)
+}
+
 func (bst *BloksTreeScript) Parse(code string) error {
 	_, err := bst.AST.ParseAny(code, 0)
 	return err
@@ -286,6 +311,12 @@ func (bst *BloksTreeScript) Print(indent string) error {
 
 type BloksTreeScriptSet struct {
 	Scripts map[BloksAttributeID]BloksTreeScript
+}
+
+func (bst *BloksTreeScriptSet) Unminify(m *Minification) {
+	for _, script := range bst.Scripts {
+		script.Unminify(m)
+	}
 }
 
 func (bst *BloksTreeScriptSet) Print(indent string) error {
