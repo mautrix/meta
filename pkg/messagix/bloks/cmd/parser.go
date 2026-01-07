@@ -144,8 +144,9 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("script: %w", err)
 		}
 		btn.BloksTreeNodeContent = &script
+	} else {
+		btn.BloksTreeNodeContent = &literal
 	}
-	btn.BloksTreeNodeContent = &literal
 	return nil
 }
 
@@ -208,6 +209,13 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 				return err
 			}
 			fmt.Printf("%s  </Attribute type=\"literal\" id=%q>\n", indent, attr)
+		case *BloksTreeScript:
+			fmt.Printf("%s  <Attribute type=\"script\" id=%q>\n", indent, attr)
+			err := node.Print(indent + "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Printf("\n%s  </Attribute type=\"script\" id=%q>\n", indent, attr)
 		}
 	}
 	fmt.Printf("%s</Component>\n", indent)
@@ -377,6 +385,14 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 }
 
 func (call *BloksScriptFuncall) Print(indent string) error {
+	fmt.Printf("%s(%s\n", indent, call.Function)
+	for idx, arg := range call.Args {
+		if idx > 0 {
+			fmt.Printf("\n")
+		}
+		arg.Print(indent + "  ")
+	}
+	fmt.Printf(")")
 	return nil
 }
 
@@ -460,6 +476,11 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 }
 
 func (lit *BloksScriptLiteral) Print(indent string) error {
+	str, err := json.Marshal(lit.BloksJavascriptValue)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s%s", indent, str)
 	return nil
 }
 
