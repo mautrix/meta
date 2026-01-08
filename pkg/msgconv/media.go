@@ -61,6 +61,8 @@ func SetProxy(proxy string) {
 var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
 	WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
 
+var ErrForbidden = errors.New("http forbidden")
+
 func addDownloadHeaders(hdr http.Header, mime string) {
 	hdr.Set("Accept", "*/*")
 	switch strings.Split(mime, "/")[0] {
@@ -119,6 +121,9 @@ func downloadMedia(ctx context.Context, mime, url string, maxSize int64, byteRan
 			if loc != nil && loc.Hostname() == "video.xx.fbcdn.net" {
 				return downloadChunkedVideo(ctx, mime, loc.String(), maxSize)
 			}
+		}
+		if resp.StatusCode == 403 {
+			return 0, nil, ErrForbidden
 		}
 		return 0, nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	} else if resp.ContentLength > maxSize {

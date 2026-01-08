@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -70,10 +71,10 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 		size, reader, err := msgconv.DownloadMedia(ctx, info.MimeType, url, m.MsgConv.MaxFileSize)
 
 		// If download failed with 403 or we know URL is expired, try to refresh
-		if err != nil && (strings.Contains(err.Error(), "403") || needsRefresh) {
+		if err != nil && (errors.Is(err, msgconv.ErrForbidden) || needsRefresh) {
 			log.Debug().
 				Bool("needs_refresh", needsRefresh).
-				Str("original_error", err.Error()).
+				AnErr("original_error", err).
 				Msg("Attempting to refresh expired media URL")
 
 			refreshedURL, refreshErr := m.refreshMediaURL(ctx, mediaInfo, msg, info)
