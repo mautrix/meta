@@ -1503,5 +1503,12 @@
     "㚮": "bk.components.RenderLifecycleExtension",
     "㚝": "bk.components.FoaTouchExtension",
     "㜍": "root"
+  },
+  "properties": {
+    "bk.components.FoaTouchExtension": {
+      "3": "on_touch_cancel",
+      "4": "on_touch_down",
+      "6": "on_touch_up"
+    }
   }
 }

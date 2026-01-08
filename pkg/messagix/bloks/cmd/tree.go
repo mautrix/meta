@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -216,6 +217,15 @@ func (btc *BloksTreeComponent) Unminify(m *Unminifier) {
 	if real, ok := m.Components[btc.ComponentID]; ok && len(real) > 0 {
 		btc.ComponentID = real
 	}
+	for id, value := range btc.Attributes {
+		if idx, ok := id.ToInt(); ok {
+			attr := BloksAttributeID(strconv.Itoa(idx))
+			if real, ok := m.Properties[btc.ComponentID][attr]; ok && len(real) > 0 {
+				btc.Attributes[real] = value
+				delete(btc.Attributes, id)
+			}
+		}
+	}
 	for _, value := range btc.Attributes {
 		value.Unminify(m)
 	}
@@ -372,7 +382,7 @@ func (bst *BloksTreeScriptSet) Print(indent string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\n%s</Script index=%s>\n", indent, id.ToTag())
+		fmt.Printf("\n%s</Script %s>\n", indent, id.ToTag())
 	}
 	return nil
 }
