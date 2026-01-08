@@ -16,7 +16,27 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 }
 
 func (bb *BloksBundle) Print(indent string) error {
-	return bb.Layout.Payload.Tree.Print(indent)
+	p := bb.Layout.Payload
+	fmt.Printf("%s<Bundle>\n", indent)
+	scriptIDs := []BloksScriptID{}
+	for id := range p.Scripts {
+		scriptIDs = append(scriptIDs, id)
+	}
+	sort.Slice(scriptIDs, func(i, j int) bool { return scriptIDs[i] < scriptIDs[j] })
+	for _, id := range scriptIDs {
+		script := p.Scripts[id]
+		fmt.Printf("%s  <Script id=%q>\n", indent, id)
+		script.Print(indent + "    ")
+		fmt.Printf("\n%s  </Script id=%q>\n", indent, id)
+	}
+	fmt.Printf("%s  <Tree>\n", indent)
+	err := bb.Layout.Payload.Tree.Print(indent + "    ")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s  </Tree>\n", indent)
+	fmt.Printf("%s</Bundle>\n", indent)
+	return nil
 }
 
 type BloksLayout struct {
@@ -293,7 +313,12 @@ type BloksTreeScript struct {
 }
 
 func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
-	err := bs.Parse(string(data))
+	var code string
+	err := json.Unmarshal(data, &code)
+	if err != nil {
+		return err
+	}
+	err = bs.Parse(code)
 	if err != nil {
 		return fmt.Errorf("script: %w", err)
 	}
