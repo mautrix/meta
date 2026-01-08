@@ -1500,9 +1500,9 @@
     "㐜": "bk.components.ThemedColorDrawable",
     "㐋": "bk.components.Image",
     "䇷": "bk.data.ComposableTextSpan",
-    "㚮": "bk.components.RenderLifecycleExtension",
     "㚝": "bk.components.FoaTouchExtension",
-    "㜍": "root"
+    "㜍": "bk.cds.bottomsheet.Wrapper",
+    "㐘": "bk.components.TextInput"
   },
   "properties": {
     "bk.components.FoaTouchExtension": {
@@ -1518,11 +1518,14 @@
       "14": "baseline_spacing",
       "16": "cap_spacing",
       "36": "use_composable_and_extensible_spans",
-      "37": "spans"
+      "37": "spans",
+      "38": "spans_for_truncation",
+      "101": "extensions"
     },
     "bk.data.TextSpan": {
       "4": "styles",
-      "6": "text"
+      "3": "text",
+      "6": "accessibility_label"
     },
     "bk.style.textspan.TextStyle": {
       "3": "font_family",
@@ -1531,49 +1534,116 @@
       "12": "tracking"
     },
     "bk.style.textspan.ColorStyle": {
-      "3": "text_themed_color"
+      "3": "text_themed_color",
+      "103": "on_bind"
     },
     "bk.types.ThemedColor": {
       "3": "dark_color",
       "4": "light_color"
     },
     "flex": {
+      "4": "aspect_ratio",
       "9": "grow",
       "10": "height",
       "12": "margin_bottom",
+      "17": "margin_start",
       "18": "margin_top",
       "19": "max_height",
+      "20": "max_width",
       "21": "min_height",
+      "22": "min_width",
+      "23": "padding_bottom",
+      "24": "padding_end",
+      "27": "padding_start",
+      "29": "padding_top",
       "30": "position_type",
       "33": "shrink",
-      "36": "width"
+      "36": "width",
+      "103": "on_bind"
     },
     "bk.components.Image": {
+      "3": "color_filter",
       "8": "scale_type",
       "9": "url",
       "100": "_style",
-      "101": "extensions"
+      "101": "extensions",
+      "103": "on_bind"
     },
     "bk.components.Flexbox": {
       "0": "children",
+      "1": "key",
       "4": "align_items",
       "6": "decoration",
+      "8": "enabled",
       "9": "flex_direction",
       "12": "justify_content",
       "13": "on_click",
       "17": "visibility",
       "100": "_style",
       "101": "extensions",
-      "103": "on_bind"
+      "103": "on_bind",
+      "109": "alpha"
     },
     "bk.components.AccessibilityExtension": {
       "3": "enabled",
       "4": "label",
-      "6": "role"
+      "6": "role",
+      "8": "hint",
+      "11": "disabled",
+      "13": "ordered_children",
+      "103": "on_bind"
     },
     "bk.components.VisibilityExtension": {
       "3": "on_appear",
+      "4": "on_disappear",
       "6": "key"
+    },
+    "bk.components.OnMount": {
+      "9": "on_first_mount",
+      "10": "on_mount"
+    },
+    "bk.data.ComposableTextSpan": {
+      "4": "spans"
+    },
+    "bk.style.textspan.ClickableStyle": {
+      "4": "on_click"
+    },
+    "bk.components.ThemedColorDrawable": {
+      "3": "color"
+    },
+    "bk.components.BoxDecoration": {
+      "3": "background",
+      "6": "border_themed_color",
+      "8": "border_width",
+      "11": "clipping",
+      "14": "corner_radius",
+      "103": "on_bind"
+    },
+    "bk.components.TextInput": {
+      "1": "key",
+      "3": "font_family",
+      "4": "hint",
+      "6": "hint_text_themed_color",
+      "10": "on_gain_focus",
+      "13": "on_lose_focus",
+      "14": "on_submit",
+      "16": "on_text_change",
+      "21": "text_size",
+      "23": "text_themed_color",
+      "24": "type",
+      "33": "cursor_color",
+      "42": "enabled",
+      "43": "html_name",
+      "101": "extensions",
+      "103": "on_bind"
+    },
+    "bk.style.textspan.StrikethroughStyle": {
+      "3": "strikethrough"
+    },
+    "bk.cds.bottomsheet.Wrapper": {
+      "4": "content",
+      "8": "header",
+      "101": "extensions"
     }
   }
 }
