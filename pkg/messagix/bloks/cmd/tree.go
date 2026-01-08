@@ -194,7 +194,12 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 		attrs = append(attrs, attr)
 	}
 	sort.Slice(attrs, func(i, j int) bool { return attrs[i] < attrs[j] })
-	for attr, value := range btc.Attributes {
+	for _, id := range attrs {
+		value := btc.Attributes[id]
+		idx, err := id.ToInt()
+		if err != nil {
+			return err
+		}
 		attrtype := ""
 		trailer := ""
 		switch value.BloksTreeNodeContent.(type) {
@@ -212,12 +217,12 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 		default:
 			panic("missing case in bloks tree switch")
 		}
-		fmt.Printf("%s  <Attribute type=%q class=%q>\n", indent, attrtype, attr)
-		err := value.BloksTreeNodeContent.Print(indent + "    ")
+		fmt.Printf("%s  <Property index=%d type=%q>\n", indent, idx, attrtype)
+		err = value.BloksTreeNodeContent.Print(indent + "    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s%s  </Attribute type=%q class=%q>\n", trailer, indent, attrtype, attr)
+		fmt.Printf("%s%s  </Property index=%d type=%q>\n", trailer, indent, idx, attrtype)
 	}
 	fmt.Printf("%s</Component type=%q>\n", indent, btc.ComponentID)
 	return nil
@@ -325,13 +330,18 @@ func (bst *BloksTreeScriptSet) Print(indent string) error {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	for key, script := range bst.Scripts {
-		fmt.Printf("%s<Script class=%q>\n", indent, key)
-		err := script.Print(indent + "  ")
+	for _, id := range ids {
+		script := bst.Scripts[id]
+		idx, err := id.ToInt()
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\n%s</Script class=%q>\n", indent, key)
+		fmt.Printf("%s<Script index=%d>\n", indent, idx)
+		err = script.Print(indent + "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("\n%s</Script index=%d>\n", indent, idx)
 	}
 	return nil
 }
