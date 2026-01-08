@@ -191,7 +191,7 @@ func (btc *BloksTreeComponent) Unminify(m *Unminifier) {
 }
 
 func (btc *BloksTreeComponent) Print(indent string) error {
-	fmt.Printf("%s<Component type=%q>\n", indent, btc.ComponentID)
+	fmt.Printf("%s<Component name=%s>\n", indent, btc.ComponentID)
 	attrs := []BloksAttributeID{}
 	for attr := range btc.Attributes {
 		attrs = append(attrs, attr)
@@ -199,10 +199,6 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 	sort.Slice(attrs, func(i, j int) bool { return attrs[i] < attrs[j] })
 	for _, id := range attrs {
 		value := btc.Attributes[id]
-		idx, err := id.ToInt()
-		if err != nil {
-			return err
-		}
 		attrtype := ""
 		trailer := ""
 		switch value.BloksTreeNodeContent.(type) {
@@ -220,14 +216,14 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 		default:
 			panic("missing case in bloks tree switch")
 		}
-		fmt.Printf("%s  <Property index=%d type=%q>\n", indent, idx, attrtype)
-		err = value.BloksTreeNodeContent.Print(indent + "    ")
+		fmt.Printf("%s  <Property %s type=%s>\n", indent, id.ToTag(), attrtype)
+		err := value.BloksTreeNodeContent.Print(indent + "    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s%s  </Property index=%d type=%q>\n", trailer, indent, idx, attrtype)
+		fmt.Printf("%s%s  </Property %s type=%s>\n", trailer, indent, id.ToTag(), attrtype)
 	}
-	fmt.Printf("%s</Component type=%q>\n", indent, btc.ComponentID)
+	fmt.Printf("%s</Component name=%s>\n", indent, btc.ComponentID)
 	return nil
 }
 
@@ -335,16 +331,12 @@ func (bst *BloksTreeScriptSet) Print(indent string) error {
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	for _, id := range ids {
 		script := bst.Scripts[id]
-		idx, err := id.ToInt()
+		fmt.Printf("%s<Script %s>\n", indent, id.ToTag())
+		err := script.Print(indent + "  ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s<Script index=%d>\n", indent, idx)
-		err = script.Print(indent + "  ")
-		if err != nil {
-			return err
-		}
-		fmt.Printf("\n%s</Script index=%d>\n", indent, idx)
+		fmt.Printf("\n%s</Script index=%s>\n", indent, id.ToTag())
 	}
 	return nil
 }
