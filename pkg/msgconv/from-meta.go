@@ -588,7 +588,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				}
 			}
 			xmaRefresh := &MediaRefreshMeta{
-				XMATargetId:  att.CTA.TargetId,
+				XMATargetID:  att.CTA.TargetId,
 				XMAShortcode: mediaShortcode,
 			}
 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, targetItem, xmaRefresh)
@@ -683,7 +683,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
 			xmaRefresh := &MediaRefreshMeta{
-				XMAActionUrl: att.CTA.ActionUrl,
+				XMAActionURL: att.CTA.ActionUrl,
 				MediaType:    "story",
 			}
 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem, xmaRefresh)
@@ -750,7 +750,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			minimalConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
 			log.Debug().Int("item_count", len(resp.Items)).Msg("Fetched XMA story (type 2)")
 			xmaRefresh := &MediaRefreshMeta{
-				XMAActionUrl: att.CTA.ActionUrl,
+				XMAActionURL: att.CTA.ActionUrl,
 				MediaType:    "story",
 			}
 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem, xmaRefresh)
@@ -890,9 +890,9 @@ type MediaRefreshMeta struct {
 	ExpiresAt      int64  // Unix ms timestamp when URL expires
 	AttachmentFbid string // For blob attachments
 	PartIndex      int    // For blob attachments (fallback matching)
-	XMATargetId    int64  // For XMA attachments (Instagram API)
+	XMATargetID    int64  // For XMA attachments (Instagram API)
 	XMAShortcode   string // For XMA attachments (Instagram API)
-	XMAActionUrl   string // For XMA story attachments
+	XMAActionURL   string // For XMA story attachments
 	MediaType      string // "video", "image", "story"
 }
 
@@ -983,9 +983,9 @@ func (mc *MessageConverter) reuploadAttachment(
 			dmm.ExpiresAt = refreshMeta.ExpiresAt
 			dmm.AttachmentFbid = refreshMeta.AttachmentFbid
 			dmm.PartIndex = refreshMeta.PartIndex
-			dmm.XMATargetId = refreshMeta.XMATargetId
+			dmm.XMATargetID = refreshMeta.XMATargetID
 			dmm.XMAShortcode = refreshMeta.XMAShortcode
-			dmm.XMAActionUrl = refreshMeta.XMAActionUrl
+			dmm.XMAActionURL = refreshMeta.XMAActionURL
 			dmm.MediaType = refreshMeta.MediaType
 		}
 		directMediaMeta, err := json.Marshal(dmm)

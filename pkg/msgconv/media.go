@@ -217,9 +217,9 @@ type DirectMediaMeta struct {
 	PartIndex      int    `json:"part_index,omitempty"`
 
 	// For XMA attachments (Instagram API refresh):
-	XMATargetId  int64  `json:"xma_target_id,omitempty"`
+	XMATargetID  int64  `json:"xma_target_id,omitempty"`
 	XMAShortcode string `json:"xma_shortcode,omitempty"`
-	XMAActionUrl string `json:"xma_action_url,omitempty"` // for stories
+	XMAActionURL string `json:"xma_action_url,omitempty"` // for stories
 	MediaType    string `json:"media_type,omitempty"`     // "video", "image", "story"
 }
 

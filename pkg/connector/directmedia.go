@@ -133,7 +133,7 @@ func (m *MetaConnector) refreshMediaURL(
 	client := ul.Client.(*MetaClient)
 
 	// Route to appropriate refresh method based on attachment type
-	if info.XMATargetId != 0 || info.XMAShortcode != "" || info.XMAActionUrl != "" {
+	if info.XMATargetID != 0 || info.XMAShortcode != "" || info.XMAActionURL != "" {
 		return m.refreshXMAMedia(ctx, client, info)
 	}
 	if info.AttachmentFbid != "" {
@@ -157,10 +157,10 @@ func (m *MetaConnector) refreshXMAMedia(
 	log := zerolog.Ctx(ctx)
 
 	// Handle story refresh (type 1: /stories/direct/...)
-	if info.XMAActionUrl != "" && strings.HasPrefix(info.XMAActionUrl, "/stories/direct/") {
-		match := msgconv.ReelActionURLRegex.FindStringSubmatch(info.XMAActionUrl)
+	if info.XMAActionURL != "" && strings.HasPrefix(info.XMAActionURL, "/stories/direct/") {
+		match := msgconv.ReelActionURLRegex.FindStringSubmatch(info.XMAActionURL)
 		if len(match) == 3 {
-			log.Debug().Str("action_url", info.XMAActionUrl).Msg("Refreshing story media (type 1)")
+			log.Debug().Str("action_url", info.XMAActionURL).Msg("Refreshing story media (type 1)")
 			resp, err := ig.FetchReel(ctx, []string{match[2]}, match[1])
 			if err != nil {
 				return "", fmt.Errorf("failed to fetch reel: %w", err)
@@ -181,10 +181,10 @@ func (m *MetaConnector) refreshXMAMedia(
 	}
 
 	// Handle story refresh (type 2: https://instagram.com/stories/...)
-	if info.XMAActionUrl != "" && strings.HasPrefix(info.XMAActionUrl, "https://instagram.com/stories/") {
-		match := msgconv.ReelActionURLRegex2.FindStringSubmatch(info.XMAActionUrl)
+	if info.XMAActionURL != "" && strings.HasPrefix(info.XMAActionURL, "https://instagram.com/stories/") {
+		match := msgconv.ReelActionURLRegex2.FindStringSubmatch(info.XMAActionURL)
 		if len(match) == 3 {
-			log.Debug().Str("action_url", info.XMAActionUrl).Msg("Refreshing story media (type 2)")
+			log.Debug().Str("action_url", info.XMAActionURL).Msg("Refreshing story media (type 2)")
 			resp, err := ig.FetchMedia(ctx, match[2], "")
 			if err != nil {
 				return "", fmt.Errorf("failed to fetch media: %w", err)
@@ -197,12 +197,12 @@ func (m *MetaConnector) refreshXMAMedia(
 	}
 
 	// Handle post/reel refresh using TargetId and/or Shortcode
-	if info.XMATargetId != 0 || info.XMAShortcode != "" {
+	if info.XMATargetID != 0 || info.XMAShortcode != "" {
 		log.Debug().
-			Int64("target_id", info.XMATargetId).
+			Int64("target_id", info.XMATargetID).
 			Str("shortcode", info.XMAShortcode).
 			Msg("Refreshing XMA media")
-		resp, err := ig.FetchMedia(ctx, strconv.FormatInt(info.XMATargetId, 10), info.XMAShortcode)
+		resp, err := ig.FetchMedia(ctx, strconv.FormatInt(info.XMATargetID, 10), info.XMAShortcode)
 		if err != nil {
 			return "", fmt.Errorf("failed to fetch media: %w", err)
 		}
