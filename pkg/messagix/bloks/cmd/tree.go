@@ -182,6 +182,9 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 }
 
 func (btc *BloksTreeComponent) Unminify(m *Unminifier) {
+	if real, ok := m.Components[btc.ComponentID]; ok && len(real) > 0 {
+		btc.ComponentID = real
+	}
 	for _, value := range btc.Attributes {
 		value.Unminify(m)
 	}

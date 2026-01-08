@@ -9,7 +9,8 @@ import (
 var unminifierJson []byte
 
 type Unminifier struct {
-	Functions map[BloksFunctionID]BloksFunctionID `json:"functions"`
+	Functions  map[BloksFunctionID]BloksFunctionID   `json:"functions"`
+	Components map[BloksComponentID]BloksComponentID `json:"components"`
 }
 
 var cachedUnminifier *Unminifier
