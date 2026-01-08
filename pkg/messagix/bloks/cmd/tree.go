@@ -29,6 +29,17 @@ func (bb *BloksBundle) Print(indent string) error {
 		script.Print(indent + "    ")
 		fmt.Printf("\n%s  </Script id=%q>\n", indent, id)
 	}
+	templateIDs := []BloksTemplateID{}
+	for id := range p.Templates {
+		templateIDs = append(templateIDs, id)
+	}
+	sort.Slice(templateIDs, func(i, j int) bool { return templateIDs[i] < templateIDs[j] })
+	for _, id := range templateIDs {
+		template := p.Templates[id]
+		fmt.Printf("%s  <Template id=%q>\n", indent, id)
+		template.Print(indent + "    ")
+		fmt.Printf("%s  </Template id=%q>\n", indent, id)
+	}
 	fmt.Printf("%s  <Tree>\n", indent)
 	err := bb.Layout.Payload.Tree.Print(indent + "    ")
 	if err != nil {
