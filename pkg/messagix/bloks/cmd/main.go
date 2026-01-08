@@ -9,7 +9,7 @@ import (
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
-var referenceFilename = flag.String("reference", "", "Bloks reference file")
+var minifyFilename = flag.String("minify", "", "Minification map")
 
 func main() {
 	err := mainE()
@@ -19,7 +19,7 @@ func main() {
 	}
 }
 
-func readBloks(filename string) (*BloksBundle, error) {
+func readAndParse[T any](filename string) (*T, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -29,12 +29,12 @@ func readBloks(filename string) (*BloksBundle, error) {
 	if err != nil {
 		return nil, err
 	}
-	var bundle BloksBundle
-	err = json.Unmarshal(fileB, &bundle)
+	var data T
+	err = json.Unmarshal(fileB, &data)
 	if err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
-	return &bundle, nil
+	return &data, nil
 }
 
 func mainE() error {
@@ -42,16 +42,12 @@ func mainE() error {
 	if *filename == "" {
 		return fmt.Errorf("-file is mandatory")
 	}
-	bundle, err := readBloks(*filename)
+	bundle, err := readAndParse[BloksBundle](*filename)
 	if err != nil {
 		return err
 	}
-	if *referenceFilename != "" {
-		reference, err := readBloks(*referenceFilename)
-		if err != nil {
-			return err
-		}
-		minify, err := ReverseMinify(bundle, reference)
+	if *minifyFilename != "" {
+		minify, err := readAndParse[Minification](*minifyFilename)
 		if err != nil {
 			return err
 		}

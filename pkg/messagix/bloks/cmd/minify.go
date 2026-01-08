@@ -1,86 +1,12 @@
 package main
 
-type Minification struct {
-	Functions map[BloksFunctionID]BloksFunctionID
-}
+import (
+	_ "embed"
+)
 
-func ReverseMinify(target *BloksBundle, reference *BloksBundle) (*Minification, error) {
-	return &Minification{
-		Functions: map[BloksFunctionID]BloksFunctionID{
-			// These are sorted by how often they appear
-			"e25": "bk.action.core.GetArg",
-			"dnt": "bk.action.bloks.GetVariable2",
-			"e2a": "bk.action.core.If",
-			"dkc": "bk.action.array.Make",
-			"e2f": "bk.action.core.TakeLast",
-			"e24": "bk.action.core.FuncConst",
-			"f6m": "<create single-pair map>",
-			"e1w": "bk.action.core.Apply",
-			"f4i": "bk.action.map.Make",
-			"dqa": "bk.action.bloks.WriteLocalState",
-			"e2e": "bk.action.core.SetArg",
-			"e56": "bk.action.core.Match",
-			"fom": "bk.action.tree.Make",
-			"f43": "bk.action.logging.LogEvent",
-			"dq8": "bk.action.bloks.WriteGlobalConsistencyStore",
-			"dqr": "bk.action.bool.Not",
-			"dey": "<logging>",
-			"dnk": "<get variable>",
-			"djj": "bk.action.animated.easing.CreateCubicBezier",
-			"dj3": "bk.action.animated.GetCurrentValue",
-			"diu": "bk.action.animated.Create",
-			"fna": "bk.action.template.Make",
-			"dkf": "bk.action.map.Update",
-			"fgx": "bk.action.qpl.MarkerPointV2",
-			"fhz": "bk.action.ref.Read",
-			"dqs": "bk.action.bool.Or",
-			"djf": "bk.action.animated.Start",
-			"fnq": "bk.action.textinput.GetText",
-			"f4g": "bk.action.map.Get",
-			"dn3": "bk.action.bloks.Find",
-			"fh0": "bk.action.qpl.MarkerStartV3",
-			"fgq": "bk.action.qpl.MarkerAnnotateV2",
-			"f4k": "bk.action.map.Merge",
-			"e53": "bk.action.f32.Const",
-			"e52": "bk.action.f32.Add",
-			"dj8": "bk.action.animated.Parallel",
-			"f76": "bk.action.map.Update",
-			"e3z": "bk.action.dialog.OpenDialog",
-			"dpz": "bk.action.bloks.RequestFocus",
-			"dn0": "<const>",
-			"fmu": "bk.action.string.ValueOfNumber",
-			"fme": "bk.action.string.Length",
-			"flw": "bk.action.string.Concat",
-			"f6w": "",
-			"e57": "bk.action.f32.Gt",
-			"dy8": "<get reg_info and extras>",
-			"dhv": "<show message>",
-			"igq": "",
-			"fmf": "bk.action.string.MatchesRegex",
-			"fgu": "bk.action.qpl.MarkerEndV3",
-			"f6g": "",
-			"dvy": "<get device id>",
-			"drc": "<get machine id>",
-			"h9a": "",
-			"fxl": "<get family device id>",
-			"fi0": "bk.action.ref.Write",
-			"f7c": "",
-			"f6t": "bk.action.array.Get", // with extra param
-			"eud": "bk.action.i64.Const",
-			"esn": "",
-			"e55": "",
-			"dps": "",
-			"doa": "",
-			"dk8": "",
-			"foe": "",
-			"fnj": "",
-			"euf": "",
-			"e59": "",
-			"dw9": "",
-			"dr3": "",
-			"dqo": "",
-			"dnh": "",
-			"di0": "",
-		},
-	}, nil
+//go:embed minify.json
+var unminifierJson []byte
+
+type Unminifier struct {
+	Functions map[BloksFunctionID]BloksFunctionID `json:"functions"`
 }
