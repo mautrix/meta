@@ -9,7 +9,6 @@ import (
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
-var minifyFilename = flag.String("minify", "", "Minification map")
 
 func main() {
 	err := mainE()
@@ -46,12 +45,10 @@ func mainE() error {
 	if err != nil {
 		return err
 	}
-	if *minifyFilename != "" {
-		minify, err := readAndParse[Minification](*minifyFilename)
-		if err != nil {
-			return err
-		}
-		bundle.Unminify(minify)
+	un, err := GetUnminifier()
+	if err != nil {
+		return err
 	}
+	bundle.Unminify(un)
 	return bundle.Print("")
 }

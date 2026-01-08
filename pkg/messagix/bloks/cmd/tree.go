@@ -11,7 +11,7 @@ type BloksBundle struct {
 	Layout BloksLayout `json:"layout"`
 }
 
-func (bb *BloksBundle) Unminify(m *Minification) {
+func (bb *BloksBundle) Unminify(m *Unminifier) {
 	bb.Layout.Payload.Tree.Unminify(m)
 }
 
@@ -152,7 +152,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 }
 
 type BloksTreeNodeContent interface {
-	Unminify(m *Minification)
+	Unminify(m *Unminifier)
 	Print(prefix string) error
 }
 
@@ -181,7 +181,7 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (btc *BloksTreeComponent) Unminify(m *Minification) {
+func (btc *BloksTreeComponent) Unminify(m *Unminifier) {
 	for _, value := range btc.Attributes {
 		value.Unminify(m)
 	}
@@ -247,7 +247,7 @@ func (btcl *BloksTreeComponentList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (btcl *BloksTreeComponentList) Unminify(m *Minification) {
+func (btcl *BloksTreeComponentList) Unminify(m *Unminifier) {
 	for _, value := range *btcl {
 		value.Unminify(m)
 	}
@@ -271,7 +271,7 @@ func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &btl.BloksJavascriptValue)
 }
 
-func (btl *BloksTreeLiteral) Unminify(m *Minification) {
+func (btl *BloksTreeLiteral) Unminify(m *Unminifier) {
 	//
 }
 
@@ -296,7 +296,7 @@ func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (bs *BloksTreeScript) Unminify(m *Minification) {
+func (bs *BloksTreeScript) Unminify(m *Unminifier) {
 	bs.AST.Unminify(m)
 }
 
@@ -313,7 +313,7 @@ type BloksTreeScriptSet struct {
 	Scripts map[BloksAttributeID]BloksTreeScript
 }
 
-func (bst *BloksTreeScriptSet) Unminify(m *Minification) {
+func (bst *BloksTreeScriptSet) Unminify(m *Unminifier) {
 	for _, script := range bst.Scripts {
 		script.Unminify(m)
 	}
