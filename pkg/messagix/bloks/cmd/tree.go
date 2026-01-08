@@ -208,6 +208,9 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("attribute %q: %w", attr, err)
 		}
+		if set, ok := node.BloksTreeNodeContent.(*BloksTreeScriptSet); ok {
+			set.parent = btc
+		}
 		btc.Attributes[attr] = node
 	}
 	return nil
@@ -360,10 +363,21 @@ func (bst *BloksTreeScript) Print(indent string) error {
 }
 
 type BloksTreeScriptSet struct {
+	parent *BloksTreeComponent
+
 	Scripts map[BloksAttributeID]BloksTreeScript
 }
 
 func (bst *BloksTreeScriptSet) Unminify(m *Unminifier) {
+	for id, script := range bst.Scripts {
+		if idx, ok := id.ToInt(); ok {
+			attr := BloksAttributeID(strconv.Itoa(idx))
+			if real, ok := m.Properties[bst.parent.ComponentID][attr]; ok && len(real) > 0 {
+				bst.Scripts[real] = script
+				delete(bst.Scripts, id)
+			}
+		}
+	}
 	for _, script := range bst.Scripts {
 		script.Unminify(m)
 	}
