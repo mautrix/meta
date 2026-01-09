@@ -203,6 +203,8 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			zerolog.Ctx(ctx).Debug().Msg("Not using saved reconnection state as it's disabled in the config")
 		} else if err = cli.LoadState(state); err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to load reconnection state")
+		} else if !cli.IsAuthenticated() {
+			zerolog.Ctx(ctx).Warn().Msg("Cached state loaded but authentication data not restored, falling back to fresh load")
 		} else {
 			zerolog.Ctx(ctx).Debug().Msg("Reconnecting with cached state")
 			m.connectWithCache(ctx)
