@@ -16,6 +16,10 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 	bb.Layout.Payload.Tree.Unminify(m)
 }
 
+func (bb *BloksBundle) Find(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	return bb.Layout.Payload.Tree.Find(pred)
+}
+
 func (bb *BloksBundle) Print(indent string) error {
 	p := bb.Layout.Payload
 	fmt.Printf("%s<Bundle>\n", indent)
@@ -180,6 +184,32 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 		}
 	}
 	btn.BloksTreeNodeContent = &literal
+	return nil
+}
+
+func (btn *BloksTreeNode) Find(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	handleComp := func(comp *BloksTreeComponent) *BloksTreeComponent {
+		if pred(comp) {
+			return comp
+		}
+		for _, subnode := range comp.Attributes {
+			if match := subnode.Find(pred); match != nil {
+				return match
+			}
+		}
+		return nil
+
+	}
+	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
+		return handleComp(comp)
+	}
+	if comps, ok := btn.BloksTreeNodeContent.(*BloksTreeComponentList); ok {
+		for _, comp := range *comps {
+			if match := handleComp(comp); match != nil {
+				return match
+			}
+		}
+	}
 	return nil
 }
 

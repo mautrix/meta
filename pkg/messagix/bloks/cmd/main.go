@@ -50,5 +50,22 @@ func mainE() error {
 		return err
 	}
 	bundle.Unminify(un)
-	return bundle.Print("")
+	loginText := bundle.Find(func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != "bk.data.TextSpan" {
+			return false
+		}
+		text, ok := comp.Attributes["text"].BloksTreeNodeContent.(*BloksTreeLiteral)
+		if !ok {
+			return false
+		}
+		str, ok := text.BloksJavascriptValue.(string)
+		if !ok {
+			return false
+		}
+		return str == "Log in"
+	})
+	if loginText == nil {
+		return fmt.Errorf("couldn't find login button")
+	}
+	return loginText.Print("")
 }
