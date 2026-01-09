@@ -61,6 +61,8 @@ func SetProxy(proxy string) {
 var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
 	WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
 
+var ErrForbidden = errors.New("http forbidden")
+
 func addDownloadHeaders(hdr http.Header, mime string) {
 	hdr.Set("Accept", "*/*")
 	switch strings.Split(mime, "/")[0] {
@@ -119,6 +121,9 @@ func downloadMedia(ctx context.Context, mime, url string, maxSize int64, byteRan
 			if loc != nil && loc.Hostname() == "video.xx.fbcdn.net" {
 				return downloadChunkedVideo(ctx, mime, loc.String(), maxSize)
 			}
+		}
+		if resp.StatusCode == 403 {
+			return 0, nil, ErrForbidden
 		}
 		return 0, nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	} else if resp.ContentLength > maxSize {
@@ -203,8 +208,21 @@ func downloadChunkedVideo(ctx context.Context, mime, url string, maxSize int64) 
 }
 
 type DirectMediaMeta struct {
-	MimeType string `json:"mime_type"`
-	URL      string `json:"url"`
+	MimeType  string `json:"mime_type"`
+	URL       string `json:"url"`
+	ExpiresAt int64  `json:"expires_at,omitempty"` // Unix ms timestamp
+
+	// For blob attachments (message re-fetch):
+	AttachmentFbid string `json:"attachment_fbid,omitempty"`
+	PartIndex      int    `json:"part_index,omitempty"`
+
+	// For XMA attachments (Instagram API refresh):
+	XMATargetID  int64  `json:"xma_target_id,omitempty"`
+	XMAShortcode string `json:"xma_shortcode,omitempty"`
+
+	// For XMA story attachments (parsed from action URL):
+	StoryMediaID string `json:"story_media_id,omitempty"` // story pk
+	StoryReelID  string `json:"story_reel_id,omitempty"`  // user pk (for /stories/direct/ type)
 }
 
 type DirectMediaWhatsApp struct {
