@@ -293,7 +293,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			return BloksLiteralOf(pass), nil
+			return BloksLiteralOf(i.EncryptPassword(pass)), nil
 		}
 	case "bk.action.textinput.GetText", "bk.action.caa.GetPasswordText":
 		{
