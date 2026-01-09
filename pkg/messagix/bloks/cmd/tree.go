@@ -124,6 +124,9 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("component %q: %w", id, err)
 			}
 			comp.container = btn
+			for _, subnode := range comp.Attributes {
+				subnode.parent = btn
+			}
 			btn.BloksTreeNodeContent = &comp
 		}
 		return nil
@@ -137,6 +140,9 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 		}
 		for _, comp := range comps {
 			comp.container = btn
+			for _, subnode := range comp.Attributes {
+				subnode.parent = btn
+			}
 		}
 		btn.BloksTreeNodeContent = &comps
 		return nil
@@ -194,24 +200,12 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 }
 
 func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	handleComp := func(comp *BloksTreeComponent) *BloksTreeComponent {
-		if pred(comp) {
-			return comp
-		}
-		for _, subnode := range comp.Attributes {
-			if match := subnode.FindDescendant(pred); match != nil {
-				return match
-			}
-		}
-		return nil
-
-	}
 	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
-		return handleComp(comp)
+		return comp.FindDescendant(pred)
 	}
 	if comps, ok := btn.BloksTreeNodeContent.(*BloksTreeComponentList); ok {
 		for _, comp := range *comps {
-			if match := handleComp(comp); match != nil {
+			if match := comp.FindDescendant(pred); match != nil {
 				return match
 			}
 		}
@@ -226,7 +220,7 @@ type BloksTreeNodeContent interface {
 
 type BloksTreeComponent struct {
 	ComponentID BloksComponentID
-	Attributes  map[BloksAttributeID]BloksTreeNode
+	Attributes  map[BloksAttributeID]*BloksTreeNode
 
 	container *BloksTreeNode
 }
@@ -239,7 +233,7 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	btc.Attributes = map[BloksAttributeID]BloksTreeNode{}
+	btc.Attributes = map[BloksAttributeID]*BloksTreeNode{}
 	for attr, subdata := range rawAttrs {
 		var node BloksTreeNode
 		err := json.Unmarshal(subdata, &node)
@@ -250,7 +244,32 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 		if set, ok := node.BloksTreeNodeContent.(*BloksTreeScriptSet); ok {
 			set.parent = btc
 		}
-		btc.Attributes[attr] = node
+		btc.Attributes[attr] = &node
+	}
+	return nil
+}
+
+func (btc *BloksTreeComponent) FindAncestor(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	node := btc.container
+	for node != nil {
+		if comp, ok := node.BloksTreeNodeContent.(*BloksTreeComponent); ok {
+			if pred(comp) {
+				return comp
+			}
+		}
+		node = node.parent
+	}
+	return nil
+}
+
+func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	if pred(comp) {
+		return comp
+	}
+	for _, subnode := range comp.Attributes {
+		if match := subnode.FindDescendant(pred); match != nil {
+			return match
+		}
 	}
 	return nil
 }
@@ -329,6 +348,7 @@ func (btcl *BloksTreeComponentList) UnmarshalJSON(data []byte) error {
 		if !ok {
 			return fmt.Errorf("item %d: unexpected type %T", idx, node.BloksTreeNodeContent)
 		}
+		comp.container = &node
 		*btcl = append(*btcl, comp)
 	}
 	return nil

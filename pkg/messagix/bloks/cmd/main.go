@@ -67,5 +67,15 @@ func mainE() error {
 	if loginText == nil {
 		return fmt.Errorf("couldn't find login button")
 	}
-	return loginText.Print("")
+	var loginExtension *BloksTreeComponent
+	loginText.FindAncestor(func(comp *BloksTreeComponent) bool {
+		loginExtension = comp.FindDescendant(func(comp *BloksTreeComponent) bool {
+			return comp.ComponentID == "bk.components.FoaTouchExtension"
+		})
+		return loginExtension != nil
+	})
+	if loginExtension == nil {
+		return fmt.Errorf("couldn't find login extension")
+	}
+	return loginExtension.Print("")
 }
