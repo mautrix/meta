@@ -183,6 +183,7 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 				if idx+1 >= len(code) {
 					return len(code), fmt.Errorf("backslash at eof")
 				}
+				// feel free to implement escape sequences properly if you wanna
 				chars = append(chars, code[idx+1])
 				idx += 2
 				continue
@@ -252,12 +253,12 @@ func (lit *BloksScriptLiteral) IsTruthy() bool {
 	return true
 }
 
-func (lit *BloksScriptLiteral) Flatten() any {
+func (lit *BloksScriptLiteral) Flatten(facebookify bool) any {
 	switch lit := lit.Value().(type) {
 	case map[string]*BloksScriptLiteral:
 		res := map[string]any{}
 		for key, val := range lit {
-			res[key] = val.Flatten()
+			res[key] = val.Flatten(facebookify)
 		}
 		return res
 	case []*BloksScriptLiteral:
@@ -266,6 +267,14 @@ func (lit *BloksScriptLiteral) Flatten() any {
 			res = append(res, val)
 		}
 		return res
+	case bool:
+		if !facebookify {
+			return lit
+		}
+		if lit {
+			return 1
+		}
+		return 0
 	default:
 		return lit
 	}

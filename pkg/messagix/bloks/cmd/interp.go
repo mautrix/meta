@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 )
 
 type Interpreter struct {
@@ -13,7 +14,7 @@ type Interpreter struct {
 	EncryptPassword   func(string) string
 	SIMPhones         any
 	DeviceEmails      any
-	IsAppInstalled    func(url string, pkgname string) bool
+	IsAppInstalled    func(url string, pkgnames ...string) bool
 	HasAppPermissions func(permissions ...string) bool
 	GetSecureNonces   func() []string
 	DoRPC             func(name string, params map[string]string) error
@@ -32,14 +33,14 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 	return &Interpreter{
 		// some temporary values for testing
 		DeviceID:       "571CEE83-37A1-46D3-860D-B83398943DF7",
-		FamilyDeviceID: "f121bbd7-7b3f-412f-b664-cf33451f4471",
+		FamilyDeviceID: "F121BBD7-7B3F-412F-B664-CF33451F4471",
 		MachineID:      "",
 		EncryptPassword: func(pw string) string {
 			return "encrypted:" + pw
 		},
 		SIMPhones:    nil,
 		DeviceEmails: nil,
-		IsAppInstalled: func(url string, pkgname string) bool {
+		IsAppInstalled: func(url string, pkgname ...string) bool {
 			return false
 		},
 		HasAppPermissions: func(permissions ...string) bool {
@@ -64,7 +65,8 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 }
 
 type BloksLambda struct {
-	Body *BloksScriptNode
+	Body      *BloksScriptNode
+	BoundArgs []*BloksScriptLiteral
 }
 
 type BloksElemRef struct {
@@ -113,6 +115,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	if !ok {
 		return nil, fmt.Errorf("unexpected script node %T", form.BloksScriptNodeContent)
 	}
+	// Some of the cases in this switch are not needed for any given login. However different
+	// functions get pulled in depending on which API you are talking to, so I left in
+	// everything that came up at one point or another during testing.
 	switch call.Function {
 	case "bk.action.core.If":
 		{
@@ -167,19 +172,22 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				return nil, err
 			}
 			newArgs := make([]*BloksScriptLiteral, maxInterpArgs)
+			for idx := 0; idx < len(fn.BoundArgs); idx++ {
+				newArgs[idx] = fn.BoundArgs[idx]
+			}
 			for idx := 0; idx < len(call.Args)-1; idx++ {
 				result, err := i.Evaluate(ctx, &call.Args[idx+1])
 				if err != nil {
 					return nil, err
 				}
-				newArgs[idx] = result
+				newArgs[len(fn.BoundArgs)+idx] = result
 			}
 			ctx := context.WithValue(ctx, interpCtxArgs, newArgs)
 			return i.Evaluate(ctx, fn.Body)
 		}
 	case "bk.action.core.FuncConst":
 		{
-			return BloksLiteralOf(&BloksLambda{&call.Args[0]}), nil
+			return BloksLiteralOf(&BloksLambda{&call.Args[0], nil}), nil
 		}
 	case "bk.action.core.GetArg":
 		{
@@ -399,14 +407,15 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			if len(pkgids) != 1 {
-				return nil, fmt.Errorf("wrong pkgid array length %d", len(pkgids))
+			strs := []string{}
+			for _, perm := range pkgids {
+				str, ok := perm.Value().(string)
+				if !ok {
+					return nil, fmt.Errorf("non-string pkgid %T", perm.Value())
+				}
+				strs = append(strs, str)
 			}
-			pkgid, ok := pkgids[0].Value().(string)
-			if !ok {
-				return nil, fmt.Errorf("non-string pkgid %T", pkgids[0].Value())
-			}
-			return BloksLiteralOf(i.IsAppInstalled(url, pkgid)), nil
+			return BloksLiteralOf(i.IsAppInstalled(url, strs...)), nil
 		}
 	case "bk.action.CheckPermissionStatus":
 		{
@@ -501,7 +510,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			encoded, err := json.Marshal(arg.Flatten())
+			encoded, err := json.Marshal(arg.Flatten(true))
 			if err != nil {
 				return nil, err
 			}
@@ -525,6 +534,47 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				merged[key] = val
 			}
 			return BloksLiteralOf(merged), nil
+		}
+	case "bk.action.string.MatchesRegex":
+		{
+			str, err := evalAs[string](ctx, i, &call.Args[0], "regex")
+			if err != nil {
+				return nil, err
+			}
+			regex, err := evalAs[string](ctx, i, &call.Args[1], "regex")
+			if err != nil {
+				return nil, err
+			}
+			r, err := regexp.Compile(regex)
+			if err != nil {
+				return nil, err
+			}
+			return BloksLiteralOf(r.MatchString(str)), nil
+		}
+	case "bk.action.function.BindWithArrayV2":
+		{
+			fn, err := evalAs[*BloksLambda](ctx, i, &call.Args[0], "bind")
+			if err != nil {
+				return nil, err
+			}
+			newArgs, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "bind")
+			if err != nil {
+				return nil, err
+			}
+			fn = &*fn // make copy
+			fn.BoundArgs = newArgs
+			return BloksLiteralOf(fn), nil
+		}
+	case "h9a":
+		{
+			return i.Evaluate(ctx, &BloksScriptNode{
+				BloksScriptNodeContent: &BloksScriptFuncall{
+					Function: "bk.action.core.Apply",
+					Args: []BloksScriptNode{call.Args[2], {
+						BloksScriptNodeContent: BloksLiteralOf([]*BloksScriptLiteral{}),
+					}},
+				},
+			})
 		}
 	case
 		"bk.action.animated.Start",
