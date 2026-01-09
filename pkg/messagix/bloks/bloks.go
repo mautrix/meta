@@ -5,8 +5,8 @@ import (
 	"reflect"
 )
 
-// Instagram Android 410.1.0.63.71
-const BloksVersion = "b7737193b91c3a2f4050bdfc9d9ae0f578a93b4181fd43efe549daacba5c7db9"
+// Messenger iOS 535.0.0.0.0 of 1763582309
+const BloksVersion = "330b36fe786d9b82dd834eb55748d52712a0d09cf6fb7c60931d40204d086306"
 
 type wrappedBloksParams struct {
 	ServerParams      map[string]any `json:"server_params"`
