@@ -486,8 +486,8 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 	}
 }
 
-var ReelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
-var ReelActionURLRegex2 = regexp.MustCompile(`^https://instagram\.com/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
+var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
+var reelActionURLRegex2 = regexp.MustCompile(`^https://instagram\.com/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
 var usernameRegex = regexp.MustCompile(`^[a-z0-9.-_]{3,32}$`)
 var ErrURLNotFound = errors.New("url not found")
 
@@ -586,7 +586,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 	case strings.HasPrefix(att.CTA.ActionUrl, "/stories/direct/"):
 		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from CTA data")
 		externalURL := fmt.Sprintf("https://www.instagram.com%s", att.CTA.ActionUrl)
-		match := ReelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl)
+		match := reelActionURLRegex.FindStringSubmatch(att.CTA.ActionUrl)
 		if usernameRegex.MatchString(att.HeaderTitle) && len(match) == 3 {
 			// Very hacky way to hopefully fix the URL to work on mobile.
 			// When fetching the XMA data, this is done again later in a safer way.
@@ -691,7 +691,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			return minimalConverted
 		}
 
-		if match := ReelActionURLRegex2.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
+		if match := reelActionURLRegex2.FindStringSubmatch(att.CTA.ActionUrl); len(match) != 3 {
 			log.Warn().Str("action_url", att.CTA.ActionUrl).Msg("Failed to parse story action URL (type 2)")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
 			return minimalConverted
