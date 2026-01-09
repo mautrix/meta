@@ -40,6 +40,10 @@ type BloksLambda struct {
 	Body *BloksScriptNode
 }
 
+type BloksElemRef struct {
+	Component *BloksTreeComponent
+}
+
 type interpCtx string
 
 const (
@@ -60,6 +64,15 @@ func evalAs[T any](ctx context.Context, i *Interpreter, form *BloksScriptNode, w
 }
 
 const maxInterpArgs = 100
+
+func InterpBindThis(ctx context.Context, this *BloksTreeComponent) context.Context {
+	ambientArgs, ok := ctx.Value(interpCtxArgs).([]*BloksScriptLiteral)
+	if !ok {
+		ambientArgs = make([]*BloksScriptLiteral, maxInterpArgs)
+	}
+	ambientArgs[0] = BloksLiteralOf(&BloksElemRef{this})
+	return context.WithValue(ctx, interpCtxArgs, ambientArgs)
+}
 
 func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*BloksScriptLiteral, error) {
 	if lit, ok := form.BloksScriptNodeContent.(*BloksScriptLiteral); ok {
@@ -250,6 +263,26 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				return nil, err
 			}
 			return BloksLiteralOf(pass), nil
+		}
+	case "bk.action.textinput.GetText", "bk.action.caa.GetPasswordText":
+		{
+			ref, err := evalAs[*BloksElemRef](ctx, i, &call.Args[0], "gettext")
+			if err != nil {
+				return nil, err
+			}
+			text := ref.Component.textContent
+			if text == nil {
+				return nil, fmt.Errorf("no text content in referenced element")
+			}
+			return BloksLiteralOf(*text), nil
+		}
+	case "bk.action.bool.Not":
+		{
+			arg, err := i.Evaluate(ctx, &call.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			return BloksLiteralOf(!arg.IsTruthy()), nil
 		}
 	case
 		"bk.action.animated.Start",

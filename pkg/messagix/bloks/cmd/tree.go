@@ -229,7 +229,8 @@ type BloksTreeComponent struct {
 	ComponentID BloksComponentID
 	Attributes  map[BloksAttributeID]*BloksTreeNode
 
-	container *BloksTreeNode
+	container   *BloksTreeNode
+	textContent *string
 }
 
 // This could just unmarshal the whole map directly, but I wrote it
