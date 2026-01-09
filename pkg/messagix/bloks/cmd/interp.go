@@ -39,7 +39,7 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 		// some temporary values for testing
 		DeviceID:       "571CEE83-37A1-46D3-860D-B83398943DF7",
 		FamilyDeviceID: "F121BBD7-7B3F-412F-B664-CF33451F4471",
-		MachineID:      "",
+		MachineID:      "LKcVKhWS3JCzNh2ZfUyhLo6X",
 		EncryptPassword: func(pw string) string {
 			return "encrypted:" + pw
 		},
@@ -572,12 +572,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 	case "h9a":
 		{
+			// ignore second argument for now, use first & third
 			return i.Evaluate(ctx, &BloksScriptNode{
 				BloksScriptNodeContent: &BloksScriptFuncall{
 					Function: "bk.action.core.Apply",
-					Args: []BloksScriptNode{call.Args[2], {
-						BloksScriptNodeContent: BloksLiteralOf([]*BloksScriptLiteral{}),
-					}},
+					Args:     []BloksScriptNode{call.Args[2], call.Args[0]},
 				},
 			})
 		}
