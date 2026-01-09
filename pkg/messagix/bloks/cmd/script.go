@@ -251,3 +251,22 @@ func (lit *BloksScriptLiteral) IsTruthy() bool {
 	}
 	return true
 }
+
+func (lit *BloksScriptLiteral) Flatten() any {
+	switch lit := lit.Value().(type) {
+	case map[string]*BloksScriptLiteral:
+		res := map[string]any{}
+		for key, val := range lit {
+			res[key] = val.Flatten()
+		}
+		return res
+	case []*BloksScriptLiteral:
+		res := []any{}
+		for _, val := range lit {
+			res = append(res, val)
+		}
+		return res
+	default:
+		return lit
+	}
+}

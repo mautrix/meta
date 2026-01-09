@@ -2,14 +2,21 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
 type Interpreter struct {
-	DeviceID        string
-	FamilyDeviceID  string
-	MachineID       string
-	EncryptPassword func(string) string
+	DeviceID          string
+	FamilyDeviceID    string
+	MachineID         string
+	EncryptPassword   func(string) string
+	SIMPhones         any
+	DeviceEmails      any
+	IsAppInstalled    func(url string, pkgname string) bool
+	HasAppPermissions func(permissions ...string) bool
+	GetSecureNonces   func() []string
+	DoRPC             func(name string, params string)
 
 	Scripts map[BloksScriptID]*BloksLambda
 	Vars    map[BloksVariableID]*BloksScriptLiteral
@@ -29,6 +36,17 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 		MachineID:      "",
 		EncryptPassword: func(pw string) string {
 			return "encrypted:" + pw
+		},
+		SIMPhones:    nil,
+		DeviceEmails: nil,
+		IsAppInstalled: func(url string, pkgname string) bool {
+			return false
+		},
+		HasAppPermissions: func(permissions ...string) bool {
+			return false
+		},
+		GetSecureNonces: func() []string {
+			return nil
 		},
 
 		Scripts: scripts,
@@ -58,7 +76,7 @@ func evalAs[T any](ctx context.Context, i *Interpreter, form *BloksScriptNode, w
 	}
 	cast, ok := val.Value().(T)
 	if !ok {
-		return zero, fmt.Errorf("expected %T in %s, got %T %q", zero, where, val.Value(), val.Value())
+		return zero, fmt.Errorf("expected %T in %s, got %T", zero, where, val.Value())
 	}
 	return cast, nil
 }
@@ -115,7 +133,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			return i.Vars[BloksVariableID(varname)], nil
+			value, ok := i.Vars[BloksVariableID(varname)]
+			if !ok {
+				return BloksNull, nil
+			}
+			return value, nil
 		}
 	case "bk.action.core.TakeLast":
 		{
@@ -238,7 +260,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			for idx := 0; idx < len(first); idx++ {
 				key, ok := first[idx].Value().(string)
 				if !ok {
-					return nil, fmt.Errorf("non-string key %T %q", first[0].Value(), first[0].Value())
+					return nil, fmt.Errorf("non-string key %T", first[0].Value())
 				}
 				result[key] = second[idx]
 			}
@@ -349,6 +371,140 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			_, ok := dict[key]
 			return BloksLiteralOf(ok), nil
+		}
+	case "bk.action.caa.login.GetSimPhones":
+		{
+			return BloksLiteralOf(i.SIMPhones), nil
+		}
+	case "bk.action.caa.login.GetDeviceEmails":
+		{
+			return BloksLiteralOf(i.DeviceEmails), nil
+		}
+	case "bk.action.bloks.IsAppInstalled":
+		{
+			url, err := evalAs[string](ctx, i, &call.Args[0], "isappinstalled")
+			if err != nil {
+				return nil, err
+			}
+			pkgids, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[1], "isappinstalled")
+			if err != nil {
+				return nil, err
+			}
+			if len(pkgids) != 1 {
+				return nil, fmt.Errorf("wrong pkgid array length %d", len(pkgids))
+			}
+			pkgid, ok := pkgids[0].Value().(string)
+			if !ok {
+				return nil, fmt.Errorf("non-string pkgid %T", pkgids[0].Value())
+			}
+			return BloksLiteralOf(i.IsAppInstalled(url, pkgid)), nil
+		}
+	case "bk.action.CheckPermissionStatus":
+		{
+			perms, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "checkpermissionstatus")
+			if err != nil {
+				return nil, err
+			}
+			strs := []string{}
+			for _, perm := range perms {
+				str, ok := perm.Value().(string)
+				if !ok {
+					return nil, fmt.Errorf("non-string permission %T", perm.Value())
+				}
+				strs = append(strs, str)
+			}
+			return BloksLiteralOf(i.HasAppPermissions(strs...)), nil
+		}
+	case "bk.action.ig.protection.GetSecureNonces":
+		{
+			result := []*BloksScriptLiteral{}
+			for _, nonce := range i.GetSecureNonces() {
+				result = append(result, BloksLiteralOf(nonce))
+			}
+			return BloksLiteralOf(result), nil
+		}
+	case "bk.action.ref.Read":
+		{
+			ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
+			if !ok {
+				return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].BloksScriptNodeContent)
+			}
+			if ref.Function != "bk.action.bloks.GetVariable2" {
+				return nil, fmt.Errorf("reading from non-ref funcall %s", ref.Function)
+			}
+			varname, err := evalAs[string](ctx, i, &ref.Args[0], "ref.read")
+			if err != nil {
+				return nil, err
+			}
+			value, ok := i.Vars[BloksVariableID(varname)]
+			if !ok {
+				return BloksNull, nil
+			}
+			return value, nil
+		}
+	case "bk.action.ref.Write":
+		{
+			ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
+			if !ok {
+				return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].BloksScriptNodeContent)
+			}
+			if ref.Function != "bk.action.bloks.GetVariable2" {
+				return nil, fmt.Errorf("reading from non-ref funcall %s", ref.Function)
+			}
+			varname, err := evalAs[string](ctx, i, &ref.Args[0], "ref.read")
+			if err != nil {
+				return nil, err
+			}
+			value, err := i.Evaluate(ctx, &call.Args[1])
+			if err != nil {
+				return nil, err
+			}
+			i.Vars[BloksVariableID(varname)] = value
+			return BloksNothing, nil
+		}
+	case "bk.action.bloks.AsyncActionWithDataManifestV2":
+		{
+			name, err := evalAs[string](ctx, i, &call.Args[0], "asyncaction")
+			if err != nil {
+				return nil, err
+			}
+			params, err := evalAs[string](ctx, i, &call.Args[1], "asyncaction")
+			if err != nil {
+				return nil, err
+			}
+			i.DoRPC(name, params)
+			return BloksNothing, nil
+		}
+	case "bk.action.string.JsonEncode":
+		{
+			arg, err := i.Evaluate(ctx, &call.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			encoded, err := json.Marshal(arg.Flatten)
+			if err != nil {
+				return nil, err
+			}
+			return BloksLiteralOf(string(encoded)), nil
+		}
+	case "bk.action.map.Merge":
+		{
+			first, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "merge")
+			if err != nil {
+				return nil, err
+			}
+			second, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[1], "merge")
+			if err != nil {
+				return nil, err
+			}
+			merged := map[string]*BloksScriptLiteral{}
+			for key, val := range first {
+				merged[key] = val
+			}
+			for key, val := range second {
+				merged[key] = val
+			}
+			return BloksLiteralOf(merged), nil
 		}
 	case
 		"bk.action.animated.Start",
