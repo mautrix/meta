@@ -10,6 +10,7 @@ type BloksComponentID string
 type BloksClassID string
 type BloksAttributeID string
 type BloksFunctionID string
+type BloksVariableID string
 
 func (i BloksAttributeID) ToInt() (int, bool) {
 	s := []rune(i)

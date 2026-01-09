@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
+var doInterp = flag.Bool("interp", false, "Run the interpreter")
 
 func main() {
 	err := mainE()
@@ -37,6 +39,7 @@ func readAndParse[T any](filename string) (*T, error) {
 }
 
 func mainE() error {
+	ctx := context.Background()
 	flag.Parse()
 	if *filename == "" {
 		return fmt.Errorf("-file is mandatory")
@@ -85,14 +88,17 @@ func mainE() error {
 	if !ok {
 		return fmt.Errorf("login button doesn't have on_touch_up script")
 	}
-	interp := NewInterpreter(bundle)
-	_, err = interp.Execute(&onTouchDown.AST)
-	if err != nil {
-		return fmt.Errorf("on_touch_down: %w", err)
+	if *doInterp {
+		interp := NewInterpreter(bundle)
+		_, err = interp.Evaluate(ctx, &onTouchDown.AST)
+		if err != nil {
+			return fmt.Errorf("on_touch_down: %w", err)
+		}
+		_, err = interp.Evaluate(ctx, &onTouchUp.AST)
+		if err != nil {
+			return fmt.Errorf("on_touch_up: %w", err)
+		}
+		return nil
 	}
-	_, err = interp.Execute(&onTouchUp.AST)
-	if err != nil {
-		return fmt.Errorf("on_touch_up: %w", err)
-	}
-	return nil
+	return bundle.Print("")
 }

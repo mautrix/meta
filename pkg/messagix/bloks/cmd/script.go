@@ -221,3 +221,27 @@ func (lit *BloksScriptLiteral) Print(indent string) error {
 	fmt.Printf("%s%s", indent, str)
 	return nil
 }
+
+func (lit *BloksScriptLiteral) Value() any {
+	return lit.BloksJavascriptValue
+}
+
+func BloksLiteralOf(val any) *BloksScriptLiteral {
+	return &BloksScriptLiteral{
+		BloksJavascriptValue(val),
+	}
+}
+
+func (lit *BloksScriptLiteral) IsTruthy() bool {
+	switch val := lit.BloksJavascriptValue.(type) {
+	case bool:
+		return val
+	case string:
+		return len(val) > 0
+	case int:
+		return val != 0
+	case nil:
+		return false
+	}
+	return true
+}

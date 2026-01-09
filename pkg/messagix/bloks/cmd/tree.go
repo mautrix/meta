@@ -13,7 +13,14 @@ type BloksBundle struct {
 }
 
 func (bb *BloksBundle) Unminify(m *Unminifier) {
-	bb.Layout.Payload.Tree.Unminify(m)
+	p := bb.Layout.Payload
+	for _, s := range p.Scripts {
+		s.Unminify(m)
+	}
+	for _, t := range p.Templates {
+		t.Unminify(m)
+	}
+	p.Tree.Unminify(m)
 }
 
 func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
