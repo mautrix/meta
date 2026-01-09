@@ -340,19 +340,10 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 		expiresAt = att.PreviewUrlExpirationTimestampMs
 	}
 
-	// Determine media type for refresh
-	mediaType := "image"
-	if strings.HasPrefix(mime, "video/") {
-		mediaType = "video"
-	} else if strings.HasPrefix(mime, "audio/") {
-		mediaType = "audio"
-	}
-
 	refreshMeta := &MediaRefreshMeta{
 		ExpiresAt:      expiresAt,
 		AttachmentFbid: att.AttachmentFbid,
 		PartIndex:      partIndex,
-		MediaType:      mediaType,
 	}
 
 	converted, err := mc.reuploadAttachment(
@@ -400,19 +391,10 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 		expiresAt = att.PreviewUrlExpirationTimestampMs
 	}
 
-	// Determine media type for refresh
-	mediaType := "image"
-	if strings.HasPrefix(mime, "video/") {
-		mediaType = "video"
-	} else if strings.HasPrefix(mime, "audio/") {
-		mediaType = "audio"
-	}
-
 	refreshMeta := &MediaRefreshMeta{
 		ExpiresAt:      expiresAt,
 		AttachmentFbid: att.AttachmentFbid,
 		PartIndex:      partIndex,
-		MediaType:      mediaType,
 	}
 
 	converted, err := mc.reuploadAttachment(
@@ -473,15 +455,6 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 				width, height = ver.Width, ver.Height
 				found = true
 			}
-		}
-	}
-
-	// Update media type based on what we found
-	if xmaRefresh != nil {
-		if found && len(resp.VideoVersions) > 0 {
-			xmaRefresh.MediaType = "video"
-		} else {
-			xmaRefresh.MediaType = "image"
 		}
 	}
 
@@ -683,8 +656,8 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
 			xmaRefresh := &MediaRefreshMeta{
-				XMAActionURL: att.CTA.ActionUrl,
-				MediaType:    "story",
+				StoryMediaID: match[1],
+				StoryReelID:  match[2],
 			}
 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem, xmaRefresh)
 			if err != nil {
@@ -750,8 +723,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			minimalConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
 			log.Debug().Int("item_count", len(resp.Items)).Msg("Fetched XMA story (type 2)")
 			xmaRefresh := &MediaRefreshMeta{
-				XMAActionURL: att.CTA.ActionUrl,
-				MediaType:    "story",
+				StoryMediaID: match[2],
 			}
 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem, xmaRefresh)
 			if err != nil {
@@ -892,8 +864,10 @@ type MediaRefreshMeta struct {
 	PartIndex      int    // For blob attachments (fallback matching)
 	XMATargetID    int64  // For XMA attachments (Instagram API)
 	XMAShortcode   string // For XMA attachments (Instagram API)
-	XMAActionURL   string // For XMA story attachments
-	MediaType      string // "video", "image", "story"
+
+	// For XMA story attachments (pre-parsed from action URL):
+	StoryMediaID string // story pk
+	StoryReelID  string // user pk (for /stories/direct/ type)
 }
 
 func (mc *MessageConverter) reuploadAttachment(
@@ -985,8 +959,8 @@ func (mc *MessageConverter) reuploadAttachment(
 			dmm.PartIndex = refreshMeta.PartIndex
 			dmm.XMATargetID = refreshMeta.XMATargetID
 			dmm.XMAShortcode = refreshMeta.XMAShortcode
-			dmm.XMAActionURL = refreshMeta.XMAActionURL
-			dmm.MediaType = refreshMeta.MediaType
+			dmm.StoryMediaID = refreshMeta.StoryMediaID
+			dmm.StoryReelID = refreshMeta.StoryReelID
 		}
 		directMediaMeta, err := json.Marshal(dmm)
 		if err != nil {

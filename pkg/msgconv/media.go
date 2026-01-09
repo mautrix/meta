@@ -219,8 +219,10 @@ type DirectMediaMeta struct {
 	// For XMA attachments (Instagram API refresh):
 	XMATargetID  int64  `json:"xma_target_id,omitempty"`
 	XMAShortcode string `json:"xma_shortcode,omitempty"`
-	XMAActionURL string `json:"xma_action_url,omitempty"` // for stories
-	MediaType    string `json:"media_type,omitempty"`     // "video", "image", "story"
+
+	// For XMA story attachments (parsed from action URL):
+	StoryMediaID string `json:"story_media_id,omitempty"` // story pk
+	StoryReelID  string `json:"story_reel_id,omitempty"`  // user pk (for /stories/direct/ type)
 }
 
 type DirectMediaWhatsApp struct {

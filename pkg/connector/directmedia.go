@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -133,7 +132,7 @@ func (m *MetaConnector) refreshMediaURL(
 	client := ul.Client.(*MetaClient)
 
 	// Route to appropriate refresh method based on attachment type
-	if info.XMATargetID != 0 || info.XMAShortcode != "" || info.XMAActionURL != "" {
+	if info.XMATargetID != 0 || info.XMAShortcode != "" || info.StoryMediaID != "" {
 		return m.refreshXMAMedia(ctx, client, info)
 	}
 	if info.AttachmentFbid != "" {
@@ -156,44 +155,43 @@ func (m *MetaConnector) refreshXMAMedia(
 
 	log := zerolog.Ctx(ctx)
 
-	// Handle story refresh (type 1: /stories/direct/...)
-	if info.XMAActionURL != "" && strings.HasPrefix(info.XMAActionURL, "/stories/direct/") {
-		match := msgconv.ReelActionURLRegex.FindStringSubmatch(info.XMAActionURL)
-		if len(match) == 3 {
-			log.Debug().Str("action_url", info.XMAActionURL).Msg("Refreshing story media (type 1)")
-			resp, err := ig.FetchReel(ctx, []string{match[2]}, match[1])
-			if err != nil {
-				return "", fmt.Errorf("failed to fetch reel: %w", err)
-			}
-			reel, ok := resp.Reels[match[2]]
-			if !ok || len(reel.Items) == 0 {
-				return "", fmt.Errorf("reel not found in response")
-			}
-			// Find the item matching the media ID
-			for _, item := range reel.Items {
-				if item.Pk == match[1] {
-					return extractBestURL(&item.Items, info.MediaType)
-				}
-			}
-			// If exact match not found, use first item
-			return extractBestURL(&reel.Items[0].Items, info.MediaType)
+	// Handle story refresh (type 1: has both StoryMediaID and StoryReelID)
+	if info.StoryMediaID != "" && info.StoryReelID != "" {
+		log.Debug().
+			Str("story_media_id", info.StoryMediaID).
+			Str("story_reel_id", info.StoryReelID).
+			Msg("Refreshing story media (type 1)")
+		resp, err := ig.FetchReel(ctx, []string{info.StoryReelID}, info.StoryMediaID)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch reel: %w", err)
 		}
+		reel, ok := resp.Reels[info.StoryReelID]
+		if !ok || len(reel.Items) == 0 {
+			return "", fmt.Errorf("reel not found in response")
+		}
+		// Find the item matching the media ID
+		for _, item := range reel.Items {
+			if item.Pk == info.StoryMediaID {
+				return extractBestURL(&item.Items)
+			}
+		}
+		// If exact match not found, use first item
+		return extractBestURL(&reel.Items[0].Items)
 	}
 
-	// Handle story refresh (type 2: https://instagram.com/stories/...)
-	if info.XMAActionURL != "" && strings.HasPrefix(info.XMAActionURL, "https://instagram.com/stories/") {
-		match := msgconv.ReelActionURLRegex2.FindStringSubmatch(info.XMAActionURL)
-		if len(match) == 3 {
-			log.Debug().Str("action_url", info.XMAActionURL).Msg("Refreshing story media (type 2)")
-			resp, err := ig.FetchMedia(ctx, match[2], "")
-			if err != nil {
-				return "", fmt.Errorf("failed to fetch media: %w", err)
-			}
-			if len(resp.Items) == 0 {
-				return "", fmt.Errorf("empty response from FetchMedia")
-			}
-			return extractBestURL(resp.Items[0], info.MediaType)
+	// Handle story refresh (type 2: has StoryMediaID but not StoryReelID)
+	if info.StoryMediaID != "" {
+		log.Debug().
+			Str("story_media_id", info.StoryMediaID).
+			Msg("Refreshing story media (type 2)")
+		resp, err := ig.FetchMedia(ctx, info.StoryMediaID, "")
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch media: %w", err)
 		}
+		if len(resp.Items) == 0 {
+			return "", fmt.Errorf("empty response from FetchMedia")
+		}
+		return extractBestURL(resp.Items[0])
 	}
 
 	// Handle post/reel refresh using TargetId and/or Shortcode
@@ -209,7 +207,7 @@ func (m *MetaConnector) refreshXMAMedia(
 		if len(resp.Items) == 0 {
 			return "", fmt.Errorf("empty response from FetchMedia")
 		}
-		return extractBestURL(resp.Items[0], info.MediaType)
+		return extractBestURL(resp.Items[0])
 	}
 
 	return "", fmt.Errorf("no XMA identifiers available for refresh")
@@ -395,23 +393,20 @@ func (m *MetaConnector) refreshBlobMedia(
 	return "", fmt.Errorf("target attachment not found in re-fetched messages")
 }
 
-// extractBestURL selects the highest resolution URL from Instagram media response
-func extractBestURL(item *responses.Items, mediaType string) (string, error) {
+func extractBestURL(item *responses.Items) (string, error) {
 	var bestURL string
 	var bestRes int
 
-	// Prefer video versions if media type is video or if video versions exist
-	if mediaType == "video" || mediaType == "story" || len(item.VideoVersions) > 0 {
-		for _, ver := range item.VideoVersions {
-			res := ver.Width * ver.Height
-			if res > bestRes {
-				bestURL = ver.URL
-				bestRes = res
-			}
+	// Find the highest resolution video, if any
+	for _, ver := range item.VideoVersions {
+		res := ver.Width * ver.Height
+		if res > bestRes {
+			bestURL = ver.URL
+			bestRes = res
 		}
 	}
 
-	// Fall back to image versions
+	// Find the highest resolution image if no video
 	if bestURL == "" {
 		for _, ver := range item.ImageVersions2.Candidates {
 			res := ver.Width * ver.Height
