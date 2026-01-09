@@ -77,5 +77,22 @@ func mainE() error {
 	if loginExtension == nil {
 		return fmt.Errorf("couldn't find login extension")
 	}
-	return loginExtension.Print("")
+	onTouchDown, ok := loginExtension.Attributes["on_touch_down"].BloksTreeNodeContent.(*BloksTreeScript)
+	if !ok {
+		return fmt.Errorf("login button doesn't have on_touch_down script")
+	}
+	onTouchUp, ok := loginExtension.Attributes["on_touch_up"].BloksTreeNodeContent.(*BloksTreeScript)
+	if !ok {
+		return fmt.Errorf("login button doesn't have on_touch_up script")
+	}
+	interp := NewInterpreter(bundle)
+	_, err = interp.Execute(&onTouchDown.AST)
+	if err != nil {
+		return fmt.Errorf("on_touch_down: %w", err)
+	}
+	_, err = interp.Execute(&onTouchUp.AST)
+	if err != nil {
+		return fmt.Errorf("on_touch_up: %w", err)
+	}
+	return nil
 }
