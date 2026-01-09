@@ -129,11 +129,11 @@ type BloksInnerData struct {
 	Layout BloksLayout `json:"layout"`
 }
 
-type BloksLayout struct {
-	Payload BloksPayload `json:"bloks_payload"`
+type BloksActionLayout struct {
+	Payload BloksActionPayload `json:"bloks_payload"`
 }
 
-type BloksPayload struct {
+type BloksActionPayload struct {
 	Action string `json:"action"` // scuffed lisp
 	// ... more fields that we don't use
 }

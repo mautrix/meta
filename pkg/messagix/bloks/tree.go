@@ -1,4 +1,4 @@
-package main
+package bloks
 
 import (
 	"encoding/json"
@@ -241,6 +241,14 @@ type BloksTreeComponent struct {
 
 	container   *BloksTreeNode
 	textContent *string
+}
+
+func (btc *BloksTreeComponent) SetTextContent(text string) error {
+	if btc.ComponentID != "bk.components.TextInput" {
+		return fmt.Errorf("can't set text content of %s", btc.ComponentID)
+	}
+	btc.textContent = &text
+	return nil
 }
 
 // This could just unmarshal the whole map directly, but I wrote it

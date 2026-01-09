@@ -1,4 +1,4 @@
-package main
+package bloks
 
 import (
 	"encoding/json"
