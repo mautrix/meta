@@ -31,7 +31,7 @@ func evalAs[T any](ctx context.Context, i *Interpreter, form *BloksScriptNode, w
 	}
 	cast, ok := val.Value().(T)
 	if !ok {
-		return zero, fmt.Errorf("expected %T in %s, got %T", zero, where, val.Value())
+		return zero, fmt.Errorf("expected %T in %s, got %T %q", zero, where, val.Value(), val.Value())
 	}
 	return cast, nil
 }
@@ -136,7 +136,24 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			ambientArgs[idx] = value
 			return nil, nil
 		}
-	case "bk.action.animated.Start":
+	case "bk.action.f32.Eq":
+		{
+			first, err := i.Evaluate(ctx, &call.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			second, err := i.Evaluate(ctx, &call.Args[1])
+			if err != nil {
+				return nil, err
+			}
+			return BloksLiteralOf(first == second), nil
+		}
+	case
+		"bk.action.animated.Start",
+		"bk.action.logging.LogEvent",
+		"bk.action.LogFlytrapData",
+		"bk.action.qpl.MarkerStartV2",
+		"bk.action.qpl.MarkerAnnotate":
 		return nil, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
