@@ -1524,8 +1524,8 @@
     },
     "bk.data.TextSpan": {
       "4": "styles",
-      "3": "text",
-      "6": "accessibility_label"
+      "3": "accessibility_label",
+      "6": "text"
     },
     "bk.style.textspan.TextStyle": {
       "3": "font_family",
