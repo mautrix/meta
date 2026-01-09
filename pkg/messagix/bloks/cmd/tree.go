@@ -16,8 +16,8 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 	bb.Layout.Payload.Tree.Unminify(m)
 }
 
-func (bb *BloksBundle) Find(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	return bb.Layout.Payload.Tree.Find(pred)
+func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	return bb.Layout.Payload.Tree.FindDescendant(pred)
 }
 
 func (bb *BloksBundle) Print(indent string) error {
@@ -100,6 +100,8 @@ type BloksErrorAttribution struct {
 
 type BloksTreeNode struct {
 	BloksTreeNodeContent
+
+	parent *BloksTreeNode
 }
 
 func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
@@ -121,6 +123,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return fmt.Errorf("component %q: %w", id, err)
 			}
+			comp.container = btn
 			btn.BloksTreeNodeContent = &comp
 		}
 		return nil
@@ -131,6 +134,9 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 		err := json.Unmarshal(data, &comps)
 		if err != nil {
 			return err
+		}
+		for _, comp := range comps {
+			comp.container = btn
 		}
 		btn.BloksTreeNodeContent = &comps
 		return nil
@@ -187,13 +193,13 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (btn *BloksTreeNode) Find(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
 	handleComp := func(comp *BloksTreeComponent) *BloksTreeComponent {
 		if pred(comp) {
 			return comp
 		}
 		for _, subnode := range comp.Attributes {
-			if match := subnode.Find(pred); match != nil {
+			if match := subnode.FindDescendant(pred); match != nil {
 				return match
 			}
 		}
@@ -221,6 +227,8 @@ type BloksTreeNodeContent interface {
 type BloksTreeComponent struct {
 	ComponentID BloksComponentID
 	Attributes  map[BloksAttributeID]BloksTreeNode
+
+	container *BloksTreeNode
 }
 
 // This could just unmarshal the whole map directly, but I wrote it
@@ -238,6 +246,7 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("attribute %q: %w", attr, err)
 		}
+		node.parent = btc.container
 		if set, ok := node.BloksTreeNodeContent.(*BloksTreeScriptSet); ok {
 			set.parent = btc
 		}

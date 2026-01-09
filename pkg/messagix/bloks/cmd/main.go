@@ -50,7 +50,7 @@ func mainE() error {
 		return err
 	}
 	bundle.Unminify(un)
-	loginText := bundle.Find(func(comp *BloksTreeComponent) bool {
+	loginText := bundle.FindDescendant(func(comp *BloksTreeComponent) bool {
 		if comp.ComponentID != "bk.data.TextSpan" {
 			return false
 		}
