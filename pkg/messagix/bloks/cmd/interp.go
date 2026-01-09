@@ -576,7 +576,15 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return i.Evaluate(ctx, &BloksScriptNode{
 				BloksScriptNodeContent: &BloksScriptFuncall{
 					Function: "bk.action.core.Apply",
-					Args:     []BloksScriptNode{call.Args[2], call.Args[0]},
+					Args: []BloksScriptNode{
+						call.Args[2],
+						{
+							BloksScriptNodeContent: &BloksScriptFuncall{
+								Function: "bk.action.string.EncryptPassword",
+								Args:     []BloksScriptNode{call.Args[0]},
+							},
+						},
+					},
 				},
 			})
 		}
