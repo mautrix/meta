@@ -50,6 +50,9 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 		c.client.socket.broker = "wss://edge-chat.instagram.com/chat?"
 		c.BrowserConfigTable.MqttWebConfig.AppID = c.BrowserConfigTable.MessengerWebInitData.AppID
 	} else {
+		if c.BrowserConfigTable.MqttWebConfig.Endpoint == "" {
+			return ls, fmt.Errorf("MQTT broker endpoint not found in page response (MqttWebConfig.Endpoint is empty)")
+		}
 		c.client.socket.broker = c.BrowserConfigTable.MqttWebConfig.Endpoint
 	}
 	c.client.syncManager.syncParams = &c.BrowserConfigTable.LSPlatformMessengerSyncParams
