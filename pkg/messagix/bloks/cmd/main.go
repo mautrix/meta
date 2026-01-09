@@ -56,7 +56,17 @@ func mainE() error {
 	if !*doInterp {
 		return bundle.Print("")
 	}
-	interp := NewInterpreter(bundle)
+	interp := NewInterpreter(bundle, &InterpBridge{
+		DoRPC: func(name string, params map[string]string) error {
+			fmt.Printf("%s\n", name)
+			payload, err := json.Marshal(params)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%s\n", string(payload))
+			return nil
+		},
+	})
 	fillTextInput := func(fieldName string, fillText string) error {
 		input := bundle.FindDescendant(func(comp *BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.components.TextInput" {

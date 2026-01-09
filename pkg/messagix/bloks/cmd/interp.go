@@ -2,28 +2,38 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
+
+	"github.com/google/uuid"
+	"go.mau.fi/util/random"
 )
 
-type Interpreter struct {
+type InterpBridge struct {
 	DeviceID          string
 	FamilyDeviceID    string
 	MachineID         string
-	EncryptPassword   func(string) string
+	EncryptPassword   func(string) (string, error)
 	SIMPhones         any
 	DeviceEmails      any
 	IsAppInstalled    func(url string, pkgnames ...string) bool
 	HasAppPermissions func(permissions ...string) bool
 	GetSecureNonces   func() []string
 	DoRPC             func(name string, params map[string]string) error
+}
+
+type Interpreter struct {
+	Bridge InterpBridge
 
 	Scripts map[BloksScriptID]*BloksLambda
 	Vars    map[BloksVariableID]*BloksScriptLiteral
 }
 
-func NewInterpreter(b *BloksBundle) *Interpreter {
+func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 	p := b.Layout.Payload
 	scripts := map[BloksScriptID]*BloksLambda{}
 	for id, script := range p.Scripts {
@@ -35,38 +45,51 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 	for _, item := range p.Data {
 		vars[BloksVariableID(item.ID)] = BloksLiteralOf(item.Info.Initial)
 	}
-	return &Interpreter{
-		// some temporary values for testing
-		DeviceID:       "571CEE83-37A1-46D3-860D-B83398943DF7",
-		FamilyDeviceID: "F121BBD7-7B3F-412F-B664-CF33451F4471",
-		MachineID:      "LKcVKhWS3JCzNh2ZfUyhLo6X",
-		EncryptPassword: func(pw string) string {
-			return "encrypted:" + pw
-		},
-		SIMPhones:    nil,
-		DeviceEmails: nil,
-		IsAppInstalled: func(url string, pkgname ...string) bool {
-			return false
-		},
-		HasAppPermissions: func(permissions ...string) bool {
-			return false
-		},
-		GetSecureNonces: func() []string {
-			return nil
-		},
-		DoRPC: func(name string, params map[string]string) error {
-			fmt.Printf("%s\n", name)
-			payload, err := json.Marshal(params)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("%s\n", string(payload))
-			return nil
-		},
+	interp := Interpreter{
+		Bridge: *br,
 
 		Scripts: scripts,
 		Vars:    vars,
 	}
+	br = &interp.Bridge
+	if br.DeviceID == "" {
+		br.DeviceID = strings.ToUpper(uuid.New().String())
+	}
+	if br.FamilyDeviceID == "" {
+		br.FamilyDeviceID = strings.ToUpper(uuid.New().String())
+	}
+	if br.MachineID == "" {
+		br.MachineID = string(random.StringBytes(25))
+	}
+	if br.EncryptPassword == nil {
+		br.EncryptPassword = func(pw string) (string, error) {
+			return fmt.Sprintf(
+				"#PWD_LIGHTSPEED_FAKE:%s",
+				base64.StdEncoding.EncodeToString(sha256.New().Sum([]byte(pw))),
+			), nil
+		}
+	}
+	if br.IsAppInstalled == nil {
+		br.IsAppInstalled = func(url string, pkgname ...string) bool {
+			return false
+		}
+	}
+	if br.HasAppPermissions == nil {
+		br.HasAppPermissions = func(permissions ...string) bool {
+			return false
+		}
+	}
+	if br.GetSecureNonces == nil {
+		br.GetSecureNonces = func() []string {
+			return nil
+		}
+	}
+	if br.DoRPC == nil {
+		br.DoRPC = func(name string, params map[string]string) error {
+			return fmt.Errorf("unhandled rpc %s", name)
+		}
+	}
+	return &interp
 }
 
 type BloksLambda struct {
@@ -290,15 +313,15 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 	case "bk.action.caa.login.GetUniqueDeviceId":
 		{
-			return BloksLiteralOf(i.DeviceID), nil
+			return BloksLiteralOf(i.Bridge.DeviceID), nil
 		}
 	case "bk.fx.action.GetFamilyDeviceId":
 		{
-			return BloksLiteralOf(i.FamilyDeviceID), nil
+			return BloksLiteralOf(i.Bridge.FamilyDeviceID), nil
 		}
 	case "bk.action.caa.FetchMachineID":
 		{
-			return BloksLiteralOf(i.MachineID), nil
+			return BloksLiteralOf(i.Bridge.MachineID), nil
 		}
 	case "bk.action.string.EncryptPassword":
 		{
@@ -306,7 +329,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			return BloksLiteralOf(i.EncryptPassword(pass)), nil
+			pass, err = i.Bridge.EncryptPassword(pass)
+			if err != nil {
+				return nil, err
+			}
+			return BloksLiteralOf(pass), nil
 		}
 	case "bk.action.textinput.GetText", "bk.action.caa.GetPasswordText":
 		{
@@ -396,11 +423,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 	case "bk.action.caa.login.GetSimPhones":
 		{
-			return BloksLiteralOf(i.SIMPhones), nil
+			return BloksLiteralOf(i.Bridge.SIMPhones), nil
 		}
 	case "bk.action.caa.login.GetDeviceEmails":
 		{
-			return BloksLiteralOf(i.DeviceEmails), nil
+			return BloksLiteralOf(i.Bridge.DeviceEmails), nil
 		}
 	case "bk.action.bloks.IsAppInstalled":
 		{
@@ -420,7 +447,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				}
 				strs = append(strs, str)
 			}
-			return BloksLiteralOf(i.IsAppInstalled(url, strs...)), nil
+			return BloksLiteralOf(i.Bridge.IsAppInstalled(url, strs...)), nil
 		}
 	case "bk.action.CheckPermissionStatus":
 		{
@@ -436,12 +463,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				}
 				strs = append(strs, str)
 			}
-			return BloksLiteralOf(i.HasAppPermissions(strs...)), nil
+			return BloksLiteralOf(i.Bridge.HasAppPermissions(strs...)), nil
 		}
 	case "bk.action.ig.protection.GetSecureNonces":
 		{
 			result := []*BloksScriptLiteral{}
-			for _, nonce := range i.GetSecureNonces() {
+			for _, nonce := range i.Bridge.GetSecureNonces() {
 				result = append(result, BloksLiteralOf(nonce))
 			}
 			return BloksLiteralOf(result), nil
@@ -503,7 +530,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				}
 				flatParams[key] = str
 			}
-			err = i.DoRPC(name, flatParams)
+			err = i.Bridge.DoRPC(name, flatParams)
 			if err != nil {
 				return nil, err
 			}
