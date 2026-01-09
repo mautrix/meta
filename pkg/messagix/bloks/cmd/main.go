@@ -53,23 +53,46 @@ func mainE() error {
 		return err
 	}
 	bundle.Unminify(un)
-	passwordField := bundle.FindDescendant(func(comp *BloksTreeComponent) bool {
-		if comp.ComponentID != "bk.components.TextInput" {
-			return false
+	if !*doInterp {
+		return bundle.Print("")
+	}
+	interp := NewInterpreter(bundle)
+	fillTextInput := func(fieldName string, fillText string) error {
+		input := bundle.FindDescendant(func(comp *BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.components.TextInput" {
+				return false
+			}
+			name, ok := comp.Attributes["html_name"].BloksTreeNodeContent.(*BloksTreeLiteral)
+			if !ok {
+				return false
+			}
+			str, ok := name.BloksJavascriptValue.(string)
+			if !ok {
+				return false
+			}
+			return str == fieldName
+		})
+		if input == nil {
+			return fmt.Errorf("couldn't find %s field", fieldName)
 		}
-		name, ok := comp.Attributes["html_name"].BloksTreeNodeContent.(*BloksTreeLiteral)
+		input.textContent = &fillText
+		onChanged, ok := input.Attributes["on_text_change"].BloksTreeNodeContent.(*BloksTreeScript)
 		if !ok {
-			return false
+			return fmt.Errorf("%s field doesn't have on_text_change script", fieldName)
 		}
-		str, ok := name.BloksJavascriptValue.(string)
-		if !ok {
-			return false
+		_, err := interp.Evaluate(InterpBindThis(ctx, input), &onChanged.AST)
+		if err != nil {
+			return fmt.Errorf("%s on_text_changed: %w", fieldName, err)
 		}
-		return str == "password"
-	})
-	onPasswordChanged, ok := passwordField.Attributes["on_text_change"].BloksTreeNodeContent.(*BloksTreeScript)
-	if !ok {
-		return fmt.Errorf("password field doesn't have on_text_change script")
+		return nil
+	}
+	err = fillTextInput("email", "hello@example.com")
+	if err != nil {
+		return err
+	}
+	err = fillTextInput("password", "correct horse battery staple")
+	if err != nil {
+		return err
 	}
 	loginText := bundle.FindDescendant(func(comp *BloksTreeComponent) bool {
 		if comp.ComponentID != "bk.data.TextSpan" {
@@ -106,23 +129,13 @@ func mainE() error {
 	if !ok {
 		return fmt.Errorf("login button doesn't have on_touch_up script")
 	}
-	if *doInterp {
-		interp := NewInterpreter(bundle)
-		password := "correct horse battery staple"
-		passwordField.textContent = &password
-		_, err = interp.Evaluate(InterpBindThis(ctx, passwordField), &onPasswordChanged.AST)
-		if err != nil {
-			return fmt.Errorf("password on_text_changed: %w", err)
-		}
-		_, err = interp.Evaluate(InterpBindThis(ctx, loginExtension), &onTouchDown.AST)
-		if err != nil {
-			return fmt.Errorf("on_touch_down: %w", err)
-		}
-		_, err = interp.Evaluate(InterpBindThis(ctx, loginExtension), &onTouchUp.AST)
-		if err != nil {
-			return fmt.Errorf("on_touch_up: %w", err)
-		}
-		return nil
+	_, err = interp.Evaluate(InterpBindThis(ctx, loginExtension), &onTouchDown.AST)
+	if err != nil {
+		return fmt.Errorf("on_touch_down: %w", err)
 	}
-	return bundle.Print("")
+	_, err = interp.Evaluate(InterpBindThis(ctx, loginExtension), &onTouchUp.AST)
+	if err != nil {
+		return fmt.Errorf("on_touch_up: %w", err)
+	}
+	return nil
 }
