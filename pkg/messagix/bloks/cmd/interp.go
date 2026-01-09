@@ -16,7 +16,7 @@ type Interpreter struct {
 	IsAppInstalled    func(url string, pkgname string) bool
 	HasAppPermissions func(permissions ...string) bool
 	GetSecureNonces   func() []string
-	DoRPC             func(name string, params string)
+	DoRPC             func(name string, params map[string]string) error
 
 	Scripts map[BloksScriptID]*BloksLambda
 	Vars    map[BloksVariableID]*BloksScriptLiteral
@@ -46,6 +46,15 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 			return false
 		},
 		GetSecureNonces: func() []string {
+			return nil
+		},
+		DoRPC: func(name string, params map[string]string) error {
+			fmt.Printf("%s\n", name)
+			payload, err := json.Marshal(params)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%s\n", string(payload))
 			return nil
 		},
 
@@ -468,11 +477,22 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			params, err := evalAs[string](ctx, i, &call.Args[1], "asyncaction")
+			params, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[1], "asyncaction")
 			if err != nil {
 				return nil, err
 			}
-			i.DoRPC(name, params)
+			flatParams := map[string]string{}
+			for key, val := range params {
+				str, ok := val.Value().(string)
+				if !ok {
+					return nil, fmt.Errorf("non-string param %T for asyncaction", val.Value())
+				}
+				flatParams[key] = str
+			}
+			err = i.DoRPC(name, flatParams)
+			if err != nil {
+				return nil, err
+			}
 			return BloksNothing, nil
 		}
 	case "bk.action.string.JsonEncode":
@@ -481,7 +501,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			encoded, err := json.Marshal(arg.Flatten)
+			encoded, err := json.Marshal(arg.Flatten())
 			if err != nil {
 				return nil, err
 			}
