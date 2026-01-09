@@ -6,11 +6,34 @@ import (
 )
 
 type Interpreter struct {
-	Vars map[BloksVariableID]BloksJavascriptValue
+	DeviceID        string
+	FamilyDeviceID  string
+	MachineID       string
+	EncryptPassword func(string) string
+
+	Scripts map[BloksScriptID]*BloksLambda
+	Vars    map[BloksVariableID]BloksJavascriptValue
 }
 
 func NewInterpreter(b *BloksBundle) *Interpreter {
-	return &Interpreter{}
+	scripts := map[BloksScriptID]*BloksLambda{}
+	for id, script := range b.Layout.Payload.Scripts {
+		scripts[id] = &BloksLambda{
+			Body: &script.AST,
+		}
+	}
+	return &Interpreter{
+		// some temporary values for testing
+		DeviceID:       "571CEE83-37A1-46D3-860D-B83398943DF7",
+		FamilyDeviceID: "f121bbd7-7b3f-412f-b664-cf33451f4471",
+		MachineID:      "",
+		EncryptPassword: func(pw string) string {
+			return "encrypted:" + pw
+		},
+
+		Scripts: scripts,
+		Vars:    map[BloksVariableID]BloksJavascriptValue{},
+	}
 }
 
 type BloksLambda struct {
@@ -134,7 +157,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			ambientArgs := ctx.Value(interpCtxArgs).([]*BloksScriptLiteral)
 			ambientArgs[idx] = value
-			return nil, nil
+			return BloksNothing, nil
 		}
 	case "bk.action.f32.Eq":
 		{
@@ -148,13 +171,94 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			return BloksLiteralOf(first == second), nil
 		}
+	case "bk.action.bloks.GetScript":
+		{
+			name, err := evalAs[string](ctx, i, &call.Args[0], "getscript")
+			if err != nil {
+				return nil, err
+			}
+			script := i.Scripts[BloksScriptID(name)]
+			if script == nil {
+				return nil, fmt.Errorf("no such script %q", name)
+			}
+			return BloksLiteralOf(script), nil
+		}
+	case "bk.action.bloks.WriteLocalState":
+		{
+			varname, err := evalAs[string](ctx, i, &call.Args[0], "getvar")
+			if err != nil {
+				return nil, err
+			}
+			value, err := i.Evaluate(ctx, &call.Args[1])
+			if err != nil {
+				return nil, err
+			}
+			i.Vars[BloksVariableID(varname)] = value
+			return BloksNothing, nil
+		}
+	case "bk.action.array.Make":
+		{
+			results := []*BloksScriptLiteral{}
+			for _, arg := range call.Args {
+				result, err := i.Evaluate(ctx, &arg)
+				if err != nil {
+					return nil, err
+				}
+				results = append(results, result)
+			}
+			return BloksLiteralOf(results), nil
+		}
+	case "bk.action.map.Make":
+		{
+			first, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.make")
+			if err != nil {
+				return nil, err
+			}
+			second, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[1], "map.make")
+			if err != nil {
+				return nil, err
+			}
+			if len(first) != len(second) {
+				return nil, fmt.Errorf("mismatching map lengths %d != %d", len(first), len(second))
+			}
+			result := map[string]*BloksScriptLiteral{}
+			for idx := 0; idx < len(first); idx++ {
+				key, ok := first[idx].Value().(string)
+				if !ok {
+					return nil, fmt.Errorf("non-string key %T %q", first[0].Value(), first[0].Value())
+				}
+				result[key] = second[idx]
+			}
+			return BloksLiteralOf(result), nil
+		}
+	case "bk.action.caa.login.GetUniqueDeviceId":
+		{
+			return BloksLiteralOf(i.DeviceID), nil
+		}
+	case "bk.fx.action.GetFamilyDeviceId":
+		{
+			return BloksLiteralOf(i.FamilyDeviceID), nil
+		}
+	case "bk.action.caa.FetchMachineID":
+		{
+			return BloksLiteralOf(i.MachineID), nil
+		}
+	case "bk.action.string.EncryptPassword":
+		{
+			pass, err := evalAs[string](ctx, i, &call.Args[0], "encryptpassword")
+			if err != nil {
+				return nil, err
+			}
+			return BloksLiteralOf(pass), nil
+		}
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
 		"bk.action.LogFlytrapData",
 		"bk.action.qpl.MarkerStartV2",
-		"bk.action.qpl.MarkerAnnotate":
-		return nil, nil
+		"bk.action.qpl.MarkerAnnotate",
+		"bk.action.bloks.WriteGlobalConsistencyStore":
+		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
 }

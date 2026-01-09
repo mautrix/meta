@@ -232,6 +232,9 @@ func BloksLiteralOf(val any) *BloksScriptLiteral {
 	}
 }
 
+var BloksNull = BloksLiteralOf(nil)
+var BloksNothing = (*BloksScriptLiteral)(nil)
+
 func (lit *BloksScriptLiteral) IsTruthy() bool {
 	switch val := lit.BloksJavascriptValue.(type) {
 	case bool:

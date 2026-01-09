@@ -5,7 +5,8 @@ import (
 	"reflect"
 )
 
-const BloksVersion = "3988ff4cdf5ca5de647ba84aa74b5bd2fcd4ffd768e0faec8adc3e53492f3f87"
+// Instagram Android 410.1.0.63.71
+const BloksVersion = "b7737193b91c3a2f4050bdfc9d9ae0f578a93b4181fd43efe549daacba5c7db9"
 
 type wrappedBloksParams struct {
 	ServerParams      map[string]any `json:"server_params"`
