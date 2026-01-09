@@ -48,7 +48,7 @@ func mainE() error {
 	if err != nil {
 		return err
 	}
-	un, err := GetUnminifier()
+	un, err := GetUnminifier(bundle)
 	if err != nil {
 		return err
 	}

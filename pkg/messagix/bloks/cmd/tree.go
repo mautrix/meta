@@ -14,6 +14,11 @@ type BloksBundle struct {
 
 func (bb *BloksBundle) Unminify(m *Unminifier) {
 	p := bb.Layout.Payload
+	for _, d := range p.Data {
+		if real, ok := m.Variables[d.ID]; ok && len(real) > 0 {
+			d.ID = real
+		}
+	}
 	for _, s := range p.Scripts {
 		s.Unminify(m)
 	}
@@ -30,6 +35,11 @@ func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *Blok
 func (bb *BloksBundle) Print(indent string) error {
 	p := bb.Layout.Payload
 	fmt.Printf("%s<Bundle>\n", indent)
+	for _, datum := range p.Data {
+		fmt.Printf("%s  <Datum id=%q>\n", indent, datum.ID)
+		BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
+		fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
+	}
 	scriptIDs := []BloksScriptID{}
 	for id := range p.Scripts {
 		scriptIDs = append(scriptIDs, id)
@@ -68,7 +78,7 @@ type BloksLayout struct {
 
 type BloksPayload struct {
 	Scripts     map[BloksScriptID]BloksTreeScript `json:"ft"`
-	Data        []BloksDatum                      `json:"data"`
+	Data        []*BloksDatum                     `json:"data"`
 	Embedded    []BloksEmbeddedPayload            `json:"embedded_payloads"`
 	Props       []BloksProp                       `json:"props"`
 	Templates   map[BloksTemplateID]BloksTreeNode `json:"templates"`
@@ -77,9 +87,9 @@ type BloksPayload struct {
 }
 
 type BloksDatum struct {
-	ID   BloksDatumID   `json:"id"`
-	Type string         `json:"type"`
-	Info BloksDatumInfo `json:"data"`
+	ID   BloksVariableID `json:"id"`
+	Type string          `json:"type"`
+	Info BloksDatumInfo  `json:"data"`
 }
 
 type BloksDatumInfo struct {

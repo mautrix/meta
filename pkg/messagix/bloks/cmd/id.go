@@ -3,7 +3,6 @@ package main
 import "fmt"
 
 type BloksScriptID string
-type BloksDatumID string
 type BloksPayloadID string
 type BloksTemplateID string
 type BloksComponentID string

@@ -24,11 +24,16 @@ type Interpreter struct {
 }
 
 func NewInterpreter(b *BloksBundle) *Interpreter {
+	p := b.Layout.Payload
 	scripts := map[BloksScriptID]*BloksLambda{}
-	for id, script := range b.Layout.Payload.Scripts {
+	for id, script := range p.Scripts {
 		scripts[id] = &BloksLambda{
 			Body: &script.AST,
 		}
+	}
+	vars := map[BloksVariableID]*BloksScriptLiteral{}
+	for _, item := range p.Data {
+		vars[BloksVariableID(item.ID)] = BloksLiteralOf(item.Info.Initial)
 	}
 	return &Interpreter{
 		// some temporary values for testing
@@ -60,7 +65,7 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 		},
 
 		Scripts: scripts,
-		Vars:    map[BloksVariableID]*BloksScriptLiteral{},
+		Vars:    vars,
 	}
 }
 

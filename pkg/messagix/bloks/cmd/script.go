@@ -211,7 +211,13 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 }
 
 func (lit *BloksScriptLiteral) Unminify(m *Unminifier) {
-	//
+	str, ok := lit.Value().(string)
+	if !ok {
+		return
+	}
+	if real, ok := m.Variables[BloksVariableID(str)]; ok && len(real) > 0 {
+		lit.BloksJavascriptValue = string(real)
+	}
 }
 
 func (lit *BloksScriptLiteral) Print(indent string) error {
