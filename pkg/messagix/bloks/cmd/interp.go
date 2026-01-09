@@ -12,7 +12,7 @@ type Interpreter struct {
 	EncryptPassword func(string) string
 
 	Scripts map[BloksScriptID]*BloksLambda
-	Vars    map[BloksVariableID]BloksJavascriptValue
+	Vars    map[BloksVariableID]*BloksScriptLiteral
 }
 
 func NewInterpreter(b *BloksBundle) *Interpreter {
@@ -32,7 +32,7 @@ func NewInterpreter(b *BloksBundle) *Interpreter {
 		},
 
 		Scripts: scripts,
-		Vars:    map[BloksVariableID]BloksJavascriptValue{},
+		Vars:    map[BloksVariableID]*BloksScriptLiteral{},
 	}
 }
 
@@ -115,7 +115,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			return BloksLiteralOf(i.Vars[BloksVariableID(varname)]), nil
+			return i.Vars[BloksVariableID(varname)], nil
 		}
 	case "bk.action.core.TakeLast":
 		{
@@ -284,13 +284,80 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			return BloksLiteralOf(!arg.IsTruthy()), nil
 		}
+	case "null":
+		{
+			return i.Evaluate(ctx, &call.Args[0])
+		}
+	case "bk.action.mins.CallRuntime":
+		{
+			num, err := evalAs[int64](ctx, i, &call.Args[0], "callruntime")
+			if err != nil {
+				return nil, err
+			}
+			if num != 6 {
+				return nil, fmt.Errorf("unknown runtime subr %d", num)
+			}
+			result := map[string]*BloksScriptLiteral{}
+			switch len(call.Args) {
+			case 1:
+				break
+			case 3:
+				key, err := evalAs[string](ctx, i, &call.Args[1], "callruntime")
+				if err != nil {
+					return nil, err
+				}
+				val, err := i.Evaluate(ctx, &call.Args[2])
+				if err != nil {
+					return nil, err
+				}
+				result[key] = val
+			default:
+				return nil, fmt.Errorf("bad arg count %d for runtime subr 6", len(call.Args))
+			}
+			return BloksLiteralOf(result), nil
+		}
+	case "bk.action.array.Put", "bk.action.mins.PutByVal":
+		{
+			dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "put")
+			if err != nil {
+				return nil, err
+			}
+			key, err := evalAs[string](ctx, i, &call.Args[1], "put")
+			if err != nil {
+				return nil, err
+			}
+			val, err := i.Evaluate(ctx, &call.Args[2])
+			if err != nil {
+				return nil, err
+			}
+			dict[key] = val
+			return BloksNothing, nil
+		}
+	case "ig.action.IsDarkModeEnabled":
+		{
+			return BloksLiteralOf(false), nil
+		}
+	case "bk.action.mins.InByVal":
+		{
+			dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "put")
+			if err != nil {
+				return nil, err
+			}
+			key, err := evalAs[string](ctx, i, &call.Args[1], "put")
+			if err != nil {
+				return nil, err
+			}
+			_, ok := dict[key]
+			return BloksLiteralOf(ok), nil
+		}
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
 		"bk.action.LogFlytrapData",
 		"bk.action.qpl.MarkerStartV2",
 		"bk.action.qpl.MarkerAnnotate",
-		"bk.action.bloks.WriteGlobalConsistencyStore":
+		"bk.action.bloks.WriteGlobalConsistencyStore",
+		"bk.action.bloks.ClearFocus":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
