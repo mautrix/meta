@@ -47,6 +47,8 @@ func (c *Client) PrepareE2EEClient() (*whatsmeow.Client, error) {
 		WebsocketURL: c.GetEndpoint("e2ee_ws_url"),
 	}
 	e2eeClient.RefreshCAT = c.refreshCAT
+	e2eeClient.EnableAutoReconnect = true
+	e2eeClient.InitialAutoReconnect = true
 	return e2eeClient, nil
 }
 
