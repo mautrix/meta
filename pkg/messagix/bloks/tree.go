@@ -25,6 +25,7 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 	for _, t := range p.Templates {
 		t.Unminify(m)
 	}
+	p.Action.Unminify(m)
 	p.Tree.Unminify(m)
 }
 
@@ -84,6 +85,7 @@ type BloksPayload struct {
 	Templates   map[BloksTemplateID]BloksTreeNode `json:"templates"`
 	Attribution BloksErrorAttribution             `json:"error_attribution"`
 	Tree        BloksTreeNode                     `json:"tree"`
+	Action      BloksTreeScript                   `json:"action"`
 }
 
 type BloksDatum struct {

@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 
 	//"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -105,12 +105,12 @@ func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 	return &response, nil
 }
 
-func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
+func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) (*bloks.BloksBundle, error) {
 	if c.machineId != "" {
 		randomBytes := make([]byte, 18)
 		_, err := rand.Read(randomBytes)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		c.machineId = base64.StdEncoding.EncodeToString(randomBytes)
 	}
@@ -120,7 +120,7 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 		c.DeviceID = uuid.New()
 	}
 
-	_, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_HOME_PAGE", map[string]any{
+	return c.makeDoublyWrappedBloksRequest(ctx, bloks.BloksDocLoginHome, map[string]any{
 		"is_from_logged_out":                0,
 		"flow_source":                       "aymh_single_profile_native_integration_point",
 		"offline_experiment_group":          "caa_iteration_v2_perf_ls_ios_test_1",
@@ -141,100 +141,6 @@ func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) error {
 		"lois_settings":                    map[string]any{"lois_token": ""},
 		"should_show_nested_nta_from_aymh": 1,
 	})
-
-	return err
-}
-
-func (c *Client) sendAsyncLoginRequest(ctx context.Context, username, password string) (*BloksLoginActionResponsePayload, error) {
-	deviceId := strings.ToUpper(c.DeviceID.String())
-	payload, err := c.makeWrappedBloksRequest(ctx, "CAA_LOGIN_ASYNC_SEND_LOGIN_REQUEST", map[string]any{
-		"family_device_id": deviceId,
-		"is_from_aymh":     0,
-		"should_trigger_override_login_success_action": 0,
-		"INTERNAL__latency_qpl_marker_id":              36707139,
-		"is_from_assistive_id":                         0,
-		"login_source":                                 "Login",
-		"is_from_logged_in_switcher":                   0,
-		"should_trigger_override_login_2fa_action":     0,
-		"is_from_landing_page":                         0,
-		"device_id":                                    deviceId,
-		"INTERNAL__latency_qpl_instance_id":            44728029400434,
-		"is_platform_login":                            0,
-		"is_from_msplit_fallback":                      0,
-		"ar_event_source":                              "login_home_page",
-		"is_from_password_entry_page":                  0,
-		"waterfall_id":                                 "0143cbfa4ec747949d67511836abe901",
-		"access_flow_version":                          "pre_mt_behavior",
-		"credential_type":                              "password",
-		"username_text_input_id":                       "7earom:118",
-		"password_text_input_id":                       "7earom:119",
-		"is_from_logged_out":                           0,
-		"caller":                                       "gslr",
-		"server_login_source":                          "login",
-		"layered_homepage_experiment_group":            "not_in_experiment",
-		"reg_flow_source":                              "aymh_single_profile_native_integration_point",
-		"is_caa_perf_enabled":                          1,
-		"is_vanilla_password_page_empty_password":      0,
-		"is_from_empty_password":                       0,
-		"offline_experiment_group":                     "caa_iteration_v2_perf_ls_ios_test_1",
-		"login_credential_type":                        "none",
-		"two_step_login_type":                          "one_step_login",
-	}, map[string]any{
-		"try_num":                               1,
-		"block_store_machine_id":                "",
-		"contact_point":                         username,
-		"has_granted_read_phone_permissions":    0,
-		"lois_settings":                         map[string]any{"lois_token": ""},
-		"event_step":                            "home_page",
-		"event_flow":                            "login_manual",
-		"should_show_nested_nta_from_aymh":      1,
-		"cloud_trust_token":                     nil,
-		"has_granted_read_contacts_permissions": 0,
-		"device_id":                             deviceId,
-		"sso_token_map_json_string":             `{"": []}`,
-		"auth_secure_device_id":                 "",
-		"openid_tokens":                         map[string]any{},
-		"login_attempt_count":                   1,
-		"app_manager_id":                        "",
-		"has_whatsapp_installed":                0,
-		"aymh_accounts": []any{
-			map[string]any{
-				"id":       "",
-				"profiles": map[string]any{},
-			},
-		},
-		"client_known_key_hash":       "",
-		"fb_ig_device_id":             []string{},
-		"encrypted_msisdn":            "",
-		"secure_family_device_id":     "",
-		"machine_id":                  c.machineId,
-		"password":                    password,
-		"password_contains_non_ascii": "false",
-		"accounts_list": []any{
-			map[string]any{
-				"metadata":        map[string]any{},
-				"uid":             "",
-				"credential_type": "none",
-				"token":           "none",
-			},
-		},
-		"headers_infra_flow_id": "",
-		"family_device_id":      c.DeviceID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	c.Logger.Debug().Any("actionPayload", payload.Action).Msg("Processed Messenger Lite login response")
-
-	payloadData, err := c.parseBloksActionPayload(payload.Action)
-	if err != nil {
-		return nil, err
-	}
-
-	c.Logger.Debug().Any("payloadData", payloadData).Msg("Parsed Bloks action payload")
-
-	return payloadData, nil
 }
 
 type RawCookie struct {
@@ -275,29 +181,6 @@ type BloksLoginActionResponsePayload struct {
 	SessionCookies []RawCookie `json:"session_cookies"`
 }
 
-func (c *Client) parseBloksActionPayload(actionPayload string) (*BloksLoginActionResponsePayload, error) {
-	re := regexp.MustCompile(`\{\\.*?\}"`)
-	match := re.FindString(actionPayload)
-
-	if match == "" {
-		return nil, fmt.Errorf("no json found in action string")
-	}
-
-	match = strings.TrimSuffix(match, `"`)
-	// Unescape double backslashes to single ones
-	unescaped := strings.ReplaceAll(match, `\\`, `\`)
-	unescaped = strings.ReplaceAll(unescaped, `\"`, `"`)
-
-	// Decode into BloksLoginActionResponsePayload
-	var data BloksLoginActionResponsePayload
-	err := json.Unmarshal([]byte(unescaped), &data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON: %w", err)
-	}
-
-	return &data, nil
-}
-
 func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 	newCookies := &cookies.Cookies{}
 	newCookies.UpdateValues(make(map[string]string))
@@ -309,26 +192,150 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
 	// TODO: Extract info from login page
-	err := fb.client.loadMessengerLiteLoginPage(ctx)
+	loginPage, err := fb.client.loadMessengerLiteLoginPage(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
 	}
 
-	key, err := fb.client.fetchLightspeedKey(ctx)
+	unminifier, err := bloks.GetUnminifier(loginPage)
 	if err != nil {
-		return nil, fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
+		return nil, err
+	}
+	loginPage.Unminify(unminifier)
+
+	var loginParams map[string]string
+	loginInterp := bloks.NewInterpreter(loginPage, &bloks.InterpBridge{
+		DeviceID:  strings.ToUpper(fb.client.DeviceID.String()),
+		MachineID: fb.client.machineId,
+		EncryptPassword: func(password string) (string, error) {
+			key, err := fb.client.fetchLightspeedKey(ctx)
+			if err != nil {
+				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
+			}
+
+			encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
+			if err != nil {
+				return "", fmt.Errorf("encrypting password for messenger lite: %w", err)
+			}
+			return encryptedPW, nil
+		},
+		DoRPC: func(name string, params map[string]string) error {
+			if name != "com.bloks.www.bloks.caa.login.async.send_login_request" {
+				return fmt.Errorf("got unexpected rpc %s", name)
+			}
+			loginParams = params
+			return nil
+		},
+	})
+
+	fillTextInput := func(fieldName string, fillText string) error {
+		input := loginPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.components.TextInput" {
+				return false
+			}
+			name, ok := comp.Attributes["html_name"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
+			if !ok {
+				return false
+			}
+			str, ok := name.BloksJavascriptValue.(string)
+			if !ok {
+				return false
+			}
+			return str == fieldName
+		})
+		if input == nil {
+			return fmt.Errorf("couldn't find %s field", fieldName)
+		}
+		err := input.SetTextContent(fillText)
+		if err != nil {
+			return err
+		}
+		onChanged, ok := input.Attributes["on_text_change"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+		if !ok {
+			return fmt.Errorf("%s field doesn't have on_text_change script", fieldName)
+		}
+		_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, input), &onChanged.AST)
+		if err != nil {
+			return fmt.Errorf("%s on_text_changed: %w", fieldName, err)
+		}
+		return nil
 	}
 
-	encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
+	err = fillTextInput("email", username)
 	if err != nil {
-		return nil, fmt.Errorf("encrypting password for messenger lite: %w", err)
+		return nil, err
+	}
+	err = fillTextInput("password", password)
+	if err != nil {
+		return nil, err
 	}
 
-	data, err := fb.client.sendAsyncLoginRequest(ctx, username, encryptedPW)
+	loginText := loginPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+		if comp.ComponentID != "bk.data.TextSpan" {
+			return false
+		}
+		text, ok := comp.Attributes["text"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
+		if !ok {
+			return false
+		}
+		str, ok := text.BloksJavascriptValue.(string)
+		if !ok {
+			return false
+		}
+		return str == "Log in"
+	})
+	if loginText == nil {
+		return nil, fmt.Errorf("couldn't find login button")
+	}
+
+	var loginExtension *bloks.BloksTreeComponent
+	loginText.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
+		loginExtension = comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			return comp.ComponentID == "bk.components.FoaTouchExtension"
+		})
+		return loginExtension != nil
+	})
+	if loginExtension == nil {
+		return nil, fmt.Errorf("couldn't find login extension")
+	}
+	onTouchDown, ok := loginExtension.Attributes["on_touch_down"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+	if !ok {
+		return nil, fmt.Errorf("login button doesn't have on_touch_down script")
+	}
+	onTouchUp, ok := loginExtension.Attributes["on_touch_up"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+	if !ok {
+		return nil, fmt.Errorf("login button doesn't have on_touch_up script")
+	}
+
+	_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchDown.AST)
+	if err != nil {
+		return nil, fmt.Errorf("on_touch_down: %w", err)
+	}
+	_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchUp.AST)
+	if err != nil {
+		return nil, fmt.Errorf("on_touch_up: %w", err)
+	}
+
+	if loginParams == nil {
+		return nil, fmt.Errorf("bloks did not generate login rpc")
+	}
+
+	loginResp, err := fb.client.makeSinglyWrappedBloksRequest(
+		ctx, bloks.BloksDocSendLogin, loginParams,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("sending bloks login request: %w", err)
 	}
 
-	newCookies := convertCookies(data)
-	return newCookies, nil
+	unminifier, err = bloks.GetUnminifier(loginResp)
+	if err != nil {
+		return nil, err
+	}
+	loginResp.Unminify(unminifier)
+
+	loginResp.Print("")
+	return nil, fmt.Errorf("haven't gotten here yet")
+
+	// newCookies := convertCookies(data)
+	// return newCookies, nil
 }

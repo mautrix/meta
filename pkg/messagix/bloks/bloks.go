@@ -29,15 +29,9 @@ type WrappedBloksRequest struct {
 	Params    *wrappedBloksOuterParams `json:"params,omitempty"`
 }
 
-func makeWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID string, params wrappedBloksParams) (*WrappedBloksRequest, error) {
-	innerInnerParamsJson, err := json.Marshal(params)
-	if err != nil {
-		return nil, err
-	}
+func makeSinglyWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID string, params map[string]string) (*WrappedBloksRequest, error) {
+	innerParamsJson, err := json.Marshal(params)
 
-	innerParamsJson, err := json.Marshal(map[string]any{
-		"params": string(innerInnerParamsJson),
-	})
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +51,23 @@ func makeWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID stri
 	return wrappedRequest, nil
 }
 
-func NewWrappedBloksRequest(appID string, serverParams map[string]any, clientParams map[string]any) (*WrappedBloksRequest, error) {
-	return makeWrappedBloksRequest(3, BloksVersion, appID, wrappedBloksParams{
+func makeDoublyWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID string, params wrappedBloksParams) (*WrappedBloksRequest, error) {
+	innerInnerParamsJson, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+
+	return makeSinglyWrappedBloksRequest(pixelRatio, bloksVersion, appID, map[string]string{
+		"params": string(innerInnerParamsJson),
+	})
+}
+
+func NewSinglyWrappedBloksRequest(appID string, params map[string]string) (*WrappedBloksRequest, error) {
+	return makeSinglyWrappedBloksRequest(3, BloksVersion, appID, params)
+}
+
+func NewDoublyWrappedBloksRequest(appID string, serverParams map[string]any, clientParams map[string]any) (*WrappedBloksRequest, error) {
+	return makeDoublyWrappedBloksRequest(3, BloksVersion, appID, wrappedBloksParams{
 		ServerParams:      serverParams,
 		ClientInputParams: clientParams,
 	})
@@ -110,7 +119,7 @@ type BloksComponent struct {
 }
 
 type BloksAppBundle struct {
-	Tree string `json:"bloks_bundle_tree"` // BloksInnerData
+	Tree string `json:"bloks_bundle_tree"` // BloksLayout
 }
 
 type BloksActionData struct {
@@ -122,18 +131,5 @@ type BloksAction struct {
 }
 
 type BloksActionBundle struct {
-	BundleAction string `json:"bloks_bundle_action"` // BloksInnerData
-}
-
-type BloksInnerData struct {
-	Layout BloksLayout `json:"layout"`
-}
-
-type BloksActionLayout struct {
-	Payload BloksActionPayload `json:"bloks_payload"`
-}
-
-type BloksActionPayload struct {
-	Action string `json:"action"` // scuffed lisp
-	// ... more fields that we don't use
+	BundleAction string `json:"bloks_bundle_action"` // BloksLayout
 }

@@ -20,25 +20,29 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-func (c *Client) makeWrappedBloksRequest(ctx context.Context, name string, serverParams map[string]any, clientParams map[string]any) (*bloks.BloksPayload, error) {
-	bloksDoc, ok := bloks.BloksDocs[name]
-	if !ok {
-		return nil, fmt.Errorf("could not find bloks doc by the name of: %s", name)
-	}
-
-	wrappedBloksRequest, err := bloks.NewWrappedBloksRequest(bloksDoc.AppID, serverParams, clientParams)
+func (c *Client) makeSinglyWrappedBloksRequest(ctx context.Context, doc bloks.BloksDoc, params map[string]string) (*bloks.BloksBundle, error) {
+	wrappedBloksRequest, err := bloks.NewSinglyWrappedBloksRequest(doc.AppID, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create wrapped bloks request: %w", err)
 	}
 
-	return c.makeBloksRequest(ctx, bloksDoc, wrappedBloksRequest)
+	return c.makeBloksRequest(ctx, doc, wrappedBloksRequest)
+}
+
+func (c *Client) makeDoublyWrappedBloksRequest(ctx context.Context, doc bloks.BloksDoc, serverParams map[string]any, clientParams map[string]any) (*bloks.BloksBundle, error) {
+	wrappedBloksRequest, err := bloks.NewDoublyWrappedBloksRequest(doc.AppID, serverParams, clientParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create wrapped bloks request: %w", err)
+	}
+
+	return c.makeBloksRequest(ctx, doc, wrappedBloksRequest)
 }
 
 // This has some overlap with makeGraphQLRequest but it's really a
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, variables interface{}) (*bloks.BloksPayload, error) {
+func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, variables interface{}) (*bloks.BloksBundle, error) {
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
@@ -103,14 +107,14 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 		return nil, fmt.Errorf("couldn't find inner bloks payload")
 	}
 
-	var respInner bloks.BloksInnerData
+	var respInner bloks.BloksBundle
 	err = json.Unmarshal([]byte(innerData), &respInner)
 	if err != nil {
 		c.Logger.Trace().Bytes("response", respData).Msg("failed to parse inner bloks payload")
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
 	}
 
-	return &respInner.Layout.Payload, nil
+	return &respInner, nil
 }
 
 func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {
