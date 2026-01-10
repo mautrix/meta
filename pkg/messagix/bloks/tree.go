@@ -25,8 +25,12 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 	for _, t := range p.Templates {
 		t.Unminify(m)
 	}
-	p.Action.Unminify(m)
-	p.Tree.Unminify(m)
+	if p.Action != nil {
+		p.Action.Unminify(m)
+	}
+	if p.Tree != nil {
+		p.Tree.Unminify(m)
+	}
 }
 
 func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
@@ -63,12 +67,22 @@ func (bb *BloksBundle) Print(indent string) error {
 		template.Print(indent + "    ")
 		fmt.Printf("%s  </Template id=%q>\n", indent, id)
 	}
-	fmt.Printf("%s  <Tree>\n", indent)
-	err := bb.Layout.Payload.Tree.Print(indent + "    ")
-	if err != nil {
-		return err
+	if p.Tree != nil {
+		fmt.Printf("%s  <Tree>\n", indent)
+		err := p.Tree.Print(indent + "    ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s  </Tree>\n", indent)
 	}
-	fmt.Printf("%s  </Tree>\n", indent)
+	if p.Action != nil {
+		fmt.Printf("%s  <Action>\n", indent)
+		err := p.Action.Print(indent + "    ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("\n%s  </Action>\n", indent)
+	}
 	fmt.Printf("%s</Bundle>\n", indent)
 	return nil
 }
@@ -84,8 +98,8 @@ type BloksPayload struct {
 	Props       []BloksProp                       `json:"props"`
 	Templates   map[BloksTemplateID]BloksTreeNode `json:"templates"`
 	Attribution BloksErrorAttribution             `json:"error_attribution"`
-	Tree        BloksTreeNode                     `json:"tree"`
-	Action      BloksTreeScript                   `json:"action"`
+	Tree        *BloksTreeNode                    `json:"tree"`
+	Action      *BloksTreeScript                  `json:"action"`
 }
 
 type BloksDatum struct {

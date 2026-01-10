@@ -14,16 +14,17 @@ import (
 )
 
 type InterpBridge struct {
-	DeviceID          string
-	FamilyDeviceID    string
-	MachineID         string
-	EncryptPassword   func(string) (string, error)
-	SIMPhones         any
-	DeviceEmails      any
-	IsAppInstalled    func(url string, pkgnames ...string) bool
-	HasAppPermissions func(permissions ...string) bool
-	GetSecureNonces   func() []string
-	DoRPC             func(name string, params map[string]string) error
+	DeviceID            string
+	FamilyDeviceID      string
+	MachineID           string
+	EncryptPassword     func(string) (string, error)
+	SIMPhones           any
+	DeviceEmails        any
+	IsAppInstalled      func(url string, pkgnames ...string) bool
+	HasAppPermissions   func(permissions ...string) bool
+	GetSecureNonces     func() []string
+	DoRPC               func(name string, params map[string]string) error
+	HandleLoginResponse func(data string) error
 }
 
 type Interpreter struct {
@@ -87,6 +88,11 @@ func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 	if br.DoRPC == nil {
 		br.DoRPC = func(name string, params map[string]string) error {
 			return fmt.Errorf("unhandled rpc %s", name)
+		}
+	}
+	if br.HandleLoginResponse == nil {
+		br.HandleLoginResponse = func(data string) error {
+			return fmt.Errorf("unhandled login response")
 		}
 	}
 	return &interp
@@ -615,6 +621,38 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				},
 			})
 		}
+	case "bk.action.caa.HandleLoginResponseForContextChange":
+		{
+			make, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
+			if !ok {
+				return nil, fmt.Errorf("handleloginresponse non-funcall %T", call.Args[0].BloksScriptNodeContent)
+			}
+			if make.Function != "bk.action.tree.Make" {
+				return nil, fmt.Errorf("handleloginresponse non-tree funcall %s", make.Function)
+			}
+			if len(make.Args)%2 != 1 {
+				return nil, fmt.Errorf("tree.make even number of args %d", len(make.Args))
+			}
+			for idx := 1; idx < len(make.Args); idx += 2 {
+				attr, err := evalAs[int64](ctx, i, &make.Args[idx], "tree.make")
+				if err != nil {
+					return nil, err
+				}
+				if attr != 35 {
+					continue
+				}
+				data, err := evalAs[string](ctx, i, &make.Args[idx+1], "tree.make")
+				if err != nil {
+					return nil, err
+				}
+				err = i.Bridge.HandleLoginResponse(data)
+				if err != nil {
+					return nil, err
+				}
+				return BloksNothing, nil
+			}
+			return nil, fmt.Errorf("no prop 35 in handleloginresponse tree")
+		}
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
@@ -622,7 +660,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.qpl.MarkerStartV2",
 		"bk.action.qpl.MarkerAnnotate",
 		"bk.action.bloks.WriteGlobalConsistencyStore",
-		"bk.action.bloks.ClearFocus":
+		"bk.action.bloks.ClearFocus",
+		"bk.action.qpl.MarkerPoint":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))

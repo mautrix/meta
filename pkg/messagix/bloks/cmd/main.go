@@ -12,7 +12,9 @@ import (
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
-var doInterp = flag.Bool("interp", false, "Run the interpreter")
+var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
+var doLogin = flag.Bool("login", false, "Click the login button")
+var doAction = flag.Bool("action", false, "Run the action script")
 
 func main() {
 	err := mainE()
@@ -55,7 +57,7 @@ func mainE() error {
 		return err
 	}
 	bundle.Unminify(un)
-	if !*doInterp {
+	if *doPrint {
 		return bundle.Print("")
 	}
 	interp := bloks.NewInterpreter(bundle, &bloks.InterpBridge{
@@ -68,7 +70,18 @@ func mainE() error {
 			fmt.Printf("%s\n", string(payload))
 			return nil
 		},
+		HandleLoginResponse: func(data string) error {
+			fmt.Printf("%s\n", data)
+			return nil
+		},
 	})
+	if *doAction {
+		_, err := interp.Evaluate(ctx, &bundle.Layout.Payload.Action.AST)
+		return err
+	}
+	if !*doLogin {
+		return nil
+	}
 	fillTextInput := func(fieldName string, fillText string) error {
 		input := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.components.TextInput" {

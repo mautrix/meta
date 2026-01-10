@@ -191,7 +191,6 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 }
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
-	// TODO: Extract info from login page
 	loginPage, err := fb.client.loadMessengerLiteLoginPage(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
@@ -333,9 +332,27 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	}
 	loginResp.Unminify(unminifier)
 
-	loginResp.Print("")
-	return nil, fmt.Errorf("haven't gotten here yet")
+	var loginRespData string
+	loginRespInterp := bloks.NewInterpreter(loginResp, &bloks.InterpBridge{
+		HandleLoginResponse: func(data string) error {
+			loginRespData = data
+			return nil
+		},
+	})
+	_, err = loginRespInterp.Evaluate(ctx, &loginResp.Layout.Payload.Action.AST)
+	if err != nil {
+		return nil, err
+	}
+	if loginRespData == "" {
+		return nil, fmt.Errorf("login response didn't trigger callback")
+	}
 
-	// newCookies := convertCookies(data)
-	// return newCookies, nil
+	var loginRespPayload BloksLoginActionResponsePayload
+	err = json.Unmarshal([]byte(loginRespData), &loginRespPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	newCookies := convertCookies(&loginRespPayload)
+	return newCookies, nil
 }
