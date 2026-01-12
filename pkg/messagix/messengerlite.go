@@ -2,8 +2,7 @@ package messagix
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,10 +17,22 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
+	"go.mau.fi/util/random"
 )
 
 type MessengerLiteMethods struct {
 	client *Client
+
+	deviceID       uuid.UUID
+	familyDeviceID uuid.UUID
+	machineID      string
+}
+
+func (fb *MessengerLiteMethods) GetSuggestedDeviceID() uuid.UUID {
+	if fb == nil {
+		return uuid.Nil
+	}
+	return fb.deviceID
 }
 
 type NetworkTags struct {
@@ -61,8 +72,8 @@ func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 
 	params := map[string]any{
 		"access_token": useragent.MessengerLiteAccessToken,
-		"device_id":    c.DeviceID,
-		"machine_id":   c.machineId,
+		"device_id":    c.MessengerLite.deviceID,
+		"machine_id":   c.MessengerLite.machineID,
 		"version":      "3",
 	}
 
@@ -103,44 +114,6 @@ func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 	}
 
 	return &response, nil
-}
-
-func (c *Client) loadMessengerLiteLoginPage(ctx context.Context) (*bloks.BloksBundle, error) {
-	if c.machineId != "" {
-		randomBytes := make([]byte, 18)
-		_, err := rand.Read(randomBytes)
-		if err != nil {
-			return nil, err
-		}
-		c.machineId = base64.StdEncoding.EncodeToString(randomBytes)
-	}
-
-	// WADevice doesn't exist yet, this should be copied to store.Device.FacebookUUID
-	if c.DeviceID == uuid.Nil {
-		c.DeviceID = uuid.New()
-	}
-
-	return c.makeDoublyWrappedBloksRequest(ctx, bloks.BloksDocLoginHome, map[string]any{
-		"is_from_logged_out":                0,
-		"flow_source":                       "aymh_single_profile_native_integration_point",
-		"offline_experiment_group":          "caa_iteration_v2_perf_ls_ios_test_1",
-		"family_device_id":                  c.DeviceID,
-		"layered_homepage_experiment_group": "not_in_experiment",
-		"is_caa_perf_enabled":               1,
-		"waterfall_id":                      "0143cbfa4ec747949d67511836abe901",
-		"should_show_logged_in_aymh_ui":     0,
-		"INTERNAL_INFRA_screen_id":          "CAA_LOGIN_HOME_PAGE",
-		"is_platform_login":                 0,
-		"device_id":                         c.DeviceID,
-		"left_nav_button_action":            "BACK",
-		"is_from_aymh":                      1,
-		"access_flow_version":               "F2_FLOW",
-		"machine_id":                        c.machineId,
-	}, map[string]any{
-		"show_internal_settings":           0,
-		"lois_settings":                    map[string]any{"lois_token": ""},
-		"should_show_nested_nta_from_aymh": 1,
-	})
 }
 
 type RawCookie struct {
@@ -191,7 +164,27 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 }
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
-	loginPage, err := fb.client.loadMessengerLiteLoginPage(ctx)
+	fb.client.MessengerLite.deviceID = uuid.New()
+	fb.client.MessengerLite.familyDeviceID = uuid.New()
+	fb.client.MessengerLite.machineID = string(random.StringBytes(25))
+
+	doc := &bloks.BloksDocProcessClientDataAndRedirect
+	loginPage, err := fb.client.makeBloksRequest(ctx, doc, bloks.NewBloksRequest(doc, bloks.BloksParamsInner(map[string]any{
+		"blocked_uid":                               []any{},
+		"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
+		"family_device_id":                          strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
+		"use_auto_login_interstitial":               true,
+		"layered_homepage_experiment_group":         "not_in_experiment",
+		"disable_recursive_auto_login_interstitial": true,
+		"show_internal_settings":                    false,
+		"waterfall_id":                              hex.EncodeToString(random.Bytes(16)),
+		"account_list":                              []any{},
+		"disable_auto_login":                        false,
+		"is_from_logged_in_switcher":                false,
+		"auto_login_interstitial_experiment_group":  "",
+		"device_id":                                 strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
+		"machine_id":                                fb.client.MessengerLite.machineID,
+	})))
 	if err != nil {
 		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
 	}
@@ -202,10 +195,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	}
 	loginPage.Unminify(unminifier)
 
+	var newPage *bloks.BloksBundle
 	var loginParams map[string]string
-	loginInterp := bloks.NewInterpreter(loginPage, &bloks.InterpBridge{
-		DeviceID:  strings.ToUpper(fb.client.DeviceID.String()),
-		MachineID: fb.client.machineId,
+	bridge := bloks.InterpBridge{
+		DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
+		FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
+		MachineID:      fb.client.MessengerLite.machineID,
 		EncryptPassword: func(password string) (string, error) {
 			key, err := fb.client.fetchLightspeedKey(ctx)
 			if err != nil {
@@ -225,7 +220,23 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			loginParams = params
 			return nil
 		},
-	})
+	}
+	loginInterp := bloks.NewInterpreter(loginPage, &bridge)
+	bridge.DisplayNewScreen = func(toDisplay *bloks.BloksBundle) error {
+		newPage = toDisplay
+		return nil
+	}
+
+	_, err = loginInterp.Evaluate(ctx, &loginPage.Layout.Payload.Action.AST)
+	if err != nil {
+		return nil, err
+	}
+	if newPage == nil {
+		return nil, fmt.Errorf("wasn't redirected to login page")
+	}
+
+	loginPage = newPage
+	loginInterp = bloks.NewInterpreter(loginPage, &bridge)
 
 	fillTextInput := func(fieldName string, fillText string) error {
 		input := loginPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
@@ -318,9 +329,15 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	if loginParams == nil {
 		return nil, fmt.Errorf("bloks did not generate login rpc")
 	}
+	var loginParamsInner bloks.BloksParamsInner
+	err = json.Unmarshal([]byte(loginParams["params"]), &loginParamsInner)
+	if err != nil {
+		return nil, err
+	}
 
-	loginResp, err := fb.client.makeSinglyWrappedBloksRequest(
-		ctx, bloks.BloksDocSendLogin, loginParams,
+	doc = &bloks.BloksDocSendLoginRequest
+	loginResp, err := fb.client.makeBloksRequest(
+		ctx, doc, bloks.NewBloksRequest(doc, loginParamsInner),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("sending bloks login request: %w", err)

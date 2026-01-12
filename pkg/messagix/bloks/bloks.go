@@ -8,69 +8,68 @@ import (
 // Messenger iOS 535.0.0.0.0 of 1763582309
 const BloksVersion = "330b36fe786d9b82dd834eb55748d52712a0d09cf6fb7c60931d40204d086306"
 
-type wrappedBloksParams struct {
-	ServerParams      map[string]any `json:"server_params"`
-	ClientInputParams map[string]any `json:"client_input_params"`
+type ExtraStringification[T any] struct {
+	Body T
 }
 
-type wrappedBloksBkContext struct {
+func (extra *ExtraStringification[T]) UnmarshalJSON(data []byte) error {
+	var first string
+	err := json.Unmarshal(data, &first)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(first), extra.Body)
+}
+
+func (extra *ExtraStringification[T]) MarshalJSON() ([]byte, error) {
+	first, err := json.Marshal(extra.Body)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(string(first))
+}
+
+type BloksParamsInner map[string]any
+
+type BloksBkContext struct {
 	PixelRatio   float64 `json:"pixel_ratio"`
 	BloksVersion string  `json:"bloks_version"`
 }
 
-type wrappedBloksOuterParams struct {
+func NewBkContext() *BloksBkContext {
+	return &BloksBkContext{
+		PixelRatio:   3,
+		BloksVersion: BloksVersion,
+	}
+}
+
+type BloksParamsMiddle struct {
+	Params ExtraStringification[BloksParamsInner] `json:"params"`
+}
+
+type BloksParamsOuter struct {
 	BloksVersioningId string `json:"bloks_versioning_id"`
 	AppID             string `json:"app_id"`
-	Params            string `json:"params"`
+
+	Params ExtraStringification[BloksParamsMiddle] `json:"params"`
 }
 
-type WrappedBloksRequest struct {
-	BkContext *wrappedBloksBkContext   `json:"bk_context,omitempty"`
-	Params    *wrappedBloksOuterParams `json:"params,omitempty"`
+type BloksRequestOuter struct {
+	BkContext *BloksBkContext   `json:"bk_context,omitempty"`
+	Params    *BloksParamsOuter `json:"params,omitempty"`
 }
 
-func makeSinglyWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID string, params map[string]string) (*WrappedBloksRequest, error) {
-	innerParamsJson, err := json.Marshal(params)
-
-	if err != nil {
-		return nil, err
-	}
-
-	wrappedRequest := &WrappedBloksRequest{
-		BkContext: &wrappedBloksBkContext{
-			PixelRatio:   pixelRatio,
-			BloksVersion: bloksVersion,
-		},
-		Params: &wrappedBloksOuterParams{
-			BloksVersioningId: bloksVersion,
-			AppID:             appID,
-			Params:            string(innerParamsJson),
+func NewBloksRequest(doc *BloksDoc, inner BloksParamsInner) *BloksRequestOuter {
+	return &BloksRequestOuter{
+		BkContext: NewBkContext(),
+		Params: &BloksParamsOuter{
+			BloksVersioningId: BloksVersion,
+			AppID:             doc.AppID,
+			Params: ExtraStringification[BloksParamsMiddle]{BloksParamsMiddle{
+				Params: ExtraStringification[BloksParamsInner]{inner},
+			}},
 		},
 	}
-
-	return wrappedRequest, nil
-}
-
-func makeDoublyWrappedBloksRequest(pixelRatio float64, bloksVersion string, appID string, params wrappedBloksParams) (*WrappedBloksRequest, error) {
-	innerInnerParamsJson, err := json.Marshal(params)
-	if err != nil {
-		return nil, err
-	}
-
-	return makeSinglyWrappedBloksRequest(pixelRatio, bloksVersion, appID, map[string]string{
-		"params": string(innerInnerParamsJson),
-	})
-}
-
-func NewSinglyWrappedBloksRequest(appID string, params map[string]string) (*WrappedBloksRequest, error) {
-	return makeSinglyWrappedBloksRequest(3, BloksVersion, appID, params)
-}
-
-func NewDoublyWrappedBloksRequest(appID string, serverParams map[string]any, clientParams map[string]any) (*WrappedBloksRequest, error) {
-	return makeDoublyWrappedBloksRequest(3, BloksVersion, appID, wrappedBloksParams{
-		ServerParams:      serverParams,
-		ClientInputParams: clientParams,
-	})
 }
 
 type BloksResponse struct {

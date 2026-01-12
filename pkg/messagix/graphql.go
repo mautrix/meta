@@ -20,29 +20,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-func (c *Client) makeSinglyWrappedBloksRequest(ctx context.Context, doc bloks.BloksDoc, params map[string]string) (*bloks.BloksBundle, error) {
-	wrappedBloksRequest, err := bloks.NewSinglyWrappedBloksRequest(doc.AppID, params)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create wrapped bloks request: %w", err)
-	}
-
-	return c.makeBloksRequest(ctx, doc, wrappedBloksRequest)
-}
-
-func (c *Client) makeDoublyWrappedBloksRequest(ctx context.Context, doc bloks.BloksDoc, serverParams map[string]any, clientParams map[string]any) (*bloks.BloksBundle, error) {
-	wrappedBloksRequest, err := bloks.NewDoublyWrappedBloksRequest(doc.AppID, serverParams, clientParams)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create wrapped bloks request: %w", err)
-	}
-
-	return c.makeBloksRequest(ctx, doc, wrappedBloksRequest)
-}
-
 // This has some overlap with makeGraphQLRequest but it's really a
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, variables interface{}) (*bloks.BloksBundle, error) {
+func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
@@ -55,7 +37,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc bloks.BloksDoc, varia
 	payload.ServerTimestamps = "true"
 	payload.Locale = "en_US"
 	payload.Purpose = "fetch"
-	payload.FbAPIReqFriendlyName = doc.FriendlyName
+	payload.FbAPIReqFriendlyName = "MSGBloksActionRootQuery-" + doc.FriendlyName
 	payload.ClientDocID = doc.ClientDocId
 	payload.EnableCanonicalNaming = "true"
 	payload.EnableCanonicalVariableOverrides = "true"

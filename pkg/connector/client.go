@@ -437,8 +437,8 @@ func (m *MetaClient) connectE2EE() error {
 		isNew = true
 		m.WADevice = m.Main.DeviceStore.NewDevice()
 	}
-	if m.Client.DeviceID != uuid.Nil {
-		m.WADevice.FacebookUUID = m.Client.DeviceID
+	if suggested := m.Client.MessengerLite.GetSuggestedDeviceID(); suggested != uuid.Nil {
+		m.WADevice.FacebookUUID = suggested
 	}
 	m.Client.SetDevice(m.WADevice)
 

@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
@@ -59,9 +58,7 @@ type Client struct {
 	GetNewProxy     func(reason string) (string, error)
 	mayConnectToDGW bool
 
-	device    *store.Device
-	DeviceID  uuid.UUID // aka store.Device.FacebookUUID
-	machineId string
+	device *store.Device
 
 	lsRequests      int
 	graphQLRequests int
