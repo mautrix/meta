@@ -13,7 +13,8 @@ type BloksBundle struct {
 }
 
 func (bb *BloksBundle) Unminify(m *Unminifier) {
-	p := bb.Layout.Payload
+	p := &bb.Layout.Payload
+	p.VariablesOwner = p
 	for _, d := range p.Variables {
 		if real, ok := m.Variables[d.ID]; ok && len(real) > 0 {
 			d.ID = real
@@ -23,6 +24,8 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 		s.Unminify(m)
 	}
 	for _, e := range p.Embedded {
+		pp := &e.Contents.Layout.Payload
+		pp.Variables = p.Variables
 		e.Contents.Unminify(m)
 	}
 	for _, t := range p.Templates {
@@ -41,12 +44,14 @@ func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *Blok
 }
 
 func (bb *BloksBundle) Print(indent string) error {
-	p := bb.Layout.Payload
+	p := &bb.Layout.Payload
 	fmt.Printf("%s<Bundle>\n", indent)
-	for _, datum := range p.Variables {
-		fmt.Printf("%s  <Datum id=%q>\n", indent, datum.ID)
-		BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
-		fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
+	if p.VariablesOwner == p {
+		for _, datum := range p.Variables {
+			fmt.Printf("%s  <Datum id=%q>\n", indent, datum.ID)
+			BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
+			fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
+		}
 	}
 	scriptIDs := []BloksScriptID{}
 	for id := range p.Scripts {
@@ -105,6 +110,7 @@ type BloksPayload struct {
 	ReferencedVariables []BloksVariableID                 `json:"referenced"`
 	ReferencePayloads   []BloksPayloadID                  `json:"referenced_embedded_payload"`
 	Variables           []*BloksVariable                  `json:"data"`
+	VariablesOwner      *BloksPayload
 	Embedded            []BloksEmbeddedPayload            `json:"embedded_payloads"`
 	Props               []BloksProp                       `json:"props"`
 	Templates           map[BloksTemplateID]BloksTreeNode `json:"templates"`

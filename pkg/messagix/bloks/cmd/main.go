@@ -71,7 +71,7 @@ func mainE() error {
 	if *doPrint {
 		return bundle.Print("")
 	}
-	interp := bloks.NewInterpreter(bundle, &bloks.InterpBridge{
+	bridge := bloks.InterpBridge{
 		DoRPC: func(name string, params map[string]string) error {
 			fmt.Printf("%s\n", name)
 			payload, err := json.Marshal(params)
@@ -85,10 +85,28 @@ func mainE() error {
 			fmt.Printf("%s\n", data)
 			return nil
 		},
-	})
+	}
+	interp := bloks.NewInterpreter(bundle, &bridge)
 	if *doAction {
+		gotNewScreen := false
+		if *doLogin {
+			interp.Bridge.DisplayNewScreen = func(newBundle *bloks.BloksBundle) error {
+				bundle = newBundle
+				interp = bloks.NewInterpreter(bundle, &bridge)
+				gotNewScreen = true
+				return nil
+			}
+		}
 		_, err := interp.Evaluate(ctx, &bundle.Layout.Payload.Action.AST)
-		return err
+		if err != nil {
+			return err
+		}
+		if !*doLogin {
+			return nil
+		}
+		if !gotNewScreen {
+			return fmt.Errorf("didn't get new screen from action")
+		}
 	}
 	if !*doLogin {
 		return nil

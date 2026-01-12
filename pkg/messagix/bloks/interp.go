@@ -26,13 +26,15 @@ type InterpBridge struct {
 	GetSecureNonces     func() []string
 	DoRPC               func(name string, params map[string]string) error
 	HandleLoginResponse func(data string) error
+	DisplayNewScreen    func(*BloksBundle) error
 }
 
 type Interpreter struct {
 	Bridge InterpBridge
 
-	Scripts map[BloksScriptID]*BloksLambda
-	Vars    map[BloksVariableID]*BloksScriptLiteral
+	Scripts  map[BloksScriptID]*BloksLambda
+	Payloads map[BloksPayloadID]*BloksBundleRef
+	Vars     map[BloksVariableID]*BloksScriptLiteral
 }
 
 func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
@@ -43,6 +45,12 @@ func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 			Body: &script.AST,
 		}
 	}
+	payloads := map[BloksPayloadID]*BloksBundleRef{}
+	for _, payload := range p.Embedded {
+		payloads[payload.ID] = &BloksBundleRef{
+			Bundle: &payload.Contents,
+		}
+	}
 	vars := map[BloksVariableID]*BloksScriptLiteral{}
 	for _, item := range p.Variables {
 		vars[BloksVariableID(item.ID)] = BloksLiteralOf(item.Info.Initial)
@@ -50,8 +58,9 @@ func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 	interp := Interpreter{
 		Bridge: *br,
 
-		Scripts: scripts,
-		Vars:    vars,
+		Scripts:  scripts,
+		Payloads: payloads,
+		Vars:     vars,
 	}
 	br = &interp.Bridge
 	if br.DeviceID == "" {
@@ -96,6 +105,11 @@ func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 			return fmt.Errorf("unhandled login response")
 		}
 	}
+	if br.DisplayNewScreen == nil {
+		br.DisplayNewScreen = func(bb *BloksBundle) error {
+			return fmt.Errorf("unhandled new screen")
+		}
+	}
 	return &interp
 }
 
@@ -106,6 +120,10 @@ type BloksLambda struct {
 
 type BloksElemRef struct {
 	Component *BloksTreeComponent
+}
+
+type BloksBundleRef struct {
+	Bundle *BloksBundle
 }
 
 type interpCtx string
@@ -177,7 +195,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			return i.Evaluate(ctx, &call.Args[1])
 		}
-	case "bk.action.bloks.GetVariable2":
+	case "bk.action.bloks.GetVariable2", "bk.action.bloks.GetVariableWithScope":
 		{
 			varname, err := evalAs[string](ctx, i, &call.Args[0], "getvar")
 			if err != nil {
@@ -711,6 +729,30 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 					}, call.Args[2]},
 				},
 			})
+		}
+	case "bk.action.fx.OpenSyncScreen":
+		{
+			bundle, err := evalAs[*BloksBundleRef](ctx, i, &call.Args[1], "opensyncscreen")
+			if err != nil {
+				return nil, err
+			}
+			err = i.Bridge.DisplayNewScreen(bundle.Bundle)
+			if err != nil {
+				return nil, err
+			}
+			return BloksNothing, nil
+		}
+	case "bk.action.bloks.GetPayload":
+		{
+			name, err := evalAs[string](ctx, i, &call.Args[0], "getpayload")
+			if err != nil {
+				return nil, err
+			}
+			bundle := i.Payloads[BloksPayloadID(name)]
+			if bundle == nil {
+				return nil, fmt.Errorf("no such payload %q", name)
+			}
+			return BloksLiteralOf(bundle), nil
 		}
 	case
 		"bk.action.animated.Start",
