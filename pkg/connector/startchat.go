@@ -120,10 +120,10 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("New group chat portal wasn't created automatically")
 		}
 	}
-	// TODO fetch or generate info?
 	return &bridgev2.CreateChatResponse{
-		PortalKey: portal.PortalKey,
-		Portal:    portal,
+		PortalKey:  portal.PortalKey,
+		Portal:     portal,
+		PortalInfo: m.makeMinimalChatInfo(realThreadID, table.GROUP_THREAD),
 	}, nil
 }
 
