@@ -21,6 +21,11 @@ import (
 
 var _ bridgev2.BackfillingNetworkAPI = (*MetaClient)(nil)
 
+var ErrorOnBackfillTimeout = false
+var BackfillTimeout = 30 * time.Second
+var BackfillForwardTimeout = 15 * time.Second
+var BackfillBackgroundTimeout = 8 * time.Second
+
 type BackfillCollector struct {
 	*table.UpsertMessages
 	MaxMessages int
@@ -232,19 +237,22 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		if !m.addBackfillCollector(threadID, collector) {
 			return nil, fmt.Errorf("backfill collector already exists for thread %d", threadID)
 		}
-		if !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
-			m.removeBackfillCollector(threadID, collector)
-			return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
-		}
-		timeout := 30 * time.Second
+		defer m.removeBackfillCollector(threadID, collector)
+		// Figure out timeout, ticker 1/10th of that
+		start := time.Now()
+		timeout := BackfillTimeout
 		if params.Forward && bridgev2.PortalEventBuffer == 0 {
-			timeout = 15 * time.Second
+			timeout = BackfillForwardTimeout
 		}
 		if m.Main.Bridge.Background {
-			timeout = 8 * time.Second
+			timeout = BackfillBackgroundTimeout
 		}
-		ticker := time.NewTicker(timeout)
-		prevMinTS := collector.UpsertMessages.Range.MinTimestampMs
+		ticker := time.NewTicker(timeout / 10)
+		defer ticker.Stop()
+		// Finally kick off history request, we'll keep retrying this if we timeout
+		if !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
+			return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
+		}
 	Loop:
 		for {
 			select {
@@ -252,32 +260,24 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 				upsert = collector.UpsertMessages
 				break Loop
 			case <-ticker.C:
-				var newMinTS int64
-				if collector.UpsertMessages.Range != nil {
-					newMinTS = collector.UpsertMessages.Range.MinTimestampMs
-				}
-				if newMinTS == 0 || newMinTS == prevMinTS {
-					zerolog.Ctx(ctx).Error().
-						Any("received_range", collector.UpsertMessages.Range).
-						Msg("Waiting for backfill collector timed out")
-					m.removeBackfillCollector(threadID, collector)
-					upsert = collector.UpsertMessages
+				if collector.UpsertMessages.Range.MinTimestampMs >= oldestMessageTS {
+					zerolog.Ctx(ctx).Warn().Msg("Backfill collector did not call done, but has all messages")
 					break Loop
-				} else {
-					zerolog.Ctx(ctx).Warn().
-						Int64("prev_min_ts", prevMinTS).
-						Int64("new_min_ts", newMinTS).
-						Any("received_range", collector.UpsertMessages.Range).
-						Msg("Backfill collector is taking long, but got new messages after last check, waiting longer")
-					prevMinTS = newMinTS
+				} else if time.Since(start) > timeout {
+					zerolog.Ctx(ctx).Error().Msg("Waiting for backfill collector timed out")
+					if ErrorOnBackfillTimeout {
+						return nil, fmt.Errorf("failed to backfill history")
+					}
+					break Loop
+				}
+				// No response? Let's re-request that history again
+				if !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
+					return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 				}
 			case <-ctx.Done():
-				m.removeBackfillCollector(threadID, collector)
-				ticker.Stop()
 				return nil, ctx.Err()
 			}
 		}
-		ticker.Stop()
 	}
 	return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
 }
