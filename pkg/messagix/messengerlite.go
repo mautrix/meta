@@ -11,13 +11,13 @@ import (
 
 	"github.com/google/uuid"
 
-	//"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/util/random"
+
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
-	"go.mau.fi/util/random"
 )
 
 type MessengerLiteMethods struct {

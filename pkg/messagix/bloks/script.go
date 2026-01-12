@@ -11,7 +11,7 @@ type BloksScriptNode struct {
 	BloksScriptNodeContent
 }
 
-var ParseEndOfFuncall = errors.New("end of funcall")
+var ErrParseEndOfFuncall = errors.New("end of funcall")
 
 func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 	for idx := start; idx < len(code); idx++ {
@@ -23,7 +23,7 @@ func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 			node.BloksScriptNodeContent = &funcall
 			return funcall.Parse(code, idx)
 		case ')':
-			return idx, ParseEndOfFuncall
+			return idx, ErrParseEndOfFuncall
 		default:
 			var literal BloksScriptLiteral
 			node.BloksScriptNodeContent = &literal
@@ -88,7 +88,7 @@ func (call *BloksScriptFuncall) Parse(code string, start int) (int, error) {
 		arg := BloksScriptNode{}
 		var err error
 		next, err = arg.ParseAny(code, next)
-		if errors.Is(err, ParseEndOfFuncall) {
+		if errors.Is(err, ErrParseEndOfFuncall) {
 			for idx := next; idx < len(code); idx++ {
 				switch code[idx] {
 				case '\t', ' ', ',':

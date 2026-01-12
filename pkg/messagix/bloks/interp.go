@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 )
 
@@ -168,7 +167,6 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	if !ok {
 		return nil, fmt.Errorf("unexpected script node %T", form.BloksScriptNodeContent)
 	}
-	zerolog.Ctx(ctx).Trace().Msgf("Evaluating %s with %d args", call.Function, len(call.Args))
 	// Some of the cases in this switch are not needed for any given login. However different
 	// functions get pulled in depending on which API you are talking to, so I left in
 	// everything that came up at one point or another during testing.
@@ -226,9 +224,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				return nil, err
 			}
 			newArgs := make([]*BloksScriptLiteral, maxInterpArgs)
-			for idx := 0; idx < len(fn.BoundArgs); idx++ {
-				newArgs[idx] = fn.BoundArgs[idx]
-			}
+			copy(newArgs, fn.BoundArgs)
 			for idx := 0; idx < len(call.Args)-1; idx++ {
 				result, err := i.Evaluate(ctx, &call.Args[idx+1])
 				if err != nil {
@@ -619,9 +615,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			fn = &*fn // make copy
-			fn.BoundArgs = newArgs
-			return BloksLiteralOf(fn), nil
+			fnCopy := *fn
+			fnCopy.BoundArgs = newArgs
+			return BloksLiteralOf(&fnCopy), nil
 		}
 	case "h9a":
 		{

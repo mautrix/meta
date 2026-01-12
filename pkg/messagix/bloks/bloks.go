@@ -77,7 +77,9 @@ type BloksResponse struct {
 }
 
 type BloksResponseData struct {
-	BloksApp    *BloksAppData    `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
+	//lint:ignore SA5008 handled with custom unmarshaler
+	BloksApp *BloksAppData `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
+	//lint:ignore SA5008 handled with custom unmarshaler
 	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
 }
 

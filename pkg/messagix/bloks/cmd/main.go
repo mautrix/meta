@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
+
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 )
 
