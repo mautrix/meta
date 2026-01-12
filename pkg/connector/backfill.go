@@ -225,6 +225,10 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 			zerolog.Ctx(ctx).Warn().Msg("Can't backfill chat with no messages")
 			return nil, nil
 		}
+		if params.Forward && upsert.Range.MinTimestampMs >= oldestMessageTS {
+			zerolog.Ctx(ctx).Warn().Msg("Forward backfill has all messages already")
+			return nil, nil
+		}
 		doneCh := make(chan struct{})
 		collector := &BackfillCollector{
 			UpsertMessages: upsert,
@@ -261,7 +265,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 				upsert = collector.UpsertMessages
 				break Loop
 			case <-ticker.C:
-				if collector.UpsertMessages.Range.MinTimestampMs >= oldestMessageTS {
+				if params.Forward && collector.UpsertMessages.Range.MinTimestampMs >= oldestMessageTS {
 					zerolog.Ctx(ctx).Warn().Msg("Backfill collector did not call done, but has all messages")
 					break Loop
 				} else if time.Since(start) > timeout {
