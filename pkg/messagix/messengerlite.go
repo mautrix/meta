@@ -220,13 +220,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			loginParams = params
 			return nil
 		},
+		DisplayNewScreen: func(toDisplay *bloks.BloksBundle) error {
+			newPage = toDisplay
+			return nil
+		},
 	}
 	loginInterp := bloks.NewInterpreter(loginPage, &bridge)
-	bridge.DisplayNewScreen = func(toDisplay *bloks.BloksBundle) error {
-		newPage = toDisplay
-		return nil
-	}
-
 	_, err = loginInterp.Evaluate(ctx, &loginPage.Layout.Payload.Action.AST)
 	if err != nil {
 		return nil, err

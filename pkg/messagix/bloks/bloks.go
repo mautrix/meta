@@ -22,7 +22,7 @@ func (extra *ExtraStringification[T]) UnmarshalJSON(data []byte) error {
 }
 
 func (extra *ExtraStringification[T]) MarshalJSON() ([]byte, error) {
-	first, err := json.Marshal(extra.Body)
+	first, err := json.Marshal(&extra.Body)
 	if err != nil {
 		return nil, err
 	}
