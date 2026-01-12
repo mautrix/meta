@@ -252,7 +252,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		if m.Main.Bridge.Background {
 			timeout = BackfillBackgroundTimeout
 		}
-		ticker := time.NewTicker(timeout / 10)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		// Finally kick off history request, we'll keep retrying this if we timeout
 		if !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
