@@ -243,7 +243,6 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 			return nil, fmt.Errorf("backfill collector already exists for thread %d", threadID)
 		}
 		defer m.removeBackfillCollector(threadID, collector)
-		// Figure out timeout, ticker 1/10th of that
 		start := time.Now()
 		timeout := BackfillTimeout
 		if params.Forward && bridgev2.PortalEventBuffer == 0 {
