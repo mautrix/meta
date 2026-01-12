@@ -27,7 +27,7 @@ func GetUnminifier(bundle *BloksBundle) (*Unminifier, error) {
 		return nil, err
 	}
 	u.Variables = map[BloksVariableID]BloksVariableID{}
-	for _, datum := range bundle.Layout.Payload.Data {
+	for _, datum := range bundle.Layout.Payload.Variables {
 		if len(datum.Info.Name) > 0 {
 			u.Variables[datum.ID] = BloksVariableID(datum.Info.Name)
 		}

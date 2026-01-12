@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 )
 
@@ -15,6 +16,7 @@ var filename = flag.String("file", "", "Bloks response to parse")
 var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
 var doLogin = flag.Bool("login", false, "Click the login button")
 var doAction = flag.Bool("action", false, "Run the action script")
+var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
 
 func main() {
 	err := mainE()
@@ -44,10 +46,19 @@ func readAndParse[T any](filename string) (*T, error) {
 
 func mainE() error {
 	ctx := context.Background()
+
 	flag.Parse()
 	if *filename == "" {
 		return fmt.Errorf("-file is mandatory")
 	}
+
+	logLevel, err := zerolog.ParseLevel(*logLevel)
+	if err != nil {
+		return err
+	}
+	log := zerolog.New(zerolog.NewConsoleWriter()).Level(logLevel)
+	ctx = log.WithContext(ctx)
+
 	bundle, err := readAndParse[bloks.BloksBundle](*filename)
 	if err != nil {
 		return err

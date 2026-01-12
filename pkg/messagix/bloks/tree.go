@@ -14,13 +14,16 @@ type BloksBundle struct {
 
 func (bb *BloksBundle) Unminify(m *Unminifier) {
 	p := bb.Layout.Payload
-	for _, d := range p.Data {
+	for _, d := range p.Variables {
 		if real, ok := m.Variables[d.ID]; ok && len(real) > 0 {
 			d.ID = real
 		}
 	}
 	for _, s := range p.Scripts {
 		s.Unminify(m)
+	}
+	for _, e := range p.Embedded {
+		e.Contents.Unminify(m)
 	}
 	for _, t := range p.Templates {
 		t.Unminify(m)
@@ -40,7 +43,7 @@ func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *Blok
 func (bb *BloksBundle) Print(indent string) error {
 	p := bb.Layout.Payload
 	fmt.Printf("%s<Bundle>\n", indent)
-	for _, datum := range p.Data {
+	for _, datum := range p.Variables {
 		fmt.Printf("%s  <Datum id=%q>\n", indent, datum.ID)
 		BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
 		fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
@@ -55,6 +58,11 @@ func (bb *BloksBundle) Print(indent string) error {
 		fmt.Printf("%s  <Script id=%q>\n", indent, id)
 		script.Print(indent + "    ")
 		fmt.Printf("\n%s  </Script id=%q>\n", indent, id)
+	}
+	for _, emb := range p.Embedded {
+		fmt.Printf("%s  <EmbeddedPayload id=%q>\n", indent, emb.ID)
+		emb.Contents.Print(indent + "    ")
+		fmt.Printf("%s  </EmbeddedPayload id=%q>\n", indent, emb.ID)
 	}
 	templateIDs := []BloksTemplateID{}
 	for id := range p.Templates {
@@ -88,21 +96,24 @@ func (bb *BloksBundle) Print(indent string) error {
 }
 
 type BloksLayout struct {
-	Payload BloksPayload `json:"bloks_payload"`
+	Payload         BloksPayload `json:"bloks_payload"`
+	PreparsePayload bool         `json:"preparse_payload"`
 }
 
 type BloksPayload struct {
-	Scripts     map[BloksScriptID]BloksTreeScript `json:"ft"`
-	Data        []*BloksDatum                     `json:"data"`
-	Embedded    []BloksEmbeddedPayload            `json:"embedded_payloads"`
-	Props       []BloksProp                       `json:"props"`
-	Templates   map[BloksTemplateID]BloksTreeNode `json:"templates"`
-	Attribution BloksErrorAttribution             `json:"error_attribution"`
-	Tree        *BloksTreeNode                    `json:"tree"`
-	Action      *BloksTreeScript                  `json:"action"`
+	Scripts             map[BloksScriptID]BloksTreeScript `json:"ft"`
+	ReferencedVariables []BloksVariableID                 `json:"referenced"`
+	ReferencePayloads   []BloksPayloadID                  `json:"referenced_embedded_payload"`
+	Variables           []*BloksVariable                  `json:"data"`
+	Embedded            []BloksEmbeddedPayload            `json:"embedded_payloads"`
+	Props               []BloksProp                       `json:"props"`
+	Templates           map[BloksTemplateID]BloksTreeNode `json:"templates"`
+	Attribution         BloksErrorAttribution             `json:"error_attribution"`
+	Tree                *BloksTreeNode                    `json:"tree"`
+	Action              *BloksTreeScript                  `json:"action"`
 }
 
-type BloksDatum struct {
+type BloksVariable struct {
 	ID   BloksVariableID `json:"id"`
 	Type string          `json:"type"`
 	Info BloksDatumInfo  `json:"data"`

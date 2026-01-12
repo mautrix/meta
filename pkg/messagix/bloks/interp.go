@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 )
 
@@ -43,7 +44,7 @@ func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 		}
 	}
 	vars := map[BloksVariableID]*BloksScriptLiteral{}
-	for _, item := range p.Data {
+	for _, item := range p.Variables {
 		vars[BloksVariableID(item.ID)] = BloksLiteralOf(item.Info.Initial)
 	}
 	interp := Interpreter{
@@ -149,6 +150,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	if !ok {
 		return nil, fmt.Errorf("unexpected script node %T", form.BloksScriptNodeContent)
 	}
+	zerolog.Ctx(ctx).Trace().Msgf("Evaluating %s with %d args", call.Function, len(call.Args))
 	// Some of the cases in this switch are not needed for any given login. However different
 	// functions get pulled in depending on which API you are talking to, so I left in
 	// everything that came up at one point or another during testing.
@@ -164,7 +166,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			return i.Evaluate(ctx, &call.Args[2])
 		}
-	case "bk.action.bool.Or":
+	case "bk.action.bool.Or", "bk.action.core.Coalesce":
 		{
 			first, err := i.Evaluate(ctx, &call.Args[0])
 			if err != nil {
@@ -255,7 +257,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			if err != nil {
 				return nil, err
 			}
-			return BloksLiteralOf(first == second), nil
+			return BloksLiteralOf(first.Value() == second.Value()), nil
 		}
 	case "bk.action.bloks.GetScript":
 		{
@@ -652,6 +654,63 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				return BloksNothing, nil
 			}
 			return nil, fmt.Errorf("no prop 35 in handleloginresponse tree")
+		}
+	case "bk.action.i64.Const":
+		{
+			return i.Evaluate(ctx, &call.Args[0])
+		}
+	case "bk.action.map.Get":
+		{
+			obj, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "merge")
+			if err != nil {
+				return nil, err
+			}
+			key, err := evalAs[string](ctx, i, &call.Args[1], "merge")
+			if err != nil {
+				return nil, err
+			}
+			val, ok := obj[key]
+			if !ok {
+				return BloksNull, nil
+			}
+			return val, nil
+		}
+	case "bk.action.core.AsNonnull":
+		{
+			result, err := i.Evaluate(ctx, &call.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			if result.Value() == nil {
+				return nil, fmt.Errorf("asnonnull got null")
+			}
+			return result, nil
+		}
+	case "bk.action.mins.AssertType":
+		{
+			// Ignore the second argument which is a numeric type, for now
+			val, err := i.Evaluate(ctx, &call.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			return val, nil
+		}
+	case "bk.action.mins.GetByValOr":
+		{
+			return i.Evaluate(ctx, &BloksScriptNode{
+				BloksScriptNodeContent: &BloksScriptFuncall{
+					Function: "bk.action.bool.Or",
+					Args: []BloksScriptNode{{
+						BloksScriptNodeContent: &BloksScriptFuncall{
+							Function: "bk.action.map.Get",
+							Args: []BloksScriptNode{
+								call.Args[0],
+								call.Args[1],
+							},
+						},
+					}, call.Args[2]},
+				},
+			})
 		}
 	case
 		"bk.action.animated.Start",

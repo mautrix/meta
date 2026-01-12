@@ -148,6 +148,9 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 		if code[idx] >= '0' && code[idx] <= '9' {
 			continue
 		}
+		if code[idx] == '-' {
+			continue
+		}
 		if code[idx] == '.' {
 			decimal = true
 			continue
@@ -207,6 +210,7 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 		lit.BloksJavascriptValue = false
 		return start + 5, nil
 	}
+	fmt.Printf("context: %s\n", code)
 	return start, fmt.Errorf("unknown char %q", code[start])
 }
 
@@ -234,6 +238,9 @@ func (lit *BloksScriptLiteral) Value() any {
 }
 
 func BloksLiteralOf(val any) *BloksScriptLiteral {
+	if _, ok := val.(*BloksScriptLiteral); ok {
+		panic("logic error, constructing nested literal")
+	}
 	return &BloksScriptLiteral{
 		BloksJavascriptValue(val),
 	}
