@@ -225,9 +225,9 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 			zerolog.Ctx(ctx).Warn().Msg("Can't backfill chat with no messages")
 			return nil, nil
 		}
-		if params.Forward && upsert.Range.MinTimestampMs >= oldestMessageTS {
-			zerolog.Ctx(ctx).Warn().Msg("Forward backfill has all messages already")
-			return nil, nil
+		if params.Forward && params.BundledData != nil && upsert.Range.MinTimestampMs >= oldestMessageTS {
+			zerolog.Ctx(ctx).Debug().Msg("Forward backfill has all messages already")
+			return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
 		}
 		doneCh := make(chan struct{})
 		collector := &BackfillCollector{
