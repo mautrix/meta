@@ -155,8 +155,8 @@ type BloksLoginActionResponsePayload struct {
 }
 
 func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
-	newCookies := &cookies.Cookies{}
-	newCookies.UpdateValues(make(map[string]string))
+	newCookies := &cookies.Cookies{Platform: types.MessengerLite}
+	newCookies.UpdateValues(make(map[cookies.MetaCookieName]string))
 	for _, raw := range payload.SessionCookies {
 		newCookies.Set(cookies.MetaCookieName(raw.Name), raw.Value)
 	}

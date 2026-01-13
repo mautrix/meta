@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -18,6 +19,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/util/exslices"
 )
 
 const (
@@ -197,26 +199,28 @@ var (
 	ErrLoginUnknown          = bridgev2.RespError{ErrCode: "M_UNKNOWN", Err: "Internal error logging in", StatusCode: http.StatusInternalServerError}
 )
 
-func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	c := &cookies.Cookies{Platform: m.Mode}
-	c.UpdateValues(strCookies)
-
-	missingCookies := c.GetMissingCookieNames()
-	if len(missingCookies) > 0 {
-		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
-	}
-
-	log := m.User.Log.With().Str("component", "messagix").Logger()
-	client := messagix.NewClient(c, log, m.Main.getMessagixConfig())
-	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
-		client.GetNewProxy = m.Main.getProxy
+func getMessagixClient(log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies) (*messagix.Client, error) {
+	client := messagix.NewClient(c, log, conn.getMessagixConfig())
+	if conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "" {
+		client.GetNewProxy = conn.getProxy
 		if !client.UpdateProxy("login") {
 			return nil, fmt.Errorf("failed to update proxy")
 		}
 	}
+	return client, nil
+}
+
+func loginWithCookies(
+	ctx context.Context,
+	log zerolog.Logger,
+	client *messagix.Client,
+	bridgeUser *bridgev2.User,
+	conn *MetaConnector,
+	c *cookies.Cookies,
+) (*bridgev2.LoginStep, error) {
 
 	log.Debug().
-		Strs("cookie_names", slices.Collect(maps.Keys(strCookies))).
+		Strs("cookie_names", exslices.CastToString[string](slices.Collect(maps.Keys(c.GetAll())))).
 		Msg("Logging in with cookies")
 	user, tbl, err := client.LoadMessagesPage(ctx)
 	if err != nil {
@@ -248,7 +252,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		loginUA = req.Header.Get("User-Agent")
 	}
 
-	ul, err := m.User.NewLogin(ctx, &database.UserLogin{
+	ul, err := bridgeUser.NewLogin(ctx, &database.UserLogin{
 		ID:         loginID,
 		RemoteName: user.GetName(),
 		RemoteProfile: status.RemoteProfile{
@@ -271,7 +275,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	metaClient.lastFullReconnect = time.Time{}
 	metaClient.Client = client
 
-	backgroundCtx := ul.Log.WithContext(m.Main.Bridge.BackgroundCtx)
+	backgroundCtx := ul.Log.WithContext(conn.Bridge.BackgroundCtx)
 	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	go metaClient.connectWithTable(backgroundCtx, tbl, user)
 	return &bridgev2.LoginStep{
@@ -283,6 +287,27 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 			UserLogin:   ul,
 		},
 	}, nil
+}
+
+func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+	c := &cookies.Cookies{Platform: m.Mode}
+	strCookiesCopy := map[cookies.MetaCookieName]string{}
+	for key, val := range strCookies {
+		strCookiesCopy[cookies.MetaCookieName(key)] = val
+	}
+	c.UpdateValues(strCookiesCopy)
+
+	missingCookies := c.GetMissingCookieNames()
+	if len(missingCookies) > 0 {
+		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
+	}
+
+	log := m.User.Log.With().Str("component", "messagix").Logger()
+	client, err := getMessagixClient(log, m.Main, c)
+	if err != nil {
+		return nil, err
+	}
+	return loginWithCookies(ctx, log, client, m.User, m.Main, c)
 }
 
 type MetaNativeLogin struct {
@@ -308,91 +333,29 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 }
 
 func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	log := m.User.Log.With().Str("component", "messagix").Logger()
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-	client := messagix.NewClient(fakeCookies, log, m.Main.getMessagixConfig())
-	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
-		client.GetNewProxy = m.Main.getProxy
-		if !client.UpdateProxy("login") {
-			return nil, fmt.Errorf("failed to update proxy")
-		}
+
+	log := m.User.Log.With().Str("component", "messagix").Logger()
+	client, err := getMessagixClient(log, m.Main, fakeCookies)
+	if err != nil {
+		return nil, err
 	}
 
-	cookies, err := client.MessengerLite.Login(ctx, input["username"], input["password"])
+	c, err := client.MessengerLite.Login(ctx, input["username"], input["password"])
 	if err != nil {
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
 
-	newCookies, err := cookies.MarshalJSON()
+	client.GetCookies().UpdateValues(c.GetAll())
+
+	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, c)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal cookies: %w", err)
-	}
-	client.GetCookies().UnmarshalJSON(newCookies)
-
-	log.Trace().Any("cookies", cookies).Msg("Logged in with Messenger Lite")
-
-	user, tbl, err := client.LoadMessagesPage(ctx)
-	if err != nil {
-		log.Err(err).Msg("Failed to load messages page for login")
-		if errors.Is(err, messagix.ErrChallengeRequired) {
-			return nil, ErrLoginChallenge
-		} else if errors.Is(err, messagix.ErrCheckpointRequired) {
-			return nil, ErrLoginCheckpoint
-		} else if errors.Is(err, messagix.ErrConsentRequired) {
-			return nil, ErrLoginConsent
-		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
-			return nil, ErrLoginTokenInvalidated
-		} else {
-			return nil, fmt.Errorf("%w: %w", ErrLoginUnknown, err)
-		}
+		return nil, err
 	}
 
-	log.Trace().Any("user", user).Any("tbl", tbl).Msg("Loaded user after Messenger Lite login")
-	id := user.GetFBID()
-
-	loginID := metaid.MakeUserLoginID(id)
-	var loginUA string
-	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {
-		loginUA = req.Header.Get("User-Agent")
-	}
-
-	ul, err := m.User.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: user.GetName(),
-		RemoteProfile: status.RemoteProfile{
-			Name: user.GetName(),
-		},
-		Metadata: &metaid.UserLoginMetadata{
-			Platform: client.GetCookies().Platform,
-			Cookies:  client.GetCookies(),
-			LoginUA:  loginUA,
-		},
-	}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save new login: %w", err)
-	}
-
-	metaClient := ul.Client.(*MetaClient)
-	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
-	client.Logger = metaClient.Client.Logger
-	client.SetEventHandler(metaClient.handleMetaEvent)
-	metaClient.lastFullReconnect = time.Time{}
-	metaClient.Client = client
-
-	backgroundCtx := ul.Log.WithContext(m.Main.Bridge.BackgroundCtx)
-	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
-	go metaClient.connectWithTable(backgroundCtx, tbl, user)
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeComplete,
-		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Logged in as %s (%d)", user.GetName(), id),
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: ul.ID,
-			UserLogin:   ul,
-		},
-	}, nil
+	return step, nil
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)

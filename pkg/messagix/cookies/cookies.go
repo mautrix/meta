@@ -53,7 +53,7 @@ type Cookies struct {
 	IGWWWClaim string
 }
 
-func (c *Cookies) UpdateValues(newValues map[string]string) {
+func (c *Cookies) UpdateValues(newValues map[MetaCookieName]string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.values = make(map[MetaCookieName]string)
@@ -133,6 +133,16 @@ func (c *Cookies) Get(key MetaCookieName) string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.values[key]
+}
+
+func (c *Cookies) GetAll() map[MetaCookieName]string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	newMap := map[MetaCookieName]string{}
+	for key, val := range c.values {
+		newMap[key] = val
+	}
+	return newMap
 }
 
 func (c *Cookies) Set(key MetaCookieName, value string) {
