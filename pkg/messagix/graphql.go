@@ -12,11 +12,92 @@ import (
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
+
+// This has some overlap with makeGraphQLRequest but it's really a
+// completely different API that takes a ton of different parameters
+// and is used by a different client, despite also being called
+// "graphql" in the url.
+func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
+	vBytes, err := json.Marshal(variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
+	}
+
+	payload := &HttpQuery{}
+	payload.Method = "post"
+	payload.Pretty = "false"
+	payload.Format = "json"
+	payload.ServerTimestamps = "true"
+	payload.Locale = "en_US"
+	payload.Purpose = "fetch"
+	payload.FbAPIReqFriendlyName = "MSGBloksActionRootQuery-" + doc.FriendlyName
+	payload.ClientDocID = doc.ClientDocId
+	payload.EnableCanonicalNaming = "true"
+	payload.EnableCanonicalVariableOverrides = "true"
+	payload.EnableCanonicalNamingAmbiguousTypePrefixing = "true"
+	payload.Variables = string(vBytes)
+
+	form, err := query.Values(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	payloadBytes := []byte(form.Encode())
+
+	headers, err := c.buildMessengerLiteHeaders()
+	if err != nil {
+		return nil, err
+	}
+
+	headers.Set("x-fb-friendly-name", doc.FriendlyName)
+	headers.Set("x-root-field-name", "bloks_action")
+	headers.Set("x-graphql-request-purpose", "fetch")
+	headers.Set("x-graphql-client-library", "pando")
+
+	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
+
+	reqUrl := c.GetEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
+	_, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var respOuter bloks.BloksResponse
+	err = json.Unmarshal(respData, &respOuter)
+	if err != nil {
+		return nil, fmt.Errorf("parsing outer bloks payload: %w", err)
+	}
+
+	innerData := ""
+	if respOuter.Data.BloksApp != nil {
+		innerData = respOuter.Data.BloksApp.Screen.Component.Bundle.Tree
+	}
+	if respOuter.Data.BloksAction != nil {
+		innerData = respOuter.Data.BloksAction.Action.Bundle.BundleAction
+	}
+
+	if innerData == "" {
+		c.Logger.Trace().Bytes("response", respData).Msg("failed to find inner bloks payload")
+		return nil, fmt.Errorf("couldn't find inner bloks payload")
+	}
+
+	var respInner bloks.BloksBundle
+	err = json.Unmarshal([]byte(innerData), &respInner)
+	if err != nil {
+		c.Logger.Trace().Bytes("response", respData).Msg("failed to parse inner bloks payload")
+		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
+	}
+
+	return &respInner, nil
+}
 
 func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {
 	graphQLDoc, ok := graphql.GraphQLDocs[name]

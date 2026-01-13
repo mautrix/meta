@@ -7,6 +7,7 @@ toolchain go1.25.5
 tool go.mau.fi/util/cmd/maubuild
 
 require (
+	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c
 	github.com/gabriel-vasile/mimetype v1.4.12
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.6.0

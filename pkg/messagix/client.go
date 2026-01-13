@@ -39,10 +39,11 @@ type Config struct {
 }
 
 type Client struct {
-	Instagram *InstagramMethods
-	Facebook  *FacebookMethods
-	Logger    zerolog.Logger
-	Platform  types.Platform
+	Instagram     *InstagramMethods
+	Facebook      *FacebookMethods
+	MessengerLite *MessengerLiteMethods
+	Logger        zerolog.Logger
+	Platform      types.Platform
 
 	http         *http.Client
 	socket       *Socket
@@ -222,6 +223,9 @@ func (c *Client) configurePlatformClient() {
 	case types.Messenger:
 		selectedEndpoints = endpoints.MessengerEndpoints
 		c.Facebook = &FacebookMethods{client: c}
+	case types.MessengerLite:
+		selectedEndpoints = endpoints.MessengerLiteEndpoints
+		c.MessengerLite = &MessengerLiteMethods{client: c}
 	case types.Instagram:
 		selectedEndpoints = endpoints.InstagramEndpoints
 		c.Instagram = &InstagramMethods{client: c}

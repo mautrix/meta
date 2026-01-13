@@ -29,7 +29,7 @@ type HttpQuery struct {
 	S                    string `url:"__s,omitempty"`         // not required
 	Hsi                  string `url:"__hsi,omitempty"`       // not required
 	Dyn                  string `url:"__dyn,omitempty"`       // not required
-	Csr                  string `url:"__csr"`                 // not required
+	Csr                  string `url:"__csr,omitempty"`       // not required
 	CometReq             string `url:"__comet_req,omitempty"` // not required but idk what this is
 	FbDtsg               string `url:"fb_dtsg,omitempty"`
 	Jazoest              string `url:"jazoest,omitempty"`                  // not required
@@ -56,6 +56,21 @@ type HttpQuery struct {
 	RouteURL              string `url:"route_url,omitempty"`                // not required
 	RoutingNamespace      string `url:"routing_namespace,omitempty"`        // not required
 	Crn                   string `url:"__crn,omitempty"`                    // not required
+
+	// The following keys are used for Messenger Lite:
+
+	Method string `url:"method,omitempty"`
+	Pretty string `url:"pretty,omitempty"` // "true" or "false"
+	Format string `url:"format,omitempty"`
+	// ServerTimestamps
+	Locale  string `url:"locale,omitempty"`
+	Purpose string `url:"purpose,omitempty"`
+	// FbAPIReqFriendlyName
+	ClientDocID                                 string `url:"client_doc_id,omitempty"`
+	EnableCanonicalNaming                       string `url:"enable_canonical_naming,omitempty"`                          // "true" or "false"
+	EnableCanonicalVariableOverrides            string `url:"enable_canonical_variable_overrides,omitempty"`              // "true" or "false"
+	EnableCanonicalNamingAmbiguousTypePrefixing string `url:"enable_canonical_naming_ambiguous_type_prefixing,omitempty"` // "true" or "false"
+	// Variables
 }
 
 func (c *Client) newHTTPQuery() *HttpQuery {
@@ -272,6 +287,25 @@ func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header 
 		headers.Set("x-asbd-id", "129477")
 	}
 	return headers
+}
+
+func (c *Client) buildMessengerLiteHeaders() (http.Header, error) {
+
+	analHdr, err := makeRequestAnalyticsHeader()
+	if err != nil {
+		return nil, err
+	}
+
+	// This isn't from a browser, so we don't include most of the usual headers
+	headers := http.Header{}
+	headers.Set("user-agent", useragent.MessengerLiteUserAgent)
+	headers.Set("x-fb-http-engine", "Tigon+iOS")
+	headers.Set("accept", "*/*")
+	headers.Set("priority", "u=3, i")
+	headers.Set("accept-language", "en-US,en;q=0.9")
+	headers.Set("x-fb-request-analytics-tags", analHdr)
+
+	return headers, nil
 }
 
 func (c *Client) addFacebookHeaders(h *http.Header) {

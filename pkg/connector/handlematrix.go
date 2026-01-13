@@ -654,9 +654,9 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		Bool("is_whatsapp_e2ee", portalMeta.ThreadType.IsWhatsApp()).
 		Msg("Deleting chat")
 
-	if platform == types.Instagram {
+	if platform.IsInstagram() {
 		return t.Client.Instagram.DeleteThread(ctx, strconv.FormatInt(threadID, 10))
-	} else if platform == types.Facebook || platform == types.Messenger {
+	} else if platform.IsMessenger() {
 		_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
 			ThreadKey:  threadID,
 			RemoveType: 0,
@@ -692,7 +692,7 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 			return false, err
 		}
 		return true, nil
-	} else if platform == types.Facebook || platform == types.Messenger {
+	} else if platform.IsMessenger() {
 		_, err := m.Client.ExecuteTasks(ctx, &socket.RenameThreadTask{
 			ThreadKey:  threadID,
 			ThreadName: msg.Content.Name,

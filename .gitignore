@@ -5,6 +5,7 @@
 !example-config.yaml
 
 *.json
+!**/bloks/minify.json
 *.db
 *.db-shm
 *.db-wal
