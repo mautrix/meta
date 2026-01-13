@@ -6,6 +6,13 @@ import (
 
 type Platform int
 
+// Rather than matching on these enum values specifically, please
+// consider using the utility methods down below, which implement
+// logical operations such as "does this represent a Messenger
+// account" and "does this represent an account where the user logged
+// in via Facebook". That way when new enum values are added,
+// callsites do not have to be updated for existing code to keep
+// working for those new values that may be similar to existing ones.
 const (
 	Unset Platform = iota
 	Instagram

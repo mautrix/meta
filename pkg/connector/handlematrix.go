@@ -692,7 +692,7 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 			return false, err
 		}
 		return true, nil
-	} else if platform == types.Facebook || platform == types.Messenger || platform == types.MessengerLite {
+	} else if platform.IsMessenger() {
 		_, err := m.Client.ExecuteTasks(ctx, &socket.RenameThreadTask{
 			ThreadKey:  threadID,
 			ThreadName: msg.Content.Name,
