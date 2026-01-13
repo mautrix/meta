@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+	"time"
 
 	up "go.mau.fi/util/configupgrade"
 	"gopkg.in/yaml.v3"
@@ -40,6 +41,13 @@ type Config struct {
 	SendPresenceOnTyping             bool `yaml:"send_presence_on_typing"`
 	ReceiveInstagramTypingIndicators bool `yaml:"receive_instagram_typing_indicators"`
 	DisableViewOnce                  bool `yaml:"disable_view_once"`
+
+	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
+}
+
+type ThreadBackfillConfig struct {
+	Enabled    bool          `yaml:"enabled"`
+	BatchDelay time.Duration `yaml:"batch_delay"`
 }
 
 type umConfig Config
@@ -74,6 +82,8 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "send_presence_on_typing")
 	helper.Copy(up.Bool, "receive_instagram_typing_indicators")
 	helper.Copy(up.Bool, "disable_view_once")
+	helper.Copy(up.Bool, "thread_backfill", "enabled")
+	helper.Copy(up.Str, "thread_backfill", "batch_delay")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
