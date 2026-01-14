@@ -111,7 +111,7 @@ type BloksPayload struct {
 	ReferencePayloads   []BloksPayloadID                  `json:"referenced_embedded_payload"`
 	Variables           []*BloksVariable                  `json:"data"`
 	VariablesOwner      *BloksPayload
-	Embedded            []BloksEmbeddedPayload            `json:"embedded_payloads"`
+	Embedded            []*BloksEmbeddedPayload           `json:"embedded_payloads"`
 	Props               []BloksProp                       `json:"props"`
 	Templates           map[BloksTemplateID]BloksTreeNode `json:"templates"`
 	Attribution         BloksErrorAttribution             `json:"error_attribution"`
