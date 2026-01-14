@@ -695,7 +695,27 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		return BloksLiteralOf(len(str)), nil
+		return BloksLiteralOf(int64(len(str))), nil
+	case "bk.action.mins.Ge":
+		lhs, err := evalAs[int64](ctx, i, &call.Args[0], "mins.ge")
+		if err != nil {
+			return nil, err
+		}
+		rhs, err := evalAs[int64](ctx, i, &call.Args[1], "mins.ge")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(lhs >= rhs), nil
+	case "bk.action.mins.Le":
+		lhs, err := evalAs[int64](ctx, i, &call.Args[0], "mins.ge")
+		if err != nil {
+			return nil, err
+		}
+		rhs, err := evalAs[int64](ctx, i, &call.Args[1], "mins.ge")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(lhs <= rhs), nil
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
@@ -705,7 +725,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.bloks.WriteGlobalConsistencyStore",
 		"bk.action.bloks.ClearFocus",
 		"bk.action.qpl.MarkerPoint",
-		"bk.action.qpl.MarkerEndV2":
+		"bk.action.qpl.MarkerEndV2",
+		"bk.action.bloks.DismissKeyboard":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))

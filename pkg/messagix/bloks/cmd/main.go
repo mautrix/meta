@@ -236,7 +236,6 @@ func mainE() error {
 		if err != nil {
 			return fmt.Errorf("code on_text_changed: %w", err)
 		}
-		fmt.Println("tapping")
 		err = tapButton("Continue")
 		if err != nil {
 			return err
