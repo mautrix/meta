@@ -726,7 +726,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.bloks.ClearFocus",
 		"bk.action.qpl.MarkerPoint",
 		"bk.action.qpl.MarkerEndV2",
-		"bk.action.bloks.DismissKeyboard":
+		"bk.action.bloks.DismissKeyboard",
+		"bk.action.qpl.userflow.MarkPointV2",
+		"bk.action.qpl.userflow.EndFlowSuccessV2":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))

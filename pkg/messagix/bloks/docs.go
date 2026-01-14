@@ -1,29 +1,33 @@
 package bloks
 
 type BloksDoc struct {
-	ClientDocId  string
-	AppID        string // used in inner layer
-	FriendlyName string // usually MSGBloksActionRootQuery-{AppId}
+	ClientDocID string
+	AppID       string // used in inner layer
 }
 
 var (
 	BloksDocLoginHome BloksDoc = BloksDoc{
-		ClientDocId: "28114594638751287741908354449",
+		ClientDocID: "28114594638751287741908354449",
 		AppID:       "com.bloks.www.caa.login.login_homepage",
 	}
 
 	BloksDocProcessClientDataAndRedirect BloksDoc = BloksDoc{
-		ClientDocId: "15577570885164679244236938926",
+		ClientDocID: "15577570885164679244236938926",
 		AppID:       "com.bloks.www.bloks.caa.login.process_client_data_and_redirect",
 	}
 
 	BloksDocSendLoginRequest BloksDoc = BloksDoc{
-		ClientDocId: "155775708812630868437451274928",
+		ClientDocID: "155775708812630868437451274928",
 		AppID:       "com.bloks.www.bloks.caa.login.async.send_login_request",
 	}
 
 	BloksDocTwoStepVerificationEntrypoint BloksDoc = BloksDoc{
-		ClientDocId: "28114594639880354457944446921",
+		ClientDocID: "28114594639880354457944446921",
 		AppID:       "com.bloks.www.two_step_verification.entrypoint",
+	}
+
+	BloksDocVerifyCode BloksDoc = BloksDoc{
+		ClientDocID: "15577570885164679244236938926",
+		AppID:       "com.bloks.www.two_step_verification.verify_code.async",
 	}
 )

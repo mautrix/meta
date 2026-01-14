@@ -163,7 +163,7 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 	return newCookies
 }
 
-func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
+func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string, getMFACode func() (string, error)) (*cookies.Cookies, error) {
 	fb.client.MessengerLite.deviceID = uuid.New()
 	fb.client.MessengerLite.familyDeviceID = uuid.New()
 	fb.client.MessengerLite.machineID = string(random.StringBytes(25))
@@ -239,8 +239,8 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	loginPage = newPage
 	loginInterp = bloks.NewInterpreter(loginPage, &bridge)
 
-	fillTextInput := func(fieldName string, fillText string) error {
-		input := loginPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+	fillTextInput := func(page *bloks.BloksBundle, interp *bloks.Interpreter, fieldName string, fillText string) error {
+		input := page.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.components.TextInput" {
 				return false
 			}
@@ -265,66 +265,74 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		if !ok {
 			return fmt.Errorf("%s field doesn't have on_text_change script", fieldName)
 		}
-		_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, input), &onChanged.AST)
+		_, err = interp.Evaluate(bloks.InterpBindThis(ctx, input), &onChanged.AST)
 		if err != nil {
 			return fmt.Errorf("%s on_text_changed: %w", fieldName, err)
 		}
 		return nil
 	}
 
-	err = fillTextInput("email", username)
-	if err != nil {
-		return nil, err
-	}
-	err = fillTextInput("password", password)
-	if err != nil {
-		return nil, err
-	}
-
-	loginText := loginPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-		if comp.ComponentID != "bk.data.TextSpan" {
-			return false
-		}
-		text, ok := comp.Attributes["text"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
-		if !ok {
-			return false
-		}
-		str, ok := text.BloksJavascriptValue.(string)
-		if !ok {
-			return false
-		}
-		return str == "Log in"
-	})
-	if loginText == nil {
-		return nil, fmt.Errorf("couldn't find login button")
-	}
-
-	var loginExtension *bloks.BloksTreeComponent
-	loginText.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
-		loginExtension = comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-			return comp.ComponentID == "bk.components.FoaTouchExtension"
+	tapButton := func(page *bloks.BloksBundle, interp *bloks.Interpreter, buttonText string) error {
+		textComp := page.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.data.TextSpan" {
+				return false
+			}
+			if comp.Attributes["text"] == nil {
+				return false
+			}
+			text, ok := comp.Attributes["text"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
+			if !ok {
+				return false
+			}
+			str, ok := text.BloksJavascriptValue.(string)
+			if !ok {
+				return false
+			}
+			return str == buttonText
 		})
-		return loginExtension != nil
-	})
-	if loginExtension == nil {
-		return nil, fmt.Errorf("couldn't find login extension")
-	}
-	onTouchDown, ok := loginExtension.Attributes["on_touch_down"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
-	if !ok {
-		return nil, fmt.Errorf("login button doesn't have on_touch_down script")
-	}
-	onTouchUp, ok := loginExtension.Attributes["on_touch_up"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
-	if !ok {
-		return nil, fmt.Errorf("login button doesn't have on_touch_up script")
+		if textComp == nil {
+			return fmt.Errorf("couldn't find %s button", buttonText)
+		}
+		var buttonExtension *bloks.BloksTreeComponent
+		textComp.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
+			buttonExtension = comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+				return comp.ComponentID == "bk.components.FoaTouchExtension"
+			})
+			return buttonExtension != nil
+		})
+		if buttonExtension == nil {
+			return fmt.Errorf("couldn't find %s button extension", buttonText)
+		}
+		onTouchDown, ok := buttonExtension.Attributes["on_touch_down"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+		if !ok {
+			return fmt.Errorf("%s button doesn't have on_touch_down script", buttonText)
+		}
+		onTouchUp, ok := buttonExtension.Attributes["on_touch_up"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+		if !ok {
+			return fmt.Errorf("%s button doesn't have on_touch_up script", buttonText)
+		}
+		_, err = interp.Evaluate(bloks.InterpBindThis(ctx, buttonExtension), &onTouchDown.AST)
+		if err != nil {
+			return fmt.Errorf("%s on_touch_down: %w", buttonText, err)
+		}
+		_, err = interp.Evaluate(bloks.InterpBindThis(ctx, buttonExtension), &onTouchUp.AST)
+		if err != nil {
+			return fmt.Errorf("%s on_touch_up: %w", buttonText, err)
+		}
+		return nil
 	}
 
-	_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchDown.AST)
+	err = fillTextInput(loginPage, loginInterp, "email", username)
 	if err != nil {
-		return nil, fmt.Errorf("on_touch_down: %w", err)
+		return nil, err
 	}
-	_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchUp.AST)
+	err = fillTextInput(loginPage, loginInterp, "password", password)
 	if err != nil {
-		return nil, fmt.Errorf("on_touch_up: %w", err)
+		return nil, err
+	}
+	err = tapButton(loginPage, loginInterp, "Log in")
+	if err != nil {
+		return nil, err
 	}
 
 	if loginParams == nil {
@@ -353,6 +361,9 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	var mfaParams map[string]string
 	var loginRespData string
 	loginRespInterp := bloks.NewInterpreter(loginResp, &bloks.InterpBridge{
+		DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
+		FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
+		MachineID:      fb.client.MessengerLite.machineID,
 		DoRPC: func(name string, params map[string]string) error {
 			switch name {
 			case "com.bloks.www.two_step_verification.entrypoint":
@@ -379,17 +390,117 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		}
 
 		doc := &bloks.BloksDocTwoStepVerificationEntrypoint
-		mfaResp, err := fb.client.makeBloksRequest(
+		mfaPage, err := fb.client.makeBloksRequest(
 			ctx, doc, bloks.NewBloksRequest(doc, mfaParamsInner),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("sending bloks mfa entrypoint request: %w", err)
 		}
 
-		_ = mfaResp
-		return nil, fmt.Errorf("not implemented yet")
-	}
-	if loginRespData == "" {
+		unminifier, err = bloks.GetUnminifier(mfaPage)
+		if err != nil {
+			return nil, err
+		}
+		mfaPage.Unminify(unminifier)
+
+		var mfaVerifyParams map[string]string
+		mfaPageInterp := bloks.NewInterpreter(mfaPage, &bloks.InterpBridge{
+			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
+			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
+			MachineID:      fb.client.MessengerLite.machineID,
+			DoRPC: func(name string, params map[string]string) error {
+				switch name {
+				case "com.bloks.www.two_step_verification.verify_code.async":
+					mfaVerifyParams = params
+				default:
+					return fmt.Errorf("got unexpected rpc %s from login resp", name)
+				}
+				return nil
+			},
+		})
+
+		codeInput := mfaPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.components.TextInput" {
+				return false
+			}
+			return comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.AccessibilityExtension" {
+					return false
+				}
+				label, ok := comp.Attributes["label"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
+				if !ok {
+					return false
+				}
+				str, ok := label.BloksJavascriptValue.(string)
+				if !ok {
+					return false
+				}
+				return str == "Code"
+			}) != nil
+		})
+
+		code, err := getMFACode()
+		if err != nil {
+			return nil, err
+		}
+		err = codeInput.SetTextContent(code)
+		if err != nil {
+			return nil, err
+		}
+		onChanged, ok := codeInput.Attributes["on_text_change"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+		if !ok {
+			return nil, fmt.Errorf("code field doesn't have on_text_change script")
+		}
+		_, err = mfaPageInterp.Evaluate(bloks.InterpBindThis(ctx, codeInput), &onChanged.AST)
+		if err != nil {
+			return nil, fmt.Errorf("code on_text_changed: %w", err)
+		}
+
+		err = tapButton(mfaPage, mfaPageInterp, "Continue")
+		if err != nil {
+			return nil, err
+		}
+		if mfaVerifyParams == nil {
+			return nil, fmt.Errorf("mfa screen didn't trigger verify rpc")
+		}
+
+		var mfaVerifyParamsInner bloks.BloksParamsInner
+		err = json.Unmarshal([]byte(mfaVerifyParams["params"]), &mfaVerifyParamsInner)
+		if err != nil {
+			return nil, err
+		}
+
+		doc = &bloks.BloksDocVerifyCode
+		mfaVerified, err := fb.client.makeBloksRequest(
+			ctx, doc, bloks.NewBloksRequest(doc, mfaVerifyParamsInner),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		unminifier, err = bloks.GetUnminifier(mfaVerified)
+		if err != nil {
+			return nil, err
+		}
+		mfaVerified.Unminify(unminifier)
+
+		mfaVerifiedInterp := bloks.NewInterpreter(mfaVerified, &bloks.InterpBridge{
+			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
+			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
+			MachineID:      fb.client.MessengerLite.machineID,
+			HandleLoginResponse: func(data string) error {
+				loginRespData = data
+				return nil
+			},
+		})
+		_, err = mfaVerifiedInterp.Evaluate(ctx, &mfaVerified.Layout.Payload.Action.AST)
+		if err != nil {
+			return nil, err
+		}
+		if loginRespData == "" {
+			return nil, fmt.Errorf("mfa verify response didn't trigger callback")
+		}
+	} else if loginRespData == "" {
 		return nil, fmt.Errorf("login response didn't trigger callback")
 	}
 
