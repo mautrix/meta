@@ -16,6 +16,7 @@ import (
 var filename = flag.String("file", "", "Bloks response to parse")
 var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
 var doLogin = flag.Bool("login", false, "Click the login button")
+var do2FA = flag.String("2fa", "", "Submit a two-factor code")
 var doAction = flag.Bool("action", false, "Run the action script")
 var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
 
@@ -109,9 +110,6 @@ func mainE() error {
 			return fmt.Errorf("didn't get new screen from action")
 		}
 	}
-	if !*doLogin {
-		return nil
-	}
 	fillTextInput := func(fieldName string, fillText string) error {
 		input := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.components.TextInput" {
@@ -144,56 +142,105 @@ func mainE() error {
 		}
 		return nil
 	}
-	err = fillTextInput("email", "hello@example.com")
-	if err != nil {
-		return err
-	}
-	err = fillTextInput("password", "correct horse battery staple")
-	if err != nil {
-		return err
-	}
-	loginText := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-		if comp.ComponentID != "bk.data.TextSpan" {
-			return false
-		}
-		text, ok := comp.Attributes["text"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
-		if !ok {
-			return false
-		}
-		str, ok := text.BloksJavascriptValue.(string)
-		if !ok {
-			return false
-		}
-		return str == "Log in"
-	})
-	if loginText == nil {
-		return fmt.Errorf("couldn't find login button")
-	}
-	var loginExtension *bloks.BloksTreeComponent
-	loginText.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
-		loginExtension = comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-			return comp.ComponentID == "bk.components.FoaTouchExtension"
+	tapButton := func(buttonText string) error {
+		textComp := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.data.TextSpan" {
+				return false
+			}
+			if comp.Attributes["text"] == nil {
+				return false
+			}
+			text, ok := comp.Attributes["text"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
+			if !ok {
+				return false
+			}
+			str, ok := text.BloksJavascriptValue.(string)
+			if !ok {
+				return false
+			}
+			return str == buttonText
 		})
-		return loginExtension != nil
-	})
-	if loginExtension == nil {
-		return fmt.Errorf("couldn't find login extension")
+		if textComp == nil {
+			return fmt.Errorf("couldn't find %s button", buttonText)
+		}
+		var buttonExtension *bloks.BloksTreeComponent
+		textComp.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
+			buttonExtension = comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+				return comp.ComponentID == "bk.components.FoaTouchExtension"
+			})
+			return buttonExtension != nil
+		})
+		if buttonExtension == nil {
+			return fmt.Errorf("couldn't find %s button extension", buttonText)
+		}
+		onTouchDown, ok := buttonExtension.Attributes["on_touch_down"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+		if !ok {
+			return fmt.Errorf("%s button doesn't have on_touch_down script", buttonText)
+		}
+		onTouchUp, ok := buttonExtension.Attributes["on_touch_up"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+		if !ok {
+			return fmt.Errorf("%s button doesn't have on_touch_up script", buttonText)
+		}
+		_, err = interp.Evaluate(bloks.InterpBindThis(ctx, buttonExtension), &onTouchDown.AST)
+		if err != nil {
+			return fmt.Errorf("%s on_touch_down: %w", buttonText, err)
+		}
+		_, err = interp.Evaluate(bloks.InterpBindThis(ctx, buttonExtension), &onTouchUp.AST)
+		if err != nil {
+			return fmt.Errorf("%s on_touch_up: %w", buttonText, err)
+		}
+		return nil
 	}
-	onTouchDown, ok := loginExtension.Attributes["on_touch_down"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
-	if !ok {
-		return fmt.Errorf("login button doesn't have on_touch_down script")
-	}
-	onTouchUp, ok := loginExtension.Attributes["on_touch_up"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
-	if !ok {
-		return fmt.Errorf("login button doesn't have on_touch_up script")
-	}
-	_, err = interp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchDown.AST)
-	if err != nil {
-		return fmt.Errorf("on_touch_down: %w", err)
-	}
-	_, err = interp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchUp.AST)
-	if err != nil {
-		return fmt.Errorf("on_touch_up: %w", err)
+	if *doLogin {
+		err = fillTextInput("email", "hello@example.com")
+		if err != nil {
+			return err
+		}
+		err = fillTextInput("password", "correct horse battery staple")
+		if err != nil {
+			return err
+		}
+		err = tapButton("Log in")
+		if err != nil {
+			return err
+		}
+	} else if *do2FA != "" {
+		codeInput := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.components.TextInput" {
+				return false
+			}
+			return comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.AccessibilityExtension" {
+					return false
+				}
+				label, ok := comp.Attributes["label"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
+				if !ok {
+					return false
+				}
+				str, ok := label.BloksJavascriptValue.(string)
+				if !ok {
+					return false
+				}
+				return str == "Code"
+			}) != nil
+		})
+		err := codeInput.SetTextContent(*do2FA)
+		if err != nil {
+			return err
+		}
+		onChanged, ok := codeInput.Attributes["on_text_change"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
+		if !ok {
+			return fmt.Errorf("code field doesn't have on_text_change script")
+		}
+		_, err = interp.Evaluate(bloks.InterpBindThis(ctx, codeInput), &onChanged.AST)
+		if err != nil {
+			return fmt.Errorf("code on_text_changed: %w", err)
+		}
+		fmt.Println("tapping")
+		err = tapButton("Continue")
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

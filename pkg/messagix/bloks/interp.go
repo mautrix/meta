@@ -690,6 +690,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, nil
+	case "bk.action.string.Length":
+		str, err := evalAs[string](ctx, i, &call.Args[0], "string.length")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(len(str)), nil
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
