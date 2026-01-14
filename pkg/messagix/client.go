@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exhttp"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
@@ -36,6 +37,7 @@ type EventHandler func(ctx context.Context, evt any)
 
 type Config struct {
 	MayConnectToDGW bool
+	ClientSettings  exhttp.ClientSettings
 }
 
 type Client struct {
@@ -46,6 +48,8 @@ type Client struct {
 	Platform      types.Platform
 
 	http         *http.Client
+	httpSettings exhttp.ClientSettings
+	proxyAddr    string
 	socket       *Socket
 	dgwSocket    *dgw.Socket
 	eventHandler EventHandler
@@ -82,15 +86,6 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Cl
 		panic("messagix: platform must be set in cookies")
 	}
 	cli := &Client{
-		http: &http.Client{
-			Transport: &http.Transport{
-				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 40 * time.Second,
-				ForceAttemptHTTP2:     true,
-			},
-			Timeout: 60 * time.Second,
-		},
 		cookies:               cookies,
 		Logger:                logger,
 		lsRequests:            0,
@@ -101,6 +96,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Cl
 		connectionLoopStopped: exsync.NewEvent(),
 		canSendMessages:       exsync.NewEvent(),
 	}
+	cli.SetHTTP(cfg.ClientSettings)
 	cli.connectionLoopStopped.Set()
 	if DisableTLSVerification {
 		cli.http.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
@@ -245,15 +241,15 @@ func (c *Client) SetProxy(proxyAddr string) error {
 
 	if proxyParsed.Scheme == "http" || proxyParsed.Scheme == "https" {
 		c.httpProxy = http.ProxyURL(proxyParsed)
-		c.http.Transport.(*http.Transport).Proxy = c.httpProxy
+		c.proxyAddr = proxyAddr
 	} else if proxyParsed.Scheme == "socks5" {
 		c.socksProxy, err = proxy.FromURL(proxyParsed, &net.Dialer{Timeout: 20 * time.Second})
 		if err != nil {
 			return err
 		}
-		contextDialer := c.socksProxy.(proxy.ContextDialer)
-		c.http.Transport.(*http.Transport).DialContext = contextDialer.DialContext
+		c.proxyAddr = proxyAddr
 	}
+	c.SetHTTP(c.httpSettings)
 
 	c.Logger.Debug().
 		Str("scheme", proxyParsed.Scheme).
@@ -273,6 +269,19 @@ func (c *Client) HandleEvent(ctx context.Context, evt any) {
 	if c.eventHandler != nil {
 		c.eventHandler(ctx, evt)
 	}
+}
+
+func (c *Client) SetHTTP(settings exhttp.ClientSettings) {
+	if c == nil {
+		return
+	}
+	c.httpSettings = settings.
+		WithGlobalTimeout(60 * time.Second).
+		WithResponseHeaderTimeout(40 * time.Second)
+	if c.proxyAddr != "" {
+		c.httpSettings, _ = c.httpSettings.WithProxy(c.proxyAddr)
+	}
+	c.http = c.httpSettings.Compile()
 }
 
 func (c *Client) UpdateProxy(reason string) bool {
@@ -492,4 +501,12 @@ func (c *Client) WaitUntilCanSendMessages(ctx context.Context, timeout time.Dura
 
 func (c *Client) GetLogger() *zerolog.Logger {
 	return &c.Logger
+}
+
+func (c *Client) ForceReconnect() {
+	if c == nil {
+		return
+	}
+	c.socket.Disconnect()
+	c.dgwSocket.Disconnect()
 }

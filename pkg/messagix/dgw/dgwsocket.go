@@ -393,7 +393,7 @@ func (s *Socket) getConnURL() string {
 }
 
 func (s *Socket) Disconnect() {
-	if s.conn != nil {
+	if s != nil && s.conn != nil {
 		_ = s.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(3*time.Second))
 		_ = s.conn.Close()
 	}

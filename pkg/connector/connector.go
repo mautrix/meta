@@ -21,8 +21,9 @@ type MetaConnector struct {
 }
 
 var (
-	_ bridgev2.NetworkConnector      = (*MetaConnector)(nil)
-	_ bridgev2.MaxFileSizeingNetwork = (*MetaConnector)(nil)
+	_ bridgev2.NetworkConnector        = (*MetaConnector)(nil)
+	_ bridgev2.MaxFileSizeingNetwork   = (*MetaConnector)(nil)
+	_ bridgev2.NetworkResettingNetwork = (*MetaConnector)(nil)
 )
 
 func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
@@ -36,12 +37,10 @@ func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
 	m.DB = metadb.New(bridge.ID, bridge.DB.Database, m.Bridge.Log.With().Str("db_section", "meta").Logger())
 	m.MsgConv = msgconv.New(bridge, m.DB)
 	m.MsgConv.DisableViewOnce = m.Config.DisableViewOnce
-	if m.Config.ProxyMedia && m.Config.Proxy != "" {
-		msgconv.SetProxy(m.Config.Proxy)
-	}
 }
 
 func (m *MetaConnector) Start(ctx context.Context) error {
+	m.ResetHTTPTransport()
 	err := m.DeviceStore.Upgrade(ctx)
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}
@@ -85,5 +84,23 @@ func (m *MetaConnector) GetName() bridgev2.BridgeName {
 		NetworkID:        "meta",
 		BeeperBridgeType: "meta",
 		DefaultPort:      29319,
+	}
+}
+
+func (m *MetaConnector) ResetHTTPTransport() {
+	cfg := m.Bridge.GetHTTPClientSettings()
+	msgconv.SetHTTP(cfg)
+	if m.Config.ProxyMedia && m.Config.Proxy != "" {
+		msgconv.SetProxy(m.Config.Proxy)
+	}
+	for _, login := range m.Bridge.GetAllCachedUserLogins() {
+		login.Client.(*MetaClient).Client.SetHTTP(cfg)
+	}
+}
+
+func (m *MetaConnector) ResetNetworkConnections() {
+	for _, login := range m.Bridge.GetAllCachedUserLogins() {
+		login.Client.(*MetaClient).Client.ForceReconnect()
+		login.Client.(*MetaClient).E2EEClient.ResetConnection()
 	}
 }

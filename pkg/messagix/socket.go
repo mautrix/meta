@@ -165,6 +165,9 @@ func ptr[T any](val T) *T {
 }
 
 func (s *Socket) Disconnect() {
+	if s == nil {
+		return
+	}
 	if fn := s.cleanClose.Load(); fn != nil {
 		(*fn)()
 	}

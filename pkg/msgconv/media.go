@@ -21,14 +21,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/exhttp"
 	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -36,26 +35,22 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-var mediaHTTPClient = http.Client{
-	Transport: &http.Transport{
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-		ForceAttemptHTTP2:     true,
-	},
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if req.URL.Hostname() == "video.xx.fbcdn.net" {
-			return http.ErrUseLastResponse
-		}
-		return nil
-	},
-	Timeout: 120 * time.Second,
-}
+var mediaHTTPClient *http.Client
 var BypassOnionForMedia bool
 
 func SetProxy(proxy string) {
 	parsedURL := exerrors.Must(url.Parse(proxy))
 	mediaHTTPClient.Transport.(*http.Transport).Proxy = http.ProxyURL(parsedURL)
+}
+
+func SetHTTP(settings exhttp.ClientSettings) {
+	mediaHTTPClient = settings.Compile()
+	mediaHTTPClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Hostname() == "video.xx.fbcdn.net" {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
 }
 
 var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
