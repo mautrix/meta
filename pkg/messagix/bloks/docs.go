@@ -21,4 +21,9 @@ var (
 		ClientDocId: "155775708812630868437451274928",
 		AppID:       "com.bloks.www.bloks.caa.login.async.send_login_request",
 	}
+
+	BloksDocTwoStepVerificationEntrypoint BloksDoc = BloksDoc{
+		ClientDocId: "28114594639880354457944446921",
+		AppID:       "com.bloks.www.two_step_verification.entrypoint",
+	}
 )

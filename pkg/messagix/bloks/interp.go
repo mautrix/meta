@@ -144,6 +144,34 @@ func evalAs[T any](ctx context.Context, i *Interpreter, form *BloksScriptNode, w
 	return cast, nil
 }
 
+func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (string, error) {
+	make, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	if !ok {
+		return "", fmt.Errorf("%s non-funcall %T", where, form.BloksScriptNodeContent)
+	}
+	if make.Function != "bk.action.tree.Make" {
+		return "", fmt.Errorf("%s non-tree funcall %s", where, make.Function)
+	}
+	if len(make.Args)%2 != 1 {
+		return "", fmt.Errorf("%s tree.make even number of args %d", where, len(make.Args))
+	}
+	for idx := 1; idx < len(make.Args); idx += 2 {
+		attr, err := evalAs[int64](ctx, i, &make.Args[idx], "tree.make")
+		if err != nil {
+			return "", err
+		}
+		if attr != 35 {
+			continue
+		}
+		data, err := evalAs[string](ctx, i, &make.Args[idx+1], "tree.make")
+		if err != nil {
+			return "", err
+		}
+		return data, nil
+	}
+	return "", fmt.Errorf("no prop 35 in %s tree", where)
+}
+
 const maxInterpArgs = 100
 
 func InterpBindThis(ctx context.Context, this *BloksTreeComponent) context.Context {
@@ -564,35 +592,15 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			},
 		})
 	case "bk.action.caa.HandleLoginResponseForContextChange":
-		make, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
-		if !ok {
-			return nil, fmt.Errorf("handleloginresponse non-funcall %T", call.Args[0].BloksScriptNodeContent)
+		data, err := evalTreeProp35(ctx, i, &call.Args[0], "handleloginresponse")
+		if err != nil {
+			return nil, err
 		}
-		if make.Function != "bk.action.tree.Make" {
-			return nil, fmt.Errorf("handleloginresponse non-tree funcall %s", make.Function)
+		err = i.Bridge.HandleLoginResponse(data)
+		if err != nil {
+			return nil, err
 		}
-		if len(make.Args)%2 != 1 {
-			return nil, fmt.Errorf("tree.make even number of args %d", len(make.Args))
-		}
-		for idx := 1; idx < len(make.Args); idx += 2 {
-			attr, err := evalAs[int64](ctx, i, &make.Args[idx], "tree.make")
-			if err != nil {
-				return nil, err
-			}
-			if attr != 35 {
-				continue
-			}
-			data, err := evalAs[string](ctx, i, &make.Args[idx+1], "tree.make")
-			if err != nil {
-				return nil, err
-			}
-			err = i.Bridge.HandleLoginResponse(data)
-			if err != nil {
-				return nil, err
-			}
-			return BloksNothing, nil
-		}
-		return nil, fmt.Errorf("no prop 35 in handleloginresponse tree")
+		return BloksNothing, nil
 	case "bk.action.i64.Const":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.map.Get":
@@ -660,6 +668,28 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, fmt.Errorf("no such payload %q", name)
 		}
 		return BloksLiteralOf(bundle), nil
+	case "bk.action.cds.PushScreen":
+		name, err := evalTreeProp35(ctx, i, &call.Args[0], "pushscreen")
+		if err != nil {
+			return nil, err
+		}
+		params, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[2], "pushscreen")
+		if err != nil {
+			return nil, err
+		}
+		flatParams := map[string]string{}
+		for key, val := range params {
+			str, ok := val.Value().(string)
+			if !ok {
+				return nil, fmt.Errorf("non-string param %T for asyncaction", val.Value())
+			}
+			flatParams[key] = str
+		}
+		err = i.Bridge.DoRPC(name, flatParams)
+		if err != nil {
+			return nil, err
+		}
+		return BloksNothing, nil
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
@@ -668,7 +698,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.qpl.MarkerAnnotate",
 		"bk.action.bloks.WriteGlobalConsistencyStore",
 		"bk.action.bloks.ClearFocus",
-		"bk.action.qpl.MarkerPoint":
+		"bk.action.qpl.MarkerPoint",
+		"bk.action.qpl.MarkerEndV2":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))

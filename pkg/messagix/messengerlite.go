@@ -214,10 +214,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return encryptedPW, nil
 		},
 		DoRPC: func(name string, params map[string]string) error {
-			if name != "com.bloks.www.bloks.caa.login.async.send_login_request" {
-				return fmt.Errorf("got unexpected rpc %s", name)
+			switch name {
+			case "com.bloks.www.bloks.caa.login.async.send_login_request":
+				loginParams = params
+			default:
+				return fmt.Errorf("got unexpected rpc %s from login page", name)
 			}
-			loginParams = params
 			return nil
 		},
 		DisplayNewScreen: func(toDisplay *bloks.BloksBundle) error {
@@ -348,8 +350,18 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	}
 	loginResp.Unminify(unminifier)
 
+	var mfaParams map[string]string
 	var loginRespData string
 	loginRespInterp := bloks.NewInterpreter(loginResp, &bloks.InterpBridge{
+		DoRPC: func(name string, params map[string]string) error {
+			switch name {
+			case "com.bloks.www.two_step_verification.entrypoint":
+				mfaParams = params
+			default:
+				return fmt.Errorf("got unexpected rpc %s from login resp", name)
+			}
+			return nil
+		},
 		HandleLoginResponse: func(data string) error {
 			loginRespData = data
 			return nil
@@ -358,6 +370,24 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	_, err = loginRespInterp.Evaluate(ctx, &loginResp.Layout.Payload.Action.AST)
 	if err != nil {
 		return nil, err
+	}
+	if mfaParams != nil {
+		var mfaParamsInner bloks.BloksParamsInner
+		err = json.Unmarshal([]byte(mfaParams["params"]), &mfaParamsInner)
+		if err != nil {
+			return nil, err
+		}
+
+		doc := &bloks.BloksDocTwoStepVerificationEntrypoint
+		mfaResp, err := fb.client.makeBloksRequest(
+			ctx, doc, bloks.NewBloksRequest(doc, mfaParamsInner),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("sending bloks mfa entrypoint request: %w", err)
+		}
+
+		_ = mfaResp
+		return nil, fmt.Errorf("not implemented yet")
 	}
 	if loginRespData == "" {
 		return nil, fmt.Errorf("login response didn't trigger callback")
