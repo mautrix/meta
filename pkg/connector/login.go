@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
+	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -346,7 +349,17 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 		return nil, err
 	}
 
-	c, err := client.MessengerLite.Login(ctx, input["username"], input["password"])
+	c, err := client.MessengerLite.Login(ctx, input["username"], input["password"], func() (string, error) {
+		f, err := os.Open("/tmp/mfacode")
+		if err != nil {
+			return "", err
+		}
+		text, err := io.ReadAll(f)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(text)), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
