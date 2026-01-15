@@ -230,7 +230,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil
 		},
 	}
-	loginInterp, err := bloks.NewInterpreter(ctx, loginPage, &bridge)
+	loginInterp, err := bloks.NewInterpreter(ctx, loginPage, &bridge, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 
 	log.Debug().Msg("Filling in email and password on login page")
 	loginPage = newPage
-	loginInterp, err = bloks.NewInterpreter(ctx, loginPage, &bridge)
+	loginInterp, err = bloks.NewInterpreter(ctx, loginPage, &bridge, loginInterp)
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +389,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			loginRespData = data
 			return nil
 		},
-	})
+	}, loginInterp)
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +433,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 				}
 				return nil
 			},
-		})
+		}, loginRespInterp)
 		if err != nil {
 			return nil, err
 		}
@@ -512,7 +512,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 				loginRespData = data
 				return nil
 			},
-		})
+		}, mfaPageInterp)
 		if err != nil {
 			return nil, err
 		}

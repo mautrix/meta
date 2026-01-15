@@ -88,7 +88,7 @@ func mainE() error {
 			return nil
 		},
 	}
-	interp, err := bloks.NewInterpreter(ctx, bundle, &bridge)
+	interp, err := bloks.NewInterpreter(ctx, bundle, &bridge, nil)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func mainE() error {
 		if *doLogin {
 			interp.Bridge.DisplayNewScreen = func(newBundle *bloks.BloksBundle) error {
 				bundle = newBundle
-				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge)
+				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge, interp)
 				if err != nil {
 					return err
 				}

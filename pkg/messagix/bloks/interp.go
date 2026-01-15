@@ -31,12 +31,13 @@ type InterpBridge struct {
 type Interpreter struct {
 	Bridge InterpBridge
 
-	Scripts  map[BloksScriptID]*BloksLambda
-	Payloads map[BloksPayloadID]*BloksBundleRef
-	Vars     map[BloksVariableID]*BloksScriptLiteral
+	Scripts    map[BloksScriptID]*BloksLambda
+	Payloads   map[BloksPayloadID]*BloksBundleRef
+	LocalVars  map[BloksVariableID]*BloksScriptLiteral
+	GlobalVars map[BloksVariableID]*BloksScriptLiteral
 }
 
-func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge) (*Interpreter, error) {
+func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *Interpreter) (*Interpreter, error) {
 	p := b.Layout.Payload
 	scripts := map[BloksScriptID]*BloksLambda{}
 	for id, script := range p.Scripts {
@@ -50,19 +51,36 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge) (*Int
 			Bundle: &payload.Contents,
 		}
 	}
-	vars := map[BloksVariableID]*BloksScriptLiteral{}
+	globals := map[BloksVariableID]*BloksScriptLiteral{}
+	locals := map[BloksVariableID]*BloksScriptLiteral{}
 	for _, item := range p.Variables {
 		// Deal with the dynamic variables later
-		if item.Info.InitialScript == nil {
-			vars[BloksVariableID(item.ID)] = BloksLiteralOf(item.Info.Initial)
+		if item.Info.InitialScript != nil {
+			continue
+		}
+		id := BloksVariableID(item.ID)
+		switch item.Type {
+		case "gs":
+			if old != nil {
+				if oldval, ok := old.GlobalVars[id]; ok {
+					globals[id] = oldval
+					break
+				}
+			}
+			globals[id] = BloksLiteralOf(item.Info.Initial)
+		case "ls":
+			locals[id] = BloksLiteralOf(item.Info.Initial)
+		default:
+			return nil, fmt.Errorf("unexpected var type %s", item.Type)
 		}
 	}
 	interp := Interpreter{
 		Bridge: *br,
 
-		Scripts:  scripts,
-		Payloads: payloads,
-		Vars:     vars,
+		Scripts:    scripts,
+		Payloads:   payloads,
+		GlobalVars: globals,
+		LocalVars:  locals,
 	}
 	br = &interp.Bridge
 	if br.DeviceID == "" {
@@ -114,12 +132,27 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge) (*Int
 	}
 	for _, item := range p.Variables {
 		// We already handled the static variables
-		if item.Info.InitialScript != nil {
-			value, err := interp.Evaluate(ctx, &item.Info.InitialScript.AST)
-			if err != nil {
-				return nil, fmt.Errorf("var %s: %w", item.ID, err)
+		if item.Info.InitialScript == nil {
+			continue
+		}
+		value, err := interp.Evaluate(ctx, &item.Info.InitialScript.AST)
+		if err != nil {
+			return nil, fmt.Errorf("var %s: %w", item.ID, err)
+		}
+		id := BloksVariableID(item.ID)
+		switch item.Type {
+		case "gs":
+			if old != nil {
+				if oldval, ok := old.GlobalVars[id]; ok {
+					globals[id] = oldval
+					break
+				}
 			}
-			vars[BloksVariableID(item.ID)] = value
+			globals[id] = value
+		case "ls":
+			locals[id] = value
+		default:
+			return nil, fmt.Errorf("unexpected var type %s", item.Type)
 		}
 	}
 	return &interp, nil
@@ -230,12 +263,22 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return first, nil
 		}
 		return i.Evaluate(ctx, &call.Args[1])
-	case "bk.action.bloks.GetVariable2", "bk.action.bloks.GetVariableWithScope":
-		varname, err := evalAs[string](ctx, i, &call.Args[0], "getvar")
+	case "bk.action.bloks.GetVariable2":
+		varname, err := evalAs[string](ctx, i, &call.Args[0], "getvar2")
 		if err != nil {
 			return nil, err
 		}
-		value, ok := i.Vars[BloksVariableID(varname)]
+		value, ok := i.GlobalVars[BloksVariableID(varname)]
+		if !ok {
+			return BloksNull, nil
+		}
+		return value, nil
+	case "bk.action.bloks.GetVariableWithScope":
+		varname, err := evalAs[string](ctx, i, &call.Args[0], "getvarwithscope")
+		if err != nil {
+			return nil, err
+		}
+		value, ok := i.LocalVars[BloksVariableID(varname)]
 		if !ok {
 			return BloksNull, nil
 		}
@@ -307,7 +350,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return BloksLiteralOf(script), nil
 	case "bk.action.bloks.WriteLocalState":
-		varname, err := evalAs[string](ctx, i, &call.Args[0], "getvar")
+		varname, err := evalAs[string](ctx, i, &call.Args[0], "writelocalstate")
 		if err != nil {
 			return nil, err
 		}
@@ -315,7 +358,18 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		i.Vars[BloksVariableID(varname)] = value
+		i.LocalVars[BloksVariableID(varname)] = value
+		return BloksNothing, nil
+	case "bk.action.bloks.WriteGlobalConsistencyStore":
+		varname, err := evalAs[string](ctx, i, &call.Args[0], "writegcs")
+		if err != nil {
+			return nil, err
+		}
+		value, err := i.Evaluate(ctx, &call.Args[1])
+		if err != nil {
+			return nil, err
+		}
+		i.GlobalVars[BloksVariableID(varname)] = value
 		return BloksNothing, nil
 	case "bk.action.array.Make":
 		results := []*BloksScriptLiteral{}
@@ -496,7 +550,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		value, ok := i.Vars[BloksVariableID(varname)]
+		value, ok := i.GlobalVars[BloksVariableID(varname)]
 		if !ok {
 			return BloksNull, nil
 		}
@@ -517,7 +571,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		i.Vars[BloksVariableID(varname)] = value
+		i.GlobalVars[BloksVariableID(varname)] = value
 		return BloksNothing, nil
 	case "bk.action.bloks.AsyncActionWithDataManifestV2":
 		name, err := evalAs[string](ctx, i, &call.Args[0], "asyncaction")
@@ -741,7 +795,6 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.LogFlytrapData",
 		"bk.action.qpl.MarkerStartV2",
 		"bk.action.qpl.MarkerAnnotate",
-		"bk.action.bloks.WriteGlobalConsistencyStore",
 		"bk.action.bloks.ClearFocus",
 		"bk.action.qpl.MarkerPoint",
 		"bk.action.qpl.MarkerEndV2",
