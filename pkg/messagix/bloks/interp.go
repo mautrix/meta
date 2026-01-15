@@ -263,26 +263,22 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return first, nil
 		}
 		return i.Evaluate(ctx, &call.Args[1])
-	case "bk.action.bloks.GetVariable2":
+	case "bk.action.bloks.GetVariable2", "bk.action.bloks.GetVariableWithScope":
+		// The second argument to the WithScope variant is an integer that may specify
+		// whether to get a local or global variable. For now, ignore.
 		varname, err := evalAs[string](ctx, i, &call.Args[0], "getvar2")
 		if err != nil {
 			return nil, err
 		}
-		value, ok := i.GlobalVars[BloksVariableID(varname)]
-		if !ok {
-			return BloksNull, nil
-		}
-		return value, nil
-	case "bk.action.bloks.GetVariableWithScope":
-		varname, err := evalAs[string](ctx, i, &call.Args[0], "getvarwithscope")
-		if err != nil {
-			return nil, err
-		}
 		value, ok := i.LocalVars[BloksVariableID(varname)]
-		if !ok {
-			return BloksNull, nil
+		if ok {
+			return value, nil
 		}
-		return value, nil
+		value, ok = i.GlobalVars[BloksVariableID(varname)]
+		if ok {
+			return value, nil
+		}
+		return BloksNull, nil
 	case "bk.action.core.TakeLast":
 		var result *BloksScriptLiteral
 		var err error
