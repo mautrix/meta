@@ -319,7 +319,7 @@ func (c *Client) Connect(ctx context.Context) error {
 			}
 		}()
 		connectionAttempts := 1
-		reconnectIn := 2 * time.Second
+		var reconnectIn time.Duration
 		for {
 			c.canSendMessages.Clear() // In case we're reconnecting from a normal network error
 			connectStart := time.Now()
@@ -342,11 +342,16 @@ func (c *Client) Connect(ctx context.Context) error {
 				c.HandleEvent(ctx, &Event_PermanentError{Err: err})
 				return
 			}
-			connectionAttempts += 1
 			c.HandleEvent(ctx, &Event_SocketError{Err: err, ConnectionAttempts: connectionAttempts})
-			if time.Since(connectStart) > 2*time.Minute {
-				reconnectIn = 2 * time.Second
+			if time.Since(connectStart) > 2*time.Minute && (err == nil || errors.Is(err, socket.ErrInReadLoop)) {
+				// Reconnect immediately after a long successful connection
+				reconnectIn = 0
+				connectionAttempts = 0
 			} else {
+				if reconnectIn == 0 {
+					reconnectIn = 1 * time.Second
+				}
+				connectionAttempts += 1
 				reconnectIn *= 2
 				if reconnectIn > MaxConnectBackoff {
 					reconnectIn = MaxConnectBackoff
