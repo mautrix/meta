@@ -36,7 +36,7 @@ type Interpreter struct {
 	Vars     map[BloksVariableID]*BloksScriptLiteral
 }
 
-func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
+func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge) (*Interpreter, error) {
 	p := b.Layout.Payload
 	scripts := map[BloksScriptID]*BloksLambda{}
 	for id, script := range p.Scripts {
@@ -52,7 +52,10 @@ func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 	}
 	vars := map[BloksVariableID]*BloksScriptLiteral{}
 	for _, item := range p.Variables {
-		vars[BloksVariableID(item.ID)] = BloksLiteralOf(item.Info.Initial)
+		// Deal with the dynamic variables later
+		if item.Info.InitialScript == nil {
+			vars[BloksVariableID(item.ID)] = BloksLiteralOf(item.Info.Initial)
+		}
 	}
 	interp := Interpreter{
 		Bridge: *br,
@@ -109,7 +112,17 @@ func NewInterpreter(b *BloksBundle, br *InterpBridge) *Interpreter {
 			return fmt.Errorf("unhandled new screen")
 		}
 	}
-	return &interp
+	for _, item := range p.Variables {
+		// We already handled the static variables
+		if item.Info.InitialScript != nil {
+			value, err := interp.Evaluate(ctx, &item.Info.InitialScript.AST)
+			if err != nil {
+				return nil, fmt.Errorf("var %s: %w", item.ID, err)
+			}
+			vars[BloksVariableID(item.ID)] = value
+		}
+	}
+	return &interp, nil
 }
 
 type BloksLambda struct {
@@ -465,6 +478,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			result = append(result, BloksLiteralOf(nonce))
 		}
 		return BloksLiteralOf(result), nil
+	case "bk.action.ref.Make":
+		// Technically the way we are handling refs here is totally wrong, since they are
+		// supposed to be actual objects and not just transparent macro-like forms, but I
+		// was a bit lazy when I wrote this. As long as we never access ref values in a way
+		// other than looking them up using getvar, it should work the same.
+		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.ref.Read":
 		ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
 		if !ok {

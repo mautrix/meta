@@ -73,7 +73,30 @@ func NewBloksRequest(doc *BloksDoc, inner BloksParamsInner) *BloksRequestOuter {
 }
 
 type BloksResponse struct {
-	Data BloksResponseData `json:"data"`
+	Data   BloksResponseData    `json:"data"`
+	Errors []BloksResponseError `json:"errors"`
+}
+
+type BloksResponseError struct {
+	Message        string   `json:"message"`
+	Severity       string   `json:"severity"`
+	MIDs           []string `json:"mids"`
+	DebugLink      string   `json:"debug_link"`
+	Code           int      `json:"code"`
+	APIErrorCode   int      `json:"api_error_code"`
+	Summary        string   `json:"summary"`
+	Description    string   `json:"description"`
+	DescriptionRaw string   `json:"description_raw"`
+	IsSilent       bool     `json:"is_silent"`
+	IsTransient    bool     `json:"is_transient"`
+	IsNotCritical  bool     `json:"is_not_critical"`
+	RequiresReauth bool     `json:"requires_reauth"`
+	AllowUserRetry bool     `json:"allow_user_retry"`
+	DebugInfo      any      `json:"debug_info"`
+	QueryPath      any      `json:"query_path"`
+	FBTraceID      string   `json:"fbtrace_id"`
+	WWWRequestID   string   `json:"www_request_id"`
+	Path           []string `json:"path"`
 }
 
 type BloksResponseData struct {

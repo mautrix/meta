@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
@@ -25,6 +26,8 @@ import (
 // and is used by a different client, despite also being called
 // "graphql" in the url.
 func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
+	c.Logger.Debug().Str("bloks_app", doc.AppID).Msg("Making Bloks request")
+
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
@@ -74,6 +77,14 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 	err = json.Unmarshal(respData, &respOuter)
 	if err != nil {
 		return nil, fmt.Errorf("parsing outer bloks payload: %w", err)
+	}
+
+	if len(respOuter.Errors) > 0 {
+		errors := []string{}
+		for _, e := range respOuter.Errors {
+			errors = append(errors, e.Message)
+		}
+		return nil, fmt.Errorf("bloks error: %s", strings.Join(errors, "; "))
 	}
 
 	innerData := ""

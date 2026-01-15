@@ -19,6 +19,9 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 		if real, ok := m.Variables[d.ID]; ok && len(real) > 0 {
 			d.ID = real
 		}
+		if d.Info.InitialScript != nil {
+			d.Info.InitialScript.Unminify(m, nil)
+		}
 	}
 	for _, s := range p.Scripts {
 		s.Unminify(m, nil)
@@ -49,7 +52,11 @@ func (bb *BloksBundle) Print(indent string) error {
 	if p.VariablesOwner == p {
 		for _, datum := range p.Variables {
 			fmt.Printf("%s  <Datum id=%q>\n", indent, datum.ID)
-			BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
+			if datum.Info.InitialScript != nil {
+				datum.Info.InitialScript.Print(indent + "    ")
+			} else {
+				BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
+			}
 			fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
 		}
 	}
@@ -126,9 +133,10 @@ type BloksVariable struct {
 }
 
 type BloksDatumInfo struct {
-	Name    string               `json:"key"`
-	Mode    string               `json:"mode"`
-	Initial BloksJavascriptValue `json:"initial"`
+	Name          string               `json:"key"`
+	Mode          string               `json:"mode"`
+	Initial       BloksJavascriptValue `json:"initial"`
+	InitialScript *BloksTreeScript     `json:"initial_lispy"`
 }
 
 type BloksJavascriptValue any

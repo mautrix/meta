@@ -164,6 +164,9 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 }
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string, getMFACode func() (string, error)) (*cookies.Cookies, error) {
+	log := fb.client.Logger
+	log.Debug().Msg("Starting Messenger Lite login flow")
+
 	fb.client.MessengerLite.deviceID = uuid.New()
 	fb.client.MessengerLite.familyDeviceID = uuid.New()
 	fb.client.MessengerLite.machineID = string(random.StringBytes(25))
@@ -227,7 +230,11 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil
 		},
 	}
-	loginInterp := bloks.NewInterpreter(loginPage, &bridge)
+	loginInterp, err := bloks.NewInterpreter(ctx, loginPage, &bridge)
+	if err != nil {
+		return nil, err
+	}
+	log.Debug().Msg("Handling redirect to login page")
 	_, err = loginInterp.Evaluate(ctx, &loginPage.Layout.Payload.Action.AST)
 	if err != nil {
 		return nil, err
@@ -236,8 +243,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, fmt.Errorf("wasn't redirected to login page")
 	}
 
+	log.Debug().Msg("Filling in email and password on login page")
 	loginPage = newPage
-	loginInterp = bloks.NewInterpreter(loginPage, &bridge)
+	loginInterp, err = bloks.NewInterpreter(ctx, loginPage, &bridge)
+	if err != nil {
+		return nil, err
+	}
 
 	fillTextInput := func(page *bloks.BloksBundle, interp *bloks.Interpreter, fieldName string, fillText string) error {
 		input := page.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
@@ -352,6 +363,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, fmt.Errorf("sending bloks login request: %w", err)
 	}
 
+	log.Debug().Msg("Handling login page response")
 	unminifier, err = bloks.GetUnminifier(loginResp)
 	if err != nil {
 		return nil, err
@@ -360,7 +372,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 
 	var mfaParams map[string]string
 	var loginRespData string
-	loginRespInterp := bloks.NewInterpreter(loginResp, &bloks.InterpBridge{
+	loginRespInterp, err := bloks.NewInterpreter(ctx, loginResp, &bloks.InterpBridge{
 		DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
 		FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
 		MachineID:      fb.client.MessengerLite.machineID,
@@ -378,6 +390,9 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
 	_, err = loginRespInterp.Evaluate(ctx, &loginResp.Layout.Payload.Action.AST)
 	if err != nil {
 		return nil, err
@@ -397,6 +412,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil, fmt.Errorf("sending bloks mfa entrypoint request: %w", err)
 		}
 
+		log.Debug().Msg("Filling in MFA code")
 		unminifier, err = bloks.GetUnminifier(mfaPage)
 		if err != nil {
 			return nil, err
@@ -404,7 +420,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		mfaPage.Unminify(unminifier)
 
 		var mfaVerifyParams map[string]string
-		mfaPageInterp := bloks.NewInterpreter(mfaPage, &bloks.InterpBridge{
+		mfaPageInterp, err := bloks.NewInterpreter(ctx, mfaPage, &bloks.InterpBridge{
 			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
 			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
 			MachineID:      fb.client.MessengerLite.machineID,
@@ -418,6 +434,9 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 				return nil
 			},
 		})
+		if err != nil {
+			return nil, err
+		}
 
 		codeInput := mfaPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.components.TextInput" {
@@ -478,13 +497,14 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil, err
 		}
 
+		log.Debug().Msg("Handling MFA code response")
 		unminifier, err = bloks.GetUnminifier(mfaVerified)
 		if err != nil {
 			return nil, err
 		}
 		mfaVerified.Unminify(unminifier)
 
-		mfaVerifiedInterp := bloks.NewInterpreter(mfaVerified, &bloks.InterpBridge{
+		mfaVerifiedInterp, err := bloks.NewInterpreter(ctx, mfaVerified, &bloks.InterpBridge{
 			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
 			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
 			MachineID:      fb.client.MessengerLite.machineID,
@@ -493,6 +513,9 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 				return nil
 			},
 		})
+		if err != nil {
+			return nil, err
+		}
 		_, err = mfaVerifiedInterp.Evaluate(ctx, &mfaVerified.Layout.Payload.Action.AST)
 		if err != nil {
 			return nil, err
@@ -504,6 +527,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, fmt.Errorf("login response didn't trigger callback")
 	}
 
+	log.Debug().Msg("Extracting credentials from login response")
 	var loginRespPayload BloksLoginActionResponsePayload
 	err = json.Unmarshal([]byte(loginRespData), &loginRespPayload)
 	if err != nil {
