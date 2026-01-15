@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
@@ -44,12 +45,16 @@ func SetProxy(proxy string) {
 }
 
 func SetHTTP(settings exhttp.ClientSettings) {
-	mediaHTTPClient = settings.Compile()
+	oldClient := mediaHTTPClient
+	mediaHTTPClient = settings.WithGlobalTimeout(5 * time.Minute).Compile()
 	mediaHTTPClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if req.URL.Hostname() == "video.xx.fbcdn.net" {
 			return http.ErrUseLastResponse
 		}
 		return nil
+	}
+	if oldClient != nil {
+		oldClient.CloseIdleConnections()
 	}
 }
 

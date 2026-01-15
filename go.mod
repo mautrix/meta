@@ -17,7 +17,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.2.1
-	go.mau.fi/util v0.9.5-0.20260113180831-8cda92561373
+	go.mau.fi/util v0.9.5-0.20260114152041-9f2e2b82b503
 	go.mau.fi/whatsmeow v0.0.0-20260114161722-117540e59fcf
 	golang.org/x/crypto v0.46.0
 	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9
