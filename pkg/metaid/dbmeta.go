@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -22,7 +23,8 @@ type MessageMetadata struct {
 }
 
 type GhostMetadata struct {
-	Username string `json:"username,omitempty"`
+	Username         string             `json:"username,omitempty"`
+	ProfileFetchedAt jsontime.UnixMilli `json:"profile_fetched_at"`
 }
 
 type UserLoginMetadata struct {
@@ -55,6 +57,9 @@ type PortalMetadata struct {
 	EphemeralSettingTimestamp int64 `json:"ephemeral_setting_timestamp,omitempty"`
 
 	FetchAttempted atomic.Bool `json:"-"`
+
+	// Lazy resync tracking
+	LastSync jsontime.Unix `json:"last_sync,omitempty"`
 }
 
 func (meta *PortalMetadata) JID(id networkid.PortalID) waTypes.JID {
