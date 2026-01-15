@@ -130,6 +130,8 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 		return []bridgev2.LoginFlow{loginFlowMessenger}
 	case types.Instagram:
 		return []bridgev2.LoginFlow{loginFlowInstagram}
+	case types.MessengerLite:
+		return []bridgev2.LoginFlow{loginFlowMessengerLite}
 	default:
 		panic("unknown mode in config")
 	}
