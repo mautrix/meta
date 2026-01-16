@@ -56,10 +56,6 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 	}
 }
 
-func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	return bb.Layout.Payload.Tree.FindDescendant(pred)
-}
-
 func (bb *BloksBundle) Print(indent string) error {
 	p := &bb.Layout.Payload
 	fmt.Printf("%s<Bundle>\n", indent)
@@ -259,20 +255,6 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
-		return comp.FindDescendant(pred)
-	}
-	if comps, ok := btn.BloksTreeNodeContent.(*BloksTreeComponentList); ok {
-		for _, comp := range *comps {
-			if match := comp.FindDescendant(pred); match != nil {
-				return match
-			}
-		}
-	}
-	return nil
-}
-
 type BloksTreeNodeContent interface {
 	Unminify(m *Unminifier, parent *BloksTreeComponent)
 	Print(prefix string) error
@@ -310,28 +292,6 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("attribute %q: %w", attr, err)
 		}
 		btc.Attributes[attr] = &node
-	}
-	return nil
-}
-
-func (comp *BloksTreeComponent) FindAncestor(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	for comp != nil {
-		if pred(comp) {
-			return comp
-		}
-		comp = comp.parent
-	}
-	return nil
-}
-
-func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	if pred(comp) {
-		return comp
-	}
-	for _, subnode := range comp.Attributes {
-		if match := subnode.FindDescendant(pred); match != nil {
-			return match
-		}
 	}
 	return nil
 }
