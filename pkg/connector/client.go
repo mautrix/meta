@@ -94,7 +94,6 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		igUserIDsReverse:  map[int64]string{},
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
-	c.ensureMessagixClient()
 	login.Client = c
 	return nil
 }
@@ -560,7 +559,6 @@ func (m *MetaClient) FullReconnect() {
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)
-	m.ensureMessagixClient()
 	m.Connect(ctx)
 	m.lastFullReconnect = time.Now()
 }
