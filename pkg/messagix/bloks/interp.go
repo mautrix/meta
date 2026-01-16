@@ -201,21 +201,23 @@ func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, 
 	if len(make.Args)%2 != 1 {
 		return "", fmt.Errorf("%s tree.make even number of args %d", where, len(make.Args))
 	}
+	var lastEvalErr error
 	for idx := 1; idx < len(make.Args); idx += 2 {
 		attr, err := evalAs[int64](ctx, i, &make.Args[idx], "tree.make")
 		if err != nil {
 			return "", err
 		}
-		if attr != 35 {
+		if attr != 35 && attr != 41 && attr != 43 {
 			continue
 		}
 		data, err := evalAs[string](ctx, i, &make.Args[idx+1], "tree.make")
 		if err != nil {
-			return "", err
+			lastEvalErr = err
+			continue
 		}
 		return data, nil
 	}
-	return "", fmt.Errorf("no prop 35 in %s tree", where)
+	return "", fmt.Errorf("no matching string prop in %s tree: %w", where, lastEvalErr)
 }
 
 const maxInterpArgs = 100

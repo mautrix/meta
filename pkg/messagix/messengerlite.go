@@ -207,20 +207,21 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	loginRedirectInterp, err := bloks.NewInterpreter(ctx, loginRedirectAction, makeBridge(&bloks.InterpBridge{
 		DisplayNewScreen: func(name string, toDisplay *bloks.BloksBundle) error {
 			switch name {
+			case "com.bloks.www.caa.login.login_homepage":
+				loginPage = toDisplay
+				return nil
 			default:
-				return fmt.Errorf("unexpected login screen %s", name)
+				return fmt.Errorf("unexpected login screen %q", name)
 			}
-			loginPage = toDisplay
-			return nil
 		},
 	}), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating login redirect interpreter: %w", err)
 	}
 
 	_, err = loginRedirectInterp.Evaluate(ctx, loginRedirectAction.Action())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("running login redirect action: %w", err)
 	}
 	if loginPage == nil {
 		return nil, fmt.Errorf("wasn't redirected to login page")
@@ -253,7 +254,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		},
 	}), loginRedirectInterp)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating login interpreter: %w", err)
 	}
 
 	err = loginPage.
@@ -284,7 +285,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	var loginParamsInner bloks.BloksParamsInner
 	err = json.Unmarshal([]byte(loginParams["params"]), &loginParamsInner)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing login params: %w", err)
 	}
 
 	log.Debug().Msg("Sending login request")
@@ -320,19 +321,19 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		},
 	}, loginInterp)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating login response interpreter: %w", err)
 	}
 
 	_, err = loginRespInterp.Evaluate(ctx, &loginResp.Layout.Payload.Action.AST)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("running login response action: %w", err)
 	}
 
 	if mfaParams != nil {
 		var mfaParamsInner bloks.BloksParamsInner
 		err = json.Unmarshal([]byte(mfaParams["params"]), &mfaParamsInner)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing mfa params: %w", err)
 		}
 
 		log.Debug().Msg("Requesting MFA entrypoint page")
@@ -359,7 +360,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			},
 		}), loginRespInterp)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("creating mfa landing page interpreter: %w", err)
 		}
 
 		err = mfaLandingPage.
@@ -398,12 +399,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			},
 		}, loginRespInterp)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("creating mfa interpreter: %w", err)
 		}
 
 		code, err := getMFACode()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("getting mfa code from user: %w", err)
 		}
 
 		err = mfaCodePage.
@@ -417,7 +418,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			}).
 			FillInput(ctx, mfaInterp, code)
 		if err != nil {
-			return nil, fmt.Errorf("filling mfa code input")
+			return nil, fmt.Errorf("filling mfa code input: %w", err)
 		}
 
 		err = mfaCodePage.
@@ -435,7 +436,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		var mfaVerifyParamsInner bloks.BloksParamsInner
 		err = json.Unmarshal([]byte(mfaVerifyParams["params"]), &mfaVerifyParamsInner)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing mfa verification params: %w", err)
 		}
 
 		doc = &bloks.BloksDocVerifyCode
@@ -443,7 +444,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			ctx, doc, bloks.NewBloksRequest(doc, mfaVerifyParamsInner),
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("verifying mfa code: %w", err)
 		}
 
 		log.Debug().Msg("Handling MFA code response")
@@ -457,11 +458,11 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			},
 		}, mfaInterp)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("creating mfa verification response interpreter: %w", err)
 		}
 		_, err = mfaVerifiedInterp.Evaluate(ctx, &mfaVerified.Layout.Payload.Action.AST)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("running mfa verification response action: %w", err)
 		}
 		if loginRespData == "" {
 			return nil, fmt.Errorf("mfa verify response didn't trigger callback")
@@ -475,7 +476,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	var loginRespPayload BloksLoginActionResponsePayload
 	err = json.Unmarshal([]byte(loginRespData), &loginRespPayload)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
 	newCookies := convertCookies(&loginRespPayload)

@@ -12,6 +12,10 @@ type BloksBundle struct {
 	Layout BloksLayout `json:"layout"`
 }
 
+func (bb *BloksBundle) Action() *BloksScriptNode {
+	return &bb.Layout.Payload.Action.AST
+}
+
 func (bb *BloksBundle) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Layout BloksLayout `json:"layout"`
