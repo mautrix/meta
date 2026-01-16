@@ -164,7 +164,7 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 }
 
 func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string, getMFACode func() (string, error)) (*cookies.Cookies, error) {
-	log := fb.client.Logger
+	log := fb.client.Logger.With().Str("component", "messenger_lite_login").Logger()
 	log.Debug().Msg("Starting Messenger Lite login flow")
 
 	fb.client.MessengerLite.deviceID = uuid.New()

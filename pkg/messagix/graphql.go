@@ -82,7 +82,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 	if len(respOuter.Errors) > 0 {
 		errors := []string{}
 		for _, e := range respOuter.Errors {
-			errors = append(errors, e.Message)
+			errors = append(errors, e.Summary)
 		}
 		return nil, fmt.Errorf("bloks error: %s", strings.Join(errors, "; "))
 	}
