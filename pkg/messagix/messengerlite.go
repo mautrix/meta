@@ -192,12 +192,6 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
 	}
 
-	unminifier, err := bloks.GetUnminifier(loginPage)
-	if err != nil {
-		return nil, err
-	}
-	loginPage.Unminify(unminifier)
-
 	var newPage *bloks.BloksBundle
 	var loginParams map[string]string
 	bridge := bloks.InterpBridge{
@@ -364,11 +358,6 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	}
 
 	log.Debug().Msg("Handling login page response")
-	unminifier, err = bloks.GetUnminifier(loginResp)
-	if err != nil {
-		return nil, err
-	}
-	loginResp.Unminify(unminifier)
 
 	var mfaParams map[string]string
 	var loginRespData string
@@ -413,12 +402,6 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		}
 
 		log.Debug().Msg("Filling in MFA code")
-		unminifier, err = bloks.GetUnminifier(mfaPage)
-		if err != nil {
-			return nil, err
-		}
-		mfaPage.Unminify(unminifier)
-
 		var mfaVerifyParams map[string]string
 		mfaPageInterp, err := bloks.NewInterpreter(ctx, mfaPage, &bloks.InterpBridge{
 			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
@@ -501,12 +484,6 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		}
 
 		log.Debug().Msg("Handling MFA code response")
-		unminifier, err = bloks.GetUnminifier(mfaVerified)
-		if err != nil {
-			return nil, err
-		}
-		mfaVerified.Unminify(unminifier)
-
 		mfaVerifiedInterp, err := bloks.NewInterpreter(ctx, mfaVerified, &bloks.InterpBridge{
 			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
 			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),

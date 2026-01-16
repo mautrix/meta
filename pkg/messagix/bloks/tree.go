@@ -12,6 +12,20 @@ type BloksBundle struct {
 	Layout BloksLayout `json:"layout"`
 }
 
+func (bb *BloksBundle) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Layout BloksLayout `json:"layout"`
+	}
+	err := json.Unmarshal(data, &raw)
+	*bb = raw
+	m, err := GetUnminifier(bb)
+	if err != nil {
+		return err
+	}
+	bb.Unminify(m)
+	return nil
+}
+
 func (bb *BloksBundle) Unminify(m *Unminifier) {
 	p := &bb.Layout.Payload
 	p.VariablesOwner = p

@@ -65,11 +65,6 @@ func mainE() error {
 	if err != nil {
 		return err
 	}
-	un, err := bloks.GetUnminifier(bundle)
-	if err != nil {
-		return err
-	}
-	bundle.Unminify(un)
 	if *doPrint {
 		return bundle.Print("")
 	}
