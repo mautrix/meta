@@ -457,6 +457,9 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 				return str == "Code"
 			}) != nil
 		})
+		if codeInput == nil {
+			return nil, fmt.Errorf("couldn't find code input")
+		}
 
 		code, err := getMFACode()
 		if err != nil {
