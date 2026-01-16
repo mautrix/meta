@@ -171,8 +171,17 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	fb.client.MessengerLite.familyDeviceID = uuid.New()
 	fb.client.MessengerLite.machineID = string(random.StringBytes(25))
 
+	makeBridge := func(bri *bloks.InterpBridge) *bloks.InterpBridge {
+		bri.DeviceID = strings.ToUpper(fb.client.MessengerLite.deviceID.String())
+		bri.FamilyDeviceID = strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String())
+		bri.MachineID = fb.client.MessengerLite.machineID
+		return bri
+	}
+
+	log.Debug().Msg("Requesting redirect to login page")
+
 	doc := &bloks.BloksDocProcessClientDataAndRedirect
-	loginPage, err := fb.client.makeBloksRequest(ctx, doc, bloks.NewBloksRequest(doc, bloks.BloksParamsInner(map[string]any{
+	loginRedirectAction, err := fb.client.makeBloksRequest(ctx, doc, bloks.NewBloksRequest(doc, bloks.BloksParamsInner(map[string]any{
 		"blocked_uid":                               []any{},
 		"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
 		"family_device_id":                          strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
@@ -192,12 +201,35 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
 	}
 
-	var newPage *bloks.BloksBundle
+	log.Debug().Msg("Processing redirect to login page")
+
+	var loginPage *bloks.BloksBundle
+	loginRedirectInterp, err := bloks.NewInterpreter(ctx, loginRedirectAction, makeBridge(&bloks.InterpBridge{
+		DisplayNewScreen: func(name string, toDisplay *bloks.BloksBundle) error {
+			switch name {
+			default:
+				return fmt.Errorf("unexpected login screen %s", name)
+			}
+			loginPage = toDisplay
+			return nil
+		},
+	}), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = loginRedirectInterp.Evaluate(ctx, loginRedirectAction.Action())
+	if err != nil {
+		return nil, err
+	}
+	if loginPage == nil {
+		return nil, fmt.Errorf("wasn't redirected to login page")
+	}
+
+	log.Debug().Msg("Filling in email and password on login page")
+
 	var loginParams map[string]string
-	bridge := bloks.InterpBridge{
-		DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
-		FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
-		MachineID:      fb.client.MessengerLite.machineID,
+	loginInterp, err := bloks.NewInterpreter(ctx, loginPage, makeBridge(&bloks.InterpBridge{
 		EncryptPassword: func(password string) (string, error) {
 			key, err := fb.client.fetchLightspeedKey(ctx)
 			if err != nil {
@@ -219,27 +251,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			}
 			return nil
 		},
-		DisplayNewScreen: func(toDisplay *bloks.BloksBundle) error {
-			newPage = toDisplay
-			return nil
-		},
-	}
-	loginInterp, err := bloks.NewInterpreter(ctx, loginPage, &bridge, nil)
-	if err != nil {
-		return nil, err
-	}
-	log.Debug().Msg("Handling redirect to login page")
-	_, err = loginInterp.Evaluate(ctx, &loginPage.Layout.Payload.Action.AST)
-	if err != nil {
-		return nil, err
-	}
-	if newPage == nil {
-		return nil, fmt.Errorf("wasn't redirected to login page")
-	}
-
-	log.Debug().Msg("Filling in email and password on login page")
-	loginPage = newPage
-	loginInterp, err = bloks.NewInterpreter(ctx, loginPage, &bridge, loginInterp)
+	}), loginRedirectInterp)
 	if err != nil {
 		return nil, err
 	}
@@ -275,6 +287,8 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, err
 	}
 
+	log.Debug().Msg("Sending login request")
+
 	doc = &bloks.BloksDocSendLoginRequest
 	loginResp, err := fb.client.makeBloksRequest(
 		ctx, doc, bloks.NewBloksRequest(doc, loginParamsInner),
@@ -283,7 +297,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		return nil, fmt.Errorf("sending bloks login request: %w", err)
 	}
 
-	log.Debug().Msg("Handling login page response")
+	log.Debug().Msg("Processing login response")
 
 	var mfaParams map[string]string
 	var loginRespData string
@@ -308,10 +322,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	if err != nil {
 		return nil, err
 	}
+
 	_, err = loginRespInterp.Evaluate(ctx, &loginResp.Layout.Payload.Action.AST)
 	if err != nil {
 		return nil, err
 	}
+
 	if mfaParams != nil {
 		var mfaParamsInner bloks.BloksParamsInner
 		err = json.Unmarshal([]byte(mfaParams["params"]), &mfaParamsInner)
@@ -319,17 +335,55 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil, err
 		}
 
+		log.Debug().Msg("Requesting MFA entrypoint page")
+
 		doc := &bloks.BloksDocTwoStepVerificationEntrypoint
-		mfaPage, err := fb.client.makeBloksRequest(
+		mfaLandingPage, err := fb.client.makeBloksRequest(
 			ctx, doc, bloks.NewBloksRequest(doc, mfaParamsInner),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("sending bloks mfa entrypoint request: %w", err)
 		}
 
+		log.Debug().Msg("Pushing MFA method selection button")
+
+		var mfaMethodsPage *bloks.BloksBundle
+		mfaLandingInterp, err := bloks.NewInterpreter(ctx, mfaLandingPage, makeBridge(&bloks.InterpBridge{
+			DisplayNewScreen: func(name string, toDisplay *bloks.BloksBundle) error {
+				switch name {
+				default:
+					return fmt.Errorf("unexpected mfa screen %s", name)
+				}
+				mfaMethodsPage = toDisplay
+				return nil
+			},
+		}), loginRespInterp)
+		if err != nil {
+			return nil, err
+		}
+
+		err = mfaLandingPage.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
+			FindContainingButton().
+			TapButton(ctx, mfaLandingInterp)
+		if err != nil {
+			return nil, fmt.Errorf("tapping method selection button: %w", err)
+		}
+
+		if mfaMethodsPage == nil {
+			return nil, fmt.Errorf("mfa methods screen didn't display")
+		}
+
+		// TODO what happens now?
+
+		if true {
+			return nil, fmt.Errorf("not implemented yet")
+		}
+		mfaCodePage := mfaLandingPage // FIXME
+
 		log.Debug().Msg("Filling in MFA code")
 		var mfaVerifyParams map[string]string
-		mfaInterp, err := bloks.NewInterpreter(ctx, mfaPage, &bloks.InterpBridge{
+		mfaInterp, err := bloks.NewInterpreter(ctx, mfaCodePage, &bloks.InterpBridge{
 			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
 			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
 			MachineID:      fb.client.MessengerLite.machineID,
@@ -352,7 +406,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil, err
 		}
 
-		err = mfaPage.
+		err = mfaCodePage.
 			FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -366,7 +420,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 			return nil, fmt.Errorf("filling mfa code input")
 		}
 
-		err = mfaPage.
+		err = mfaCodePage.
 			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
 			FindContainingButton().
 			TapButton(ctx, mfaInterp)
@@ -417,6 +471,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 	}
 
 	log.Debug().Msg("Extracting credentials from login response")
+
 	var loginRespPayload BloksLoginActionResponsePayload
 	err = json.Unmarshal([]byte(loginRespData), &loginRespPayload)
 	if err != nil {

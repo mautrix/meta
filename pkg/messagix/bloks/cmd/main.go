@@ -90,7 +90,7 @@ func mainE() error {
 	if *doAction {
 		gotNewScreen := false
 		if *doLogin {
-			interp.Bridge.DisplayNewScreen = func(newBundle *bloks.BloksBundle) error {
+			interp.Bridge.DisplayNewScreen = func(name string, newBundle *bloks.BloksBundle) error {
 				bundle = newBundle
 				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge, interp)
 				if err != nil {

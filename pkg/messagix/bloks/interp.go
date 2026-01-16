@@ -25,7 +25,7 @@ type InterpBridge struct {
 	GetSecureNonces     func() []string
 	DoRPC               func(name string, params map[string]string) error
 	HandleLoginResponse func(data string) error
-	DisplayNewScreen    func(*BloksBundle) error
+	DisplayNewScreen    func(string, *BloksBundle) error
 }
 
 type Interpreter struct {
@@ -126,8 +126,8 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 	}
 	if br.DisplayNewScreen == nil {
-		br.DisplayNewScreen = func(bb *BloksBundle) error {
-			return fmt.Errorf("unhandled new screen")
+		br.DisplayNewScreen = func(name string, bb *BloksBundle) error {
+			return fmt.Errorf("unhandled new screen %s", name)
 		}
 	}
 	for _, item := range p.Variables {
@@ -717,12 +717,16 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				}, call.Args[2]},
 			},
 		})
-	case "bk.action.fx.OpenSyncScreen":
+	case "bk.action.fx.OpenSyncScreen", "bk.action.fx.PushSyncScreen":
+		name, err := evalTreeProp35(ctx, i, &call.Args[0], "pushscreen")
+		if err != nil {
+			return nil, err
+		}
 		bundle, err := evalAs[*BloksBundleRef](ctx, i, &call.Args[1], "opensyncscreen")
 		if err != nil {
 			return nil, err
 		}
-		err = i.Bridge.DisplayNewScreen(bundle.Bundle)
+		err = i.Bridge.DisplayNewScreen(name, bundle.Bundle)
 		if err != nil {
 			return nil, err
 		}
