@@ -141,7 +141,7 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 }
 
 func (m *MetaClient) ensureMessagixClient() {
-	if m.LoginMeta.Cookies != nil {
+	if m.LoginMeta.Cookies != nil && m.Client == nil {
 		m.LoginMeta.Cookies.Platform = m.LoginMeta.Platform
 		m.Client = messagix.NewClient(
 			m.LoginMeta.Cookies,
