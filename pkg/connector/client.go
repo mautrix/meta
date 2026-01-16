@@ -77,14 +77,8 @@ func (m *MetaConnector) getMessagixConfig() *messagix.Config {
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
-	var messagixClient *messagix.Client
-	if loginMetadata.Cookies != nil {
-		loginMetadata.Cookies.Platform = loginMetadata.Platform
-		messagixClient = messagix.NewClient(loginMetadata.Cookies, login.Log.With().Str("component", "messagix").Logger(), m.getMessagixConfig())
-	}
 	c := &MetaClient{
 		Main:      m,
-		Client:    messagixClient,
 		LoginMeta: loginMetadata,
 		UserLogin: login,
 
@@ -100,9 +94,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		igUserIDsReverse:  map[int64]string{},
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
-	if messagixClient != nil {
-		messagixClient.SetEventHandler(c.handleMetaEvent)
-	}
+	c.ensureMessagixClient()
 	login.Client = c
 	return nil
 }
@@ -149,6 +141,18 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
+func (m *MetaClient) ensureMessagixClient() {
+	if m.LoginMeta.Cookies != nil {
+		m.LoginMeta.Cookies.Platform = m.LoginMeta.Platform
+		m.Client = messagix.NewClient(
+			m.LoginMeta.Cookies,
+			m.UserLogin.Log.With().Str("component", "messagix").Logger(),
+			m.Main.getMessagixConfig(),
+		)
+		m.Client.SetEventHandler(m.handleMetaEvent)
+	}
+}
+
 func (m *MetaClient) ExportCredentials(ctx context.Context) any {
 	if m.Client == nil {
 		return nil
@@ -181,6 +185,7 @@ func (m *MetaClient) Connect(ctx context.Context) {
 const MaxConnectRetries = 10
 
 func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts int) {
+	m.ensureMessagixClient()
 	cli := m.Client
 	if cli == nil {
 		m.UserLogin.BridgeState.Send(status.BridgeState{
@@ -555,8 +560,7 @@ func (m *MetaClient) FullReconnect() {
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)
-	m.Client = messagix.NewClient(m.LoginMeta.Cookies, m.UserLogin.Log.With().Str("component", "messagix").Logger(), m.Main.getMessagixConfig())
-	m.Client.SetEventHandler(m.handleMetaEvent)
+	m.ensureMessagixClient()
 	m.Connect(ctx)
 	m.lastFullReconnect = time.Now()
 }
