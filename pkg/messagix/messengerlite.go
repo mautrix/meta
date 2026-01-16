@@ -300,26 +300,33 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 
 	log.Debug().Msg("Processing login response")
 
+	var mfaLandingPage *bloks.BloksBundle
 	var mfaParams map[string]string
 	var loginRespData string
-	loginRespInterp, err := bloks.NewInterpreter(ctx, loginResp, &bloks.InterpBridge{
-		DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
-		FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
-		MachineID:      fb.client.MessengerLite.machineID,
+	loginRespInterp, err := bloks.NewInterpreter(ctx, loginResp, makeBridge(&bloks.InterpBridge{
 		DoRPC: func(name string, params map[string]string) error {
 			switch name {
 			case "com.bloks.www.two_step_verification.entrypoint":
 				mfaParams = params
+				return nil
 			default:
 				return fmt.Errorf("got unexpected rpc %s from login resp", name)
 			}
-			return nil
+		},
+		DisplayNewScreen: func(name string, toDisplay *bloks.BloksBundle) error {
+			switch name {
+			case "com.bloks.www.caa.ar.code_entry":
+				mfaLandingPage = toDisplay
+				return nil
+			default:
+				return fmt.Errorf("got unexpected page %s from login resp", name)
+			}
 		},
 		HandleLoginResponse: func(data string) error {
 			loginRespData = data
 			return nil
 		},
-	}, loginInterp)
+	}), loginInterp)
 	if err != nil {
 		return nil, fmt.Errorf("creating login response interpreter: %w", err)
 	}
@@ -339,13 +346,14 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		log.Debug().Msg("Requesting MFA entrypoint page")
 
 		doc := &bloks.BloksDocTwoStepVerificationEntrypoint
-		mfaLandingPage, err := fb.client.makeBloksRequest(
+		mfaLandingPage, err = fb.client.makeBloksRequest(
 			ctx, doc, bloks.NewBloksRequest(doc, mfaParamsInner),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("sending bloks mfa entrypoint request: %w", err)
 		}
-
+	}
+	if mfaLandingPage != nil {
 		log.Debug().Msg("Pushing MFA method selection button")
 
 		var mfaMethodsPage *bloks.BloksBundle
@@ -384,10 +392,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 
 		log.Debug().Msg("Filling in MFA code")
 		var mfaVerifyParams map[string]string
-		mfaInterp, err := bloks.NewInterpreter(ctx, mfaCodePage, &bloks.InterpBridge{
-			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
-			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
-			MachineID:      fb.client.MessengerLite.machineID,
+		mfaInterp, err := bloks.NewInterpreter(ctx, mfaCodePage, makeBridge(&bloks.InterpBridge{
 			DoRPC: func(name string, params map[string]string) error {
 				switch name {
 				case "com.bloks.www.two_step_verification.verify_code.async":
@@ -397,7 +402,7 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 				}
 				return nil
 			},
-		}, loginRespInterp)
+		}), loginRespInterp)
 		if err != nil {
 			return nil, fmt.Errorf("creating mfa interpreter: %w", err)
 		}
@@ -448,15 +453,12 @@ func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password st
 		}
 
 		log.Debug().Msg("Handling MFA code response")
-		mfaVerifiedInterp, err := bloks.NewInterpreter(ctx, mfaVerified, &bloks.InterpBridge{
-			DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
-			FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
-			MachineID:      fb.client.MessengerLite.machineID,
+		mfaVerifiedInterp, err := bloks.NewInterpreter(ctx, mfaVerified, makeBridge(&bloks.InterpBridge{
 			HandleLoginResponse: func(data string) error {
 				loginRespData = data
 				return nil
 			},
-		}, mfaInterp)
+		}), mfaInterp)
 		if err != nil {
 			return nil, fmt.Errorf("creating mfa verification response interpreter: %w", err)
 		}
