@@ -91,6 +91,12 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			log.Debug().Msg("Handling cached initial table")
 			m.parseAndQueueTable(ctx, tbl, true)
 		}
+		// Start thread backfill in background after initial sync
+		go func() {
+			if err := m.StartThreadBackfill(ctx); err != nil {
+				log.Err(err).Msg("Thread backfill failed")
+			}
+		}()
 	case *messagix.Event_SocketError:
 		log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
 		m.metaState = status.BridgeState{
