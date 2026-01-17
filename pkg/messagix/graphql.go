@@ -37,8 +37,8 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 	payload.ServerTimestamps = "true"
 	payload.Locale = "en_US"
 	payload.Purpose = "fetch"
-	payload.FbAPIReqFriendlyName = "MSGBloksActionRootQuery-" + doc.FriendlyName
-	payload.ClientDocID = doc.ClientDocId
+	payload.FbAPIReqFriendlyName = "MSGBloksActionRootQuery-" + doc.AppID
+	payload.ClientDocID = doc.ClientDocID
 	payload.EnableCanonicalNaming = "true"
 	payload.EnableCanonicalVariableOverrides = "true"
 	payload.EnableCanonicalNamingAmbiguousTypePrefixing = "true"
@@ -56,7 +56,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		return nil, err
 	}
 
-	headers.Set("x-fb-friendly-name", doc.FriendlyName)
+	headers.Set("x-fb-friendly-name", "MSGBloksActionRootQuery-"+doc.AppID)
 	headers.Set("x-root-field-name", "bloks_action")
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
