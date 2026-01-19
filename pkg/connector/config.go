@@ -46,7 +46,7 @@ type Config struct {
 }
 
 type ThreadBackfillConfig struct {
-	Enabled    bool          `yaml:"enabled"`
+	BatchCount int           `yaml:"batch_count"`
 	BatchDelay time.Duration `yaml:"batch_delay"`
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 func (m *MetaClient) StartThreadBackfill(ctx context.Context) error {
-	if !m.Main.Config.ThreadBackfill.Enabled {
+	if m.Main.Config.ThreadBackfill.BatchCount == 0 {
 		return nil
 	}
 
@@ -56,7 +56,7 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 
 		// Check if more threads available - note HasMoreBefore may never become false, so we also
 		// check if the MinThreadKey hasn't moved, in which case we know we paginated everything.
-		if keyStore == nil || !keyStore.HasMoreBefore || keyStore.MinThreadKey == lastMinThreadKey {
+		if keyStore == nil || !keyStore.HasMoreBefore || keyStore.MinThreadKey == lastMinThreadKey || batchCount >= m.Main.Config.ThreadBackfill.BatchCount {
 			log.Info().Int("batches_processed", batchCount).Msg("Thread backfill complete - fully paginated")
 			m.markBackfillComplete(ctx, m.LoginMeta)
 			return nil

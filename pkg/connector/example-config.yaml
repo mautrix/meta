@@ -53,7 +53,7 @@ disable_view_once: false
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:
-  # Enable thread list backfill to sync older conversations on connect
-  enabled: false
+  # Number of batches (pages) to backfill (-1 for unlimited, 0 to disable)
+  batch_count: -1
   # Delay between fetching each batch of threads (to avoid rate limiting)
   batch_delay: 2s
