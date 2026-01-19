@@ -34,10 +34,8 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 	lastMinThreadKey := m.Client.GetSyncGroupKeyStore(1).MinThreadKey
 
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
 
 		// Fetch next batch of threads
