@@ -38,22 +38,18 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 			return ctx.Err()
 		}
 
-		// Fetch next batch of threads
-		tbl, err := m.Client.FetchMoreThreads(ctx, 1) // SyncGroup 1
+		// Fetch next batch of threads, TODO: other SyncGroups?
+		keyStore, tbl, err := m.Client.FetchMoreThreads(ctx, 1) // SyncGroup 1
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more threads")
 			return err
-		}
-
-		if tbl == nil {
+		} else if tbl == nil {
 			log.Info().Int("batches_processed", batchCount).Msg("Thread backfill complete - no more threads")
 			m.markBackfillComplete(ctx, m.LoginMeta)
 			return nil
 		}
 
 		batchCount++
-
-		keyStore := m.Client.GetSyncGroupKeyStore(1)
 
 		// Process received threads (handled via normal event flow)
 		m.parseAndQueueTable(ctx, tbl, false)

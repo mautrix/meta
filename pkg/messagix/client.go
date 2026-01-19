@@ -518,13 +518,13 @@ func (c *Client) ForceReconnect() {
 	c.dgwSocket.Disconnect()
 }
 
-func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*table.LSTable, error) {
+func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*socket.KeyStoreData, *table.LSTable, error) {
 	if c == nil {
-		return nil, ErrClientIsNil
+		return nil, nil, ErrClientIsNil
 	}
 	keyStore := c.syncManager.getSyncGroupKeyStore(syncGroup)
 	if keyStore == nil || !keyStore.HasMoreBefore {
-		return nil, nil // No more threads
+		return nil, nil, nil // No more threads
 	}
 
 	tskm := c.newTaskManager()
@@ -540,16 +540,16 @@ func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*table.
 
 	payload, err := tskm.FinalizePayload()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	resp, err := c.socket.makeLSRequest(ctx, payload, 3)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	resp.Finish()
 	c.socket.postHandlePublishResponse(resp.Table)
 
-	return resp.Table, nil
+	return keyStore, resp.Table, nil
 }
