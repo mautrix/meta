@@ -325,6 +325,7 @@ func (m *MetaNativeLogin) Cancel() {}
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	log := m.User.Log.With().Str("component", "messagix").Logger()
+	log.Debug().Msg("Starting Messenger Lite login flow")
 
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,

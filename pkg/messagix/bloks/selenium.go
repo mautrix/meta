@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -76,7 +77,11 @@ func FilterByAttribute(compid BloksComponentID, attr string, value string) func(
 }
 
 func (comp *BloksTreeComponent) GetAttribute(name string) string {
-	value, ok := comp.Attributes[BloksAttributeID(name)].BloksTreeNodeContent.(*BloksTreeLiteral)
+	attr := comp.Attributes[BloksAttributeID(name)]
+	if attr == nil {
+		return ""
+	}
+	value, ok := attr.BloksTreeNodeContent.(*BloksTreeLiteral)
 	if !ok {
 		return ""
 	}
@@ -166,6 +171,7 @@ type Browser struct {
 }
 
 func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
+	log := zerolog.Ctx(ctx)
 	b := Browser{
 		State:  StateInitial,
 		Config: cfg,
@@ -176,6 +182,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 		MachineID:       string(random.StringBytes(25)),
 		EncryptPassword: cfg.EncryptPassword,
 		DoRPC: func(name string, params map[string]string) error {
+			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
 			case "com.bloks.www.bloks.caa.login.async.send_login_request":
@@ -207,6 +214,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			return nil
 		},
 		DisplayNewScreen: func(name string, page *BloksBundle) error {
+			log.Debug().Str("state", string(b.State)).Str("screen", name).Msg("Displaying new screen from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
 			case "com.bloks.www.caa.login.login_homepage":
@@ -225,6 +233,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			return nil
 		},
 		HandleLoginResponse: func(data string) error {
+			log.Debug().Str("state", string(b.State)).Msg("Handling login response from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			transitions[StateEnteredEmailPasswordAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
@@ -241,6 +250,14 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 }
 
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
+	log := zerolog.Ctx(ctx)
+	{
+		fields := []string{}
+		for field := range userInput {
+			fields = append(fields, field)
+		}
+		log.Debug().Str("cur_state", string(b.State)).Strs("user_input", fields).Msg("Executing login step")
+	}
 	prevState := b.State
 	switch b.State {
 	case StateInitial:
@@ -379,5 +396,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	if b.State == prevState {
 		return nil, fmt.Errorf("handling %s failed to advance flow", prevState)
 	}
+	log.Debug().Str("old_state", string(prevState)).Str("new_state", string(b.State)).Msg("Transitioned login step")
 	return nil, nil
 }

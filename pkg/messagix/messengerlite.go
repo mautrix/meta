@@ -187,8 +187,18 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 
 	for m.browser.State != bloks.StateSuccess {
 		step, err := m.browser.DoLoginStep(ctx, userInput)
-		if err != nil || step != nil {
-			return step, nil, err
+		if err != nil {
+			return nil, nil, err
+		}
+		if step != nil {
+			if step.UserInputParams != nil {
+				inputs := []string{}
+				for _, input := range step.UserInputParams.Fields {
+					inputs = append(inputs, input.ID)
+				}
+				m.client.Logger.Debug().Strs("inputs", inputs).Msg("Requesting user input")
+			}
+			return step, nil, nil
 		}
 	}
 
