@@ -171,6 +171,7 @@ const (
 	StateEmailCodePage                           = "enter-code-from-email-page"
 	StateMFALandingPage                          = "mfa-landing-page"
 	StateChooseMFAPage                           = "choose-mfa-type-page"
+	StateChosenMFAAction                         = "chosen-mfa-type-action"
 	StateAFADPage                                = "afad-page"
 	StateTOTPPage                                = "totp-page"
 	StateEnteredTOTPAction                       = "entered-totp-action"
@@ -216,6 +217,10 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 			case "com.bloks.www.two_step_verification.method_picker":
 				transitions[StateMFALandingPage] = StateChooseMFAPage
+			case "com.bloks.www.two_step_verification.method_picker.navigation.async":
+				transitions[StateChooseMFAPage] = StateChosenMFAAction
+			case "com.bloks.www.two_factor_login.enter_totp_code":
+				transitions[StateChosenMFAAction] = StateTOTPPage
 			default:
 				return fmt.Errorf("unexpected rpc %s", name)
 			}
@@ -322,7 +327,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		b.NewPageOrAction = action
 		b.State = StateRedirectToLoginAction
-	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateEnteredTOTPAction:
+	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateChosenMFAAction, StateEnteredTOTPAction:
 		err := b.NewPageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
 		if err != nil {
 			return nil, fmt.Errorf("setup %s interpreter: %w", b.State, err)
@@ -334,7 +339,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateEmailPasswordPage:
 		switchToNewPage()
 
-		if userInput == nil {
+		if userInput["username"] == "" || userInput["password"] == "" {
 			return &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.emailpassword",
@@ -449,7 +454,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateTOTPPage:
 		switchToNewPage()
 
-		if userInput == nil {
+		if userInput["code"] == "" {
 			return &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.totp",
@@ -481,7 +486,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FindContainingButton().
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			return nil, fmt.Errorf("tapping login button: %w", err)
+			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("unexpected state %s", b.State)
