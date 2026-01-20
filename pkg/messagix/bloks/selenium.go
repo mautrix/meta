@@ -191,6 +191,8 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
+			case "com.bloks.www.two_step_verification.method_picker":
+				transitions[StateMFALandingPage] = StateChooseMFAPage
 			default:
 				return fmt.Errorf("unexpected rpc %s", name)
 			}

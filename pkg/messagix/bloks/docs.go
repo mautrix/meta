@@ -12,4 +12,5 @@ var DocIDs = map[string]string{
 	"com.bloks.www.bloks.caa.login.async.send_login_request":         "155775708812630868437451274928",
 	"com.bloks.www.two_step_verification.entrypoint":                 "28114594639880354457944446921",
 	"com.bloks.www.two_step_verification.verify_code.async":          "15577570885164679244236938926",
+	"com.bloks.www.two_step_verification.method_picker":              "28114594639880354457944446921",
 }

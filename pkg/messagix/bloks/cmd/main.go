@@ -17,6 +17,7 @@ var filename = flag.String("file", "", "Bloks response to parse")
 var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
 var doLogin = flag.Bool("login", false, "Click the login button")
 var do2FA = flag.String("2fa", "", "Submit a two-factor code")
+var doMethods = flag.Bool("methods", false, "Print the available 2FA methods")
 var doAction = flag.Bool("action", false, "Run the action script")
 var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
 
@@ -46,6 +47,9 @@ func readAndParse[T any](filename string) (*T, error) {
 	return &data, nil
 }
 
+// This code is liable to be out of date and crappy, because it is
+// just for manual testing. See the actual login flow integrating with
+// bridgev2 for the latest best practices.
 func mainE() error {
 	ctx := context.Background()
 
@@ -241,6 +245,12 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
+	} else if *doMethods {
+		list := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			return comp.ComponentID == "bk.components.Collection"
+		})
+		options := list.Attributes["children"].BloksTreeNodeContent.(*bloks.BloksTreeComponentList)
+		fmt.Printf("Found %d MFA method(s):\n", len(*options))
 	}
 	return nil
 }
