@@ -273,7 +273,7 @@ func loginWithCookies(
 
 	metaClient := ul.Client.(*MetaClient)
 	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
-	client.Logger = metaClient.Client.Logger
+	client.Logger = ul.Log.With().Str("component", "messagix").Logger()
 	client.SetEventHandler(metaClient.handleMetaEvent)
 	metaClient.lastFullReconnect = time.Time{}
 	metaClient.Client = client
