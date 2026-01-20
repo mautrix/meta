@@ -59,12 +59,12 @@ type BloksRequestOuter struct {
 	Params    *BloksParamsOuter `json:"params,omitempty"`
 }
 
-func NewBloksRequest(doc *BloksDoc, inner BloksParamsInner) *BloksRequestOuter {
+func NewBloksRequest(appID string, inner BloksParamsInner) *BloksRequestOuter {
 	return &BloksRequestOuter{
 		BkContext: NewBkContext(),
 		Params: &BloksParamsOuter{
 			BloksVersioningId: BloksVersion,
-			AppID:             doc.AppID,
+			AppID:             appID,
 			Params: ExtraStringification[BloksParamsMiddle]{BloksParamsMiddle{
 				Params: ExtraStringification[BloksParamsInner]{inner},
 			}},

@@ -1,6 +1,7 @@
 package bloks
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -9,18 +10,39 @@ import (
 )
 
 type BloksBundle struct {
-	Layout BloksLayout `json:"layout"`
+	Layout      BloksLayout  `json:"layout"`
+	Interpreter *Interpreter `json:"-"`
+}
+
+func (bb *BloksBundle) GetInterpreter() *Interpreter {
+	if bb == nil {
+		return nil
+	}
+	return bb.Interpreter
 }
 
 func (bb *BloksBundle) Action() *BloksScriptNode {
 	return &bb.Layout.Payload.Action.AST
 }
 
+func (bb *BloksBundle) SetupInterpreter(ctx context.Context, br *InterpBridge, prev *Interpreter) error {
+	interp, err := NewInterpreter(ctx, bb, br, prev)
+	if err != nil {
+		return err
+	}
+	bb.Interpreter = interp
+	return nil
+}
+
 func (bb *BloksBundle) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Layout BloksLayout `json:"layout"`
+		Layout      BloksLayout  `json:"layout"`
+		Interpreter *Interpreter `json:"-"`
 	}
 	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
 	*bb = raw
 	m, err := GetUnminifier(bb)
 	if err != nil {

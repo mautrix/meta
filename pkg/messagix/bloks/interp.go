@@ -24,8 +24,8 @@ type InterpBridge struct {
 	HasAppPermissions   func(permissions ...string) bool
 	GetSecureNonces     func() []string
 	DoRPC               func(name string, params map[string]string) error
-	HandleLoginResponse func(data string) error
 	DisplayNewScreen    func(string, *BloksBundle) error
+	HandleLoginResponse func(data string) error
 }
 
 type Interpreter struct {
@@ -120,14 +120,14 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 			return fmt.Errorf("unhandled rpc %s", name)
 		}
 	}
-	if br.HandleLoginResponse == nil {
-		br.HandleLoginResponse = func(data string) error {
-			return fmt.Errorf("unhandled login response")
-		}
-	}
 	if br.DisplayNewScreen == nil {
 		br.DisplayNewScreen = func(name string, bb *BloksBundle) error {
 			return fmt.Errorf("unhandled new screen %s", name)
+		}
+	}
+	if br.HandleLoginResponse == nil {
+		br.HandleLoginResponse = func(data string) error {
+			return fmt.Errorf("unhandled login response")
 		}
 	}
 	for _, item := range p.Variables {

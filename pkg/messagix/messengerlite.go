@@ -2,16 +2,13 @@ package messagix
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/google/uuid"
-
-	"go.mau.fi/util/random"
+	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -22,6 +19,8 @@ import (
 
 type MessengerLiteMethods struct {
 	client *Client
+
+	browser *bloks.Browser
 
 	deviceID       uuid.UUID
 	familyDeviceID uuid.UUID
@@ -65,6 +64,24 @@ func makeRequestAnalyticsHeader() (string, error) {
 type LightspeedKeyResponse struct {
 	KeyID     int    `json:"key_id"`
 	PublicKey string `json:"public_key"`
+}
+
+func (fb *MessengerLiteMethods) getBrowserConfig(ctx context.Context) *bloks.BrowserConfig {
+	return &bloks.BrowserConfig{
+		EncryptPassword: func(password string) (string, error) {
+			key, err := fb.client.fetchLightspeedKey(ctx)
+			if err != nil {
+				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
+			}
+
+			encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
+			if err != nil {
+				return "", fmt.Errorf("encrypting password for messenger lite: %w", err)
+			}
+			return encryptedPW, nil
+		},
+		MakeBloksRequest: fb.client.makeBloksRequest,
+	}
 }
 
 func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
@@ -163,324 +180,28 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 	return newCookies
 }
 
-func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string, getMFACode func() (string, error)) (*cookies.Cookies, error) {
-	log := fb.client.Logger.With().Str("component", "messenger_lite_login").Logger()
-	log.Debug().Msg("Starting Messenger Lite login flow")
-
-	fb.client.MessengerLite.deviceID = uuid.New()
-	fb.client.MessengerLite.familyDeviceID = uuid.New()
-	fb.client.MessengerLite.machineID = string(random.StringBytes(25))
-
-	makeBridge := func(bri *bloks.InterpBridge) *bloks.InterpBridge {
-		bri.DeviceID = strings.ToUpper(fb.client.MessengerLite.deviceID.String())
-		bri.FamilyDeviceID = strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String())
-		bri.MachineID = fb.client.MessengerLite.machineID
-		return bri
+func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, *cookies.Cookies, error) {
+	if m.browser == nil {
+		m.browser = bloks.NewBrowser(ctx, m.getBrowserConfig(ctx))
 	}
 
-	log.Debug().Msg("Requesting redirect to login page")
-
-	doc := &bloks.BloksDocProcessClientDataAndRedirect
-	loginRedirectAction, err := fb.client.makeBloksRequest(ctx, doc, bloks.NewBloksRequest(doc, bloks.BloksParamsInner(map[string]any{
-		"blocked_uid":                               []any{},
-		"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
-		"family_device_id":                          strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
-		"use_auto_login_interstitial":               true,
-		"layered_homepage_experiment_group":         "not_in_experiment",
-		"disable_recursive_auto_login_interstitial": true,
-		"show_internal_settings":                    false,
-		"waterfall_id":                              hex.EncodeToString(random.Bytes(16)),
-		"account_list":                              []any{},
-		"disable_auto_login":                        false,
-		"is_from_logged_in_switcher":                false,
-		"auto_login_interstitial_experiment_group":  "",
-		"device_id":                                 strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
-		"machine_id":                                fb.client.MessengerLite.machineID,
-	})))
-	if err != nil {
-		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
-	}
-
-	log.Debug().Msg("Processing redirect to login page")
-
-	var loginPage *bloks.BloksBundle
-	loginRedirectInterp, err := bloks.NewInterpreter(ctx, loginRedirectAction, makeBridge(&bloks.InterpBridge{
-		DisplayNewScreen: func(name string, toDisplay *bloks.BloksBundle) error {
-			switch name {
-			case "com.bloks.www.caa.login.login_homepage":
-				loginPage = toDisplay
-				return nil
-			default:
-				return fmt.Errorf("unexpected login screen %q", name)
-			}
-		},
-	}), nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating login redirect interpreter: %w", err)
-	}
-
-	_, err = loginRedirectInterp.Evaluate(ctx, loginRedirectAction.Action())
-	if err != nil {
-		return nil, fmt.Errorf("running login redirect action: %w", err)
-	}
-	if loginPage == nil {
-		return nil, fmt.Errorf("wasn't redirected to login page")
-	}
-
-	log.Debug().Msg("Filling in email and password on login page")
-
-	var loginParams map[string]string
-	loginInterp, err := bloks.NewInterpreter(ctx, loginPage, makeBridge(&bloks.InterpBridge{
-		EncryptPassword: func(password string) (string, error) {
-			key, err := fb.client.fetchLightspeedKey(ctx)
-			if err != nil {
-				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
-			}
-
-			encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
-			if err != nil {
-				return "", fmt.Errorf("encrypting password for messenger lite: %w", err)
-			}
-			return encryptedPW, nil
-		},
-		DoRPC: func(name string, params map[string]string) error {
-			switch name {
-			case "com.bloks.www.bloks.caa.login.async.send_login_request":
-				loginParams = params
-			default:
-				return fmt.Errorf("got unexpected rpc %s from login page", name)
-			}
-			return nil
-		},
-	}), loginRedirectInterp)
-	if err != nil {
-		return nil, fmt.Errorf("creating login interpreter: %w", err)
-	}
-
-	err = loginPage.
-		FindDescendant(bloks.FilterByAttribute("bk.components.TextInput", "html_name", "email")).
-		FillInput(ctx, loginInterp, username)
-	if err != nil {
-		return nil, fmt.Errorf("filling email input: %w", err)
-	}
-
-	err = loginPage.
-		FindDescendant(bloks.FilterByAttribute("bk.components.TextInput", "html_name", "password")).
-		FillInput(ctx, loginInterp, username)
-	if err != nil {
-		return nil, fmt.Errorf("filling password input: %w", err)
-	}
-
-	err = loginPage.
-		FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Log in")).
-		FindContainingButton().
-		TapButton(ctx, loginInterp)
-	if err != nil {
-		return nil, fmt.Errorf("tapping login button: %w", err)
-	}
-
-	if loginParams == nil {
-		return nil, fmt.Errorf("bloks did not generate login rpc")
-	}
-	var loginParamsInner bloks.BloksParamsInner
-	err = json.Unmarshal([]byte(loginParams["params"]), &loginParamsInner)
-	if err != nil {
-		return nil, fmt.Errorf("parsing login params: %w", err)
-	}
-
-	log.Debug().Msg("Sending login request")
-
-	doc = &bloks.BloksDocSendLoginRequest
-	loginResp, err := fb.client.makeBloksRequest(
-		ctx, doc, bloks.NewBloksRequest(doc, loginParamsInner),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("sending bloks login request: %w", err)
-	}
-
-	log.Debug().Msg("Processing login response")
-
-	var mfaLandingPage *bloks.BloksBundle
-	var mfaParams map[string]string
-	var loginRespData string
-	loginRespInterp, err := bloks.NewInterpreter(ctx, loginResp, makeBridge(&bloks.InterpBridge{
-		DoRPC: func(name string, params map[string]string) error {
-			switch name {
-			case "com.bloks.www.two_step_verification.entrypoint":
-				mfaParams = params
-				return nil
-			default:
-				return fmt.Errorf("got unexpected rpc %s from login resp", name)
-			}
-		},
-		DisplayNewScreen: func(name string, toDisplay *bloks.BloksBundle) error {
-			switch name {
-			case "com.bloks.www.caa.ar.code_entry":
-				mfaLandingPage = toDisplay
-				return nil
-			default:
-				return fmt.Errorf("got unexpected page %s from login resp", name)
-			}
-		},
-		HandleLoginResponse: func(data string) error {
-			loginRespData = data
-			return nil
-		},
-	}), loginInterp)
-	if err != nil {
-		return nil, fmt.Errorf("creating login response interpreter: %w", err)
-	}
-
-	_, err = loginRespInterp.Evaluate(ctx, &loginResp.Layout.Payload.Action.AST)
-	if err != nil {
-		return nil, fmt.Errorf("running login response action: %w", err)
-	}
-
-	if mfaParams != nil {
-		var mfaParamsInner bloks.BloksParamsInner
-		err = json.Unmarshal([]byte(mfaParams["params"]), &mfaParamsInner)
-		if err != nil {
-			return nil, fmt.Errorf("parsing mfa params: %w", err)
-		}
-
-		log.Debug().Msg("Requesting MFA entrypoint page")
-
-		doc := &bloks.BloksDocTwoStepVerificationEntrypoint
-		mfaLandingPage, err = fb.client.makeBloksRequest(
-			ctx, doc, bloks.NewBloksRequest(doc, mfaParamsInner),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("sending bloks mfa entrypoint request: %w", err)
+	for m.browser.State != bloks.StateSuccess {
+		step, err := m.browser.DoLoginStep(ctx, userInput)
+		if err != nil || step != nil {
+			return step, nil, err
 		}
 	}
-	if mfaLandingPage != nil {
-		log.Debug().Msg("Pushing MFA method selection button")
-
-		var mfaMethodsPage *bloks.BloksBundle
-		mfaLandingInterp, err := bloks.NewInterpreter(ctx, mfaLandingPage, makeBridge(&bloks.InterpBridge{
-			DisplayNewScreen: func(name string, toDisplay *bloks.BloksBundle) error {
-				switch name {
-				default:
-					return fmt.Errorf("unexpected mfa screen %s", name)
-				}
-				mfaMethodsPage = toDisplay
-				return nil
-			},
-		}), loginRespInterp)
-		if err != nil {
-			return nil, fmt.Errorf("creating mfa landing page interpreter: %w", err)
-		}
-
-		err = mfaLandingPage.
-			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
-			FindContainingButton().
-			TapButton(ctx, mfaLandingInterp)
-		if err != nil {
-			return nil, fmt.Errorf("tapping method selection button: %w", err)
-		}
-
-		if mfaMethodsPage == nil {
-			return nil, fmt.Errorf("mfa methods screen didn't display")
-		}
-
-		// TODO what happens now?
-
-		if true {
-			return nil, fmt.Errorf("not implemented yet")
-		}
-		mfaCodePage := mfaLandingPage // FIXME
-
-		log.Debug().Msg("Filling in MFA code")
-		var mfaVerifyParams map[string]string
-		mfaInterp, err := bloks.NewInterpreter(ctx, mfaCodePage, makeBridge(&bloks.InterpBridge{
-			DoRPC: func(name string, params map[string]string) error {
-				switch name {
-				case "com.bloks.www.two_step_verification.verify_code.async":
-					mfaVerifyParams = params
-				default:
-					return fmt.Errorf("got unexpected rpc %s from login resp", name)
-				}
-				return nil
-			},
-		}), loginRespInterp)
-		if err != nil {
-			return nil, fmt.Errorf("creating mfa interpreter: %w", err)
-		}
-
-		code, err := getMFACode()
-		if err != nil {
-			return nil, fmt.Errorf("getting mfa code from user: %w", err)
-		}
-
-		err = mfaCodePage.
-			FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-				if comp.ComponentID != "bk.components.TextInput" {
-					return false
-				}
-				return comp.FindDescendant(bloks.FilterByAttribute(
-					"bk.components.AccessibilityExtension", "label", "Code",
-				)) != nil
-			}).
-			FillInput(ctx, mfaInterp, code)
-		if err != nil {
-			return nil, fmt.Errorf("filling mfa code input: %w", err)
-		}
-
-		err = mfaCodePage.
-			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
-			FindContainingButton().
-			TapButton(ctx, mfaInterp)
-		if err != nil {
-			return nil, fmt.Errorf("tapping login button: %w", err)
-		}
-
-		if mfaVerifyParams == nil {
-			return nil, fmt.Errorf("mfa screen didn't trigger verify rpc")
-		}
-
-		var mfaVerifyParamsInner bloks.BloksParamsInner
-		err = json.Unmarshal([]byte(mfaVerifyParams["params"]), &mfaVerifyParamsInner)
-		if err != nil {
-			return nil, fmt.Errorf("parsing mfa verification params: %w", err)
-		}
-
-		doc = &bloks.BloksDocVerifyCode
-		mfaVerified, err := fb.client.makeBloksRequest(
-			ctx, doc, bloks.NewBloksRequest(doc, mfaVerifyParamsInner),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("verifying mfa code: %w", err)
-		}
-
-		log.Debug().Msg("Handling MFA code response")
-		mfaVerifiedInterp, err := bloks.NewInterpreter(ctx, mfaVerified, makeBridge(&bloks.InterpBridge{
-			HandleLoginResponse: func(data string) error {
-				loginRespData = data
-				return nil
-			},
-		}), mfaInterp)
-		if err != nil {
-			return nil, fmt.Errorf("creating mfa verification response interpreter: %w", err)
-		}
-		_, err = mfaVerifiedInterp.Evaluate(ctx, &mfaVerified.Layout.Payload.Action.AST)
-		if err != nil {
-			return nil, fmt.Errorf("running mfa verification response action: %w", err)
-		}
-		if loginRespData == "" {
-			return nil, fmt.Errorf("mfa verify response didn't trigger callback")
-		}
-	} else if loginRespData == "" {
-		return nil, fmt.Errorf("login response didn't trigger callback")
-	}
-
-	log.Debug().Msg("Extracting credentials from login response")
 
 	var loginRespPayload BloksLoginActionResponsePayload
-	err = json.Unmarshal([]byte(loginRespData), &loginRespPayload)
+	err := json.Unmarshal([]byte(m.browser.LoginData), &loginRespPayload)
 	if err != nil {
-		return nil, fmt.Errorf("parsing login response data: %w", err)
+		return nil, nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
-	newCookies := convertCookies(&loginRespPayload)
-	return newCookies, nil
+	// these values are generated by us, they are known safe
+	m.deviceID = uuid.MustParse(m.browser.Bridge.DeviceID)
+	m.familyDeviceID = uuid.MustParse(m.browser.Bridge.FamilyDeviceID)
+	m.machineID = m.browser.Bridge.MachineID
+
+	return nil, convertCookies(&loginRespPayload), nil
 }
