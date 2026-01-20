@@ -164,18 +164,18 @@ type BrowserState string
 // MFA = Multi-Factor Authentication
 const (
 	StateUnknown                    BrowserState = ""
-	StateInitial                                 = "initial"
-	StateRedirectToLoginAction                   = "redirect-to-login-action"
-	StateEmailPasswordPage                       = "enter-email-and-password-page"
-	StateEnteredEmailPasswordAction              = "entered-email-and-password-action"
-	StateEmailCodePage                           = "enter-code-from-email-page"
-	StateMFALandingPage                          = "mfa-landing-page"
-	StateChooseMFAPage                           = "choose-mfa-type-page"
-	StateChosenMFAAction                         = "chosen-mfa-type-action"
-	StateAFADPage                                = "afad-page"
-	StateTOTPPage                                = "totp-page"
-	StateEnteredTOTPAction                       = "entered-totp-action"
-	StateSuccess                                 = "success"
+	StateInitial                    BrowserState = "initial"
+	StateRedirectToLoginAction      BrowserState = "redirect-to-login-action"
+	StateEmailPasswordPage          BrowserState = "enter-email-and-password-page"
+	StateEnteredEmailPasswordAction BrowserState = "entered-email-and-password-action"
+	StateEmailCodePage              BrowserState = "enter-code-from-email-page"
+	StateMFALandingPage             BrowserState = "mfa-landing-page"
+	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
+	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
+	StateAFADPage                   BrowserState = "afad-page"
+	StateTOTPPage                   BrowserState = "totp-page"
+	StateEnteredTOTPAction          BrowserState = "entered-totp-action"
+	StateSuccess                    BrowserState = "success"
 )
 
 type BrowserConfig struct {
