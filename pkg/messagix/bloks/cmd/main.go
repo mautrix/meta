@@ -246,11 +246,45 @@ func mainE() error {
 			return err
 		}
 	} else if *doMethods {
-		list := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-			return comp.ComponentID == "bk.components.Collection"
-		})
-		options := list.Attributes["children"].BloksTreeNodeContent.(*bloks.BloksTreeComponentList)
-		fmt.Printf("Found %d MFA method(s):\n", len(*options))
+		possibleMethods := []string{
+			"Notification on another device",
+			"Authentication app",
+		}
+		foundMethods := map[string]*bloks.BloksTreeComponent{}
+		for _, methodName := range possibleMethods {
+			elem := bundle.FindDescendant(bloks.FilterByAttribute(
+				"bk.data.TextSpan", "text", methodName,
+			))
+			if elem != nil {
+				foundMethods[methodName] = elem
+			}
+		}
+		fmt.Printf("Found %d MFA method(s):\n", len(foundMethods))
+		selectedMethod := ""
+		for _, methodName := range possibleMethods {
+			elem := foundMethods[methodName]
+			if elem != nil {
+				fmt.Printf("- %s\n", methodName)
+
+				// sloppily pick the last one
+				selectedMethod = methodName
+			}
+		}
+		if selectedMethod == "" {
+			fmt.Printf("  (none)\n")
+			return nil
+		}
+		err := foundMethods[selectedMethod].FindContainingButton().TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tap selected method: %w", err)
+		}
+		err = bundle.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tap continue: %w", err)
+		}
 	}
 	return nil
 }
