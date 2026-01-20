@@ -18,6 +18,7 @@ var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
 var doLogin = flag.Bool("login", false, "Click the login button")
 var do2FA = flag.String("2fa", "", "Submit a two-factor code")
 var doMethods = flag.Bool("methods", false, "Print the available 2FA methods")
+var selectedMethod = flag.String("method", "", "Select one of the 2FA methods")
 var doAction = flag.Bool("action", false, "Run the action script")
 var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
 
@@ -260,21 +261,20 @@ func mainE() error {
 			}
 		}
 		fmt.Printf("Found %d MFA method(s):\n", len(foundMethods))
-		selectedMethod := ""
 		for _, methodName := range possibleMethods {
 			elem := foundMethods[methodName]
 			if elem != nil {
 				fmt.Printf("- %s\n", methodName)
-
-				// sloppily pick the last one
-				selectedMethod = methodName
 			}
 		}
-		if selectedMethod == "" {
+		if len(foundMethods) == 0 {
 			fmt.Printf("  (none)\n")
 			return nil
 		}
-		err := foundMethods[selectedMethod].FindContainingButton().TapButton(ctx, interp)
+		if *selectedMethod == "" {
+			return nil
+		}
+		err := foundMethods[*selectedMethod].FindContainingButton().TapButton(ctx, interp)
 		if err != nil {
 			return fmt.Errorf("tap selected method: %w", err)
 		}

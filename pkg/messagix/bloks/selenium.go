@@ -63,7 +63,12 @@ func (comp *BloksTreeComponent) FindCousin(pred func(*BloksTreeComponent) bool) 
 
 func (comp *BloksTreeComponent) FindContainingButton() *BloksTreeComponent {
 	return comp.FindCousin(func(comp *BloksTreeComponent) bool {
-		return comp.ComponentID == "bk.components.FoaTouchExtension"
+		for _, prop := range []BloksAttributeID{"on_click", "on_touch_down", "on_touch_up"} {
+			if comp.Attributes[prop] != nil {
+				return true
+			}
+		}
+		return false
 	})
 }
 
@@ -111,27 +116,45 @@ func (input *BloksTreeComponent) FillInput(ctx context.Context, interp *Interpre
 	return err
 }
 
+func (comp *BloksTreeComponent) GetScript(name BloksAttributeID) *BloksTreeScript {
+	elem, ok := comp.Attributes[name]
+	if !ok {
+		return nil
+	}
+	script, ok := elem.BloksTreeNodeContent.(*BloksTreeScript)
+	if !ok {
+		return nil
+	}
+	return script
+}
+
 func (button *BloksTreeComponent) TapButton(ctx context.Context, interp *Interpreter) error {
 	if button == nil {
 		return fmt.Errorf("no such button")
 	}
-	onTouchDown, ok := button.Attributes["on_touch_down"].BloksTreeNodeContent.(*BloksTreeScript)
-	if !ok {
-		return fmt.Errorf("no on_touch_down script")
+	// First try on_click, if that's missing, try the on_touch handlers
+	onClick := button.GetScript("on_click")
+	if onClick != nil {
+		_, err := interp.Evaluate(InterpBindThis(ctx, button), &onClick.AST)
+		if err != nil {
+			return fmt.Errorf("on_click: %w", err)
+		}
+		return nil
 	}
-	onTouchUp, ok := button.Attributes["on_touch_up"].BloksTreeNodeContent.(*BloksTreeScript)
-	if !ok {
-		return fmt.Errorf("no on_touch_up script")
+	onTouchDown := button.GetScript("on_touch_down")
+	onTouchUp := button.GetScript("on_touch_up")
+	if onTouchDown != nil && onTouchUp != nil {
+		_, err := interp.Evaluate(InterpBindThis(ctx, button), &onTouchDown.AST)
+		if err != nil {
+			return fmt.Errorf("on_touch_down: %w", err)
+		}
+		_, err = interp.Evaluate(InterpBindThis(ctx, button), &onTouchUp.AST)
+		if err != nil {
+			return fmt.Errorf("on_touch_up: %w", err)
+		}
+		return nil
 	}
-	_, err := interp.Evaluate(InterpBindThis(ctx, button), &onTouchDown.AST)
-	if err != nil {
-		return fmt.Errorf("on_touch_down: %w", err)
-	}
-	_, err = interp.Evaluate(InterpBindThis(ctx, button), &onTouchUp.AST)
-	if err != nil {
-		return fmt.Errorf("on_touch_up: %w", err)
-	}
-	return nil
+	return fmt.Errorf("couldn't find any event handlers on button")
 }
 
 type BrowserState string
@@ -260,6 +283,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 		log.Debug().Str("cur_state", string(b.State)).Strs("user_input", fields).Msg("Executing login step")
 	}
+	switchToNewPage := func() error {
+		// Make it idempotent
+		if b.NewPageOrAction == nil {
+			return nil
+		}
+
+		err := b.NewPageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
+		if err != nil {
+			return err
+		}
+		b.CurrentPage = b.NewPageOrAction
+		return nil
+	}
 	prevState := b.State
 	switch b.State {
 	case StateInitial:
@@ -296,6 +332,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
 	case StateEmailPasswordPage:
+		switchToNewPage()
+
 		if userInput == nil {
 			return &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -310,13 +348,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}, nil
 		}
 
-		err := b.NewPageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
-		if err != nil {
-			return nil, err
-		}
-		b.CurrentPage = b.NewPageOrAction
-
-		err = b.CurrentPage.
+		err := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "email")).
 			FillInput(ctx, b.CurrentPage.Interpreter, userInput["username"])
 		if err != nil {
@@ -338,20 +370,85 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping login button: %w", err)
 		}
 	case StateMFALandingPage:
-		err := b.NewPageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
-		if err != nil {
-			return nil, err
-		}
-		b.CurrentPage = b.NewPageOrAction
+		switchToNewPage()
 
-		err = b.CurrentPage.
+		err := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
 			FindContainingButton().
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping method selection button: %w", err)
 		}
+	case StateChooseMFAPage:
+		switchToNewPage()
+
+		possibleMethods := []string{
+			"Authentication app",
+			"Notification on another device",
+		}
+
+		foundMethods := map[string]*BloksTreeComponent{}
+		for _, methodName := range possibleMethods {
+			elem := b.CurrentPage.FindDescendant(FilterByAttribute(
+				"bk.data.TextSpan", "text", methodName,
+			))
+			if elem != nil {
+				foundMethods[methodName] = elem
+			}
+		}
+
+		if len(foundMethods) == 0 {
+			return nil, fmt.Errorf("couldn't find any allowed mfa types")
+		}
+
+		filteredMethods := []string{}
+		for _, method := range possibleMethods {
+			if foundMethods[method] != nil {
+				filteredMethods = append(filteredMethods, method)
+			}
+		}
+
+		chosenMethod := userInput["mfatype"]
+		if chosenMethod == "" && len(filteredMethods) == 1 {
+			chosenMethod = filteredMethods[0]
+		}
+		if chosenMethod == "" {
+			return &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.mfatype",
+				Instructions: "Choose how to finish signing in",
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{
+							ID: "mfatype", Name: "Login method", Type: bridgev2.LoginInputFieldTypeSelect,
+							Options: filteredMethods,
+						},
+					},
+				},
+			}, nil
+		}
+
+		if foundMethods[chosenMethod] == nil {
+			return nil, fmt.Errorf("not a valid mfa method: %s", chosenMethod)
+		}
+
+		err := foundMethods[chosenMethod].
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping %q button: %w", chosenMethod, err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue button: %w", err)
+		}
 	case StateTOTPPage:
+		switchToNewPage()
+
 		if userInput == nil {
 			return &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -365,13 +462,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}, nil
 		}
 
-		err := b.NewPageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
-		if err != nil {
-			return nil, err
-		}
-		b.CurrentPage = b.NewPageOrAction
-
-		err = b.CurrentPage.
+		err := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
