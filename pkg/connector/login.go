@@ -318,7 +318,7 @@ type MetaNativeLogin struct {
 	User *bridgev2.User
 	Main *MetaConnector
 
-	Client *messagix.Client
+	SavedClient *messagix.Client
 }
 
 func (m *MetaNativeLogin) Cancel() {}
@@ -334,7 +334,7 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	if err != nil {
 		return nil, err
 	}
-	m.Client = client
+	m.SavedClient = client
 
 	return m.proceed(ctx, nil)
 }
@@ -346,7 +346,7 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
 	log := m.User.Log.With().Str("component", "messagix").Logger()
 
-	step, newCookies, err := m.Client.MessengerLite.DoLoginSteps(ctx, userInput)
+	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
 		return nil, err
 	}
@@ -354,9 +354,9 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		return step, nil
 	}
 
-	m.Client.GetCookies().UpdateValues(newCookies.GetAll())
+	m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
 
-	step, err = loginWithCookies(ctx, log, m.Client, m.User, m.Main, newCookies)
+	step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
 	if err != nil {
 		return nil, err
 	}
