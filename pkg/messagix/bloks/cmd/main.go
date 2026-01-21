@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -19,6 +20,7 @@ var doLogin = flag.Bool("login", false, "Click the login button")
 var do2FA = flag.String("2fa", "", "Submit a two-factor code")
 var doMethods = flag.Bool("methods", false, "Print the available 2FA methods")
 var selectedMethod = flag.String("method", "", "Select one of the 2FA methods")
+var afad = flag.Bool("afad", false, "Run the AFAD handlers")
 var doAction = flag.Bool("action", false, "Run the action script")
 var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
 
@@ -74,7 +76,7 @@ func mainE() error {
 		return bundle.Print("")
 	}
 	bridge := bloks.InterpBridge{
-		DoRPC: func(name string, params map[string]string) error {
+		DoRPC: func(name string, params map[string]string, callback func(result *bloks.BloksScriptLiteral) error) error {
 			fmt.Printf("%s\n", name)
 			payload, err := json.Marshal(params)
 			if err != nil {
@@ -85,6 +87,15 @@ func mainE() error {
 		},
 		HandleLoginResponse: func(data string) error {
 			fmt.Printf("%s\n", data)
+			return nil
+		},
+		StartTimer: func(name string, interval time.Duration, callback func() error) error {
+			for i := 0; i < 3; i++ {
+				err := callback()
+				if err != nil {
+					return err
+				}
+			}
 			return nil
 		},
 	}
@@ -284,6 +295,19 @@ func mainE() error {
 			TapButton(ctx, interp)
 		if err != nil {
 			return fmt.Errorf("tap continue: %w", err)
+		}
+	} else if *afad {
+		for _, comp := range bundle.FindDescendants(func(comp *bloks.BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.components.VisibilityExtension" {
+				return false
+			}
+			return comp.GetScript("on_appear") != nil
+		}) {
+			script := comp.GetScript("on_appear")
+			_, err := interp.Evaluate(ctx, &script.AST)
+			if err != nil {
+				return fmt.Errorf("on_appear: %w", err)
+			}
 		}
 	}
 	return nil

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -15,6 +16,10 @@ import (
 
 func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
 	return bb.Layout.Payload.Tree.FindDescendant(pred)
+}
+
+func (bb *BloksBundle) FindDescendants(pred func(*BloksTreeComponent) bool) []*BloksTreeComponent {
+	return bb.Layout.Payload.Tree.FindDescendants(pred)
 }
 
 func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
@@ -31,6 +36,20 @@ func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *B
 	return nil
 }
 
+func (btn *BloksTreeNode) FindDescendants(pred func(*BloksTreeComponent) bool) []*BloksTreeComponent {
+	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
+		return comp.FindDescendants(pred)
+	}
+	if comps, ok := btn.BloksTreeNodeContent.(*BloksTreeComponentList); ok {
+		matches := []*BloksTreeComponent{}
+		for _, comp := range *comps {
+			matches = append(matches, comp.FindDescendants(pred)...)
+		}
+		return matches
+	}
+	return nil
+}
+
 func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
 	if pred(comp) {
 		return comp
@@ -41,6 +60,17 @@ func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bo
 		}
 	}
 	return nil
+}
+
+func (comp *BloksTreeComponent) FindDescendants(pred func(*BloksTreeComponent) bool) []*BloksTreeComponent {
+	if pred(comp) {
+		return []*BloksTreeComponent{comp}
+	}
+	matches := []*BloksTreeComponent{}
+	for _, subnode := range comp.Attributes {
+		matches = append(matches, subnode.FindDescendants(pred)...)
+	}
+	return matches
 }
 
 func (comp *BloksTreeComponent) FindAncestor(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
@@ -173,6 +203,9 @@ const (
 	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
 	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
 	StateAFADPage                   BrowserState = "afad-page"
+	StateAFADAction                 BrowserState = "afad-action"
+	StateAFADWait                   BrowserState = "afad-waiting"
+	StateAFADCompleteAction         BrowserState = "afad-complete-action"
 	StateTOTPPage                   BrowserState = "totp-page"
 	StateEnteredTOTPAction          BrowserState = "entered-totp-action"
 	StateSuccess                    BrowserState = "success"
@@ -191,7 +224,11 @@ type Browser struct {
 	Config *BrowserConfig
 	Bridge *InterpBridge
 
-	LoginData string
+	AFADNotification string
+	AFADInterval     time.Duration
+	AFADCallback     func(*BloksScriptLiteral) error
+	AFADDisplayed    bool
+	LoginData        string
 }
 
 func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
@@ -205,7 +242,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 		FamilyDeviceID:  strings.ToUpper(uuid.New().String()),
 		MachineID:       string(random.StringBytes(25)),
 		EncryptPassword: cfg.EncryptPassword,
-		DoRPC: func(name string, params map[string]string) error {
+		DoRPC: func(name string, params map[string]string, callback func(result *BloksScriptLiteral) error) error {
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
@@ -221,6 +258,12 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 				transitions[StateChooseMFAPage] = StateChosenMFAAction
 			case "com.bloks.www.two_factor_login.enter_totp_code":
 				transitions[StateChosenMFAAction] = StateTOTPPage
+			case "com.bloks.www.two_step_verification.approve_from_another_device":
+				transitions[StateChosenMFAAction] = StateAFADPage
+			case "com.bloks.www.two_step_verification.afad_state.async":
+				transitions[StateAFADPage] = StateAFADAction
+			case "com.bloks.www.two_step_verification.afad_complete.async":
+				transitions[StateAFADAction] = StateAFADCompleteAction
 			default:
 				return fmt.Errorf("unexpected rpc %s", name)
 			}
@@ -241,6 +284,11 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 
 			b.NewPageOrAction = pageOrAction
 			b.State = transitions[b.State]
+
+			if b.State == StateAFADAction {
+				b.AFADCallback = callback
+			}
+
 			return nil
 		},
 		DisplayNewScreen: func(name string, page *BloksBundle) error {
@@ -267,6 +315,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			transitions := map[BrowserState]BrowserState{}
 			transitions[StateEnteredEmailPasswordAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
+			transitions[StateAFADCompleteAction] = StateSuccess
 			if transitions[b.State] == StateUnknown {
 				return fmt.Errorf("can't handle login response in state %s", b.State)
 			}
@@ -275,11 +324,23 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			b.State = transitions[b.State]
 			return nil
 		},
+		StartTimer: func(name string, interval time.Duration, callback func() error) error {
+			switch name {
+			case "approve_from_another_device_polling_timer":
+				// The callback just re-runs the same on_appear logic, so for now
+				// we'll just re-load the page instead of actually triggering the
+				// callback logic in a loop.
+				b.AFADInterval = interval
+			default:
+				return fmt.Errorf("unexpected timer %s", name)
+			}
+			return nil
+		},
 	}
 	return &b
 }
 
-func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
+func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
 	{
 		fields := []string{}
@@ -327,22 +388,63 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		b.NewPageOrAction = action
 		b.State = StateRedirectToLoginAction
-	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateChosenMFAAction, StateEnteredTOTPAction:
-		err := b.NewPageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
+	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADAction, StateAFADCompleteAction:
+		// In case we stayed on the current page, don't overwrite it with an action
+		action := b.NewPageOrAction
+		b.NewPageOrAction = nil
+
+		err := action.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
 		if err != nil {
 			return nil, fmt.Errorf("setup %s interpreter: %w", b.State, err)
 		}
-		_, err = b.NewPageOrAction.Interpreter.Evaluate(ctx, b.NewPageOrAction.Action())
+		result, err := action.Interpreter.Evaluate(ctx, action.Action())
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+
+		// Most actions are done by now, however in the case of AFAD, we do some special
+		// handling to invoke its callback. That callback will trigger finalizing the flow,
+		// or it will do nothing in which case we should wait and try again later at the
+		// timer interval.
+
+		if b.State != StateAFADAction {
+			break
+		}
+
+		err = b.AFADCallback(result)
+		if err != nil {
+			return nil, fmt.Errorf("execute AFAD callback: %w", err)
+		}
+
+		if b.State != StateAFADAction {
+			break
+		}
+
+		if b.AFADInterval <= 0 {
+			return nil, fmt.Errorf("no AFAD timer scheduled")
+		}
+
+		b.State = StateAFADWait
+
+		// Only display the login step once, keep polling in background
+		if !b.AFADDisplayed {
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeDisplayAndWait,
+				StepID:       "fi.mau.meta.messengerlite.afad_wait",
+				Instructions: b.AFADNotification,
+				DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
+					Type: bridgev2.LoginDisplayTypeNothing,
+				},
+			}
+			b.AFADDisplayed = true
 		}
 	case StateEmailPasswordPage:
 		switchToNewPage()
 
 		if userInput["username"] == "" || userInput["password"] == "" {
-			return &bridgev2.LoginStep{
+			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
-				StepID:       "fi.mau.meta.messengerlite.emailpassword",
+				StepID:       "fi.mau.meta.messengerlite.email_password",
 				Instructions: "Enter your Messenger credentials",
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
@@ -350,7 +452,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
 					},
 				},
-			}, nil
+			}
+			break
 		}
 
 		err := b.CurrentPage.
@@ -418,9 +521,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			chosenMethod = filteredMethods[0]
 		}
 		if chosenMethod == "" {
-			return &bridgev2.LoginStep{
+			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
-				StepID:       "fi.mau.meta.messengerlite.mfatype",
+				StepID:       "fi.mau.meta.messengerlite.mfa_type",
 				Instructions: "Choose how to finish signing in",
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
@@ -430,7 +533,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						},
 					},
 				},
-			}, nil
+			}
+			break
 		}
 
 		if foundMethods[chosenMethod] == nil {
@@ -455,7 +559,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		switchToNewPage()
 
 		if userInput["code"] == "" {
-			return &bridgev2.LoginStep{
+			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.totp",
 				Instructions: "Enter a six-digit code from your authenticator app",
@@ -464,7 +568,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						{ID: "code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
 				},
-			}, nil
+			}
+			break
 		}
 
 		err := b.CurrentPage.
@@ -488,12 +593,46 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
+	case StateAFADPage:
+		switchToNewPage()
+
+		notif := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.data.TextSpan" {
+				return false
+			}
+			return strings.HasPrefix(comp.GetAttribute("text"), "We sent a notification")
+		})
+		if notif == nil {
+			return nil, fmt.Errorf("couldn't find AFAD notification info")
+		}
+		b.AFADNotification = notif.GetAttribute("text")
+
+		for _, comp := range b.CurrentPage.FindDescendants(func(comp *BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.components.VisibilityExtension" {
+				return false
+			}
+			return comp.GetScript("on_appear") != nil
+		}) {
+			script := comp.GetScript("on_appear")
+			_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &script.AST)
+			if err != nil {
+				return nil, fmt.Errorf("on_appear: %w", err)
+			}
+		}
+	case StateAFADWait:
+		time.Sleep(b.AFADInterval)
+		b.State = StateAFADPage
 	default:
 		return nil, fmt.Errorf("unexpected state %s", b.State)
 	}
 	if b.State == prevState {
-		return nil, fmt.Errorf("handling %s failed to advance flow", prevState)
+		if step == nil {
+			return nil, fmt.Errorf("handling %s failed to advance flow", prevState)
+		} else {
+			log.Debug().Str("cur_state", string(b.State)).Any("steps", step).Msg("Requested user input")
+		}
+	} else {
+		log.Debug().Str("old_state", string(prevState)).Str("new_state", string(b.State)).Msg("Transitioned login step")
 	}
-	log.Debug().Str("old_state", string(prevState)).Str("new_state", string(b.State)).Msg("Transitioned login step")
-	return nil, nil
+	return step, nil
 }

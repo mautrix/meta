@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.mau.fi/util/random"
@@ -23,9 +24,10 @@ type InterpBridge struct {
 	IsAppInstalled      func(url string, pkgnames ...string) bool
 	HasAppPermissions   func(permissions ...string) bool
 	GetSecureNonces     func() []string
-	DoRPC               func(name string, params map[string]string) error
+	DoRPC               func(name string, params map[string]string, callback func(result *BloksScriptLiteral) error) error
 	DisplayNewScreen    func(string, *BloksBundle) error
 	HandleLoginResponse func(data string) error
+	StartTimer          func(name string, interval time.Duration, callback func() error) error
 }
 
 type Interpreter struct {
@@ -116,7 +118,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 	}
 	if br.DoRPC == nil {
-		br.DoRPC = func(name string, params map[string]string) error {
+		br.DoRPC = func(name string, params map[string]string, callback func(result *BloksScriptLiteral) error) error {
 			return fmt.Errorf("unhandled rpc %s", name)
 		}
 	}
@@ -128,6 +130,11 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	if br.HandleLoginResponse == nil {
 		br.HandleLoginResponse = func(data string) error {
 			return fmt.Errorf("unhandled login response")
+		}
+	}
+	if br.StartTimer == nil {
+		br.StartTimer = func(name string, interval time.Duration, callback func() error) error {
+			return fmt.Errorf("unhandled timer %s", name)
 		}
 	}
 	for _, item := range p.Variables {
@@ -218,6 +225,37 @@ func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, 
 		return data, nil
 	}
 	return "", fmt.Errorf("no matching string prop in %s tree: %w", where, lastEvalErr)
+}
+
+func evalTreeCallback(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (*BloksLambda, error) {
+	make, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	if !ok {
+		return nil, fmt.Errorf("%s non-funcall %T", where, form.BloksScriptNodeContent)
+	}
+	if make.Function != "bk.action.tree.Make" {
+		return nil, fmt.Errorf("%s non-tree funcall %s", where, make.Function)
+	}
+	if len(make.Args)%2 != 1 {
+		return nil, fmt.Errorf("%s tree.make even number of args %d", where, len(make.Args))
+	}
+	var lastEvalErr error
+	for idx := 1; idx < len(make.Args); idx += 2 {
+		attr, err := evalAs[int64](ctx, i, &make.Args[idx], "tree.make")
+		if err != nil {
+			return nil, err
+		}
+		// For component 16131, prop 35 is on_failure, prop 36 is on_success_with_result
+		if attr != 36 {
+			continue
+		}
+		data, err := evalAs[*BloksLambda](ctx, i, &make.Args[idx+1], "tree.make")
+		if err != nil {
+			lastEvalErr = err
+			continue
+		}
+		return data, nil
+	}
+	return nil, fmt.Errorf("no matching callback prop in %s tree: %w", where, lastEvalErr)
 }
 
 const maxInterpArgs = 100
@@ -588,7 +626,23 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			flatParams[key] = str
 		}
-		err = i.Bridge.DoRPC(name, flatParams)
+		callback, err := evalTreeCallback(ctx, i, &call.Args[2], "asyncaction")
+		if err != nil {
+			return nil, err
+		}
+		err = i.Bridge.DoRPC(name, flatParams, func(result *BloksScriptLiteral) error {
+			_, err := i.Evaluate(ctx, &BloksScriptNode{
+				BloksScriptNodeContent: &BloksScriptFuncall{
+					Function: "bk.action.core.Apply",
+					Args: []BloksScriptNode{{
+						BloksLiteralOf(callback),
+					}, {
+						result,
+					}},
+				},
+			})
+			return err
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -639,7 +693,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		newArgs, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "bind")
+		newArgs, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[1], "bind")
 		if err != nil {
 			return nil, err
 		}
@@ -760,7 +814,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			flatParams[key] = str
 		}
-		err = i.Bridge.DoRPC(name, flatParams)
+		err = i.Bridge.DoRPC(name, flatParams, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -791,6 +845,34 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(lhs <= rhs), nil
+	case "bk.action.timer.Start":
+		interval, err := evalAs[int64](ctx, i, &call.Args[1], "timer.start")
+		if err != nil {
+			return nil, err
+		}
+		cb, err := evalAs[*BloksLambda](ctx, i, &call.Args[3], "timer.start")
+		if err != nil {
+			return nil, err
+		}
+		name, err := evalAs[string](ctx, i, &call.Args[4], "timer.start")
+		if err != nil {
+			return nil, err
+		}
+		err = i.Bridge.StartTimer(name, time.Duration(interval)*time.Millisecond, func() error {
+			_, err := i.Evaluate(ctx, &BloksScriptNode{
+				BloksScriptNodeContent: &BloksScriptFuncall{
+					Function: "bk.action.core.Apply",
+					Args: []BloksScriptNode{{
+						BloksLiteralOf(cb),
+					}},
+				},
+			})
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return BloksNothing, nil
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
