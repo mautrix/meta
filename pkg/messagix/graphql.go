@@ -78,6 +78,8 @@ func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksReq
 		return nil, err
 	}
 
+	c.Logger.Trace().Str("bloks_app", appID).Bytes("resp", respData).Msg("Got Bloks response")
+
 	var respOuter bloks.BloksResponse
 	err = json.Unmarshal(respData, &respOuter)
 	if err != nil {
