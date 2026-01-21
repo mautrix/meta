@@ -37,6 +37,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksReq
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
 	}
+	c.Logger.Trace().Str("bloks_app", appID).Bytes("req", vBytes).Msg("Logging raw Bloks request")
 
 	payload := &HttpQuery{}
 	payload.Method = "post"
@@ -78,7 +79,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksReq
 		return nil, err
 	}
 
-	c.Logger.Trace().Str("bloks_app", appID).Bytes("resp", respData).Msg("Got Bloks response")
+	c.Logger.Trace().Str("bloks_app", appID).Bytes("resp", respData).Msg("Logging raw Bloks response")
 
 	var respOuter bloks.BloksResponse
 	err = json.Unmarshal(respData, &respOuter)

@@ -269,6 +269,28 @@ func InterpBindThis(ctx context.Context, this *BloksTreeComponent) context.Conte
 	return context.WithValue(ctx, interpCtxArgs, ambientArgs)
 }
 
+type checkpointsFlowErrorData struct {
+	URL                         string `json:"url"`
+	FlowID                      int64  `json:"flow_id"`
+	UID                         int64  `json:"uid"`
+	ShowNativeCheckpoints       bool   `json:"show_native_checkpoints"`
+	StartInternalWebviewFromURL bool   `json:"start_internal_webview_from_url"`
+}
+
+type checkpointsFlowError struct {
+	UID              int64                    `json:"uid"`
+	Code             int                      `json:"code"`
+	Message          any                      `json:"message"`
+	ErrorUserTitle   string                   `json:"error_user_title"`
+	ErrorSubcode     int                      `json:"error_subcode"`
+	ErrorUserMessage string                   `json:"error_user_msg"`
+	ErrorData        checkpointsFlowErrorData `json:"error_data"`
+}
+
+type checkpointsFlow struct {
+	Error checkpointsFlowError `json:"error"`
+}
+
 func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*BloksScriptLiteral, error) {
 	if lit, ok := form.BloksScriptNodeContent.(*BloksScriptLiteral); ok {
 		return lit, nil
@@ -873,6 +895,17 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, nil
+	case "bk.action.caa.PresentCheckpointsFlow":
+		flowB, err := evalAs[string](ctx, i, &call.Args[0], "presentcheckpointsflow")
+		if err != nil {
+			return nil, err
+		}
+		var flow checkpointsFlow
+		err = json.Unmarshal([]byte(flowB), &flow)
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%s: %s", flow.Error.ErrorUserTitle, flow.Error.ErrorUserMessage)
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
