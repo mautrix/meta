@@ -298,7 +298,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			case "com.bloks.www.caa.login.login_homepage":
 				transitions[StateRedirectToLoginAction] = StateEmailPasswordPage
 			case "com.bloks.www.caa.ar.code_entry":
-				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
+				transitions[StateEnteredEmailPasswordAction] = StateEmailCodePage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
@@ -477,6 +477,49 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping login button: %w", err)
 		}
+	case StateEmailCodePage:
+		// XXX this entire switch case is completely blind guesswork since I don't have a
+		// network trace of what the page actually looks like when you trigger the email
+		// code fallback, but if we're lucky this would work on first try
+		switchToNewPage()
+
+		if userInput["email_code"] == "" {
+			step = &bridgev2.LoginStep{
+				Type:   bridgev2.LoginStepTypeUserInput,
+				StepID: "fi.mau.meta.messengerlite.email_code",
+				// TODO look up the message that Facebook displays on the page, and
+				// show that as the instructions
+				Instructions: "Enter the six-digit code sent to your email",
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "email_code", Name: "Code from email", Type: bridgev2.LoginInputFieldType2FACode},
+					},
+				},
+			}
+			break
+		}
+
+		err := b.CurrentPage.
+			FindDescendant(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Code",
+				)) != nil
+			}).
+			FillInput(ctx, b.CurrentPage.Interpreter, userInput["email_code"])
+		if err != nil {
+			return nil, fmt.Errorf("filling email code input: %w", err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
 	case StateMFALandingPage:
 		switchToNewPage()
 
@@ -558,14 +601,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateTOTPPage:
 		switchToNewPage()
 
-		if userInput["code"] == "" {
+		if userInput["totp_code"] == "" {
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.totp",
 				Instructions: "Enter a six-digit code from your authenticator app",
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
+						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
 				},
 			}
@@ -581,7 +624,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["code"])
+			FillInput(ctx, b.CurrentPage.Interpreter, userInput["totp_code"])
 		if err != nil {
 			return nil, fmt.Errorf("filling mfa code input: %w", err)
 		}
