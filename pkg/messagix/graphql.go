@@ -61,7 +61,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		return nil, err
 	}
 
-	headers.Set("x-fb-friendly-name", doc.ClientDocID+appID)
+	headers.Set("x-fb-friendly-name", doc.Name+"-"+appID)
 	headers.Set("x-root-field-name", doc.RootField)
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
