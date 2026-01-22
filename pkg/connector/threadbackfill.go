@@ -31,7 +31,7 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 	delay := m.Main.Config.ThreadBackfill.BatchDelay
 
 	batchCount := 0
-	lastMinThreadKey := m.Client.GetSyncGroupKeyStore(1).MinThreadKey
+	var lastMinThreadKey int64
 
 	for {
 		if ctx.Err() != nil {
