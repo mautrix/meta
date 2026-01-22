@@ -76,8 +76,8 @@ func mainE() error {
 		return bundle.Print("")
 	}
 	bridge := bloks.InterpBridge{
-		DoRPC: func(name string, params map[string]string, callback func(result *bloks.BloksScriptLiteral) error) error {
-			fmt.Printf("%s\n", name)
+		DoRPC: func(name string, params map[string]string, isPage bool, callback func(result *bloks.BloksScriptLiteral) error) error {
+			fmt.Printf("%s isPage=%v\n", name, isPage)
 			payload, err := json.Marshal(params)
 			if err != nil {
 				return err
