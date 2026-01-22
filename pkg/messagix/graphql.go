@@ -25,9 +25,8 @@ import (
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
+func (c *Client) makeBloksRequest(ctx context.Context, docID string, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
 	appID := variables.Params.AppID
-	docID := bloks.DocIDs[appID]
 	if docID == "" {
 		return nil, fmt.Errorf("can't find docid for appid %s", appID)
 	}
