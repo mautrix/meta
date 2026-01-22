@@ -82,8 +82,8 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "send_presence_on_typing")
 	helper.Copy(up.Bool, "receive_instagram_typing_indicators")
 	helper.Copy(up.Bool, "disable_view_once")
-	helper.Copy(up.Bool, "thread_backfill", "enabled")
-	helper.Copy(up.Str, "thread_backfill", "batch_delay")
+	helper.Copy(up.Int, "thread_backfill", "batch_count")
+	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
