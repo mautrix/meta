@@ -448,7 +448,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Instructions: "Enter your Messenger credentials",
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "username", Name: "Email address", Type: bridgev2.LoginInputFieldTypeEmail},
+						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername},
 						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
 					},
 				},
