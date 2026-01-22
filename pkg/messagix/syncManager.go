@@ -297,6 +297,13 @@ func (sm *SyncManager) getSyncGroupKeyStore(db int64) *socket.KeyStoreData {
 	return keyStore
 }
 
+func (c *Client) GetSyncGroupKeyStore(syncGroup int64) *socket.KeyStoreData {
+	if c == nil || c.syncManager == nil {
+		return nil
+	}
+	return c.syncManager.getSyncGroupKeyStore(syncGroup)
+}
+
 /*
 these 3 return the same stuff
 updateThreadsRangesV2, upsertInboxThreadsRange, upsertSyncGroupThreadsRange

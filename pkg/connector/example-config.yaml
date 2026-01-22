@@ -50,3 +50,10 @@ send_presence_on_typing: false
 receive_instagram_typing_indicators: true
 # Should view-once messages be disabled entirely?
 disable_view_once: false
+
+# Thread backfill settings for syncing older conversations
+thread_backfill:
+  # Number of batches (pages) to backfill (-1 for unlimited, 0 to disable)
+  batch_count: -1
+  # Delay between fetching each batch of threads (to avoid rate limiting)
+  batch_delay: 2s
