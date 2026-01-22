@@ -906,6 +906,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s: %s", flow.Error.ErrorUserTitle, flow.Error.ErrorUserMessage)
+	case "bk.action.dialog.OpenDialog":
+		msg, err := evalTreeProp35(ctx, i, &call.Args[0], "opendialog")
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%s", msg)
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",
