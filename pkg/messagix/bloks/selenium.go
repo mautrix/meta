@@ -213,7 +213,7 @@ const (
 
 type BrowserConfig struct {
 	EncryptPassword  func(string) (string, error)
-	MakeBloksRequest func(context.Context, string, *BloksRequestOuter) (*BloksBundle, error)
+	MakeBloksRequest func(context.Context, *BloksDoc, *BloksRequestOuter) (*BloksBundle, error)
 }
 
 type Browser struct {
@@ -277,14 +277,14 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 				return fmt.Errorf("parsing %s params: %w", name, err)
 			}
 
-			var docID string
+			var doc *BloksDoc
 			if isPage {
-				docID = BloksAppDocID
+				doc = &BloksAppDoc
 			} else {
-				docID = BloksActionDocID
+				doc = &BloksActionDoc
 			}
 
-			pageOrAction, err := cfg.MakeBloksRequest(ctx, docID, NewBloksRequest(name, paramsInner))
+			pageOrAction, err := cfg.MakeBloksRequest(ctx, doc, NewBloksRequest(name, paramsInner))
 			if err != nil {
 				return fmt.Errorf("rpc %s: %w", name, err)
 			}
@@ -375,7 +375,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	switch b.State {
 	case StateInitial:
 		rpc := "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
-		action, err := b.Config.MakeBloksRequest(ctx, BloksActionDocID, NewBloksRequest(rpc, map[string]any{
+		action, err := b.Config.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(rpc, map[string]any{
 			"blocked_uid":                               []any{},
 			"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
 			"family_device_id":                          b.Bridge.FamilyDeviceID,
