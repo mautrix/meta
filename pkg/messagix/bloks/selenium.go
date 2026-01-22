@@ -295,8 +295,6 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			log.Debug().Str("state", string(b.State)).Str("screen", name).Msg("Displaying new screen from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
-			case "com.bloks.www.caa.login.login_homepage":
-				transitions[StateRedirectToLoginAction] = StateEmailPasswordPage
 			case "com.bloks.www.caa.ar.code_entry":
 				transitions[StateEnteredEmailPasswordAction] = StateEmailCodePage
 			default:
