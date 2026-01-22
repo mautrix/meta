@@ -177,7 +177,7 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 	if c == nil {
 		return nil, nil, ErrClientIsNil
 	} else if !c.cookies.IsLoggedIn() {
-		return nil, nil, fmt.Errorf("can't load messages page without being authenticated")
+		return nil, nil, ErrTokenInvalidated
 	}
 
 	moduleLoader := &ModuleParser{client: c, LS: &table.LSTable{}}
