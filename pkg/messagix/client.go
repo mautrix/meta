@@ -281,6 +281,7 @@ func (c *Client) SetHTTP(settings exhttp.ClientSettings) {
 	}
 	oldHTTP := c.http
 	c.http = c.httpSettings.Compile()
+	c.http.CheckRedirect = c.checkHTTPRedirect
 	if oldHTTP != nil {
 		oldHTTP.CloseIdleConnections()
 	}
