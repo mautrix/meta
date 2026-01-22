@@ -1,6 +1,7 @@
 package bloks
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -9,7 +10,46 @@ import (
 )
 
 type BloksBundle struct {
-	Layout BloksLayout `json:"layout"`
+	Layout      BloksLayout  `json:"layout"`
+	Interpreter *Interpreter `json:"-"`
+}
+
+func (bb *BloksBundle) GetInterpreter() *Interpreter {
+	if bb == nil {
+		return nil
+	}
+	return bb.Interpreter
+}
+
+func (bb *BloksBundle) Action() *BloksScriptNode {
+	return &bb.Layout.Payload.Action.AST
+}
+
+func (bb *BloksBundle) SetupInterpreter(ctx context.Context, br *InterpBridge, prev *Interpreter) error {
+	interp, err := NewInterpreter(ctx, bb, br, prev)
+	if err != nil {
+		return err
+	}
+	bb.Interpreter = interp
+	return nil
+}
+
+func (bb *BloksBundle) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Layout      BloksLayout  `json:"layout"`
+		Interpreter *Interpreter `json:"-"`
+	}
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
+	*bb = raw
+	m, err := GetUnminifier(bb)
+	if err != nil {
+		return err
+	}
+	bb.Unminify(m)
+	return nil
 }
 
 func (bb *BloksBundle) Unminify(m *Unminifier) {
@@ -19,9 +59,12 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 		if real, ok := m.Variables[d.ID]; ok && len(real) > 0 {
 			d.ID = real
 		}
+		if d.Info.InitialScript != nil {
+			d.Info.InitialScript.Unminify(m, nil)
+		}
 	}
 	for _, s := range p.Scripts {
-		s.Unminify(m)
+		s.Unminify(m, nil)
 	}
 	for _, e := range p.Embedded {
 		pp := &e.Contents.Layout.Payload
@@ -29,18 +72,14 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 		e.Contents.Unminify(m)
 	}
 	for _, t := range p.Templates {
-		t.Unminify(m)
+		t.Unminify(m, nil)
 	}
 	if p.Action != nil {
-		p.Action.Unminify(m)
+		p.Action.Unminify(m, nil)
 	}
 	if p.Tree != nil {
-		p.Tree.Unminify(m)
+		p.Tree.Unminify(m, nil)
 	}
-}
-
-func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	return bb.Layout.Payload.Tree.FindDescendant(pred)
 }
 
 func (bb *BloksBundle) Print(indent string) error {
@@ -49,7 +88,11 @@ func (bb *BloksBundle) Print(indent string) error {
 	if p.VariablesOwner == p {
 		for _, datum := range p.Variables {
 			fmt.Printf("%s  <Datum id=%q>\n", indent, datum.ID)
-			BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
+			if datum.Info.InitialScript != nil {
+				datum.Info.InitialScript.Print(indent + "    ")
+			} else {
+				BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
+			}
 			fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
 		}
 	}
@@ -111,7 +154,7 @@ type BloksPayload struct {
 	ReferencePayloads   []BloksPayloadID                  `json:"referenced_embedded_payload"`
 	Variables           []*BloksVariable                  `json:"data"`
 	VariablesOwner      *BloksPayload
-	Embedded            []BloksEmbeddedPayload            `json:"embedded_payloads"`
+	Embedded            []*BloksEmbeddedPayload           `json:"embedded_payloads"`
 	Props               []BloksProp                       `json:"props"`
 	Templates           map[BloksTemplateID]BloksTreeNode `json:"templates"`
 	Attribution         BloksErrorAttribution             `json:"error_attribution"`
@@ -126,9 +169,10 @@ type BloksVariable struct {
 }
 
 type BloksDatumInfo struct {
-	Name    string               `json:"key"`
-	Mode    string               `json:"mode"`
-	Initial BloksJavascriptValue `json:"initial"`
+	Name          string               `json:"key"`
+	Mode          string               `json:"mode"`
+	Initial       BloksJavascriptValue `json:"initial"`
+	InitialScript *BloksTreeScript     `json:"initial_lispy"`
 }
 
 type BloksJavascriptValue any
@@ -150,8 +194,6 @@ type BloksErrorAttribution struct {
 
 type BloksTreeNode struct {
 	BloksTreeNodeContent
-
-	parent *BloksTreeNode
 }
 
 func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
@@ -173,10 +215,6 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return fmt.Errorf("component %q: %w", id, err)
 			}
-			comp.container = btn
-			for _, subnode := range comp.Attributes {
-				subnode.parent = btn
-			}
 			btn.BloksTreeNodeContent = &comp
 		}
 		return nil
@@ -187,12 +225,6 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 		err := json.Unmarshal(data, &comps)
 		if err != nil {
 			return err
-		}
-		for _, comp := range comps {
-			comp.container = btn
-			for _, subnode := range comp.Attributes {
-				subnode.parent = btn
-			}
 		}
 		btn.BloksTreeNodeContent = &comps
 		return nil
@@ -249,22 +281,8 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
-		return comp.FindDescendant(pred)
-	}
-	if comps, ok := btn.BloksTreeNodeContent.(*BloksTreeComponentList); ok {
-		for _, comp := range *comps {
-			if match := comp.FindDescendant(pred); match != nil {
-				return match
-			}
-		}
-	}
-	return nil
-}
-
 type BloksTreeNodeContent interface {
-	Unminify(m *Unminifier)
+	Unminify(m *Unminifier, parent *BloksTreeComponent)
 	Print(prefix string) error
 }
 
@@ -272,7 +290,7 @@ type BloksTreeComponent struct {
 	ComponentID BloksComponentID
 	Attributes  map[BloksAttributeID]*BloksTreeNode
 
-	container   *BloksTreeNode
+	parent      *BloksTreeComponent
 	textContent *string
 }
 
@@ -299,41 +317,13 @@ func (btc *BloksTreeComponent) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("attribute %q: %w", attr, err)
 		}
-		node.parent = btc.container
-		if set, ok := node.BloksTreeNodeContent.(*BloksTreeScriptSet); ok {
-			set.parent = btc
-		}
 		btc.Attributes[attr] = &node
 	}
 	return nil
 }
 
-func (btc *BloksTreeComponent) FindAncestor(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	node := btc.container
-	for node != nil {
-		if comp, ok := node.BloksTreeNodeContent.(*BloksTreeComponent); ok {
-			if pred(comp) {
-				return comp
-			}
-		}
-		node = node.parent
-	}
-	return nil
-}
-
-func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
-	if pred(comp) {
-		return comp
-	}
-	for _, subnode := range comp.Attributes {
-		if match := subnode.FindDescendant(pred); match != nil {
-			return match
-		}
-	}
-	return nil
-}
-
-func (btc *BloksTreeComponent) Unminify(m *Unminifier) {
+func (btc *BloksTreeComponent) Unminify(m *Unminifier, parent *BloksTreeComponent) {
+	btc.parent = parent
 	if real, ok := m.Components[btc.ComponentID]; ok && len(real) > 0 {
 		btc.ComponentID = real
 	}
@@ -347,7 +337,7 @@ func (btc *BloksTreeComponent) Unminify(m *Unminifier) {
 		}
 	}
 	for _, value := range btc.Attributes {
-		value.Unminify(m)
+		value.Unminify(m, btc)
 	}
 }
 
@@ -407,15 +397,14 @@ func (btcl *BloksTreeComponentList) UnmarshalJSON(data []byte) error {
 		if !ok {
 			return fmt.Errorf("item %d: unexpected type %T", idx, node.BloksTreeNodeContent)
 		}
-		comp.container = &node
 		*btcl = append(*btcl, comp)
 	}
 	return nil
 }
 
-func (btcl *BloksTreeComponentList) Unminify(m *Unminifier) {
+func (btcl *BloksTreeComponentList) Unminify(m *Unminifier, parent *BloksTreeComponent) {
 	for _, value := range *btcl {
-		value.Unminify(m)
+		value.Unminify(m, parent)
 	}
 }
 
@@ -437,7 +426,7 @@ func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &btl.BloksJavascriptValue)
 }
 
-func (btl *BloksTreeLiteral) Unminify(m *Unminifier) {
+func (btl *BloksTreeLiteral) Unminify(m *Unminifier, parent *BloksTreeComponent) {
 	//
 }
 
@@ -467,7 +456,7 @@ func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (bs *BloksTreeScript) Unminify(m *Unminifier) {
+func (bs *BloksTreeScript) Unminify(m *Unminifier, parent *BloksTreeComponent) {
 	bs.AST.Unminify(m)
 }
 
@@ -481,23 +470,21 @@ func (bst *BloksTreeScript) Print(indent string) error {
 }
 
 type BloksTreeScriptSet struct {
-	parent *BloksTreeComponent
-
 	Scripts map[BloksAttributeID]BloksTreeScript
 }
 
-func (bst *BloksTreeScriptSet) Unminify(m *Unminifier) {
+func (bst *BloksTreeScriptSet) Unminify(m *Unminifier, parent *BloksTreeComponent) {
 	for id, script := range bst.Scripts {
 		if idx, ok := id.ToInt(); ok {
 			attr := BloksAttributeID(strconv.Itoa(idx))
-			if real, ok := m.Properties[bst.parent.ComponentID][attr]; ok && len(real) > 0 {
+			if real, ok := m.Properties[parent.ComponentID][attr]; ok && len(real) > 0 {
 				bst.Scripts[real] = script
 				delete(bst.Scripts, id)
 			}
 		}
 	}
 	for _, script := range bst.Scripts {
-		script.Unminify(m)
+		script.Unminify(m, parent)
 	}
 }
 

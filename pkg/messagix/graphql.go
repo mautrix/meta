@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/exslices"
@@ -24,11 +25,19 @@ import (
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
+func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
+	appID := variables.Params.AppID
+	docID := bloks.DocIDs[appID]
+	if docID == "" {
+		return nil, fmt.Errorf("can't find docid for appid %s", appID)
+	}
+	c.Logger.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
+
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
 	}
+	c.Logger.Trace().Str("bloks_app", appID).Bytes("req", vBytes).Msg("Logging raw Bloks request")
 
 	payload := &HttpQuery{}
 	payload.Method = "post"
@@ -37,8 +46,8 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 	payload.ServerTimestamps = "true"
 	payload.Locale = "en_US"
 	payload.Purpose = "fetch"
-	payload.FbAPIReqFriendlyName = "MSGBloksActionRootQuery-" + doc.FriendlyName
-	payload.ClientDocID = doc.ClientDocId
+	payload.FbAPIReqFriendlyName = "MSGBloksActionRootQuery-" + appID
+	payload.ClientDocID = docID
 	payload.EnableCanonicalNaming = "true"
 	payload.EnableCanonicalVariableOverrides = "true"
 	payload.EnableCanonicalNamingAmbiguousTypePrefixing = "true"
@@ -56,7 +65,7 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		return nil, err
 	}
 
-	headers.Set("x-fb-friendly-name", doc.FriendlyName)
+	headers.Set("x-fb-friendly-name", "MSGBloksActionRootQuery-"+appID)
 	headers.Set("x-root-field-name", "bloks_action")
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
@@ -70,10 +79,20 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		return nil, err
 	}
 
+	c.Logger.Trace().Str("bloks_app", appID).Bytes("resp", respData).Msg("Logging raw Bloks response")
+
 	var respOuter bloks.BloksResponse
 	err = json.Unmarshal(respData, &respOuter)
 	if err != nil {
 		return nil, fmt.Errorf("parsing outer bloks payload: %w", err)
+	}
+
+	if len(respOuter.Errors) > 0 {
+		errors := []string{}
+		for _, e := range respOuter.Errors {
+			errors = append(errors, e.Summary)
+		}
+		return nil, fmt.Errorf("bloks error: %s", strings.Join(errors, "; "))
 	}
 
 	innerData := ""

@@ -2,16 +2,13 @@ package messagix
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/google/uuid"
-
-	"go.mau.fi/util/random"
+	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -22,6 +19,8 @@ import (
 
 type MessengerLiteMethods struct {
 	client *Client
+
+	browser *bloks.Browser
 
 	deviceID       uuid.UUID
 	familyDeviceID uuid.UUID
@@ -65,6 +64,24 @@ func makeRequestAnalyticsHeader() (string, error) {
 type LightspeedKeyResponse struct {
 	KeyID     int    `json:"key_id"`
 	PublicKey string `json:"public_key"`
+}
+
+func (fb *MessengerLiteMethods) getBrowserConfig(ctx context.Context) *bloks.BrowserConfig {
+	return &bloks.BrowserConfig{
+		EncryptPassword: func(password string) (string, error) {
+			key, err := fb.client.fetchLightspeedKey(ctx)
+			if err != nil {
+				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
+			}
+
+			encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
+			if err != nil {
+				return "", fmt.Errorf("encrypting password for messenger lite: %w", err)
+			}
+			return encryptedPW, nil
+		},
+		MakeBloksRequest: fb.client.makeBloksRequest,
+	}
 }
 
 func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
@@ -163,212 +180,38 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 	return newCookies
 }
 
-func (fb *MessengerLiteMethods) Login(ctx context.Context, username, password string) (*cookies.Cookies, error) {
-	fb.client.MessengerLite.deviceID = uuid.New()
-	fb.client.MessengerLite.familyDeviceID = uuid.New()
-	fb.client.MessengerLite.machineID = string(random.StringBytes(25))
-
-	doc := &bloks.BloksDocProcessClientDataAndRedirect
-	loginPage, err := fb.client.makeBloksRequest(ctx, doc, bloks.NewBloksRequest(doc, bloks.BloksParamsInner(map[string]any{
-		"blocked_uid":                               []any{},
-		"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
-		"family_device_id":                          strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
-		"use_auto_login_interstitial":               true,
-		"layered_homepage_experiment_group":         "not_in_experiment",
-		"disable_recursive_auto_login_interstitial": true,
-		"show_internal_settings":                    false,
-		"waterfall_id":                              hex.EncodeToString(random.Bytes(16)),
-		"account_list":                              []any{},
-		"disable_auto_login":                        false,
-		"is_from_logged_in_switcher":                false,
-		"auto_login_interstitial_experiment_group":  "",
-		"device_id":                                 strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
-		"machine_id":                                fb.client.MessengerLite.machineID,
-	})))
-	if err != nil {
-		return nil, fmt.Errorf("loading messenger lite login page: %w", err)
+func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, *cookies.Cookies, error) {
+	if m.browser == nil {
+		m.browser = bloks.NewBrowser(ctx, m.getBrowserConfig(ctx))
 	}
 
-	unminifier, err := bloks.GetUnminifier(loginPage)
-	if err != nil {
-		return nil, err
-	}
-	loginPage.Unminify(unminifier)
-
-	var newPage *bloks.BloksBundle
-	var loginParams map[string]string
-	bridge := bloks.InterpBridge{
-		DeviceID:       strings.ToUpper(fb.client.MessengerLite.deviceID.String()),
-		FamilyDeviceID: strings.ToUpper(fb.client.MessengerLite.familyDeviceID.String()),
-		MachineID:      fb.client.MessengerLite.machineID,
-		EncryptPassword: func(password string) (string, error) {
-			key, err := fb.client.fetchLightspeedKey(ctx)
-			if err != nil {
-				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
-			}
-
-			encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
-			if err != nil {
-				return "", fmt.Errorf("encrypting password for messenger lite: %w", err)
-			}
-			return encryptedPW, nil
-		},
-		DoRPC: func(name string, params map[string]string) error {
-			if name != "com.bloks.www.bloks.caa.login.async.send_login_request" {
-				return fmt.Errorf("got unexpected rpc %s", name)
-			}
-			loginParams = params
-			return nil
-		},
-		DisplayNewScreen: func(toDisplay *bloks.BloksBundle) error {
-			newPage = toDisplay
-			return nil
-		},
-	}
-	loginInterp := bloks.NewInterpreter(loginPage, &bridge)
-	_, err = loginInterp.Evaluate(ctx, &loginPage.Layout.Payload.Action.AST)
-	if err != nil {
-		return nil, err
-	}
-	if newPage == nil {
-		return nil, fmt.Errorf("wasn't redirected to login page")
-	}
-
-	loginPage = newPage
-	loginInterp = bloks.NewInterpreter(loginPage, &bridge)
-
-	fillTextInput := func(fieldName string, fillText string) error {
-		input := loginPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-			if comp.ComponentID != "bk.components.TextInput" {
-				return false
-			}
-			name, ok := comp.Attributes["html_name"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
-			if !ok {
-				return false
-			}
-			str, ok := name.BloksJavascriptValue.(string)
-			if !ok {
-				return false
-			}
-			return str == fieldName
-		})
-		if input == nil {
-			return fmt.Errorf("couldn't find %s field", fieldName)
-		}
-		err := input.SetTextContent(fillText)
+	for m.browser.State != bloks.StateSuccess {
+		step, err := m.browser.DoLoginStep(ctx, userInput)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
-		onChanged, ok := input.Attributes["on_text_change"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
-		if !ok {
-			return fmt.Errorf("%s field doesn't have on_text_change script", fieldName)
+		if step != nil {
+			if step.UserInputParams != nil {
+				inputs := []string{}
+				for _, input := range step.UserInputParams.Fields {
+					inputs = append(inputs, input.ID)
+				}
+				m.client.Logger.Debug().Strs("inputs", inputs).Msg("Requesting user input")
+			}
+			return step, nil, nil
 		}
-		_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, input), &onChanged.AST)
-		if err != nil {
-			return fmt.Errorf("%s on_text_changed: %w", fieldName, err)
-		}
-		return nil
-	}
-
-	err = fillTextInput("email", username)
-	if err != nil {
-		return nil, err
-	}
-	err = fillTextInput("password", password)
-	if err != nil {
-		return nil, err
-	}
-
-	loginText := loginPage.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-		if comp.ComponentID != "bk.data.TextSpan" {
-			return false
-		}
-		text, ok := comp.Attributes["text"].BloksTreeNodeContent.(*bloks.BloksTreeLiteral)
-		if !ok {
-			return false
-		}
-		str, ok := text.BloksJavascriptValue.(string)
-		if !ok {
-			return false
-		}
-		return str == "Log in"
-	})
-	if loginText == nil {
-		return nil, fmt.Errorf("couldn't find login button")
-	}
-
-	var loginExtension *bloks.BloksTreeComponent
-	loginText.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
-		loginExtension = comp.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-			return comp.ComponentID == "bk.components.FoaTouchExtension"
-		})
-		return loginExtension != nil
-	})
-	if loginExtension == nil {
-		return nil, fmt.Errorf("couldn't find login extension")
-	}
-	onTouchDown, ok := loginExtension.Attributes["on_touch_down"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
-	if !ok {
-		return nil, fmt.Errorf("login button doesn't have on_touch_down script")
-	}
-	onTouchUp, ok := loginExtension.Attributes["on_touch_up"].BloksTreeNodeContent.(*bloks.BloksTreeScript)
-	if !ok {
-		return nil, fmt.Errorf("login button doesn't have on_touch_up script")
-	}
-
-	_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchDown.AST)
-	if err != nil {
-		return nil, fmt.Errorf("on_touch_down: %w", err)
-	}
-	_, err = loginInterp.Evaluate(bloks.InterpBindThis(ctx, loginExtension), &onTouchUp.AST)
-	if err != nil {
-		return nil, fmt.Errorf("on_touch_up: %w", err)
-	}
-
-	if loginParams == nil {
-		return nil, fmt.Errorf("bloks did not generate login rpc")
-	}
-	var loginParamsInner bloks.BloksParamsInner
-	err = json.Unmarshal([]byte(loginParams["params"]), &loginParamsInner)
-	if err != nil {
-		return nil, err
-	}
-
-	doc = &bloks.BloksDocSendLoginRequest
-	loginResp, err := fb.client.makeBloksRequest(
-		ctx, doc, bloks.NewBloksRequest(doc, loginParamsInner),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("sending bloks login request: %w", err)
-	}
-
-	unminifier, err = bloks.GetUnminifier(loginResp)
-	if err != nil {
-		return nil, err
-	}
-	loginResp.Unminify(unminifier)
-
-	var loginRespData string
-	loginRespInterp := bloks.NewInterpreter(loginResp, &bloks.InterpBridge{
-		HandleLoginResponse: func(data string) error {
-			loginRespData = data
-			return nil
-		},
-	})
-	_, err = loginRespInterp.Evaluate(ctx, &loginResp.Layout.Payload.Action.AST)
-	if err != nil {
-		return nil, err
-	}
-	if loginRespData == "" {
-		return nil, fmt.Errorf("login response didn't trigger callback")
 	}
 
 	var loginRespPayload BloksLoginActionResponsePayload
-	err = json.Unmarshal([]byte(loginRespData), &loginRespPayload)
+	err := json.Unmarshal([]byte(m.browser.LoginData), &loginRespPayload)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
-	newCookies := convertCookies(&loginRespPayload)
-	return newCookies, nil
+	// these values are generated by us, they are known safe
+	m.deviceID = uuid.MustParse(m.browser.Bridge.DeviceID)
+	m.familyDeviceID = uuid.MustParse(m.browser.Bridge.FamilyDeviceID)
+	m.machineID = m.browser.Bridge.MachineID
+
+	return nil, convertCookies(&loginRespPayload), nil
 }

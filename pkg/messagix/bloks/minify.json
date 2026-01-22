@@ -1502,7 +1502,8 @@
     "䇷": "bk.data.ComposableTextSpan",
     "㚝": "bk.components.FoaTouchExtension",
     "㜍": "bk.cds.bottomsheet.Wrapper",
-    "㐘": "bk.components.TextInput"
+    "㐘": "bk.components.TextInput",
+    "㐅": "bk.components.Collection"
   },
   "properties": {
     "bk.components.FoaTouchExtension": {
@@ -1643,6 +1644,13 @@
     "bk.cds.bottomsheet.Wrapper": {
       "4": "content",
       "8": "header",
+      "101": "extensions"
+    },
+    "bk.components.Collection": {
+      "0": "children",
+      "10": "direction",
+      "35": "shows_scroll_indicator",
+      "100": "_style",
       "101": "extensions"
     }
   }

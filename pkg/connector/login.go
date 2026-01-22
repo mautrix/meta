@@ -317,43 +317,50 @@ type MetaNativeLogin struct {
 	Mode types.Platform
 	User *bridgev2.User
 	Main *MetaConnector
+
+	SavedClient *messagix.Client
 }
 
 func (m *MetaNativeLogin) Cancel() {}
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeUserInput,
-		StepID:       LoginStepIDCredentials,
-		Instructions: "Enter your Messenger credentials",
-		UserInputParams: &bridgev2.LoginUserInputParams{
-			Fields: []bridgev2.LoginInputDataField{
-				{ID: "username", Name: "Email address", Type: bridgev2.LoginInputFieldTypeEmail},
-				{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
-			},
-		},
-	}, nil
-}
+	log := m.User.Log.With().Str("component", "messagix").Logger()
+	log.Debug().Msg("Starting Messenger Lite login flow")
 
-func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-
-	log := m.User.Log.With().Str("component", "messagix").Logger()
 	client, err := getMessagixClient(log, m.Main, fakeCookies)
 	if err != nil {
 		return nil, err
 	}
+	m.SavedClient = client
 
-	c, err := client.MessengerLite.Login(ctx, input["username"], input["password"])
+	return m.proceed(ctx, nil)
+}
+
+func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	return m.proceed(ctx, input)
+}
+
+func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
+	return m.proceed(ctx, nil)
+}
+
+func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
+	log := m.User.Log.With().Str("component", "messagix").Logger()
+
+	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
-		return nil, fmt.Errorf("failed to login: %w", err)
+		return nil, err
+	}
+	if step != nil {
+		return step, nil
 	}
 
-	client.GetCookies().UpdateValues(c.GetAll())
+	m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
 
-	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, c)
+	step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
 	if err != nil {
 		return nil, err
 	}
@@ -362,3 +369,4 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
+var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
