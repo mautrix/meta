@@ -99,6 +99,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		}()
 	case *messagix.Event_SocketError:
 		log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
+		m.connectWaiter.Clear()
 		m.metaState = status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      MetaTransientDisconnect,
