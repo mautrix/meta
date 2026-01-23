@@ -25,12 +25,8 @@ import (
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
+func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
 	appID := variables.Params.AppID
-	docID := bloks.DocIDs[appID]
-	if docID == "" {
-		return nil, fmt.Errorf("can't find docid for appid %s", appID)
-	}
 	c.Logger.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
 
 	vBytes, err := json.Marshal(variables)
@@ -46,8 +42,8 @@ func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksReq
 	payload.ServerTimestamps = "true"
 	payload.Locale = "en_US"
 	payload.Purpose = "fetch"
-	payload.FbAPIReqFriendlyName = "MSGBloksActionRootQuery-" + appID
-	payload.ClientDocID = docID
+	payload.FbAPIReqFriendlyName = doc.Name + "-" + appID
+	payload.ClientDocID = doc.ClientDocID
 	payload.EnableCanonicalNaming = "true"
 	payload.EnableCanonicalVariableOverrides = "true"
 	payload.EnableCanonicalNamingAmbiguousTypePrefixing = "true"
@@ -65,8 +61,8 @@ func (c *Client) makeBloksRequest(ctx context.Context, variables *bloks.BloksReq
 		return nil, err
 	}
 
-	headers.Set("x-fb-friendly-name", "MSGBloksActionRootQuery-"+appID)
-	headers.Set("x-root-field-name", "bloks_action")
+	headers.Set("x-fb-friendly-name", doc.Name+"-"+appID)
+	headers.Set("x-root-field-name", doc.RootField)
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
 

@@ -213,13 +213,13 @@ const (
 
 type BrowserConfig struct {
 	EncryptPassword  func(string) (string, error)
-	MakeBloksRequest func(context.Context, *BloksRequestOuter) (*BloksBundle, error)
+	MakeBloksRequest func(context.Context, *BloksDoc, *BloksRequestOuter) (*BloksBundle, error)
 }
 
 type Browser struct {
-	State           BrowserState
-	CurrentPage     *BloksBundle
-	NewPageOrAction *BloksBundle
+	State         BrowserState
+	CurrentPage   *BloksBundle
+	CurrentAction *BloksBundle
 
 	Config *BrowserConfig
 	Bridge *InterpBridge
@@ -242,7 +242,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 		FamilyDeviceID:  strings.ToUpper(uuid.New().String()),
 		MachineID:       string(random.StringBytes(25)),
 		EncryptPassword: cfg.EncryptPassword,
-		DoRPC: func(name string, params map[string]string, callback func(result *BloksScriptLiteral) error) error {
+		DoRPC: func(name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
@@ -277,12 +277,29 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 				return fmt.Errorf("parsing %s params: %w", name, err)
 			}
 
-			pageOrAction, err := cfg.MakeBloksRequest(ctx, NewBloksRequest(name, paramsInner))
+			var doc *BloksDoc
+			if isPage {
+				doc = &BloksAppDoc
+			} else {
+				doc = &BloksActionDoc
+			}
+
+			pageOrAction, err := cfg.MakeBloksRequest(ctx, doc, NewBloksRequest(name, paramsInner))
 			if err != nil {
 				return fmt.Errorf("rpc %s: %w", name, err)
 			}
 
-			b.NewPageOrAction = pageOrAction
+			err = pageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
+			if err != nil {
+				return err
+			}
+
+			if isPage {
+				b.CurrentPage = pageOrAction
+			} else {
+				b.CurrentAction = pageOrAction
+			}
+
 			b.State = transitions[b.State]
 
 			if b.State == StateAFADAction {
@@ -306,7 +323,12 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 				return fmt.Errorf("can't handle new screen %s in state %s", name, b.State)
 			}
 
-			b.NewPageOrAction = page
+			err := page.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
+			if err != nil {
+				return err
+			}
+
+			b.CurrentPage = page
 			b.State = transitions[b.State]
 			return nil
 		},
@@ -349,24 +371,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 		log.Debug().Str("cur_state", string(b.State)).Strs("user_input", fields).Msg("Executing login step")
 	}
-	switchToNewPage := func() error {
-		// Make it idempotent
-		if b.NewPageOrAction == nil {
-			return nil
-		}
-
-		err := b.NewPageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
-		if err != nil {
-			return err
-		}
-		b.CurrentPage = b.NewPageOrAction
-		return nil
-	}
 	prevState := b.State
 	switch b.State {
 	case StateInitial:
 		rpc := "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
-		action, err := b.Config.MakeBloksRequest(ctx, NewBloksRequest(rpc, map[string]any{
+		action, err := b.Config.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(rpc, map[string]any{
 			"blocked_uid":                               []any{},
 			"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
 			"family_device_id":                          b.Bridge.FamilyDeviceID,
@@ -386,18 +395,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("rpc %s: %w", rpc, err)
 		}
 
-		b.NewPageOrAction = action
-		b.State = StateRedirectToLoginAction
-	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADAction, StateAFADCompleteAction:
-		// In case we stayed on the current page, don't overwrite it with an action
-		action := b.NewPageOrAction
-		b.NewPageOrAction = nil
-
-		err := action.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
+		err = action.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
 		if err != nil {
 			return nil, fmt.Errorf("setup %s interpreter: %w", b.State, err)
 		}
-		result, err := action.Interpreter.Evaluate(ctx, action.Action())
+
+		b.CurrentAction = action
+		b.State = StateRedirectToLoginAction
+	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADAction, StateAFADCompleteAction:
+		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
@@ -439,8 +445,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			b.AFADDisplayed = true
 		}
 	case StateEmailPasswordPage:
-		switchToNewPage()
-
 		if userInput["username"] == "" || userInput["password"] == "" {
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -481,8 +485,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		// XXX this entire switch case is completely blind guesswork since I don't have a
 		// network trace of what the page actually looks like when you trigger the email
 		// code fallback, but if we're lucky this would work on first try
-		switchToNewPage()
-
 		if userInput["email_code"] == "" {
 			step = &bridgev2.LoginStep{
 				Type:   bridgev2.LoginStepTypeUserInput,
@@ -521,8 +523,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 	case StateMFALandingPage:
-		switchToNewPage()
-
 		err := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
 			FindContainingButton().
@@ -531,8 +531,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping method selection button: %w", err)
 		}
 	case StateChooseMFAPage:
-		switchToNewPage()
-
 		possibleMethods := []string{
 			"Authentication app",
 			"Notification on another device",
@@ -599,8 +597,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping continue button: %w", err)
 		}
 	case StateTOTPPage:
-		switchToNewPage()
-
 		if userInput["totp_code"] == "" {
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -637,8 +633,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 	case StateAFADPage:
-		switchToNewPage()
-
 		notif := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.data.TextSpan" {
 				return false

@@ -24,7 +24,7 @@ type InterpBridge struct {
 	IsAppInstalled      func(url string, pkgnames ...string) bool
 	HasAppPermissions   func(permissions ...string) bool
 	GetSecureNonces     func() []string
-	DoRPC               func(name string, params map[string]string, callback func(result *BloksScriptLiteral) error) error
+	DoRPC               func(name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error
 	DisplayNewScreen    func(string, *BloksBundle) error
 	HandleLoginResponse func(data string) error
 	StartTimer          func(name string, interval time.Duration, callback func() error) error
@@ -118,8 +118,8 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 	}
 	if br.DoRPC == nil {
-		br.DoRPC = func(name string, params map[string]string, callback func(result *BloksScriptLiteral) error) error {
-			return fmt.Errorf("unhandled rpc %s", name)
+		br.DoRPC = func(name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
+			return fmt.Errorf("unhandled rpc %s (isPage %v)", name, isPage)
 		}
 	}
 	if br.DisplayNewScreen == nil {
@@ -652,7 +652,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		err = i.Bridge.DoRPC(name, flatParams, func(result *BloksScriptLiteral) error {
+		err = i.Bridge.DoRPC(name, flatParams, false, func(result *BloksScriptLiteral) error {
 			_, err := i.Evaluate(ctx, &BloksScriptNode{
 				BloksScriptNodeContent: &BloksScriptFuncall{
 					Function: "bk.action.core.Apply",
@@ -836,7 +836,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			flatParams[key] = str
 		}
-		err = i.Bridge.DoRPC(name, flatParams, nil)
+		err = i.Bridge.DoRPC(name, flatParams, true, nil)
 		if err != nil {
 			return nil, err
 		}
