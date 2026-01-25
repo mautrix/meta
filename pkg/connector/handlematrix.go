@@ -750,3 +750,69 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 	// TODO update portal metadata
 	return true, nil
 }
+
+func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
+	if msg.Portal.RoomType == database.RoomTypeDM {
+		return nil, errors.New("cannot change members for DM")
+	}
+
+	var targetID int64
+	switch target := msg.Target.(type) {
+	case *bridgev2.Ghost:
+		targetID = metaid.ParseUserID(target.ID)
+	case *bridgev2.UserLogin:
+		targetID = metaid.ParseUserLoginID(target.ID)
+	default:
+		return nil, fmt.Errorf("unknown membership target type %T", target)
+	}
+	if targetID == 0 {
+		return nil, fmt.Errorf("invalid target user ID")
+	}
+
+	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
+	if portalMeta.ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
+		portalJID := portalMeta.JID(msg.Portal.ID)
+		targetJID := waTypes.NewJID(strconv.FormatInt(targetID, 10), waTypes.MessengerServer)
+		var action whatsmeow.ParticipantChange
+		switch msg.Type {
+		case bridgev2.Invite:
+			action = whatsmeow.ParticipantChangeAdd
+		case bridgev2.Kick:
+			action = whatsmeow.ParticipantChangeRemove
+		default:
+			return nil, nil
+		}
+		resp, err := m.E2EEClient.UpdateGroupParticipants(ctx, portalJID, []waTypes.JID{targetJID}, action)
+		if err != nil {
+			return nil, err
+		} else if len(resp) == 0 {
+			return nil, fmt.Errorf("no response for participant change")
+		} else if resp[0].Error != 0 {
+			return nil, fmt.Errorf("failed to change participant: code %d", resp[0].Error)
+		}
+		return &bridgev2.MatrixMembershipResult{RedirectTo: metaid.MakeWAUserID(resp[0].JID)}, nil
+	}
+
+	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+	var task socket.Task
+	switch msg.Type {
+	case bridgev2.Invite:
+		task = &socket.AddParticipantsTask{
+			ThreadKey:  threadID,
+			ContactIDs: []int64{targetID},
+			SyncGroup:  1,
+		}
+	case bridgev2.Kick:
+		task = &socket.RemoveParticipantTask{
+			ThreadID:  threadID,
+			ContactID: targetID,
+		}
+	default:
+		return nil, nil
+	}
+	_, err := m.Client.ExecuteTasks(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	return &bridgev2.MatrixMembershipResult{}, nil
+}
