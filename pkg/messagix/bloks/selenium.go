@@ -478,7 +478,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		_, err := phonenumbers.Parse(userInput["username"], "US")
 		if err == nil {
-			return nil, fmt.Errorf("Phone number login on a new device is blocked by Facebook")
+			return nil, fmt.Errorf("phone number login on a new device is blocked by Facebook")
 		}
 
 		err = b.CurrentPage.
