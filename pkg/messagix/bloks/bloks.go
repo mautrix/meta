@@ -5,8 +5,8 @@ import (
 	"reflect"
 )
 
-// Messenger iOS 535.0.0.0.0 of 1763582309
-const BloksVersion = "330b36fe786d9b82dd834eb55748d52712a0d09cf6fb7c60931d40204d086306"
+// Messenger iOS 544.0.0.20.406 of 1768247148
+const BloksVersion = "7f577336851f32ef4842b8eb2394aaf9d036c1dda7c1064b3f3090b6212b63e5"
 
 type ExtraStringification[T any] struct {
 	Body T

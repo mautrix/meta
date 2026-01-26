@@ -240,7 +240,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 	b.Bridge = &InterpBridge{
 		DeviceID:        strings.ToUpper(uuid.New().String()),
 		FamilyDeviceID:  strings.ToUpper(uuid.New().String()),
-		MachineID:       string(random.StringBytes(25)),
+		MachineID:       string(random.StringBytes(24)),
 		EncryptPassword: cfg.EncryptPassword,
 		DoRPC: func(name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")

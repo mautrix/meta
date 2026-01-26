@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/google/go-querystring/query"
+	"github.com/google/uuid"
 	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
@@ -65,6 +66,11 @@ func (c *Client) makeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 	headers.Set("x-root-field-name", doc.RootField)
 	headers.Set("x-graphql-request-purpose", "fetch")
 	headers.Set("x-graphql-client-library", "pando")
+	headers.Set("x-fb-client-ip", "True")
+	headers.Set("x-fb-server-cluster", "True")
+	headers.Set("x-fb-conn-uuid-client", strings.Replace(uuid.New().String(), "-", "", -1))
+	headers.Set("x-fb-http-engine", "Tigon/MNS/TCP")
+	headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
 
 	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
 
