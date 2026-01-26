@@ -92,7 +92,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		br.FamilyDeviceID = strings.ToUpper(uuid.New().String())
 	}
 	if br.MachineID == "" {
-		br.MachineID = string(random.StringBytes(25))
+		br.MachineID = string(random.StringBytes(24))
 	}
 	if br.EncryptPassword == nil {
 		br.EncryptPassword = func(pw string) (string, error) {
