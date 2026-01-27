@@ -55,7 +55,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 11
+	return 1, 12
 }
 
 const MaxTextLength = 20000
@@ -71,7 +71,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2025_11_25"
+	base := "fi.mau.meta.capabilities.2026_01_25"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -165,6 +165,7 @@ var metaCaps = &event.RoomFeatures{
 
 var metaCapsWithThreads *event.RoomFeatures
 var metaCapsWithE2E *event.RoomFeatures
+var metaCapsWithE2EGroup *event.RoomFeatures
 var igCaps *event.RoomFeatures
 var igCapsGroup *event.RoomFeatures
 var metaCapsGroup *event.RoomFeatures
@@ -186,6 +187,12 @@ func init() {
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
 	metaCapsWithE2E.DeleteChat = false
+	metaCapsWithE2EGroup = metaCapsWithE2E.Clone()
+	metaCapsWithE2EGroup.ID += "+group"
+	metaCapsWithE2EGroup.MemberActions = map[event.MemberAction]event.CapabilitySupportLevel{
+		event.MemberActionInvite: event.CapLevelFullySupported,
+		event.MemberActionKick:   event.CapLevelFullySupported,
+	}
 
 	metaCapsGroup = metaCaps.Clone()
 	metaCapsGroup.ID += "+group"
@@ -193,6 +200,7 @@ func init() {
 		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
 		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
 	}
+	metaCapsGroup.MemberActions = metaCapsWithE2EGroup.MemberActions.Clone()
 
 	igCaps = metaCaps.Clone()
 	delete(igCaps.File, event.MsgFile)
@@ -205,14 +213,17 @@ func init() {
 	igCapsGroup.State = event.StateFeatureMap{
 		event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
 	}
+	igCapsGroup.MemberActions = metaCapsWithE2EGroup.MemberActions.Clone()
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	switch portal.Metadata.(*metaid.PortalMetadata).ThreadType {
 	case table.COMMUNITY_GROUP:
 		return metaCapsWithThreads
-	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE, table.ENCRYPTED_OVER_WA_GROUP:
+	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE:
 		return metaCapsWithE2E
+	case table.ENCRYPTED_OVER_WA_GROUP:
+		return metaCapsWithE2EGroup
 	}
 	if m.Client.GetPlatform() == types.Instagram || m.Main.Config.Mode == types.Instagram {
 		if portal.RoomType == database.RoomTypeDM {

@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/bridgev2/status"
+	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -133,6 +134,40 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Message:    evt.PermanentDisconnectDescription(),
 		}
 		m.UserLogin.BridgeState.Send(m.waState)
+	case *events.GroupInfo:
+		portalKey := m.makeWAPortalKey(evt.JID)
+		memberChanges := &bridgev2.ChatMemberList{
+			MemberMap: make(map[networkid.UserID]bridgev2.ChatMember),
+		}
+		for _, userID := range evt.Join {
+			memberChanges.MemberMap.Set(bridgev2.ChatMember{
+				EventSender: m.makeWAEventSender(userID),
+				Membership:  event.MembershipJoin,
+			})
+		}
+		for _, userID := range evt.Leave {
+			memberChanges.MemberMap.Set(bridgev2.ChatMember{
+				EventSender:    m.makeWAEventSender(userID),
+				Membership:     event.MembershipLeave,
+				PrevMembership: event.MembershipJoin,
+			})
+		}
+		if len(memberChanges.MemberMap) > 0 {
+			eventMeta := simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatInfoChange,
+				PortalKey: portalKey,
+				Timestamp: evt.Timestamp,
+			}
+			if evt.Sender != nil {
+				eventMeta.Sender = m.makeWAEventSender(*evt.Sender)
+			}
+			m.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
+				EventMeta: eventMeta,
+				ChatInfoChange: &bridgev2.ChatInfoChange{
+					MemberChanges: memberChanges,
+				},
+			})
+		}
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
