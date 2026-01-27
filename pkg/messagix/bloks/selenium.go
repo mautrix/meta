@@ -378,7 +378,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 	return &b
 }
 
-var usernameOrEmailRegexp = regexp.MustCompile(`^([a-zA-Z0-9]+[a-zA-Z][a-zA-Z0-9]*|[a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]+|.+@.+)$`)
+var usernameOrEmailRegexp = regexp.MustCompile(`^([a-zA-Z0-9.]+[a-zA-Z][a-zA-Z0-9.]*|[a-zA-Z0-9.]*[a-zA-Z][a-zA-Z0-9.]+|.+@.+)$`)
 
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
