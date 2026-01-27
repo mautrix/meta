@@ -378,7 +378,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 	return &b
 }
 
-var usernameOrEmailRegexp = regexp.MustCompile(`^([a-zA-Z0-9.]+[a-zA-Z][a-zA-Z0-9.]*|[a-zA-Z0-9.]*[a-zA-Z][a-zA-Z0-9.]+|.+@.+)$`)
+var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
 
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
@@ -478,7 +478,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
-		if !usernameOrEmailRegexp.MatchString(userInput["username"]) {
+		if !definitelyNotPhoneNumberRegexp.MatchString(userInput["username"]) {
 			return nil, fmt.Errorf("only username or email login is allowed, not phone number")
 		}
 
