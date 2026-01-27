@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.mau.fi/util/random"
 )
 
 type InterpBridge struct {
@@ -90,9 +89,6 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	}
 	if br.FamilyDeviceID == "" {
 		br.FamilyDeviceID = strings.ToUpper(uuid.New().String())
-	}
-	if br.MachineID == "" {
-		br.MachineID = string(random.StringBytes(24))
 	}
 	if br.EncryptPassword == nil {
 		br.EncryptPassword = func(pw string) (string, error) {

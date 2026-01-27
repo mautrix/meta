@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -238,9 +239,24 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 		Config: cfg,
 	}
 	b.Bridge = &InterpBridge{
-		DeviceID:        strings.ToUpper(uuid.New().String()),
-		FamilyDeviceID:  strings.ToUpper(uuid.New().String()),
-		MachineID:       string(random.StringBytes(24)),
+		DeviceID:       strings.ToUpper(uuid.New().String()),
+		FamilyDeviceID: strings.ToUpper(uuid.New().String()),
+		// Note: machine_id is set to an empty string the first time the user ever logs in
+		// to any account on a given physical device. After a successful login, the login
+		// response payload contains a new machine_id that is stored in shady locations that
+		// the user can never normally clear even after uninstalling all their apps, and
+		// used for all subsequent login attempts to enable persistent tracking across
+		// multiple accounts on the same physical device.
+		//
+		// We do not replicate the second part of that behavior. However, doing so means
+		// phone number login does not work, as phone number logins are rejected without a
+		// valid machine_id. Note that this implies that the official app is unable to do
+		// phone number login, either, unless you've previously logged in a different way
+		// (to any account) on the same device. Yes, I tested that.
+		//
+		// The machine_id would generally be a 24 character alphanumeric string. However it
+		// cannot be generated on the client side so this fact is purely informational.
+		MachineID:       "",
 		EncryptPassword: cfg.EncryptPassword,
 		DoRPC: func(name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
@@ -362,6 +378,8 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 	return &b
 }
 
+var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
+
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
 	{
@@ -460,7 +478,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
-		err := b.CurrentPage.
+		if !definitelyNotPhoneNumberRegexp.MatchString(userInput["username"]) {
+			return nil, fmt.Errorf("only username or email login is allowed, not phone number")
+		}
+
+		err = b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "email")).
 			FillInput(ctx, b.CurrentPage.Interpreter, userInput["username"])
 		if err != nil {
