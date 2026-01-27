@@ -5,11 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/nyaruka/phonenumbers"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
@@ -378,6 +378,8 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 	return &b
 }
 
+var usernameOrEmailRegexp = regexp.MustCompile(`^([a-zA-Z0-9]+|.+@.+)$`)
+
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
 	{
@@ -476,9 +478,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
-		_, err := phonenumbers.Parse(userInput["username"], "US")
-		if err == nil {
-			return nil, fmt.Errorf("phone number login on a new device is blocked by Facebook")
+		if !usernameOrEmailRegexp.MatchString(userInput["username"]) {
+			return nil, fmt.Errorf("only username or email login is allowed, not phone number")
 		}
 
 		err = b.CurrentPage.
