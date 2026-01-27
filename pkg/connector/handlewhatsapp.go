@@ -140,17 +140,17 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			MemberMap: make(map[networkid.UserID]bridgev2.ChatMember),
 		}
 		for _, userID := range evt.Join {
-			memberChanges.MemberMap[metaid.MakeWAUserID(userID)] = bridgev2.ChatMember{
+			memberChanges.MemberMap.Set(bridgev2.ChatMember{
 				EventSender: m.makeWAEventSender(userID),
 				Membership:  event.MembershipJoin,
-			}
+			})
 		}
 		for _, userID := range evt.Leave {
-			memberChanges.MemberMap[metaid.MakeWAUserID(userID)] = bridgev2.ChatMember{
+			memberChanges.MemberMap.Set(bridgev2.ChatMember{
 				EventSender:    m.makeWAEventSender(userID),
 				Membership:     event.MembershipLeave,
 				PrevMembership: event.MembershipJoin,
-			}
+			})
 		}
 		if len(memberChanges.MemberMap) > 0 {
 			eventMeta := simplevent.EventMeta{
