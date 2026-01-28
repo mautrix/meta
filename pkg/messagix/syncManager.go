@@ -66,7 +66,7 @@ func (sm *SyncManager) syncSocketData(ctx context.Context, db int64, cb func()) 
 		return
 	}
 
-	_, err := sm.SyncSocketData(ctx, db, database)
+	err := sm.SyncSocketData(ctx, db, database)
 	if err != nil {
 		sm.client.Logger.Err(err).Int64("database_id", db).Msg("Failed to sync database through socket")
 	} else {
@@ -85,7 +85,7 @@ func (sm *SyncManager) EnsureSyncedSocket(ctx context.Context, databases []int64
 	return nil
 }
 
-func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db *socket.QueryMetadata) (*table.LSTable, error) {
+func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db *socket.QueryMetadata) error {
 	var t int
 	payload := &socket.DatabaseQuery{
 		Database: databaseID,
@@ -107,7 +107,7 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 
 	jsonPayload, err := json.Marshal(&payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal DatabaseQuery struct into json bytes (databaseID=%d): %w", databaseID, err)
+		return fmt.Errorf("failed to marshal DatabaseQuery struct into json bytes (databaseID=%d): %w", databaseID, err)
 	}
 
 	sm.client.Logger.Trace().
@@ -116,7 +116,7 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 		Msg("Syncing database via socket")
 	resp, err := sm.client.socket.makeLSRequest(ctx, jsonPayload, t)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseID=%d): %w", databaseID, err)
+		return fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseID=%d): %w", databaseID, err)
 	}
 
 	resp.Finish()
@@ -134,7 +134,7 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 			Any("response", resp.Data).
 			Any("table", resp.Table).
 			Msg("No transactions found")
-		return resp.Table, nil
+		return nil
 	}
 	block := resp.Table.LSExecuteFirstBlockForSyncTransaction[0]
 	nextCursor, currentCursor := block.NextCursor, block.CurrentCursor
@@ -143,9 +143,10 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 		Any("block_response", block).
 		Any("database_id", payload.Database).
 		Any("payload", string(jsonPayload)).
+		Strs("response_table_fields", resp.Table.NonNilFields()).
 		Msg("Synced database")
 	if nextCursor == currentCursor || nextCursor == prevCursor || nextCursor == "dummy_cursor" || nextCursor == "" || !shouldRecurseDatabase[databaseID] {
-		return resp.Table, nil
+		return nil
 	}
 
 	// Update the last applied cursor to the next cursor and recursively fetch again
@@ -154,7 +155,7 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 	db.SyncChannel = socket.SyncChannel(block.SyncChannel)
 	err = sm.updateSyncGroupCursors(resp.Table) // Also sync the transaction with the store map because the db param is just a copy of the map entry
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	return sm.SyncSocketData(ctx, databaseID, db)
