@@ -31,7 +31,7 @@ type LSTable struct {
 	LSInsertNewMessageRange                          []*LSInsertNewMessageRange                          `json:",omitempty"`
 	LSUpdateExistingMessageRange                     []*LSUpdateExistingMessageRange                     `json:",omitempty"`
 	LSDeleteExistingMessageRanges                    []*LSDeleteExistingMessageRanges                    `json:",omitempty"`
-	LSUpsertSequenceID                               []*LSUpsertSequenceID                               `json:",omitempty"`
+	LSUpsertSequenceId                               []*LSUpsertSequenceID                               `json:",omitempty"`
 	LSVerifyContactRowExists                         []*LSVerifyContactRowExists                         `json:",omitempty"`
 	LSThreadsRangesQuery                             []*LSThreadsRangesQuery                             `json:",omitempty"`
 	LSSetRegionHint                                  []*LSSetRegionHint                                  `json:",omitempty"`
@@ -233,7 +233,7 @@ var SPTable = map[string]string{
 	"handleRepliesOnUnsend":                          "LSHandleRepliesOnUnsend",
 	"deleteExistingMessageRanges":                    "LSDeleteExistingMessageRanges",
 	"writeThreadCapabilities":                        "LSWriteThreadCapabilities",
-	"upsertSequenceId":                               "LSUpsertSequenceID",
+	"upsertSequenceId":                               "LSUpsertSequenceId",
 	"executeFinallyBlockForSyncTransaction":          "LSExecuteFinallyBlockForSyncTransaction",
 	"verifyContactRowExists":                         "LSVerifyContactRowExists",
 	"taskExists":                                     "LSTaskExists",
