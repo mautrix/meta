@@ -145,6 +145,8 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 		Any("payload", string(jsonPayload)).
 		Strs("response_table_fields", resp.Table.NonNilFields()).
 		Msg("Synced database")
+	// TODO remove this after confirming there's nothing useful
+	sm.client.HandleEvent(ctx, resp)
 	if nextCursor == currentCursor || nextCursor == prevCursor || nextCursor == "dummy_cursor" || nextCursor == "" || !shouldRecurseDatabase[databaseID] {
 		return nil
 	}
