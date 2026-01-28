@@ -117,11 +117,16 @@ type LSInsertAttachment struct {
 	TargetExpiryTimestampMs                    int64                  `index:"120" json:",omitempty"`
 	CountdownTimestampMs                       int64                  `index:"121" json:",omitempty"`
 	ShouldBlurSubattachments                   bool                   `index:"122" json:",omitempty"`
-	VerifiedType                               int64                  `index:"123" json:",omitempty"`
-	IgStoryReplyType                           int64                  `index:"124" json:",omitempty"`
-	IsAttachmentConsumed                       bool                   `index:"125" json:",omitempty"`
-	StickerType                                any                    `index:"126" json:",omitempty"`
-	AuthorityLevel                             int64                  `index:"127" json:",omitempty"`
+	FooterTitle                                string                 `index:"123" json:",omitempty"`
+	VerifiedType                               int64                  `index:"124" json:",omitempty"`
+	IgStoryReplyType                           int64                  `index:"125" json:",omitempty"`
+	IsAttachmentConsumed                       bool                   `index:"126" json:",omitempty"`
+	PlayableAudioURL                           string                 `index:"127" json:",omitempty"`
+	StickerType                                any                    `index:"128" json:",omitempty"`
+	LoggingGenericXMAContentType               string                 `index:"129" json:",omitempty"`
+	LoggingGenericXMAContentIDV2               string                 `index:"130" json:",omitempty"`
+	GIFPlayback                                bool                   `index:"131" json:",omitempty"`
+	AuthorityLevel                             int64                  `index:"132" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -293,16 +298,18 @@ type LSInsertXmaAttachment struct {
 	TargetExpiryTimestampMs                    int64          `index:"118" json:",omitempty"`
 	CountdownTimestampMs                       int64          `index:"119" json:",omitempty"`
 	ShouldBlurSubattachments                   int64          `index:"120" json:",omitempty"`
-	VerifiedType                               int64          `index:"121" json:",omitempty"`
-	CaptionBodyText                            string         `index:"122" json:",omitempty"`
-	IsPublicXma                                bool           `index:"123" json:",omitempty"`
-	ReplyCount                                 int64          `index:"124" json:",omitempty"`
-	PlayableAudioURL                           string         `index:"125" json:",omitempty"`
-	XmaDataclass                               string         `index:"126" json:",omitempty"`
-	PreviewOverlayCountdownExpiry              string         `index:"127" json:",omitempty"`
-	StickerType                                any            `index:"128" json:",omitempty"`
-	LoggingGenericXMAContentType               string         `index:"129" json:",omitempty"`
-	AuthorityLevel                             int64          `index:"130" json:",omitempty"`
+	FooterTitle                                string         `index:"121" json:",omitempty"`
+	VerifiedType                               int64          `index:"122" json:",omitempty"`
+	CaptionBodyText                            string         `index:"123" json:",omitempty"`
+	IsPublicXma                                bool           `index:"124" json:",omitempty"`
+	ReplyCount                                 int64          `index:"125" json:",omitempty"`
+	PlayableAudioURL                           string         `index:"126" json:",omitempty"`
+	XmaDataclass                               string         `index:"127" json:",omitempty"`
+	PreviewOverlayCountdownExpiry              string         `index:"128" json:",omitempty"`
+	StickerType                                any            `index:"129" json:",omitempty"`
+	LoggingGenericXMAContentType               string         `index:"130" json:",omitempty"`
+	LoggingGenericXMAContentIDV2               string         `index:"131" json:",omitempty"`
+	AuthorityLevel                             int64          `index:"132" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
