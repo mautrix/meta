@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exhttp"
+	"go.mau.fi/util/ptr"
 	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
@@ -160,10 +161,6 @@ const pongTimeout = 30 * time.Second
 const packetTimeout = 30 * time.Second
 const pingInterval = 10 * time.Second
 
-func ptr[T any](val T) *T {
-	return &val
-}
-
 func (s *Socket) Disconnect() {
 	if s == nil {
 		return
@@ -183,12 +180,12 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	}()
 	var closedCleanly atomic.Bool
 	var closeErr atomic.Pointer[error]
-	s.cleanClose.Store(ptr(func() {
-		closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("closed cleanly")))
+	s.cleanClose.Store(ptr.Ptr(func() {
+		closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("closed cleanly")))
 		closedCleanly.Store(true)
 	}))
 	conn.SetCloseHandler(func(code int, text string) error {
-		closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("closed by server: %d %s", code, text)))
+		closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("closed by server: %d %s", code, text)))
 		closedCleanly.Store(true)
 		s.client.Logger.Info().Int("code", code).Str("text", text).Msg("Websocket closed by server")
 		return nil
@@ -220,7 +217,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			case *Event_Ready:
 				err := s.handleReadyEvent(ctx, evt)
 				if err != nil {
-					closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to handle connect ack: %w", err)))
+					closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("failed to handle connect ack: %w", err)))
 					s.client.Logger.Err(err).Msg("Failed to handle connect ack")
 					closeDueToError("connect ack failed")
 				}
@@ -233,7 +230,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		resp := &Response{}
 		err := resp.Read(data)
 		if err != nil {
-			closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to parse websocket data: %w", err)))
+			closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("failed to parse websocket data: %w", err)))
 			s.client.Logger.Err(err).Uint8("packet_type", resp.PacketType()).Msg("Failed to parse websocket data")
 			closeDueToError("failed to parse websocket data")
 			return
@@ -256,7 +253,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			s.handleACKEvent(evt.(AckEvent))
 		case *Event_Ready:
 			if evt.ConnectionCode != CONNECTION_ACCEPTED {
-				closeErr.Store(ptr(fmt.Errorf("connection refused: %w", evt.ConnectionCode)))
+				closeErr.Store(ptr.Ptr(fmt.Errorf("connection refused: %w", evt.ConnectionCode)))
 				s.client.Logger.Err(evt.ConnectionCode).Msg("Connection refused")
 				closeDueToError("connection refused")
 				return
@@ -279,13 +276,13 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			case <-ticker.C:
 				err := s.sendData([]byte{packets.PINGREQ << 4, 0})
 				if err != nil {
-					closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to send ping: %w", err)))
+					closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("failed to send ping: %w", err)))
 					s.client.Logger.Err(err).Msg("Error sending ping")
 					closeDueToError("ping failed")
 					return
 				}
 			case <-pongTimeoutTicker.C:
-				closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("pong timeout")))
+				closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("pong timeout")))
 				s.client.Logger.Error().Msg("Pong timeout")
 				closeDueToError("pong timeout")
 				return
@@ -298,7 +295,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	for {
 		messageType, p, err := conn.ReadMessage()
 		if err != nil {
-			closeErr.CompareAndSwap(nil, ptr(fmt.Errorf("failed to read message: %w", err)))
+			closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("failed to read message: %w", err)))
 			if !closedCleanly.Load() {
 				s.client.Logger.Err(err).Msg("Error reading message from socket")
 				closeDueToError("reading message failed")
