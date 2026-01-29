@@ -625,6 +625,15 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 }
 
 func (r *FBChatResync) CheckNeedsBackfill(ctx context.Context, lastMessage *database.Message) (bool, error) {
+	// Check for forward backfill if we're handling a remote update, we need to fill any gap between
+	// the last message we know of and the last activity timestamp specified on the thread.
+	if r.Backfill == nil && r.Raw != nil && lastMessage != nil && r.Raw.LastActivityTimestampMs > lastMessage.Timestamp.UnixMilli() {
+		zerolog.Ctx(ctx).Debug().
+			Int64("last_message_ts", lastMessage.Timestamp.UnixMilli()).
+			Int64("thread_last_activity_ts", r.Raw.LastActivityTimestampMs).
+			Msg("Thread has newer activity than last known message, triggering forward backfill")
+		return true, nil
+	}
 	if r.Backfill == nil {
 		return false, nil
 	} else if lastMessage == nil {
