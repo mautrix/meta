@@ -488,14 +488,15 @@ func (m *MetaClient) handleDeleteMessage(tk handlerParams, msg *table.LSDeleteMe
 }
 
 func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.LSDeleteThenInsertMessage) bridgev2.RemoteEvent {
-	if !msg.IsUnsent {
-		zerolog.Ctx(tk.ctx).Warn().
-			Str("message_id", msg.MessageId).
-			Int64("edit_count", msg.EditCount).
-			Msg("Got unexpected non-unsend DeleteThenInsertMessage command")
-		return nil
+	if msg.IsUnsent {
+		return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
 	}
-	return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
+	zerolog.Ctx(tk.ctx).Warn().
+		Str("message_id", msg.MessageId).
+		Int64("edit_count", msg.EditCount).
+		Msg("Got unexpected non-unsend DeleteThenInsertMessage command, treating as InsertMessage")
+	wrapped := msg.ToWrappedMessage()
+	return m.handleMessageInsert(tk, wrapped)
 }
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
