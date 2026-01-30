@@ -195,6 +195,17 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 	}
 	upsert, _ := params.BundledData.(*table.UpsertMessages)
 	if upsert == nil || len(upsert.Messages) < params.Count {
+		// Shortcut: bundled data min TS <= anchor TS, meaning we have everything
+		if params.Forward && params.BundledData != nil && params.AnchorMessage != nil {
+			anchorTS := params.AnchorMessage.Timestamp.UnixMilli()
+			if upsert.Range.MinTimestampMs <= anchorTS {
+				zerolog.Ctx(ctx).Debug().
+					Int64("bundled_min_ts", upsert.Range.MinTimestampMs).
+					Int64("anchor_ts", anchorTS).
+					Msg("Forward backfill has all messages already")
+				return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
+			}
+		}
 		var oldestMessageID string
 		var oldestMessageTS int64
 		if upsert != nil {
@@ -224,10 +235,6 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		} else {
 			zerolog.Ctx(ctx).Warn().Msg("Can't backfill chat with no messages")
 			return nil, nil
-		}
-		if params.Forward && params.BundledData != nil && upsert.Range.MinTimestampMs >= oldestMessageTS {
-			zerolog.Ctx(ctx).Debug().Msg("Forward backfill has all messages already")
-			return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
 		}
 		doneCh := make(chan struct{})
 		collector := &BackfillCollector{
