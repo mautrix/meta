@@ -173,12 +173,16 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			if !evt.IsTyping {
 				timeout = 0
 			}
+			portalKey := m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE)
 			m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
 				EventMeta: simplevent.EventMeta{
 					Type:      bridgev2.RemoteEventTyping,
-					PortalKey: m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE),
-					Sender:    m.makeEventSender(userID),
-					Timestamp: evt.Timestamp,
+					PortalKey: portalKey,
+					// We don't know the thread type here, which affects whether the portal key receiver should be set.
+					// Mark it as uncertain so the bridge can fall back to a receiver-less portal key if needed.
+					UncertainReceiver: !m.Main.Bridge.Config.SplitPortals,
+					Sender:            m.makeEventSender(userID),
+					Timestamp:         evt.Timestamp,
 				},
 				Timeout: timeout,
 				Type:    bridgev2.TypingTypeText,
