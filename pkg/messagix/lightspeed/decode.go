@@ -296,12 +296,17 @@ func (ls *LightSpeedDecoder) handleStoredProcedure(referenceName string, data []
 			}
 			newDepInstance.Field(i).Set(reflect.ValueOf(val))
 		case reflect.Bool:
-			boolean, ok := val.(bool)
-			if !ok {
+			switch v := val.(type) {
+			case bool:
+				newDepInstance.Field(i).SetBool(v)
+			case int64:
+				newDepInstance.Field(i).SetBool(v != 0)
+			case float64:
+				newDepInstance.Field(i).SetBool(v != 0)
+			default:
 				badGlobalLog.Warn().Any("val", redactForLog(val)).Type("val_type", val).Int("field_index", index).Str("field_name", fieldInfo.Name).Str("struct_name", depFieldsType.Name()).Msg("Failed to set bool")
 				continue
 			}
-			newDepInstance.Field(i).SetBool(boolean)
 		case reflect.Int:
 			integer, ok := val.(int)
 			if !ok {
