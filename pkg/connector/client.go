@@ -511,7 +511,6 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 		m.Client = nil
 	}
 	if ecli := m.E2EEClient; ecli != nil {
-		ecli.RemoveEventHandlers()
 		ecli.Disconnect()
 		m.E2EEClient = nil
 	}

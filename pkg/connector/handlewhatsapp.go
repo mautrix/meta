@@ -19,6 +19,9 @@ import (
 )
 
 func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
+	if m == nil || m.E2EEClient == nil {
+		return false
+	}
 	log := m.UserLogin.Log
 	switch evt := rawEvt.(type) {
 	case *events.FBMessage:
