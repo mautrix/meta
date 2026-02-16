@@ -1,3 +1,16 @@
+# v26.02
+
+* Bumped minimum Go version to 1.25.
+* Added retrying for 5xx responses from Meta.
+* Added auto-reconnect for WhatsApp connection used for encrypted chats.
+* Added support for refreshing media URLs when using direct media.
+* Added experimental iOS Messenger login mode, which doesn't require using a
+  browser.
+* Added option to backfill all chats instead of only the most recent 20.
+* Added support for adding and removing participants in groups.
+* Adjusted backfill message fetching and probably added more bugs.
+* Changed starting chats to default to encrypted DMs on Messenger.
+
 # v25.12
 
 * Updated Docker image to Alpine 3.23.
