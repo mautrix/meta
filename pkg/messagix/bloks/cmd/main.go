@@ -76,7 +76,7 @@ func mainE() error {
 		return bundle.Print("")
 	}
 	bridge := bloks.InterpBridge{
-		DoRPC: func(name string, params map[string]string, isPage bool, callback func(result *bloks.BloksScriptLiteral) error) error {
+		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *bloks.BloksScriptLiteral) error) error {
 			fmt.Printf("%s isPage=%v\n", name, isPage)
 			payload, err := json.Marshal(params)
 			if err != nil {
@@ -106,7 +106,7 @@ func mainE() error {
 	if *doAction {
 		gotNewScreen := false
 		if *doLogin {
-			interp.Bridge.DisplayNewScreen = func(name string, newBundle *bloks.BloksBundle) error {
+			interp.Bridge.DisplayNewScreen = func(ctx context.Context, name string, newBundle *bloks.BloksBundle) error {
 				bundle = newBundle
 				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge, interp)
 				if err != nil {
