@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
@@ -69,7 +70,7 @@ type LightspeedKeyResponse struct {
 
 func (fb *MessengerLiteMethods) getBrowserConfig(ctx context.Context) *bloks.BrowserConfig {
 	return &bloks.BrowserConfig{
-		EncryptPassword: func(password string) (string, error) {
+		EncryptPassword: func(ctx context.Context, password string) (string, error) {
 			key, err := fb.client.fetchLightspeedKey(ctx)
 			if err != nil {
 				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
@@ -86,6 +87,16 @@ func (fb *MessengerLiteMethods) getBrowserConfig(ctx context.Context) *bloks.Bro
 }
 
 func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
+	fmt.Printf("ctx %T %+v\n", ctx, ctx)
+	isContextDone := false
+	select {
+	case <-ctx.Done():
+		isContextDone = true
+	case <-time.NewTimer(200 * time.Millisecond).C:
+		//
+	}
+	fmt.Printf("is the context done: %+v\n", isContextDone)
+
 	endpoint := c.GetEndpoint("pwd_key")
 
 	params := map[string]any{
