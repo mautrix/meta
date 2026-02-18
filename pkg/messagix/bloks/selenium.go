@@ -213,7 +213,7 @@ const (
 )
 
 type BrowserConfig struct {
-	EncryptPassword  func(string) (string, error)
+	EncryptPassword  func(context.Context, string) (string, error)
 	MakeBloksRequest func(context.Context, *BloksDoc, *BloksRequestOuter) (*BloksBundle, error)
 }
 
@@ -232,8 +232,7 @@ type Browser struct {
 	LoginData        string
 }
 
-func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
-	log := zerolog.Ctx(ctx)
+func NewBrowser(cfg *BrowserConfig) *Browser {
 	b := Browser{
 		State:  StateInitial,
 		Config: cfg,
@@ -258,7 +257,8 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 		// cannot be generated on the client side so this fact is purely informational.
 		MachineID:       "",
 		EncryptPassword: cfg.EncryptPassword,
-		DoRPC: func(name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
+		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
+			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
@@ -324,7 +324,8 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 
 			return nil
 		},
-		DisplayNewScreen: func(name string, page *BloksBundle) error {
+		DisplayNewScreen: func(ctx context.Context, name string, page *BloksBundle) error {
+			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("screen", name).Msg("Displaying new screen from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
@@ -348,7 +349,8 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			b.State = transitions[b.State]
 			return nil
 		},
-		HandleLoginResponse: func(data string) error {
+		HandleLoginResponse: func(ctx context.Context, data string) error {
+			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Msg("Handling login response from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			transitions[StateEnteredEmailPasswordAction] = StateSuccess
