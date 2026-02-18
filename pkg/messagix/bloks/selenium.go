@@ -232,8 +232,7 @@ type Browser struct {
 	LoginData        string
 }
 
-func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
-	log := zerolog.Ctx(ctx)
+func NewBrowser(cfg *BrowserConfig) *Browser {
 	b := Browser{
 		State:  StateInitial,
 		Config: cfg,
@@ -259,6 +258,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 		MachineID:       "",
 		EncryptPassword: cfg.EncryptPassword,
 		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
+			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
@@ -325,6 +325,7 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			return nil
 		},
 		DisplayNewScreen: func(ctx context.Context, name string, page *BloksBundle) error {
+			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("screen", name).Msg("Displaying new screen from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
@@ -348,7 +349,8 @@ func NewBrowser(ctx context.Context, cfg *BrowserConfig) *Browser {
 			b.State = transitions[b.State]
 			return nil
 		},
-		HandleLoginResponse: func(data string) error {
+		HandleLoginResponse: func(ctx context.Context, data string) error {
+			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Msg("Handling login response from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			transitions[StateEnteredEmailPasswordAction] = StateSuccess

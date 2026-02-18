@@ -85,7 +85,7 @@ func mainE() error {
 			fmt.Printf("%s\n", string(payload))
 			return nil
 		},
-		HandleLoginResponse: func(data string) error {
+		HandleLoginResponse: func(ctx context.Context, data string) error {
 			fmt.Printf("%s\n", data)
 			return nil
 		},

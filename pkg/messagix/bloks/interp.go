@@ -25,7 +25,7 @@ type InterpBridge struct {
 	GetSecureNonces     func() []string
 	DoRPC               func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error
 	DisplayNewScreen    func(context.Context, string, *BloksBundle) error
-	HandleLoginResponse func(data string) error
+	HandleLoginResponse func(ctx context.Context, data string) error
 	StartTimer          func(name string, interval time.Duration, callback func() error) error
 }
 
@@ -124,7 +124,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 	}
 	if br.HandleLoginResponse == nil {
-		br.HandleLoginResponse = func(data string) error {
+		br.HandleLoginResponse = func(ctx context.Context, data string) error {
 			return fmt.Errorf("unhandled login response")
 		}
 	}
@@ -739,7 +739,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		err = i.Bridge.HandleLoginResponse(data)
+		err = i.Bridge.HandleLoginResponse(ctx, data)
 		if err != nil {
 			return nil, err
 		}
