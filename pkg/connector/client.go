@@ -58,6 +58,7 @@ type MetaClient struct {
 	E2EEClient      *whatsmeow.Client
 	WADevice        *store.Device
 	e2eeConnectLock sync.Mutex
+	waGenericErrors int
 
 	metaState status.BridgeState
 	waState   status.BridgeState
