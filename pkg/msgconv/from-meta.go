@@ -355,6 +355,21 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 	return converted
 }
 
+func (mc *MessageConverter) makeViewOnceError(ctx context.Context, mediaType, viewed string) *bridgev2.ConvertedMessagePart {
+	app := "Messenger"
+	if ctx.Value(contextKeyFBClient).(*messagix.Client).GetPlatform().IsInstagram() {
+		app = "Instagram"
+	}
+	body := fmt.Sprintf("This %s can only be %s once. Use the %s mobile app to view.", mediaType, viewed, app)
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    body,
+		},
+	}
+}
+
 func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *table.LSInsertAttachment, partIndex int) *bridgev2.ConvertedMessagePart {
 	if mc.DisableViewOnce && (att.EphemeralMediaViewMode == table.EphemeralMediaViewOnce || att.EphemeralMediaViewMode == table.EphemeralMediaReplayable) {
 		mediaType := "photo"
@@ -365,14 +380,7 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 		if att.AttachmentType == table.AttachmentTypeEphemeralVideo {
 			mediaType = "video"
 		}
-		body := fmt.Sprintf("This %s can only be %s once. Use the Instagram mobile app to view.", mediaType, viewed)
-		return &bridgev2.ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    body,
-			},
-		}
+		return mc.makeViewOnceError(ctx, mediaType, viewed)
 	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType

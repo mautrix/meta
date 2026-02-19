@@ -47,6 +47,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix"
 	metaTypes "go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
@@ -245,12 +246,17 @@ func (mc *MessageConverter) convertWhatsAppImage(ctx context.Context, image *waC
 		fileName := "image" + exmime.ExtensionFromMimetype(mimeType)
 		return data, mimeType, fileName, nil
 	})
-	if converted != nil {
-		converted.Content.MsgType = event.MsgImage
-		converted.Content.Info.Width = int(metadata.GetWidth())
-		converted.Content.Info.Height = int(metadata.GetHeight())
-	}
+	addImageMetadata(converted, metadata)
 	return
+}
+
+func addImageMetadata(converted *bridgev2.ConvertedMessagePart, metadata *waMediaTransport.ImageTransport_Ancillary) {
+	if converted == nil || metadata == nil {
+		return
+	}
+	converted.Content.MsgType = event.MsgImage
+	converted.Content.Info.Width = int(metadata.GetWidth())
+	converted.Content.Info.Height = int(metadata.GetHeight())
 }
 
 func (mc *MessageConverter) convertWhatsAppSticker(ctx context.Context, sticker *waConsumerApplication.ConsumerApplication_StickerMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
@@ -258,12 +264,17 @@ func (mc *MessageConverter) convertWhatsAppSticker(ctx context.Context, sticker 
 		fileName := "sticker" + exmime.ExtensionFromMimetype(mimeType)
 		return data, mimeType, fileName, nil
 	})
-	if converted != nil {
-		converted.Type = event.EventSticker
-		converted.Content.Info.Width = int(metadata.GetWidth())
-		converted.Content.Info.Height = int(metadata.GetHeight())
-	}
+	addStickerMetadata(converted, metadata)
 	return
+}
+
+func addStickerMetadata(converted *bridgev2.ConvertedMessagePart, metadata *waMediaTransport.StickerTransport_Ancillary) {
+	if converted == nil || metadata == nil {
+		return
+	}
+	converted.Type = event.EventSticker
+	converted.Content.Info.Width = int(metadata.GetWidth())
+	converted.Content.Info.Height = int(metadata.GetHeight())
 }
 
 func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, document *waConsumerApplication.ConsumerApplication_DocumentMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
@@ -314,25 +325,30 @@ func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waC
 		fileName := "video" + exmime.ExtensionFromMimetype(mimeType)
 		return data, mimeType, fileName, nil
 	})
-	if converted != nil {
-		converted.Content.MsgType = event.MsgVideo
-		converted.Content.Info.Width = int(metadata.GetWidth())
-		converted.Content.Info.Height = int(metadata.GetHeight())
-		converted.Content.Info.Duration = int(metadata.GetSeconds() * 1000)
-		// FB is annoying and sends images in video containers sometimes
-		if strings.HasPrefix(converted.Content.Info.MimeType, "image/") {
-			converted.Content.MsgType = event.MsgImage
-		} else if metadata.GetGifPlayback() {
-			converted.Extra["info"] = map[string]any{
-				"fi.mau.gif":           true,
-				"fi.mau.loop":          true,
-				"fi.mau.autoplay":      true,
-				"fi.mau.hide_controls": true,
-				"fi.mau.no_audio":      true,
-			}
+	addVideoMetadata(converted, metadata)
+	return
+}
+
+func addVideoMetadata(converted *bridgev2.ConvertedMessagePart, metadata *waMediaTransport.VideoTransport_Ancillary) {
+	if converted == nil || metadata == nil {
+		return
+	}
+	converted.Content.MsgType = event.MsgVideo
+	converted.Content.Info.Width = int(metadata.GetWidth())
+	converted.Content.Info.Height = int(metadata.GetHeight())
+	converted.Content.Info.Duration = int(metadata.GetSeconds() * 1000)
+	// FB is annoying and sends images in video containers sometimes
+	if strings.HasPrefix(converted.Content.Info.MimeType, "image/") {
+		converted.Content.MsgType = event.MsgImage
+	} else if metadata.GetGifPlayback() {
+		converted.Extra["info"] = map[string]any{
+			"fi.mau.gif":           true,
+			"fi.mau.loop":          true,
+			"fi.mau.autoplay":      true,
+			"fi.mau.hide_controls": true,
+			"fi.mau.no_audio":      true,
 		}
 	}
-	return
 }
 
 func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
@@ -369,6 +385,19 @@ func (mc *MessageConverter) appName() string {
 	}
 }
 
+func wrapError(errmsg string, err error) *bridgev2.ConvertedMessagePart {
+	if _, ok := err.(userVisibleError); ok {
+		errmsg = err.Error()
+	}
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    errmsg,
+		},
+	}
+}
+
 func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *waConsumerApplication.ConsumerApplication_Content) (parts []*bridgev2.ConvertedMessagePart) {
 	parts = make([]*bridgev2.ConvertedMessagePart, 0, 2)
 	switch content := rawContent.GetContent().(type) {
@@ -387,17 +416,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 		converted, caption, err := mc.convertWhatsAppMedia(ctx, rawContent)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to convert media message")
-			errmsg := "Failed to transfer media"
-			if _, ok := err.(userVisibleError); ok {
-				errmsg = err.Error()
-			}
-			converted = &bridgev2.ConvertedMessagePart{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType: event.MsgNotice,
-					Body:    errmsg,
-				},
-			}
+			converted = wrapError("Failed to transfer media", err)
 		}
 		parts = append(parts, converted)
 		if caption != nil {
@@ -539,6 +558,79 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 	}}
 }
 
+func (mc *MessageConverter) waRavenMessageToMatrix(ctx context.Context, message *waArmadilloApplication.Armadillo_Content_RavenMessage) (*bridgev2.ConvertedMessagePart, error) {
+	if mc.DisableViewOnce && (message.GetEphemeralType() == waArmadilloApplication.Armadillo_Content_RavenMessage_VIEW_ONCE || message.GetEphemeralType() == waArmadilloApplication.Armadillo_Content_RavenMessage_ALLOW_REPLAY) {
+		mediaType := "photo"
+		viewed := "viewed"
+		if message.GetEphemeralType() == waArmadilloApplication.Armadillo_Content_RavenMessage_ALLOW_REPLAY {
+			viewed = "replayed"
+		}
+		if message.GetVideoMessage() != nil {
+			mediaType = "video"
+		}
+		return mc.makeViewOnceError(ctx, mediaType, viewed), nil
+	}
+	switch message.GetMediaContent().(type) {
+	case *waArmadilloApplication.Armadillo_Content_RavenMessage_ImageMessage:
+		img, err := message.DecodeImageMessage()
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode raven image message: %w", err)
+		}
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, img.GetIntegral().GetTransport(), whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
+			fileName := "image" + exmime.ExtensionFromMimetype(mimeType)
+			return data, mimeType, fileName, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		addImageMetadata(converted, img.GetAncillary())
+		return converted, nil
+	case *waArmadilloApplication.Armadillo_Content_RavenMessage_VideoMessage:
+		video, err := message.DecodeVideoMessage()
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode raven video message: %w", err)
+		}
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, video.GetIntegral().GetTransport(), whatsmeow.MediaVideo, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
+			fileName := "video" + exmime.ExtensionFromMimetype(mimeType)
+			return data, mimeType, fileName, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		addVideoMetadata(converted, video.GetAncillary())
+		return converted, nil
+	default:
+		return &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    fmt.Sprintf("Unsupported message (%T)\n\nPlease open in %s", message.GetMediaContent(), mc.appName()),
+			},
+		}, nil
+	}
+}
+
+func (mc *MessageConverter) waArmadilloGalleryToMatrix(ctx context.Context, message *waArmadilloApplication.Armadillo_Content_ImageGalleryMessage) []*bridgev2.ConvertedMessagePart {
+	images, err := message.Decode()
+	if err != nil {
+		return []*bridgev2.ConvertedMessagePart{wrapError("Failed to decode media message", err)}
+	}
+	parts := make([]*bridgev2.ConvertedMessagePart, len(images))
+	for i, img := range images {
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, img.GetIntegral().GetTransport(), whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
+			fileName := "image" + exmime.ExtensionFromMimetype(mimeType)
+			return data, mimeType, fileName, nil
+		})
+		if err != nil {
+			parts[i] = wrapError("Failed to transfer media", err)
+		} else {
+			addImageMetadata(converted, img.GetAncillary())
+			parts[i] = converted
+		}
+	}
+	return parts
+}
+
 func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent *waArmadilloApplication.Armadillo_Content) (parts []*bridgev2.ConvertedMessagePart, replyOverride *waCommon.MessageKey) {
 	parts = make([]*bridgev2.ConvertedMessagePart, 0, 2)
 	switch content := rawContent.GetContent().(type) {
@@ -553,8 +645,20 @@ func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent 
 			},
 		})
 		replyOverride = content.BumpExistingMessage.GetKey()
-	//case *waArmadilloApplication.Armadillo_Content_RavenMessage_:
-	//	// TODO
+	case *waArmadilloApplication.Armadillo_Content_RavenMessage_:
+		part, err := mc.waRavenMessageToMatrix(ctx, content.RavenMessage)
+		if err != nil {
+			part = wrapError("Failed to transfer media", err)
+		}
+		parts = append(parts, part)
+	case *waArmadilloApplication.Armadillo_Content_RavenMessageMsgr:
+		part, err := mc.waRavenMessageToMatrix(ctx, content.RavenMessageMsgr)
+		if err != nil {
+			part = wrapError("Failed to transfer media", err)
+		}
+		parts = append(parts, part)
+	case *waArmadilloApplication.Armadillo_Content_ImageGalleryMessage_:
+		return mc.waArmadilloGalleryToMatrix(ctx, content.ImageGalleryMessage), nil
 	default:
 		zerolog.Ctx(ctx).Warn().Type("content_type", content).Msg("Unrecognized armadillo content type")
 		parts = append(parts, &bridgev2.ConvertedMessagePart{
@@ -582,11 +686,13 @@ func (mc *MessageConverter) instamadilloToMatrix(ctx context.Context, rawContent
 func (mc *MessageConverter) WhatsAppToMatrix(
 	ctx context.Context,
 	portal *bridgev2.Portal,
+	plainClient *messagix.Client,
 	client *whatsmeow.Client,
 	intent bridgev2.MatrixAPI,
 	messageID networkid.MessageID,
 	evt *events.FBMessage,
 ) *bridgev2.ConvertedMessage {
+	ctx = context.WithValue(ctx, contextKeyFBClient, plainClient)
 	ctx = context.WithValue(ctx, contextKeyWAClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)

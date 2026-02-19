@@ -497,7 +497,7 @@ func (evt *WAMessageEvent) GetStreamOrder() int64 {
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.m.Main.MsgConv.WhatsAppToMatrix(ctx, portal, evt.m.E2EEClient, intent, evt.GetID(), evt.FBMessage), nil
+	return evt.m.Main.MsgConv.WhatsAppToMatrix(ctx, portal, evt.m.Client, evt.m.E2EEClient, intent, evt.GetID(), evt.FBMessage), nil
 }
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
