@@ -30,6 +30,7 @@ import (
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exhttp"
 	"go.mau.fi/whatsmeow"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
@@ -125,7 +126,7 @@ func downloadMedia(ctx context.Context, mime, url string, maxSize int64, byteRan
 		if resp.StatusCode == 403 {
 			return 0, nil, ErrForbidden
 		}
-		return 0, nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+		return 0, nil, mautrix.MUnknown.WithStatus(resp.StatusCode).WithCanRetry(true)
 	} else if resp.ContentLength > maxSize {
 		_ = resp.Body.Close()
 		return resp.ContentLength, nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
