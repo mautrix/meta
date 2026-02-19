@@ -211,7 +211,8 @@ func init() {
 	igCapsGroup = igCaps.Clone()
 	igCapsGroup.ID += "+instagram-group"
 	igCapsGroup.State = event.StateFeatureMap{
-		event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
+		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
+		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
 	}
 	igCapsGroup.MemberActions = metaCapsWithE2EGroup.MemberActions.Clone()
 }
