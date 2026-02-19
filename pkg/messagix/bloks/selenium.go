@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -13,6 +14,10 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
+)
+
+var (
+	ErrLoginPhoneNumber = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
 )
 
 func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
@@ -481,7 +486,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 		if !definitelyNotPhoneNumberRegexp.MatchString(userInput["username"]) {
-			return nil, fmt.Errorf("only username or email login is allowed, not phone number")
+			return nil, ErrLoginPhoneNumber
 		}
 
 		err = b.CurrentPage.
