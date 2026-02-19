@@ -36,31 +36,31 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	if c == nil {
 		return nil, ErrClientIsNil
 	}
-	urlQueries := c.newHTTPQuery()
-	queryValues, err := query.Values(urlQueries)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %w", err)
-	}
-
-	payloadQuery := queryValues.Encode()
-	url := c.GetEndpoint("media_upload") + payloadQuery
 	payload, contentType, err := c.newMercuryMediaPayload(media)
 	if err != nil {
 		return nil, err
 	}
-	h := c.buildHeaders(true, false)
-	h.Set("accept", "*/*")
-	h.Set("content-type", contentType)
-	h.Set("origin", c.GetEndpoint("base_url"))
-	h.Set("referer", c.getEndpointForThreadID(threadID))
-	h.Set("priority", "u=1, i")
-	h.Set("sec-fetch-dest", "empty")
-	h.Set("sec-fetch-mode", "cors")
-	h.Set("sec-fetch-site", "same-origin") // header is required
 
 	var attempts int
 	for {
 		attempts += 1
+		urlQueries := c.newHTTPQuery()
+		queryValues, err := query.Values(urlQueries)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %w", err)
+		}
+		url := c.GetEndpoint("media_upload") + queryValues.Encode()
+
+		h := c.buildHeaders(true, false)
+		h.Set("accept", "*/*")
+		h.Set("content-type", contentType)
+		h.Set("origin", c.GetEndpoint("base_url"))
+		h.Set("referer", c.getEndpointForThreadID(threadID))
+		h.Set("priority", "u=1, i")
+		h.Set("sec-fetch-dest", "empty")
+		h.Set("sec-fetch-mode", "cors")
+		h.Set("sec-fetch-site", "same-origin") // header is required
+
 		_, respBody, err := c.MakeRequest(ctx, url, "POST", h, payload, types.NONE)
 		if err != nil {
 			// MakeRequest retries itself, so bail immediately if that fails
@@ -69,7 +69,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 		resp, err := c.parseMercuryResponse(ctx, respBody)
 		if err == nil {
 			return resp, nil
-		} else if attempts > MaxHTTPRetries || errors.Is(err, types.ErrPleaseReloadPage) {
+		} else if attempts > MaxHTTPRetries || isPermanentRequestError(err) || errors.Is(err, types.ErrPleaseReloadPage) {
 			return nil, err
 		}
 		c.Logger.Err(err).
