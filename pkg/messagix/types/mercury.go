@@ -9,10 +9,11 @@ type MercuryUploadResponse struct {
 	Raw json.RawMessage `json:"-"`
 
 	ErrorResponse
-	Ar      int           `json:"__ar,omitempty"`
-	Payload MediaPayloads `json:"payload,omitempty"`
-	Hsrp    Hsrp          `json:"hsrp,omitempty"`
-	Lid     string        `json:"lid,omitempty"`
+	Ar       int           `json:"__ar,omitempty"`
+	Payload  MediaPayloads `json:"payload,omitempty"`
+	Hsrp     Hsrp          `json:"hsrp,omitempty"`
+	Lid      string        `json:"lid,omitempty"`
+	Redirect string        `json:"redirect,omitempty"`
 }
 
 type StringOrInt int64

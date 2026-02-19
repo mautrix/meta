@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/textproto"
+	"strings"
 	"time"
 
 	"github.com/google/go-querystring/query"
@@ -95,6 +96,12 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 	} else if mercuryResponse.ErrorCode != 0 {
 		return nil, fmt.Errorf("error in mercury upload: %w", &mercuryResponse.ErrorResponse)
 	}
+
+	if strings.Contains(mercuryResponse.Redirect, "/consent/") {
+		zerolog.Ctx(ctx).Warn().Str("redirect", mercuryResponse.Redirect).Msg("Mercury upload returned consent redirect")
+		return nil, fmt.Errorf("%w: mercury upload redirected to %s", ErrConsentRequired, mercuryResponse.Redirect)
+	}
+
 	mercuryResponse.Raw = jsonData
 
 	err := c.parseMetadata(mercuryResponse)
