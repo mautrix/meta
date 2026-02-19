@@ -269,7 +269,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			switch name {
 			case "com.bloks.www.bloks.caa.login.async.send_login_request":
 				transitions[StateEmailPasswordPage] = StateEnteredEmailPasswordAction
-			case "com.bloks.www.two_step_verification.entrypoint":
+			case "com.bloks.www.two_step_verification.entrypoint", "com.bloks.www.two_step_verification.async.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
