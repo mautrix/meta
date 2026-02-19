@@ -48,7 +48,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
-	metaTypes "go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -377,14 +376,6 @@ func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, rawContent
 	}
 }
 
-func (mc *MessageConverter) appName() string {
-	if mc.BridgeMode == metaTypes.Instagram {
-		return "Instagram app"
-	} else {
-		return "Messenger app"
-	}
-}
-
 func wrapError(errmsg string, err error) *bridgev2.ConvertedMessagePart {
 	if _, ok := err.(userVisibleError); ok {
 		errmsg = err.Error()
@@ -436,7 +427,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgLocation,
-				Body:    "Live location sharing started\n\nYou can see the location in the " + mc.appName(),
+				Body:    "Live location sharing started\n\nYou can see the location in the " + appName(ctx),
 				GeoURI:  fmt.Sprintf("geo:%f,%f", content.LiveLocationMessage.GetLocation().GetDegreesLatitude(), content.LiveLocationMessage.GetLocation().GetDegreesLongitude()),
 			},
 		})
@@ -445,7 +436,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    "Unsupported message (contact)\n\nPlease open in " + mc.appName(),
+				Body:    "Unsupported message (contact)\n\nPlease open in the " + appName(ctx),
 			},
 		})
 	case *waConsumerApplication.ConsumerApplication_Content_ContactsArrayMessage:
@@ -453,7 +444,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    "Unsupported message (contacts array)\n\nPlease open in " + mc.appName(),
+				Body:    "Unsupported message (contacts array)\n\nPlease open in the " + appName(ctx),
 			},
 		})
 	default:
@@ -462,7 +453,7 @@ func (mc *MessageConverter) waConsumerToMatrix(ctx context.Context, rawContent *
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    fmt.Sprintf("Unsupported message (%T)\n\nPlease open in %s", content, mc.appName()),
+				Body:    fmt.Sprintf("Unsupported message (%T)\n\nPlease open in the %s", content, appName(ctx)),
 			},
 		})
 	}
@@ -519,7 +510,7 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 	}
 	msgtype := event.MsgText
 	if body == "" {
-		body = fmt.Sprintf("Unsupported message\n\nPlease open in %s", mc.appName())
+		body = fmt.Sprintf("Unsupported message\n\nPlease open in the %s", appName(ctx))
 		msgtype = event.MsgNotice
 	}
 	switch content.GetTargetType() {
@@ -604,7 +595,7 @@ func (mc *MessageConverter) waRavenMessageToMatrix(ctx context.Context, message 
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    fmt.Sprintf("Unsupported message (%T)\n\nPlease open in %s", message.GetMediaContent(), mc.appName()),
+				Body:    fmt.Sprintf("Unsupported message (%T)\n\nPlease open in the %s", message.GetMediaContent(), appName(ctx)),
 			},
 		}, nil
 	}
@@ -665,7 +656,7 @@ func (mc *MessageConverter) waArmadilloToMatrix(ctx context.Context, rawContent 
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    fmt.Sprintf("Unsupported message (%T)\n\nPlease open in %s", content, mc.appName()),
+				Body:    fmt.Sprintf("Unsupported message (%T)\n\nPlease open in the %s", content, appName(ctx)),
 			},
 		})
 	}

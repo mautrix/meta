@@ -355,12 +355,15 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 	return converted
 }
 
-func (mc *MessageConverter) makeViewOnceError(ctx context.Context, mediaType, viewed string) *bridgev2.ConvertedMessagePart {
-	app := "Messenger"
+func appName(ctx context.Context) string {
 	if ctx.Value(contextKeyFBClient).(*messagix.Client).GetPlatform().IsInstagram() {
-		app = "Instagram"
+		return "Instagram app"
 	}
-	body := fmt.Sprintf("This %s can only be %s once. Use the %s mobile app to view.", mediaType, viewed, app)
+	return "Messenger app"
+}
+
+func (mc *MessageConverter) makeViewOnceError(ctx context.Context, mediaType, viewed string) *bridgev2.ConvertedMessagePart {
+	body := fmt.Sprintf("This %s can only be %s once. Use the %s to view.", mediaType, viewed, appName(ctx))
 	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
