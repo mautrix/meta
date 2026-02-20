@@ -1566,6 +1566,7 @@
       "3": "color_filter",
       "8": "scale_type",
       "9": "url",
+      "41": "unique_id",
       "100": "_style",
       "101": "extensions",
       "103": "on_bind"

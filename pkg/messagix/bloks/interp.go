@@ -27,6 +27,7 @@ type InterpBridge struct {
 	DisplayNewScreen    func(context.Context, string, *BloksBundle) error
 	HandleLoginResponse func(ctx context.Context, data string) error
 	StartTimer          func(name string, interval time.Duration, callback func() error) error
+	OpenURL             func(url string) error
 }
 
 type Interpreter struct {
@@ -131,6 +132,11 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	if br.StartTimer == nil {
 		br.StartTimer = func(name string, interval time.Duration, callback func() error) error {
 			return fmt.Errorf("unhandled timer %s", name)
+		}
+	}
+	if br.OpenURL == nil {
+		br.OpenURL = func(url string) error {
+			return fmt.Errorf("unhandled url %s", url)
 		}
 	}
 	for _, item := range p.Variables {
@@ -908,6 +914,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s", msg)
+	case "bk.action.navigation.OpenUrl":
+		url, err := evalAs[string](ctx, i, &call.Args[0], "openurl")
+		if err != nil {
+			return nil, err
+		}
+		return BloksNothing, i.Bridge.OpenURL(url)
 	case
 		"bk.action.animated.Start",
 		"bk.action.logging.LogEvent",

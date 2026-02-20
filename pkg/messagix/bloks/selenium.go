@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -108,7 +109,13 @@ func (comp *BloksTreeComponent) FindContainingButton() *BloksTreeComponent {
 	})
 }
 
-func FilterByAttribute(compid BloksComponentID, attr string, value string) func(comp *BloksTreeComponent) bool {
+func FilterByComponent(compid BloksComponentID) func(comp *BloksTreeComponent) bool {
+	return func(comp *BloksTreeComponent) bool {
+		return comp.ComponentID == compid
+	}
+}
+
+func FilterByAttribute(compid BloksComponentID, attr BloksAttributeID, value string) func(comp *BloksTreeComponent) bool {
 	return func(comp *BloksTreeComponent) bool {
 		if comp.ComponentID != compid {
 			return false
@@ -117,8 +124,8 @@ func FilterByAttribute(compid BloksComponentID, attr string, value string) func(
 	}
 }
 
-func (comp *BloksTreeComponent) GetAttribute(name string) string {
-	attr := comp.Attributes[BloksAttributeID(name)]
+func (comp *BloksTreeComponent) GetAttribute(name BloksAttributeID) string {
+	attr := comp.Attributes[name]
 	if attr == nil {
 		return ""
 	}
@@ -162,6 +169,29 @@ func (comp *BloksTreeComponent) GetScript(name BloksAttributeID) *BloksTreeScrip
 		return nil
 	}
 	return script
+}
+
+func (comp *BloksTreeComponent) GetDynamicAttribute(ctx context.Context, interp *Interpreter, name BloksAttributeID) string {
+	if val := comp.GetAttribute(name); val != "" {
+		return val
+	}
+	bind := comp.Attributes["on_bind"]
+	if bind == nil {
+		return ""
+	}
+	scripts, ok := bind.BloksTreeNodeContent.(*BloksTreeScriptSet)
+	if !ok {
+		return ""
+	}
+	script, ok := scripts.Scripts[name]
+	if !ok {
+		return ""
+	}
+	val, err := evalAs[string](ctx, interp, &script.AST, fmt.Sprintf("on_bind.%s", name))
+	if err != nil {
+		return ""
+	}
+	return val
 }
 
 func (button *BloksTreeComponent) TapButton(ctx context.Context, interp *Interpreter) error {
@@ -237,6 +267,7 @@ type Browser struct {
 	AFADCallback     func(*BloksScriptLiteral) error
 	AFADDisplayed    bool
 	LoginData        string
+	DisplayedURL     string
 }
 
 func NewBrowser(cfg *BrowserConfig) *Browser {
@@ -385,6 +416,10 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			default:
 				return fmt.Errorf("unexpected timer %s", name)
 			}
+			return nil
+		},
+		OpenURL: func(url string) error {
+			b.DisplayedURL = url
 			return nil
 		},
 	}
@@ -557,6 +592,48 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
+	case StateCaptchaPage:
+		img := b.CurrentPage.FindDescendant(FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
+		if img == nil {
+			return nil, fmt.Errorf("can't find captcha image")
+		}
+		imageURL := img.GetDynamicAttribute(ctx, b.CurrentPage.Interpreter, "url")
+		if imageURL == "" {
+			return nil, fmt.Errorf("captcha image has no url")
+		}
+		log.Trace().Str("image_url", imageURL).Msg("Found image captcha")
+		audio := b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+		if audio == nil {
+			return nil, fmt.Errorf("can't find audio text")
+		}
+		clickable := audio.FindDescendant(FilterByComponent("bk.style.textspan.ClickableStyle"))
+		if clickable == nil {
+			return nil, fmt.Errorf("audio text is not clickable")
+		}
+		onClick := clickable.GetScript("on_click")
+		if onClick == nil {
+			return nil, fmt.Errorf("no on_click on audio text")
+		}
+		_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &onClick.AST)
+		if err != nil {
+			return nil, fmt.Errorf("clicking on audio text: %w", err)
+		}
+		if b.DisplayedURL == "" {
+			return nil, fmt.Errorf("clicking on audio text failed to open url")
+		}
+		audioURL := strings.Replace(b.DisplayedURL, "/player/", "/", 1)
+		log.Trace().Str("audio_url", audioURL).Msg("Found audio captcha")
+		imageResp, err := http.Get(imageURL)
+		if err != nil {
+			return nil, fmt.Errorf("error fetching image response: %w", err)
+		}
+		defer imageResp.Body.Close()
+		imageBytes, err := io.ReadAll(imageResp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("error reading image response body: %w", err)
+		}
+		log.Trace().Hex("image_data", imageBytes).Msg("Raw image body")
+		return nil, fmt.Errorf("captcha solving not implemented yet")
 	case StateMFALandingPage:
 		err := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).

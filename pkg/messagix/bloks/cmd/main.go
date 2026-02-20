@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -28,6 +29,7 @@ var doAction = flag.Bool("action", false, "Run the action script")
 var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
 var doRPC = flag.String("rpc", "", "Make a Bloks RPC network request")
 var rpcParams = flag.String("rpc-params", "", "JSON body for Bloks RPC")
+var captcha = flag.Bool("captcha", false, "Extract information from the captcha page")
 
 func main() {
 	err := mainE()
@@ -106,6 +108,7 @@ func mainE() error {
 	if *doPrint {
 		return bundle.Print("")
 	}
+	lastURL := ""
 	bridge := bloks.InterpBridge{
 		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *bloks.BloksScriptLiteral) error) error {
 			fmt.Printf("%s isPage=%v\n", name, isPage)
@@ -127,6 +130,13 @@ func mainE() error {
 					return err
 				}
 			}
+			return nil
+		},
+		OpenURL: func(url string) error {
+			if lastURL != "" {
+				return fmt.Errorf("already opened a url this session")
+			}
+			lastURL = url
 			return nil
 		},
 	}
@@ -340,6 +350,37 @@ func mainE() error {
 				return fmt.Errorf("on_appear: %w", err)
 			}
 		}
+	} else if *captcha {
+		img := bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
+		if img == nil {
+			return fmt.Errorf("can't find captcha image")
+		}
+		imageURL := img.GetDynamicAttribute(ctx, interp, "url")
+		if imageURL == "" {
+			return fmt.Errorf("captcha image has no url")
+		}
+		fmt.Println("Image:", imageURL)
+		audio := bundle.FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+		if audio == nil {
+			return fmt.Errorf("can't find audio text")
+		}
+		clickable := audio.FindDescendant(bloks.FilterByComponent("bk.style.textspan.ClickableStyle"))
+		if clickable == nil {
+			return fmt.Errorf("audio text is not clickable")
+		}
+		onClick := clickable.GetScript("on_click")
+		if onClick == nil {
+			return fmt.Errorf("no on_click on audio text")
+		}
+		_, err := interp.Evaluate(ctx, &onClick.AST)
+		if err != nil {
+			return fmt.Errorf("clicking on audio text: %w", err)
+		}
+		if lastURL == "" {
+			return fmt.Errorf("clicking on audio text failed to open url")
+		}
+		audioURL := strings.Replace(lastURL, "/player/", "/", 1)
+		fmt.Println("Audio:", audioURL)
 	}
 	return nil
 }
