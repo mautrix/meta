@@ -110,7 +110,15 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
 				go m.FullReconnect()
+				return true
 			}
+			m.waState = status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      MetaConnectionUnauthorized,
+				Message:    evt.PermanentDisconnectDescription(),
+			}
+			m.UserLogin.BridgeState.Send(m.waState)
+			return true
 		case *events.ConnectFailure:
 			if e.Reason == events.ConnectFailureNotFound {
 				if cli := m.E2EEClient; cli != nil {
