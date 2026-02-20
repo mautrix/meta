@@ -352,6 +352,7 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
+		log.Error().Err(err).Msg("Login steps returned error")
 		return nil, err
 	}
 	if step != nil {
