@@ -205,6 +205,8 @@ const (
 	StateEmailPasswordPage          BrowserState = "enter-email-and-password-page"
 	StateEnteredEmailPasswordAction BrowserState = "entered-email-and-password-action"
 	StateEmailCodePage              BrowserState = "enter-code-from-email-page"
+	StateRedirectToMFALandingAction BrowserState = "redirect-to-mfa-landing-action"
+	StateCaptchaPage                BrowserState = "captcha-page"
 	StateMFALandingPage             BrowserState = "mfa-landing-page"
 	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
 	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
@@ -269,8 +271,12 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			switch name {
 			case "com.bloks.www.bloks.caa.login.async.send_login_request":
 				transitions[StateEmailPasswordPage] = StateEnteredEmailPasswordAction
-			case "com.bloks.www.two_step_verification.entrypoint", "com.bloks.www.two_step_verification.async.entrypoint":
+			case "com.bloks.www.two_step_verification.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
+			case "com.bloks.www.two_step_verification.async.entrypoint":
+				transitions[StateEnteredEmailPasswordAction] = StateRedirectToMFALandingAction
+			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
+				transitions[StateRedirectToMFALandingAction] = StateCaptchaPage
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 			case "com.bloks.www.two_step_verification.method_picker":
