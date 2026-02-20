@@ -11,7 +11,10 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
@@ -23,6 +26,8 @@ var selectedMethod = flag.String("method", "", "Select one of the 2FA methods")
 var afad = flag.Bool("afad", false, "Run the AFAD handlers")
 var doAction = flag.Bool("action", false, "Run the action script")
 var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
+var doRPC = flag.String("rpc", "", "Make a Bloks RPC network request")
+var rpcParams = flag.String("rpc-params", "", "JSON body for Bloks RPC")
 
 func main() {
 	err := mainE()
@@ -57,9 +62,6 @@ func mainE() error {
 	ctx := context.Background()
 
 	flag.Parse()
-	if *filename == "" {
-		return fmt.Errorf("-file is mandatory")
-	}
 
 	logLevel, err := zerolog.ParseLevel(*logLevel)
 	if err != nil {
@@ -67,6 +69,35 @@ func mainE() error {
 	}
 	log := zerolog.New(zerolog.NewConsoleWriter()).Level(logLevel)
 	ctx = log.WithContext(ctx)
+
+	if *doRPC != "" {
+		if *rpcParams == "" {
+			return fmt.Errorf("-rpc-params is mandatory when using -rpc")
+		}
+
+		var paramsOuter map[string]string
+		err := json.Unmarshal([]byte(*rpcParams), &paramsOuter)
+		if err != nil {
+			return fmt.Errorf("parsing outer params: %w", err)
+		}
+
+		var paramsInner bloks.BloksParamsInner
+		err = json.Unmarshal([]byte(paramsOuter["params"]), &paramsInner)
+		if err != nil {
+			return fmt.Errorf("parsing inner params: %w", err)
+		}
+
+		mcl := messagix.NewClient(&cookies.Cookies{
+			Platform: types.MessengerLite,
+		}, log, &messagix.Config{})
+		mcl.MakeBloksRequest(ctx, &bloks.BloksAppDoc, bloks.NewBloksRequest(*doRPC, paramsInner))
+
+		return nil
+	}
+
+	if *filename == "" {
+		return fmt.Errorf("-file is mandatory")
+	}
 
 	bundle, err := readAndParse[bloks.BloksBundle](*filename)
 	if err != nil {
