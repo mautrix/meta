@@ -365,6 +365,8 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		return step, nil
 	}
 
+	return nil, fmt.Errorf("if you see this then it works")
+
 	m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
 
 	step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)

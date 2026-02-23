@@ -163,6 +163,9 @@ func (input *BloksTreeComponent) FillInput(ctx context.Context, interp *Interpre
 }
 
 func (comp *BloksTreeComponent) GetScript(name BloksAttributeID) *BloksTreeScript {
+	if comp == nil {
+		return nil
+	}
 	elem, ok := comp.Attributes[name]
 	if !ok {
 		return nil
@@ -242,6 +245,7 @@ const (
 	StateRedirectToMFALandingAction BrowserState = "redirect-to-mfa-landing-action"
 	StateCaptchaPage                BrowserState = "captcha-page"
 	StateEnteredCaptchaAction       BrowserState = "entered-captcha-action"
+	StateMFALandingAPAction         BrowserState = "mfa-landing-ap-action"
 	StateMFALandingPage             BrowserState = "mfa-landing-page"
 	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
 	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
@@ -318,6 +322,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateRedirectToMFALandingAction] = StateCaptchaPage
 			case "com.bloks.www.two_step_verification.login.async.text_captcha":
 				transitions[StateCaptchaPage] = StateEnteredCaptchaAction
+			case "com.bloks.www.ap.two_step_verification.entrypoint_async":
+				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 			case "com.bloks.www.two_step_verification.method_picker":
@@ -416,6 +422,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			log.Debug().Str("state", string(b.State)).Msg("Handling login response from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			transitions[StateEnteredEmailPasswordAction] = StateSuccess
+			transitions[StateEnteredCaptchaAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
 			transitions[StateAFADCompleteAction] = StateSuccess
 			if transitions[b.State] == StateUnknown {
@@ -472,6 +479,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	}
 	prevState := b.State
 	switch b.State {
+
 	case StateTestCaptcha:
 		if userInput["captcha_code"] == "" {
 			image, err := readFile("captcha.png")
@@ -499,6 +507,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 		b.State = StateInitial
+
 	case StateInitial:
 		rpc := "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
 		action, err := b.Config.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(rpc, map[string]any{
@@ -528,6 +537,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		b.CurrentAction = action
 		b.State = StateRedirectToLoginAction
+
 	case StateEnteredCaptchaAction:
 		b.NumCaptchaAttempts += 1
 
@@ -545,6 +555,22 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			b.State = StateCaptchaPage
 			delete(userInput, "captcha_code")
 		}
+
+	case StateMFALandingAPAction:
+		// This is a super weird action that appears to be handled by the Bloks runtime in
+		// an unusual way. It is basically an action, but formatted as a page with a
+		// component inside it that has the action code, but then the page itself is tagged
+		// as an action.
+		action := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
+		if action == nil {
+			return nil, fmt.Errorf("MFA landing page AP action did not contain script")
+		}
+
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, &action.AST)
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+
 	case StateAFADAction:
 		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
@@ -626,6 +652,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping login button: %w", err)
 		}
+
 	case StateEmailCodePage:
 		// XXX this entire switch case is completely blind guesswork since I don't have a
 		// network trace of what the page actually looks like when you trigger the email
@@ -667,6 +694,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
+
 	case StateCaptchaPage:
 		captchaCode := userInput["captcha_code"]
 		if captchaCode == "" {
@@ -774,6 +802,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
+
 	case StateMFALandingPage:
 		err := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
@@ -782,6 +811,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping method selection button: %w", err)
 		}
+
 	case StateChooseMFAPage:
 		possibleMethods := []string{
 			"Authentication app",
@@ -848,6 +878,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue button: %w", err)
 		}
+
 	case StateTOTPPage:
 		if userInput["totp_code"] == "" {
 			step = &bridgev2.LoginStep{
@@ -884,6 +915,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
+
 	case StateAFADPage:
 		notif := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.data.TextSpan" {
@@ -908,9 +940,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, fmt.Errorf("on_appear: %w", err)
 			}
 		}
+
 	case StateAFADWait:
 		time.Sleep(b.AFADInterval)
 		b.State = StateAFADPage
+
 	default:
 		return nil, fmt.Errorf("unexpected state %s", b.State)
 	}
