@@ -239,6 +239,7 @@ const (
 	StateEmailCodePage              BrowserState = "enter-code-from-email-page"
 	StateRedirectToMFALandingAction BrowserState = "redirect-to-mfa-landing-action"
 	StateCaptchaPage                BrowserState = "captcha-page"
+	StateEnteredCaptchaAction       BrowserState = "entered-captcha-action"
 	StateMFALandingPage             BrowserState = "mfa-landing-page"
 	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
 	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
@@ -274,7 +275,7 @@ type Browser struct {
 
 func NewBrowser(cfg *BrowserConfig) *Browser {
 	b := Browser{
-		State:  StateTestCaptcha,
+		State:  StateInitial,
 		Config: cfg,
 	}
 	b.Bridge = &InterpBridge{
@@ -310,6 +311,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateEnteredEmailPasswordAction] = StateRedirectToMFALandingAction
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
 				transitions[StateRedirectToMFALandingAction] = StateCaptchaPage
+			case "com.bloks.www.two_step_verification.login.async.text_captcha":
+				transitions[StateCaptchaPage] = StateEnteredCaptchaAction
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 			case "com.bloks.www.two_step_verification.method_picker":
@@ -507,7 +510,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		b.CurrentAction = action
 		b.State = StateRedirectToLoginAction
-	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADAction, StateAFADCompleteAction:
+	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateEnteredCaptchaAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADAction, StateAFADCompleteAction:
 		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
@@ -632,47 +635,103 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 	case StateCaptchaPage:
-		img := b.CurrentPage.FindDescendant(FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
-		if img == nil {
-			return nil, fmt.Errorf("can't find captcha image")
+		captchaCode := userInput["captcha_code"]
+		if captchaCode == "" {
+			img := b.CurrentPage.FindDescendant(FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
+			if img == nil {
+				return nil, fmt.Errorf("can't find captcha image")
+			}
+			imageURL := img.GetDynamicAttribute(ctx, b.CurrentPage.Interpreter, "url")
+			if imageURL == "" {
+				return nil, fmt.Errorf("captcha image has no url")
+			}
+			log.Trace().Str("image_url", imageURL).Msg("Found image captcha")
+
+			audio := b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+			if audio == nil {
+				return nil, fmt.Errorf("can't find audio text")
+			}
+			clickable := audio.FindDescendant(FilterByComponent("bk.style.textspan.ClickableStyle"))
+			if clickable == nil {
+				return nil, fmt.Errorf("audio text is not clickable")
+			}
+			onClick := clickable.GetScript("on_click")
+			if onClick == nil {
+				return nil, fmt.Errorf("no on_click on audio text")
+			}
+			_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &onClick.AST)
+			if err != nil {
+				return nil, fmt.Errorf("clicking on audio text: %w", err)
+			}
+			if b.DisplayedURL == "" {
+				return nil, fmt.Errorf("clicking on audio text failed to open url")
+			}
+			audioURL := strings.Replace(b.DisplayedURL, "/player/", "/", 1)
+			log.Trace().Str("audio_url", audioURL).Msg("Found audio captcha")
+
+			imageResp, err := http.Get(imageURL)
+			if err != nil {
+				return nil, fmt.Errorf("error fetching image response: %w", err)
+			}
+			defer imageResp.Body.Close()
+			imageBytes, err := io.ReadAll(imageResp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("error reading image response body: %w", err)
+			}
+			imageMime := imageResp.Header.Get("content-type")
+			if !strings.HasPrefix(imageMime, "image/") {
+				return nil, fmt.Errorf("bad image captcha mime type %s", imageMime)
+			}
+
+			audioResp, err := http.Get(audioURL)
+			if err != nil {
+				return nil, fmt.Errorf("error fetching audio response: %w", err)
+			}
+			defer audioResp.Body.Close()
+			audioBytes, err := io.ReadAll(audioResp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("error reading audio response body: %w", err)
+			}
+			audioMime := audioResp.Header.Get("content-type")
+			if !strings.HasPrefix(imageMime, "audio/") {
+				return nil, fmt.Errorf("bad audio captcha mime type %s", audioMime)
+			}
+
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeCaptcha,
+				StepID:       "fi.mau.meta.messengerlite.captcha",
+				Instructions: "Facebook requires solving a captcha",
+				CaptchaParams: &bridgev2.LoginCaptchaParams{
+					ImageData:     imageBytes,
+					ImageMimeType: imageMime,
+					AudioData:     audioBytes,
+					AudioMimeType: audioMime,
+				},
+			}
+			break
 		}
-		imageURL := img.GetDynamicAttribute(ctx, b.CurrentPage.Interpreter, "url")
-		if imageURL == "" {
-			return nil, fmt.Errorf("captcha image has no url")
-		}
-		log.Trace().Str("image_url", imageURL).Msg("Found image captcha")
-		audio := b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
-		if audio == nil {
-			return nil, fmt.Errorf("can't find audio text")
-		}
-		clickable := audio.FindDescendant(FilterByComponent("bk.style.textspan.ClickableStyle"))
-		if clickable == nil {
-			return nil, fmt.Errorf("audio text is not clickable")
-		}
-		onClick := clickable.GetScript("on_click")
-		if onClick == nil {
-			return nil, fmt.Errorf("no on_click on audio text")
-		}
-		_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &onClick.AST)
+
+		err := b.CurrentPage.
+			FindDescendant(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Enter characters",
+				)) != nil
+			}).
+			FillInput(ctx, b.CurrentPage.Interpreter, userInput["captcha_code"])
 		if err != nil {
-			return nil, fmt.Errorf("clicking on audio text: %w", err)
+			return nil, fmt.Errorf("filling captcha code input: %w", err)
 		}
-		if b.DisplayedURL == "" {
-			return nil, fmt.Errorf("clicking on audio text failed to open url")
-		}
-		audioURL := strings.Replace(b.DisplayedURL, "/player/", "/", 1)
-		log.Trace().Str("audio_url", audioURL).Msg("Found audio captcha")
-		imageResp, err := http.Get(imageURL)
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			return nil, fmt.Errorf("error fetching image response: %w", err)
+			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
-		defer imageResp.Body.Close()
-		imageBytes, err := io.ReadAll(imageResp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("error reading image response body: %w", err)
-		}
-		log.Trace().Hex("image_data", imageBytes).Msg("Raw image body")
-		return nil, fmt.Errorf("captcha solving not implemented yet")
 	case StateMFALandingPage:
 		err := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
