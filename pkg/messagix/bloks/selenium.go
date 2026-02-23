@@ -14,8 +14,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 )
 
 var (
@@ -475,14 +477,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, err
 			}
 			step = &bridgev2.LoginStep{
-				Type:         bridgev2.LoginStepTypeCaptcha,
+				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.captcha",
 				Instructions: "Facebook requires solving a captcha",
-				CaptchaParams: &bridgev2.LoginCaptchaParams{
-					ImageData:     image,
-					ImageMimeType: "image/png",
-					AudioData:     audio,
-					AudioMimeType: "audio/mp3",
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Attachments: []*bridgev2.LoginUserInputAttachment{
+						{Type: event.MsgImage, Filename: "captcha.png", MimeType: "image/png", Content: image},
+						{Type: event.MsgAudio, Filename: "captcha.mp3", MimeType: "audio/mpeg", Content: audio},
+					},
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
+					},
 				},
 			}
 			break
@@ -689,6 +694,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if !strings.HasPrefix(imageMime, "image/") {
 				return nil, fmt.Errorf("bad image captcha mime type %s", imageMime)
 			}
+			imageFilename := "captcha" + exmime.ExtensionFromMimetype(imageMime)
 
 			audioResp, err := http.Get(audioURL)
 			if err != nil {
@@ -703,16 +709,20 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if !strings.HasPrefix(audioMime, "audio/") {
 				return nil, fmt.Errorf("bad audio captcha mime type %s", audioMime)
 			}
+			audioFilename := "captcha" + exmime.ExtensionFromMimetype(audioMime)
 
 			step = &bridgev2.LoginStep{
-				Type:         bridgev2.LoginStepTypeCaptcha,
+				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.captcha",
 				Instructions: "Facebook requires solving a captcha",
-				CaptchaParams: &bridgev2.LoginCaptchaParams{
-					ImageData:     imageBytes,
-					ImageMimeType: imageMime,
-					AudioData:     audioBytes,
-					AudioMimeType: audioMime,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Attachments: []*bridgev2.LoginUserInputAttachment{
+						{Type: event.MsgImage, Filename: imageFilename, MimeType: imageMime, Content: imageBytes},
+						{Type: event.MsgAudio, Filename: audioFilename, MimeType: audioMime, Content: audioBytes},
+					},
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
+					},
 				},
 			}
 			break
