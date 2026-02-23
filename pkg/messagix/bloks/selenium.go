@@ -267,6 +267,7 @@ type Browser struct {
 	Config *BrowserConfig
 	Bridge *InterpBridge
 
+	CaptchaCallback  func(*BloksScriptLiteral) error
 	AFADNotification string
 	AFADInterval     time.Duration
 	AFADCallback     func(*BloksScriptLiteral) error
@@ -374,8 +375,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 
 			b.State = transitions[b.State]
 
-			if b.State == StateAFADAction {
+			switch b.State {
+			case StateAFADAction:
 				b.AFADCallback = callback
+			case StateEnteredCaptchaAction:
+				b.CaptchaCallback = callback
 			}
 
 			return nil
@@ -522,19 +526,20 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		b.CurrentAction = action
 		b.State = StateRedirectToLoginAction
-	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateEnteredCaptchaAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADAction, StateAFADCompleteAction:
+	case StateEnteredCaptchaAction:
 		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
 
-		// Most actions are done by now, however in the case of AFAD, we do some special
-		// handling to invoke its callback. That callback will trigger finalizing the flow,
-		// or it will do nothing in which case we should wait and try again later at the
-		// timer interval.
-
-		if b.State != StateAFADAction {
-			break
+		err = b.CaptchaCallback(result)
+		if err != nil {
+			return nil, fmt.Errorf("execute captcha callback: %w", err)
+		}
+	case StateAFADAction:
+		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
 
 		err = b.AFADCallback(result)
@@ -564,6 +569,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			b.AFADDisplayed = true
 		}
+
+	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADCompleteAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+
 	case StateEmailPasswordPage:
 		if userInput["username"] == "" || userInput["password"] == "" {
 			step = &bridgev2.LoginStep{
