@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -230,6 +231,7 @@ type BrowserState string
 // MFA = Multi-Factor Authentication
 const (
 	StateUnknown                    BrowserState = ""
+	StateTestCaptcha                BrowserState = "test-captcha"
 	StateInitial                    BrowserState = "initial"
 	StateRedirectToLoginAction      BrowserState = "redirect-to-login-action"
 	StateEmailPasswordPage          BrowserState = "enter-email-and-password-page"
@@ -272,7 +274,7 @@ type Browser struct {
 
 func NewBrowser(cfg *BrowserConfig) *Browser {
 	b := Browser{
-		State:  StateInitial,
+		State:  StateTestCaptcha,
 		Config: cfg,
 	}
 	b.Bridge = &InterpBridge{
@@ -428,6 +430,19 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 
 var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
 
+func readFile(name string) ([]byte, error) {
+	f, err := os.Open(fmt.Sprintf("/tmp/%s", name))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
 	{
@@ -439,6 +454,30 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	}
 	prevState := b.State
 	switch b.State {
+	case StateTestCaptcha:
+		if userInput["captcha_code"] == "" {
+			image, err := readFile("captcha.png")
+			if err != nil {
+				return nil, err
+			}
+			audio, err := readFile("captcha.mp3")
+			if err != nil {
+				return nil, err
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeCaptcha,
+				StepID:       "fi.mau.meta.messengerlite.captcha",
+				Instructions: "Facebook requires solving a captcha",
+				CaptchaParams: &bridgev2.LoginCaptchaParams{
+					ImageData:     image,
+					ImageMimeType: "image/png",
+					AudioData:     audio,
+					AudioMimeType: "audio/mp3",
+				},
+			}
+			break
+		}
+		b.State = StateInitial
 	case StateInitial:
 		rpc := "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
 		action, err := b.Config.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(rpc, map[string]any{
