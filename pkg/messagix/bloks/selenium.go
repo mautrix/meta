@@ -267,7 +267,9 @@ type Browser struct {
 	Config *BrowserConfig
 	Bridge *InterpBridge
 
-	CaptchaCallback  func(*BloksScriptLiteral) error
+	CaptchaCallback    func(*BloksScriptLiteral) error
+	NumCaptchaAttempts int
+
 	AFADNotification string
 	AFADInterval     time.Duration
 	AFADCallback     func(*BloksScriptLiteral) error
@@ -527,6 +529,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		b.CurrentAction = action
 		b.State = StateRedirectToLoginAction
 	case StateEnteredCaptchaAction:
+		b.NumCaptchaAttempts += 1
+
 		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
@@ -535,6 +539,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		err = b.CaptchaCallback(result)
 		if err != nil {
 			return nil, fmt.Errorf("execute captcha callback: %w", err)
+		}
+
+		if b.State == StateEnteredCaptchaAction {
+			b.State = StateCaptchaPage
+			delete(userInput, "captcha_code")
 		}
 	case StateAFADAction:
 		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
@@ -723,10 +732,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			audioFilename := "captcha" + exmime.ExtensionFromMimetype(audioMime)
 
+			instructions := "Facebook requires solving a captcha"
+			if b.NumCaptchaAttempts > 0 {
+				instructions = "Facebook rejected that captcha solution"
+			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.captcha",
-				Instructions: "Facebook requires solving a captcha",
+				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Attachments: []*bridgev2.LoginUserInputAttachment{
 						{Type: event.MsgImage, Filename: imageFilename, MimeType: imageMime, Content: imageBytes},
