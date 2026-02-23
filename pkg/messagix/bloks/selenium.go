@@ -327,6 +327,13 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateAFADPage] = StateAFADAction
 			case "com.bloks.www.two_step_verification.afad_complete.async":
 				transitions[StateAFADAction] = StateAFADCompleteAction
+			case "com.bloks.www.bloks.caa.reg.youthregulation.deletepregent.async":
+				// Ignore this for now as it doesn't seem required.
+				//
+				// If it becomes important, implement a better framework for
+				// allowing arbitrary actions to be executed without leaving the
+				// current page state.
+				return nil
 			default:
 				return fmt.Errorf("unexpected rpc %s", name)
 			}
