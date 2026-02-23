@@ -700,7 +700,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, fmt.Errorf("error reading audio response body: %w", err)
 			}
 			audioMime := audioResp.Header.Get("content-type")
-			if !strings.HasPrefix(imageMime, "audio/") {
+			if !strings.HasPrefix(audioMime, "audio/") {
 				return nil, fmt.Errorf("bad audio captcha mime type %s", audioMime)
 			}
 
