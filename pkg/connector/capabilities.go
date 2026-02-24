@@ -71,7 +71,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2026_01_25"
+	base := "fi.mau.meta.capabilities.2026_02_24"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -151,11 +151,10 @@ var metaCaps = &event.RoomFeatures{
 	MaxTextLength:       MaxTextLength,
 	Reply:               event.CapLevelFullySupported,
 	Edit:                event.CapLevelFullySupported,
-	EditMaxCount:        10,
-	EditMaxAge:          ptr.Ptr(jsontime.S(24 * time.Hour)),
+	EditMaxCount:        5,
+	EditMaxAge:          ptr.Ptr(jsontime.S(15 * time.Minute)),
 	Delete:              event.CapLevelFullySupported,
 	DeleteForMe:         false,
-	DeleteMaxAge:        ptr.Ptr(jsontime.S(10 * time.Minute)),
 	Reaction:            event.CapLevelFullySupported,
 	ReactionCount:       1,
 	TypingNotifications: true,
@@ -207,7 +206,7 @@ func init() {
 	for _, value := range igCaps.File {
 		value.Caption = event.CapLevelDropped
 	}
-	igCaps.ID += "+instagram-p2"
+	igCaps.ID += "+instagram"
 	igCapsGroup = igCaps.Clone()
 	igCapsGroup.ID += "+instagram-group"
 	igCapsGroup.State = event.StateFeatureMap{
