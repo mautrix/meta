@@ -293,6 +293,28 @@ type checkpointsFlow struct {
 	Error checkpointsFlowError `json:"error"`
 }
 
+func getBloksType(lit *BloksScriptLiteral) (int64, error) {
+	// TBD: What are types 5 and 8?
+	// I get the sense type 8 may be a function closure.
+	switch lit.Value().(type) {
+	case nil:
+		return 0, nil
+	case bool:
+		return 1, nil
+	case string:
+		return 2, nil
+	case int64:
+		return 3, nil
+	case float64:
+		return 4, nil
+	case []*BloksScriptLiteral:
+		return 6, nil
+	case map[string]*BloksScriptLiteral:
+		return 7, nil
+	}
+	return -1, fmt.Errorf("unexpected bloks typecheck for %T", lit.Value())
+}
+
 func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*BloksScriptLiteral, error) {
 	if lit, ok := form.BloksScriptNodeContent.(*BloksScriptLiteral); ok {
 		return lit, nil
@@ -776,12 +798,32 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return result, nil
 	case "bk.action.mins.AssertType":
-		// Ignore the second argument which is a numeric type, for now
 		val, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
 			return nil, err
 		}
+		expected, err := evalAs[int64](ctx, i, &call.Args[1], "asserttype")
+		if err != nil {
+			return nil, err
+		}
+		actual, err := getBloksType(val)
+		if err != nil {
+			return nil, err
+		}
+		if expected != actual {
+			return nil, fmt.Errorf("bloks type assertion failure (%d != %d)", actual, expected)
+		}
 		return val, nil
+	case "bk.action.mins.TypeOf":
+		val, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		btype, err := getBloksType(val)
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(btype), nil
 	case "bk.action.mins.GetByValOr":
 		return i.Evaluate(ctx, &BloksScriptNode{
 			BloksScriptNodeContent: &BloksScriptFuncall{
