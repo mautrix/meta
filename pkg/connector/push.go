@@ -222,6 +222,10 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 		} else {
 			log.Debug().
 				Str("message_id", parsedMsgID.String()).
+				Time("message_id_ts", parsedMsgID.Time).
+				Int64("message_id_chat", parsedMsgID.ChatID).
+				Int32("message_id_chat_type", parsedMsgID.ChatType).
+				Int64("message_id_txn_id", parsedMsgID.TxnID).
 				Str("orig_id", data.MessageID).
 				Str("f_param", data.Params["f"]).
 				Msg("Parsed message ID from push notification")
