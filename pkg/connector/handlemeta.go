@@ -320,8 +320,12 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			return
 		}
 	}
-	if !isInitial && ctx.Err() == nil {
-		m.Client.PostHandlePublishResponse(tbl)
+	if ctx.Err() == nil {
+		if isInitial {
+			m.initialTableHandled.Store(true)
+		} else {
+			m.Client.PostHandlePublishResponse(tbl)
+		}
 	}
 }
 

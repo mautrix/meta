@@ -35,13 +35,14 @@ type MetaClient struct {
 	UserLogin *bridgev2.UserLogin
 	Ghost     *bridgev2.Ghost
 
-	stopHandlingTables atomic.Pointer[context.CancelFunc]
-	initialTable       atomic.Pointer[table.LSTable]
-	parsedTables       chan *parsedTable
-	backfillCollectors map[int64]*BackfillCollector
-	backfillLock       sync.Mutex
-	connectLock        sync.Mutex
-	stopConnectAttempt atomic.Pointer[context.CancelFunc]
+	stopHandlingTables  atomic.Pointer[context.CancelFunc]
+	initialTable        atomic.Pointer[table.LSTable]
+	initialTableHandled atomic.Bool
+	parsedTables        chan *parsedTable
+	backfillCollectors  map[int64]*BackfillCollector
+	backfillLock        sync.Mutex
+	connectLock         sync.Mutex
+	stopConnectAttempt  atomic.Pointer[context.CancelFunc]
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -227,6 +228,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			return
 		}
 	}
+	m.initialTableHandled.Store(false)
 	currentUser, initialTable, err := cli.LoadMessagesPage(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load messages page")
@@ -362,6 +364,7 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 func (m *MetaClient) connectWithCache(ctx context.Context) {
 	go m.handleTableLoop(ctx)
 
+	m.initialTableHandled.Store(true)
 	err := m.Client.Connect(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
@@ -482,8 +485,14 @@ func (m *MetaClient) connectE2EE() error {
 
 func (m *MetaClient) Disconnect() {
 	state := m.disconnect(true)
-	if state != nil {
-		err := m.Main.DB.PutReconnectionState(m.UserLogin.Log.WithContext(context.Background()), m.UserLogin.ID, state)
+	if !m.initialTableHandled.Load() {
+		if state != nil {
+			m.UserLogin.Log.Warn().Msg("Initial table wasn't handled before disconnect, not saving reconnection state")
+		}
+	} else if state != nil {
+		saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := m.Main.DB.PutReconnectionState(m.UserLogin.Log.WithContext(saveCtx), m.UserLogin.ID, state)
 		if err != nil {
 			m.UserLogin.Log.Err(err).Msg("Failed to save reconnection state")
 		} else {
