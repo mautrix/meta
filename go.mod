@@ -54,4 +54,4 @@ require (
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
 
-replace maunium.net/go/mautrix => maunium.net/go/mautrix v0.26.4-0.20260223210448-6183dda6f229
+replace maunium.net/go/mautrix => maunium.net/go/mautrix v0.26.4-0.20260224212918-40bee754d370

@@ -1,10 +1,12 @@
 package bloks
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
 	"net/http"
 	"os"
@@ -532,8 +534,25 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Instructions: "Facebook requires solving a captcha",
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Attachments: []*bridgev2.LoginUserInputAttachment{
-						{Type: event.MsgImage, Filename: "captcha.png", MimeType: "image/png", Content: image},
-						{Type: event.MsgAudio, Filename: "captcha.mp3", MimeType: "audio/mpeg", Content: audio},
+						{
+							Type:     event.MsgImage,
+							FileName: "captcha.png",
+							Content:  image,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: "image/png",
+								Width:    280,
+								Height:   70,
+								Size:     5222,
+							},
+						}, {
+							Type:     event.MsgAudio,
+							FileName: "captcha.mp3",
+							Content:  audio,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: "audio/mpeg",
+								Size:     66048,
+							},
+						},
 					},
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
@@ -800,6 +819,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			audioFilename := "captcha" + exmime.ExtensionFromMimetype(audioMime)
 
+			var imageWidth, imageHeight int
+			imageMeta, _, err := image.DecodeConfig(bytes.NewReader(imageBytes))
+			if err == nil {
+				imageWidth = imageMeta.Width
+				imageHeight = imageMeta.Height
+			}
+
 			instructions := "Facebook requires solving a captcha"
 			if b.NumCaptchaAttempts > 0 {
 				instructions = "Facebook rejected that captcha solution"
@@ -810,8 +836,26 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Attachments: []*bridgev2.LoginUserInputAttachment{
-						{Type: event.MsgImage, Filename: imageFilename, MimeType: imageMime, Content: imageBytes},
-						{Type: event.MsgAudio, Filename: audioFilename, MimeType: audioMime, Content: audioBytes},
+						{
+							Type:     event.MsgImage,
+							FileName: imageFilename,
+							Content:  imageBytes,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: imageMime,
+								Width:    imageWidth,
+								Height:   imageHeight,
+								Size:     len(imageBytes),
+							},
+						},
+						{
+							Type:     event.MsgAudio,
+							FileName: audioFilename,
+							Content:  audioBytes,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: audioMime,
+								Size:     len(audioBytes),
+							},
+						},
 					},
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
