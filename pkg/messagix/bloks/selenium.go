@@ -247,6 +247,7 @@ const (
 	StateEnteredCaptchaAction       BrowserState = "entered-captcha-action"
 	StateMFALandingAPAction         BrowserState = "mfa-landing-ap-action"
 	StateMFALandingPage             BrowserState = "mfa-landing-page"
+	StateChooseMFAAPAction          BrowserState = "choose-mfa-ap-action"
 	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
 	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
 	StateAFADPage                   BrowserState = "afad-page"
@@ -324,6 +325,12 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateCaptchaPage] = StateEnteredCaptchaAction
 			case "com.bloks.www.ap.two_step_verification.entrypoint_async":
 				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
+			case "com.bloks.www.ap.two_step_verification.approve_from_another_device":
+				transitions[StateMFALandingAPAction] = StateMFALandingPage
+			case "com.bloks.www.ap.two_step_verification.approve_from_another_device_async":
+				transitions[StateMFALandingPage] = StateChooseMFAAPAction
+			case "com.bloks.www.ap.two_step_verification.challenge_picker":
+				transitions[StateChooseMFAAPAction] = StateChooseMFAPage
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 			case "com.bloks.www.two_step_verification.method_picker":
@@ -425,6 +432,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			transitions[StateEnteredCaptchaAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
 			transitions[StateAFADCompleteAction] = StateSuccess
+			transitions[StateEmailCodePage] = StateSuccess
 			if transitions[b.State] == StateUnknown {
 				return fmt.Errorf("can't handle login response in state %s", b.State)
 			}
@@ -556,14 +564,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			delete(userInput, "captcha_code")
 		}
 
-	case StateMFALandingAPAction:
+	case StateMFALandingAPAction, StateChooseMFAAPAction:
 		// This is a super weird action that appears to be handled by the Bloks runtime in
 		// an unusual way. It is basically an action, but formatted as a page with a
 		// component inside it that has the action code, but then the page itself is tagged
 		// as an action.
 		action := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
 		if action == nil {
-			return nil, fmt.Errorf("MFA landing page AP action did not contain script")
+			return nil, fmt.Errorf("AP action %q did not contain script", b.State)
 		}
 
 		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, &action.AST)

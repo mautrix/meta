@@ -30,6 +30,8 @@ var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
 var doRPC = flag.String("rpc", "", "Make a Bloks RPC network request")
 var rpcParams = flag.String("rpc-params", "", "JSON body for Bloks RPC")
 var captcha = flag.Bool("captcha", false, "Extract information from the captcha page")
+var doWeirdAction = flag.Bool("weird-action", false, "Do the weird page-embedded action")
+var anotherWay = flag.Bool("another-way", false, "Click the alternate MFA method button")
 
 func main() {
 	err := mainE()
@@ -143,6 +145,27 @@ func mainE() error {
 	interp, err := bloks.NewInterpreter(ctx, bundle, &bridge, nil)
 	if err != nil {
 		return err
+	}
+	if *doWeirdAction {
+		action := bundle.FindDescendant(bloks.FilterByComponent("action")).GetScript("on_load")
+		if action == nil {
+			return fmt.Errorf("page-embedded action not found")
+		}
+		_, err := interp.Evaluate(ctx, &action.AST)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	if *anotherWay {
+		err := bundle.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
+			FindContainingButton().
+			TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tapping method selection button: %w", err)
+		}
+		return nil
 	}
 	if *doAction {
 		gotNewScreen := false
@@ -302,6 +325,8 @@ func mainE() error {
 		possibleMethods := []string{
 			"Notification on another device",
 			"Authentication app",
+			"Email",
+			"Verify with Google",
 		}
 		foundMethods := map[string]*bloks.BloksTreeComponent{}
 		for _, methodName := range possibleMethods {
