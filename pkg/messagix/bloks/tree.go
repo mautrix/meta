@@ -352,11 +352,13 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 		value := btc.Attributes[id]
 		attrtype := ""
 		trailer := ""
-		switch value.BloksTreeNodeContent.(type) {
+		extra := ""
+		switch content := value.BloksTreeNodeContent.(type) {
 		case *BloksTreeComponent:
 			attrtype = "component"
 		case *BloksTreeComponentList:
 			attrtype = "component-list"
+			extra = fmt.Sprintf(" length=%d", len(*content))
 		case *BloksTreeLiteral:
 			attrtype = "literal"
 		case *BloksTreeScript:
@@ -367,12 +369,12 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 		default:
 			panic("missing case in bloks tree switch")
 		}
-		fmt.Printf("%s  <Property %s type=%s>\n", indent, id.ToTag(), attrtype)
+		fmt.Printf("%s  <Property %s type=%s%s>\n", indent, id.ToTag(), attrtype, extra)
 		err := value.BloksTreeNodeContent.Print(indent + "    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s%s  </Property %s type=%s>\n", trailer, indent, id.ToTag(), attrtype)
+		fmt.Printf("%s%s  </Property %s type=%s%s>\n", trailer, indent, id.ToTag(), attrtype, extra)
 	}
 	fmt.Printf("%s</Component name=%s>\n", indent, btc.ComponentID)
 	return nil
