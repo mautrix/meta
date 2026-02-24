@@ -870,6 +870,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				GetChildren("spans")[0].
 				FindDescendant(FilterByComponent("bk.data.TextSpan"))
 			method := span.GetAttribute("text")
+			if method == "Verify with Google" {
+				// Can't handle this yet, don't present it
+				continue
+			}
 			foundMethods[method] = span
 			methodNames = append(methodNames, method)
 		}
@@ -983,6 +987,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateAFADWait:
 		time.Sleep(b.AFADInterval)
 		b.State = StateAFADPage
+
+	case StateOAuthPage:
+		return nil, fmt.Errorf("can't handle Google OAuth yet")
 
 	default:
 		return nil, fmt.Errorf("unexpected state %s", b.State)
