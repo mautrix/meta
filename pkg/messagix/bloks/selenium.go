@@ -301,6 +301,8 @@ type Browser struct {
 	AFADDisplayed    bool
 	LoginData        string
 	DisplayedURL     string
+
+	LastError string
 }
 
 func NewBrowser(cfg *BrowserConfig) *Browser {
@@ -663,15 +665,27 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADCompleteAction:
 		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+			if err.Error() == "Invalid username or password" {
+				delete(userInput, "username")
+				delete(userInput, "password")
+				b.LastError = err.Error()
+				b.State = StateEmailPasswordPage
+			} else {
+				return nil, fmt.Errorf("execute %s: %w", b.State, err)
+			}
 		}
 
 	case StateEmailPasswordPage:
 		if userInput["username"] == "" || userInput["password"] == "" {
+			instructions := "Enter your Messenger credentials"
+			if b.LastError != "" {
+				instructions = fmt.Sprintf("%s. %s", b.LastError, instructions)
+				b.LastError = ""
+			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.email_password",
-				Instructions: "Enter your Messenger credentials",
+				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername},
