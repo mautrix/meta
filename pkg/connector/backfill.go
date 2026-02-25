@@ -21,8 +21,8 @@ import (
 
 var _ bridgev2.BackfillingNetworkAPI = (*MetaClient)(nil)
 
-var ReRequestBackfillOnTimeout = false
-var ErrorOnBackfillTimeout = false
+var MaxBackfillReRequests = 1
+var ErrorOnBackfillTimeout = true
 var BackfillTimeout = 30 * time.Second
 var BackfillForwardTimeout = 15 * time.Second
 var BackfillBackgroundTimeout = 8 * time.Second
@@ -264,6 +264,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		if !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
 			return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 		}
+		timeouts := 0
 	Loop:
 		for {
 			select {
@@ -282,9 +283,10 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 					break Loop
 				}
 				// No response? Let's re-request that history again
-				if ReRequestBackfillOnTimeout && !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
+				if timeouts < MaxBackfillReRequests && !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
 					return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 				}
+				timeouts++
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
