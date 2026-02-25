@@ -343,12 +343,6 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 	return m.proceed(ctx, input)
 }
 
-func (m *MetaNativeLogin) SubmitCaptcha(ctx context.Context, code string) (*bridgev2.LoginStep, error) {
-	return m.proceed(ctx, map[string]string{
-		"captcha_code": code,
-	})
-}
-
 func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 	return m.proceed(ctx, nil)
 }
