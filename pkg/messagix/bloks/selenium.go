@@ -316,7 +316,7 @@ type Browser struct {
 
 func NewBrowser(cfg *BrowserConfig) *Browser {
 	b := Browser{
-		State:  StateInitial,
+		State:  StateTestCaptcha,
 		Config: cfg,
 	}
 	b.Bridge = &InterpBridge{
