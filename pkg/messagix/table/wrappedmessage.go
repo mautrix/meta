@@ -1,8 +1,6 @@
 package table
 
 import (
-	"slices"
-
 	badGlobalLog "github.com/rs/zerolog/log"
 )
 
@@ -77,18 +75,19 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 		}
 		messageMap[msg.MessageId] = wrapped
 	}
+
 	if len(table.LSUpsertMessage) > 0 {
-		// For upserted messages, add reactions to the upsert data, and delete them
-		// from the main list to avoid handling them as new reactions.
-		table.LSUpsertReaction = slices.DeleteFunc(table.LSUpsertReaction, func(reaction *LSUpsertReaction) bool {
+		// Bundle any upserted reactions with their messages, note that we also continue to process
+		// them separately to cover cases where we already have the message but not the reaction.
+		// Will be deduped at the framework level.
+		for _, reaction := range table.LSUpsertReaction {
 			wrapped, ok := messageMap[reaction.MessageId]
 			if ok && wrapped.IsUpsert {
 				wrapped.Reactions = append(wrapped.Reactions, reaction)
-				return true
 			}
-			return false
-		})
+		}
 	}
+
 	insert = make([]*WrappedMessage, len(table.LSInsertMessage))
 	for i, msg := range table.LSInsertMessage {
 		insert[i] = &WrappedMessage{LSInsertMessage: msg}
