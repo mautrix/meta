@@ -1,10 +1,13 @@
 package bloks
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -12,8 +15,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 )
 
 var (
@@ -29,6 +34,9 @@ func (bb *BloksBundle) FindDescendants(pred func(*BloksTreeComponent) bool) []*B
 }
 
 func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	if btn == nil {
+		return nil
+	}
 	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
 		return comp.FindDescendant(pred)
 	}
@@ -43,6 +51,9 @@ func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *B
 }
 
 func (btn *BloksTreeNode) FindDescendants(pred func(*BloksTreeComponent) bool) []*BloksTreeComponent {
+	if btn == nil {
+		return nil
+	}
 	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
 		return comp.FindDescendants(pred)
 	}
@@ -108,7 +119,13 @@ func (comp *BloksTreeComponent) FindContainingButton() *BloksTreeComponent {
 	})
 }
 
-func FilterByAttribute(compid BloksComponentID, attr string, value string) func(comp *BloksTreeComponent) bool {
+func FilterByComponent(compid BloksComponentID) func(comp *BloksTreeComponent) bool {
+	return func(comp *BloksTreeComponent) bool {
+		return comp.ComponentID == compid
+	}
+}
+
+func FilterByAttribute(compid BloksComponentID, attr BloksAttributeID, value string) func(comp *BloksTreeComponent) bool {
 	return func(comp *BloksTreeComponent) bool {
 		if comp.ComponentID != compid {
 			return false
@@ -117,8 +134,11 @@ func FilterByAttribute(compid BloksComponentID, attr string, value string) func(
 	}
 }
 
-func (comp *BloksTreeComponent) GetAttribute(name string) string {
-	attr := comp.Attributes[BloksAttributeID(name)]
+func (comp *BloksTreeComponent) GetAttribute(name BloksAttributeID) string {
+	if comp == nil {
+		return ""
+	}
+	attr := comp.Attributes[name]
 	if attr == nil {
 		return ""
 	}
@@ -153,6 +173,9 @@ func (input *BloksTreeComponent) FillInput(ctx context.Context, interp *Interpre
 }
 
 func (comp *BloksTreeComponent) GetScript(name BloksAttributeID) *BloksTreeScript {
+	if comp == nil {
+		return nil
+	}
 	elem, ok := comp.Attributes[name]
 	if !ok {
 		return nil
@@ -162,6 +185,44 @@ func (comp *BloksTreeComponent) GetScript(name BloksAttributeID) *BloksTreeScrip
 		return nil
 	}
 	return script
+}
+
+func (comp *BloksTreeComponent) GetChildren(name BloksAttributeID) []*BloksTreeComponent {
+	if comp == nil {
+		return nil
+	}
+	elem, ok := comp.Attributes[name]
+	if !ok {
+		return nil
+	}
+	list, ok := elem.BloksTreeNodeContent.(*BloksTreeComponentList)
+	if !ok {
+		return nil
+	}
+	return *list
+}
+
+func (comp *BloksTreeComponent) GetDynamicAttribute(ctx context.Context, interp *Interpreter, name BloksAttributeID) string {
+	if val := comp.GetAttribute(name); val != "" {
+		return val
+	}
+	bind := comp.Attributes["on_bind"]
+	if bind == nil {
+		return ""
+	}
+	scripts, ok := bind.BloksTreeNodeContent.(*BloksTreeScriptSet)
+	if !ok {
+		return ""
+	}
+	script, ok := scripts.Scripts[name]
+	if !ok {
+		return ""
+	}
+	val, err := evalAs[string](ctx, interp, &script.AST, fmt.Sprintf("on_bind.%s", name))
+	if err != nil {
+		return ""
+	}
+	return val
 }
 
 func (button *BloksTreeComponent) TapButton(ctx context.Context, interp *Interpreter) error {
@@ -200,13 +261,22 @@ type BrowserState string
 // MFA = Multi-Factor Authentication
 const (
 	StateUnknown                    BrowserState = ""
+	StateTestCaptcha                BrowserState = "test-captcha"
 	StateInitial                    BrowserState = "initial"
 	StateRedirectToLoginAction      BrowserState = "redirect-to-login-action"
 	StateEmailPasswordPage          BrowserState = "enter-email-and-password-page"
 	StateEnteredEmailPasswordAction BrowserState = "entered-email-and-password-action"
 	StateEmailCodePage              BrowserState = "enter-code-from-email-page"
+	StateEnteredEmailCodeAction     BrowserState = "entered-code-from-email-action"
+	StateEnteredEmailCodeAPAction   BrowserState = "entered-code-from-email-ap-action"
+	StateRedirectToMFALandingAction BrowserState = "redirect-to-mfa-landing-action"
+	StateCaptchaPage                BrowserState = "captcha-page"
+	StateEnteredCaptchaAction       BrowserState = "entered-captcha-action"
+	StateMFALandingAPAction         BrowserState = "mfa-landing-ap-action"
 	StateMFALandingPage             BrowserState = "mfa-landing-page"
+	StateChooseMFAAPAction          BrowserState = "choose-mfa-ap-action"
 	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
+	StateChosenMFAAPAction          BrowserState = "chosen-mfa-type-ap-action"
 	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
 	StateAFADPage                   BrowserState = "afad-page"
 	StateAFADAction                 BrowserState = "afad-action"
@@ -214,6 +284,7 @@ const (
 	StateAFADCompleteAction         BrowserState = "afad-complete-action"
 	StateTOTPPage                   BrowserState = "totp-page"
 	StateEnteredTOTPAction          BrowserState = "entered-totp-action"
+	StateOAuthPage                  BrowserState = "oauth-page"
 	StateSuccess                    BrowserState = "success"
 )
 
@@ -230,11 +301,17 @@ type Browser struct {
 	Config *BrowserConfig
 	Bridge *InterpBridge
 
+	CaptchaCallback    func(*BloksScriptLiteral) error
+	NumCaptchaAttempts int
+
 	AFADNotification string
 	AFADInterval     time.Duration
 	AFADCallback     func(*BloksScriptLiteral) error
 	AFADDisplayed    bool
 	LoginData        string
+	DisplayedURL     string
+
+	LastError string
 }
 
 func NewBrowser(cfg *BrowserConfig) *Browser {
@@ -271,12 +348,36 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateEmailPasswordPage] = StateEnteredEmailPasswordAction
 			case "com.bloks.www.two_step_verification.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
+				transitions[StateEnteredEmailCodeAction] = StateMFALandingPage
+			case "com.bloks.www.two_step_verification.async.entrypoint":
+				transitions[StateEnteredEmailPasswordAction] = StateRedirectToMFALandingAction
+			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
+				transitions[StateRedirectToMFALandingAction] = StateCaptchaPage
+			case "com.bloks.www.two_step_verification.login.async.text_captcha":
+				transitions[StateCaptchaPage] = StateEnteredCaptchaAction
+			case "com.bloks.www.ap.two_step_verification.entrypoint_async":
+				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
+			case "com.bloks.www.ap.two_step_verification.approve_from_another_device":
+				transitions[StateMFALandingAPAction] = StateMFALandingPage
+				transitions[StateChosenMFAAPAction] = StateAFADPage
+			case "com.bloks.www.ap.two_step_verification.approve_from_another_device_async":
+				transitions[StateMFALandingPage] = StateChooseMFAAPAction
+			case "com.bloks.www.ap.two_step_verification.challenge_picker":
+				transitions[StateChooseMFAAPAction] = StateChooseMFAPage
+			case "com.bloks.www.bloks.ap.two_step_verification.challenge_picker.async":
+				transitions[StateChooseMFAPage] = StateChosenMFAAPAction
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 			case "com.bloks.www.two_step_verification.method_picker":
 				transitions[StateMFALandingPage] = StateChooseMFAPage
 			case "com.bloks.www.two_step_verification.method_picker.navigation.async":
 				transitions[StateChooseMFAPage] = StateChosenMFAAction
+			case "com.bloks.www.ap.two_step_verification.code_entry":
+				transitions[StateChosenMFAAPAction] = StateEmailCodePage
+			case "com.bloks.www.caa.ar.submit_code.async":
+				transitions[StateEmailCodePage] = StateEnteredEmailCodeAction
+			case "com.bloks.www.ap.two_step_verification.code_entry_async":
+				transitions[StateEmailCodePage] = StateEnteredEmailCodeAPAction
 			case "com.bloks.www.two_factor_login.enter_totp_code":
 				transitions[StateChosenMFAAction] = StateTOTPPage
 			case "com.bloks.www.two_step_verification.approve_from_another_device":
@@ -285,6 +386,15 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateAFADPage] = StateAFADAction
 			case "com.bloks.www.two_step_verification.afad_complete.async":
 				transitions[StateAFADAction] = StateAFADCompleteAction
+			case "com.bloks.www.ap.two_step_verification.login_with_third_party":
+				transitions[StateChosenMFAAPAction] = StateOAuthPage
+			case "com.bloks.www.bloks.caa.reg.youthregulation.deletepregent.async":
+				// Ignore this for now as it doesn't seem required.
+				//
+				// If it becomes important, implement a better framework for
+				// allowing arbitrary actions to be executed without leaving the
+				// current page state.
+				return nil
 			default:
 				return fmt.Errorf("unexpected rpc %s", name)
 			}
@@ -323,8 +433,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 
 			b.State = transitions[b.State]
 
-			if b.State == StateAFADAction {
+			switch b.State {
+			case StateAFADAction:
 				b.AFADCallback = callback
+			case StateEnteredCaptchaAction:
+				b.CaptchaCallback = callback
 			}
 
 			return nil
@@ -359,8 +472,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			log.Debug().Str("state", string(b.State)).Msg("Handling login response from Bloks")
 			transitions := map[BrowserState]BrowserState{}
 			transitions[StateEnteredEmailPasswordAction] = StateSuccess
+			transitions[StateEnteredCaptchaAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
 			transitions[StateAFADCompleteAction] = StateSuccess
+			transitions[StateEnteredEmailCodeAction] = StateSuccess
+			transitions[StateEnteredEmailCodeAPAction] = StateSuccess
 			if transitions[b.State] == StateUnknown {
 				return fmt.Errorf("can't handle login response in state %s", b.State)
 			}
@@ -381,6 +497,24 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			}
 			return nil
 		},
+		OpenURL: func(url string) error {
+			b.DisplayedURL = url
+			return nil
+		},
+		HandleVariableChange: func(name string, value *BloksScriptLiteral) error {
+			switch name {
+			case "BLOKS_TWO_STEP_VERIFICATION_ENTER_CODE:error_message":
+				if b.State != StateEnteredTOTPAction {
+					break
+				}
+				msg, ok := value.Value().(string)
+				if !ok {
+					return fmt.Errorf("non-string TOTP code error: %T", value.Value())
+				}
+				b.LastError = msg
+			}
+			return nil
+		},
 	}
 	return &b
 }
@@ -398,6 +532,44 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	}
 	prevState := b.State
 	switch b.State {
+
+	case StateTestCaptcha:
+		if userInput["captcha_code"] == "" {
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.captcha",
+				Instructions: "Here is a test captcha",
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Attachments: []*bridgev2.LoginUserInputAttachment{
+						{
+							Type:     event.MsgImage,
+							FileName: "captcha.png",
+							Content:  debugImageCaptcha,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: "image/png",
+								Width:    280,
+								Height:   70,
+								Size:     len(debugImageCaptcha),
+							},
+						}, {
+							Type:     event.MsgAudio,
+							FileName: "captcha.ogg",
+							Content:  debugAudioCaptcha,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: "audio/ogg",
+								Size:     len(debugAudioCaptcha),
+							},
+						},
+					},
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
+					},
+				},
+			}
+			break
+		}
+		b.State = StateInitial
+
 	case StateInitial:
 		rpc := "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
 		action, err := b.Config.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(rpc, map[string]any{
@@ -427,19 +599,44 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		b.CurrentAction = action
 		b.State = StateRedirectToLoginAction
-	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADAction, StateAFADCompleteAction:
+
+	case StateEnteredCaptchaAction:
+		b.NumCaptchaAttempts += 1
+
 		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
 
-		// Most actions are done by now, however in the case of AFAD, we do some special
-		// handling to invoke its callback. That callback will trigger finalizing the flow,
-		// or it will do nothing in which case we should wait and try again later at the
-		// timer interval.
+		err = b.CaptchaCallback(result)
+		if err != nil {
+			return nil, fmt.Errorf("execute captcha callback: %w", err)
+		}
 
-		if b.State != StateAFADAction {
-			break
+		if b.State == StateEnteredCaptchaAction {
+			b.State = StateCaptchaPage
+			delete(userInput, "captcha_code")
+		}
+
+	case StateMFALandingAPAction, StateChooseMFAAPAction, StateChosenMFAAPAction, StateEnteredEmailCodeAPAction:
+		// This is a super weird action that appears to be handled by the Bloks runtime in
+		// an unusual way. It is basically an action, but formatted as a page with a
+		// component inside it that has the action code, but then the page itself is tagged
+		// as an action.
+		action := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
+		if action == nil {
+			return nil, fmt.Errorf("AP action %q did not contain script", b.State)
+		}
+
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, &action.AST)
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+
+	case StateAFADAction:
+		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
 
 		err = b.AFADCallback(result)
@@ -469,12 +666,60 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			b.AFADDisplayed = true
 		}
+
+	case StateEnteredEmailPasswordAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			if err.Error() == "Invalid username or password" {
+				delete(userInput, "username")
+				delete(userInput, "password")
+				b.LastError = err.Error()
+				b.State = StateEmailPasswordPage
+			} else {
+				return nil, fmt.Errorf("execute %s: %w", b.State, err)
+			}
+		}
+
+	case StateEnteredEmailCodeAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "Please re-enter") {
+				delete(userInput, "email_code")
+				b.LastError = err.Error()
+				b.State = StateEmailCodePage
+			} else {
+				return nil, fmt.Errorf("execute %s: %w", b.State, err)
+			}
+		}
+
+	case StateEnteredTOTPAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+		// Check if a TOTP error was logged by the action. Sort of a hack.
+		if b.LastError != "" {
+			delete(userInput, "totp_code")
+			b.State = StateTOTPPage
+		}
+
+	case StateRedirectToLoginAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateAFADCompleteAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+
 	case StateEmailPasswordPage:
 		if userInput["username"] == "" || userInput["password"] == "" {
+			instructions := "Enter your Messenger credentials"
+			if b.LastError != "" {
+				instructions = fmt.Sprintf("%s. %s", b.LastError, instructions)
+				b.LastError = ""
+			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.email_password",
-				Instructions: "Enter your Messenger credentials",
+				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername},
@@ -510,17 +755,36 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping login button: %w", err)
 		}
+
 	case StateEmailCodePage:
-		// XXX this entire switch case is completely blind guesswork since I don't have a
-		// network trace of what the page actually looks like when you trigger the email
-		// code fallback, but if we're lucky this would work on first try
 		if userInput["email_code"] == "" {
+			instructions := b.CurrentPage.
+				FindDescendant(func(comp *BloksTreeComponent) bool {
+					if comp.ComponentID != "bk.data.TextSpan" {
+						return false
+					}
+					for _, prefix := range []string{
+						"Enter the code",
+						"We sent a code",
+					} {
+						if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
+							return true
+						}
+					}
+					return false
+				}).
+				GetAttribute("text")
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
+
 			step = &bridgev2.LoginStep{
-				Type:   bridgev2.LoginStepTypeUserInput,
-				StepID: "fi.mau.meta.messengerlite.email_code",
-				// TODO look up the message that Facebook displays on the page, and
-				// show that as the instructions
-				Instructions: "Enter the six-digit code sent to your email",
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.email_code",
+				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "email_code", Name: "Code from email", Type: bridgev2.LoginInputFieldType2FACode},
@@ -536,7 +800,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					return false
 				}
 				return comp.FindDescendant(FilterByAttribute(
-					"bk.components.AccessibilityExtension", "label", "Code",
+					"bk.components.AccessibilityExtension", "label", "Enter code",
 				)) != nil
 			}).
 			FillInput(ctx, b.CurrentPage.Interpreter, userInput["email_code"])
@@ -551,6 +815,140 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
+
+	case StateCaptchaPage:
+		captchaCode := userInput["captcha_code"]
+		if captchaCode == "" {
+			img := b.CurrentPage.FindDescendant(FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
+			if img == nil {
+				return nil, fmt.Errorf("can't find captcha image")
+			}
+			imageURL := img.GetDynamicAttribute(ctx, b.CurrentPage.Interpreter, "url")
+			if imageURL == "" {
+				return nil, fmt.Errorf("captcha image has no url")
+			}
+			log.Trace().Str("image_url", imageURL).Msg("Found image captcha")
+
+			audio := b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+			if audio == nil {
+				return nil, fmt.Errorf("can't find audio text")
+			}
+			clickable := audio.FindDescendant(FilterByComponent("bk.style.textspan.ClickableStyle"))
+			if clickable == nil {
+				return nil, fmt.Errorf("audio text is not clickable")
+			}
+			onClick := clickable.GetScript("on_click")
+			if onClick == nil {
+				return nil, fmt.Errorf("no on_click on audio text")
+			}
+			_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &onClick.AST)
+			if err != nil {
+				return nil, fmt.Errorf("clicking on audio text: %w", err)
+			}
+			if b.DisplayedURL == "" {
+				return nil, fmt.Errorf("clicking on audio text failed to open url")
+			}
+			audioURL := strings.Replace(b.DisplayedURL, "/player/", "/", 1)
+			log.Trace().Str("audio_url", audioURL).Msg("Found audio captcha")
+
+			imageResp, err := http.Get(imageURL)
+			if err != nil {
+				return nil, fmt.Errorf("error fetching image response: %w", err)
+			}
+			defer imageResp.Body.Close()
+			imageBytes, err := io.ReadAll(imageResp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("error reading image response body: %w", err)
+			}
+			imageMime := imageResp.Header.Get("content-type")
+			if !strings.HasPrefix(imageMime, "image/") {
+				return nil, fmt.Errorf("bad image captcha mime type %s", imageMime)
+			}
+			imageFilename := "captcha" + exmime.ExtensionFromMimetype(imageMime)
+
+			audioResp, err := http.Get(audioURL)
+			if err != nil {
+				return nil, fmt.Errorf("error fetching audio response: %w", err)
+			}
+			defer audioResp.Body.Close()
+			audioBytes, err := io.ReadAll(audioResp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("error reading audio response body: %w", err)
+			}
+			audioMime := audioResp.Header.Get("content-type")
+			if !strings.HasPrefix(audioMime, "audio/") {
+				return nil, fmt.Errorf("bad audio captcha mime type %s", audioMime)
+			}
+			audioFilename := "captcha" + exmime.ExtensionFromMimetype(audioMime)
+
+			var imageWidth, imageHeight int
+			imageMeta, _, err := image.DecodeConfig(bytes.NewReader(imageBytes))
+			if err == nil {
+				imageWidth = imageMeta.Width
+				imageHeight = imageMeta.Height
+			}
+
+			instructions := "Facebook requires solving a captcha"
+			if b.NumCaptchaAttempts > 0 {
+				instructions = "Facebook rejected that captcha solution"
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.captcha",
+				Instructions: instructions,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Attachments: []*bridgev2.LoginUserInputAttachment{
+						{
+							Type:     event.MsgImage,
+							FileName: imageFilename,
+							Content:  imageBytes,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: imageMime,
+								Width:    imageWidth,
+								Height:   imageHeight,
+								Size:     len(imageBytes),
+							},
+						},
+						{
+							Type:     event.MsgAudio,
+							FileName: audioFilename,
+							Content:  audioBytes,
+							Info: bridgev2.LoginUserInputAttachmentInfo{
+								MimeType: audioMime,
+								Size:     len(audioBytes),
+							},
+						},
+					},
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
+					},
+				},
+			}
+			break
+		}
+
+		err := b.CurrentPage.
+			FindDescendant(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Enter characters",
+				)) != nil
+			}).
+			FillInput(ctx, b.CurrentPage.Interpreter, userInput["captcha_code"])
+		if err != nil {
+			return nil, fmt.Errorf("filling captcha code input: %w", err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
+
 	case StateMFALandingPage:
 		err := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
@@ -559,36 +957,40 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping method selection button: %w", err)
 		}
-	case StateChooseMFAPage:
-		possibleMethods := []string{
-			"Authentication app",
-			"Notification on another device",
-		}
 
+	case StateChooseMFAPage:
 		foundMethods := map[string]*BloksTreeComponent{}
-		for _, methodName := range possibleMethods {
-			elem := b.CurrentPage.FindDescendant(FilterByAttribute(
-				"bk.data.TextSpan", "text", methodName,
-			))
-			if elem != nil {
-				foundMethods[methodName] = elem
+		methodNames := []string{}
+
+		listItems := b.CurrentPage.FindDescendant(FilterByAttribute(
+			"bk.data.TextSpan", "text", "Choose a way to confirm it’s you",
+		)).
+			FindAncestor(FilterByComponent("bk.components.Collection")).
+			FindDescendant(FilterByAttribute("bk.components.BoxDecoration", "border_width", "1dp")).
+			FindAncestor(FilterByComponent("bk.components.Flexbox")).
+			GetChildren("children")
+
+		for _, item := range listItems {
+			span := item.
+				FindDescendant(FilterByComponent("bk.components.RichText")).
+				GetChildren("spans")[0].
+				FindDescendant(FilterByComponent("bk.data.TextSpan"))
+			method := span.GetAttribute("text")
+			if method == "Verify with Google" {
+				// Can't handle this yet, don't present it
+				continue
 			}
+			foundMethods[method] = span
+			methodNames = append(methodNames, method)
 		}
 
 		if len(foundMethods) == 0 {
 			return nil, fmt.Errorf("couldn't find any allowed mfa types")
 		}
 
-		filteredMethods := []string{}
-		for _, method := range possibleMethods {
-			if foundMethods[method] != nil {
-				filteredMethods = append(filteredMethods, method)
-			}
-		}
-
 		chosenMethod := userInput["mfatype"]
-		if chosenMethod == "" && len(filteredMethods) == 1 {
-			chosenMethod = filteredMethods[0]
+		if chosenMethod == "" && len(foundMethods) == 1 {
+			chosenMethod = methodNames[0]
 		}
 		if chosenMethod == "" {
 			step = &bridgev2.LoginStep{
@@ -599,7 +1001,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					Fields: []bridgev2.LoginInputDataField{
 						{
 							ID: "mfatype", Name: "Login method", Type: bridgev2.LoginInputFieldTypeSelect,
-							Options: filteredMethods,
+							Options: methodNames,
 						},
 					},
 				},
@@ -625,12 +1027,20 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue button: %w", err)
 		}
+
 	case StateTOTPPage:
 		if userInput["totp_code"] == "" {
+			instructions := "Enter a six-digit code from your authenticator app"
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.totp",
-				Instructions: "Enter a six-digit code from your authenticator app",
+				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
@@ -661,6 +1071,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
+
 	case StateAFADPage:
 		notif := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.data.TextSpan" {
@@ -685,9 +1096,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, fmt.Errorf("on_appear: %w", err)
 			}
 		}
+
 	case StateAFADWait:
 		time.Sleep(b.AFADInterval)
 		b.State = StateAFADPage
+
+	case StateOAuthPage:
+		return nil, fmt.Errorf("can't handle Google OAuth yet")
+
 	default:
 		return nil, fmt.Errorf("unexpected state %s", b.State)
 	}

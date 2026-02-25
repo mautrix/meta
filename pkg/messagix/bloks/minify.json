@@ -1503,7 +1503,8 @@
     "㚝": "bk.components.FoaTouchExtension",
     "㜍": "bk.cds.bottomsheet.Wrapper",
     "㐘": "bk.components.TextInput",
-    "㐅": "bk.components.Collection"
+    "㐅": "bk.components.Collection",
+    "㐟": "action"
   },
   "properties": {
     "bk.components.FoaTouchExtension": {
@@ -1566,6 +1567,7 @@
       "3": "color_filter",
       "8": "scale_type",
       "9": "url",
+      "41": "unique_id",
       "100": "_style",
       "101": "extensions",
       "103": "on_bind"
@@ -1652,6 +1654,9 @@
       "35": "shows_scroll_indicator",
       "100": "_style",
       "101": "extensions"
+    },
+    "action": {
+      "3": "on_load"
     }
   }
 }

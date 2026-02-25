@@ -352,20 +352,24 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
+		log.Error().Err(err).Msg("Login steps returned error")
 		return nil, err
 	}
 	if step != nil {
 		return step, nil
 	}
 
-	m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
+	_ = newCookies
+	return nil, fmt.Errorf("if you see this then it works")
 
-	step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
-	if err != nil {
-		return nil, err
-	}
+	// m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
 
-	return step, nil
+	// step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// return step, nil
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)

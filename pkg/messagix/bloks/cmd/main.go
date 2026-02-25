@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
@@ -23,6 +27,11 @@ var selectedMethod = flag.String("method", "", "Select one of the 2FA methods")
 var afad = flag.Bool("afad", false, "Run the AFAD handlers")
 var doAction = flag.Bool("action", false, "Run the action script")
 var logLevel = flag.String("log-level", "debug", "How much logging (zerolog)")
+var doRPC = flag.String("rpc", "", "Make a Bloks RPC network request")
+var rpcParams = flag.String("rpc-params", "", "JSON body for Bloks RPC")
+var captcha = flag.Bool("captcha", false, "Extract information from the captcha page")
+var doWeirdAction = flag.Bool("weird-action", false, "Do the weird page-embedded action")
+var anotherWay = flag.Bool("another-way", false, "Click the alternate MFA method button")
 
 func main() {
 	err := mainE()
@@ -57,9 +66,6 @@ func mainE() error {
 	ctx := context.Background()
 
 	flag.Parse()
-	if *filename == "" {
-		return fmt.Errorf("-file is mandatory")
-	}
 
 	logLevel, err := zerolog.ParseLevel(*logLevel)
 	if err != nil {
@@ -68,6 +74,35 @@ func mainE() error {
 	log := zerolog.New(zerolog.NewConsoleWriter()).Level(logLevel)
 	ctx = log.WithContext(ctx)
 
+	if *doRPC != "" {
+		if *rpcParams == "" {
+			return fmt.Errorf("-rpc-params is mandatory when using -rpc")
+		}
+
+		var paramsOuter map[string]string
+		err := json.Unmarshal([]byte(*rpcParams), &paramsOuter)
+		if err != nil {
+			return fmt.Errorf("parsing outer params: %w", err)
+		}
+
+		var paramsInner bloks.BloksParamsInner
+		err = json.Unmarshal([]byte(paramsOuter["params"]), &paramsInner)
+		if err != nil {
+			return fmt.Errorf("parsing inner params: %w", err)
+		}
+
+		mcl := messagix.NewClient(&cookies.Cookies{
+			Platform: types.MessengerLite,
+		}, log, &messagix.Config{})
+		mcl.MakeBloksRequest(ctx, &bloks.BloksAppDoc, bloks.NewBloksRequest(*doRPC, paramsInner))
+
+		return nil
+	}
+
+	if *filename == "" {
+		return fmt.Errorf("-file is mandatory")
+	}
+
 	bundle, err := readAndParse[bloks.BloksBundle](*filename)
 	if err != nil {
 		return err
@@ -75,6 +110,7 @@ func mainE() error {
 	if *doPrint {
 		return bundle.Print("")
 	}
+	lastURL := ""
 	bridge := bloks.InterpBridge{
 		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *bloks.BloksScriptLiteral) error) error {
 			fmt.Printf("%s isPage=%v\n", name, isPage)
@@ -98,10 +134,38 @@ func mainE() error {
 			}
 			return nil
 		},
+		OpenURL: func(url string) error {
+			if lastURL != "" {
+				return fmt.Errorf("already opened a url this session")
+			}
+			lastURL = url
+			return nil
+		},
 	}
 	interp, err := bloks.NewInterpreter(ctx, bundle, &bridge, nil)
 	if err != nil {
 		return err
+	}
+	if *doWeirdAction {
+		action := bundle.FindDescendant(bloks.FilterByComponent("action")).GetScript("on_load")
+		if action == nil {
+			return fmt.Errorf("page-embedded action not found")
+		}
+		_, err := interp.Evaluate(ctx, &action.AST)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	if *anotherWay {
+		err := bundle.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
+			FindContainingButton().
+			TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tapping method selection button: %w", err)
+		}
+		return nil
 	}
 	if *doAction {
 		gotNewScreen := false
@@ -258,25 +322,30 @@ func mainE() error {
 			return err
 		}
 	} else if *doMethods {
-		possibleMethods := []string{
-			"Notification on another device",
-			"Authentication app",
-		}
 		foundMethods := map[string]*bloks.BloksTreeComponent{}
-		for _, methodName := range possibleMethods {
-			elem := bundle.FindDescendant(bloks.FilterByAttribute(
-				"bk.data.TextSpan", "text", methodName,
-			))
-			if elem != nil {
-				foundMethods[methodName] = elem
-			}
+		methodNames := []string{}
+
+		items := bundle.FindDescendant(bloks.FilterByAttribute(
+			"bk.data.TextSpan", "text", "Choose a way to confirm it’s you",
+		)).
+			FindAncestor(bloks.FilterByComponent("bk.components.Collection")).
+			FindDescendant(bloks.FilterByAttribute("bk.components.BoxDecoration", "border_width", "1dp")).
+			FindAncestor(bloks.FilterByComponent("bk.components.Flexbox")).
+			GetChildren("children")
+
+		for _, item := range items {
+			span := item.
+				FindDescendant(bloks.FilterByComponent("bk.components.RichText")).
+				GetChildren("spans")[0].
+				FindDescendant(bloks.FilterByComponent("bk.data.TextSpan"))
+			method := span.GetAttribute("text")
+			foundMethods[method] = span
+			methodNames = append(methodNames, method)
 		}
+
 		fmt.Printf("Found %d MFA method(s):\n", len(foundMethods))
-		for _, methodName := range possibleMethods {
-			elem := foundMethods[methodName]
-			if elem != nil {
-				fmt.Printf("- %s\n", methodName)
-			}
+		for _, methodName := range methodNames {
+			fmt.Printf("- %s\n", methodName)
 		}
 		if len(foundMethods) == 0 {
 			fmt.Printf("  (none)\n")
@@ -309,6 +378,37 @@ func mainE() error {
 				return fmt.Errorf("on_appear: %w", err)
 			}
 		}
+	} else if *captcha {
+		img := bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
+		if img == nil {
+			return fmt.Errorf("can't find captcha image")
+		}
+		imageURL := img.GetDynamicAttribute(ctx, interp, "url")
+		if imageURL == "" {
+			return fmt.Errorf("captcha image has no url")
+		}
+		fmt.Println("Image:", imageURL)
+		audio := bundle.FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+		if audio == nil {
+			return fmt.Errorf("can't find audio text")
+		}
+		clickable := audio.FindDescendant(bloks.FilterByComponent("bk.style.textspan.ClickableStyle"))
+		if clickable == nil {
+			return fmt.Errorf("audio text is not clickable")
+		}
+		onClick := clickable.GetScript("on_click")
+		if onClick == nil {
+			return fmt.Errorf("no on_click on audio text")
+		}
+		_, err := interp.Evaluate(ctx, &onClick.AST)
+		if err != nil {
+			return fmt.Errorf("clicking on audio text: %w", err)
+		}
+		if lastURL == "" {
+			return fmt.Errorf("clicking on audio text failed to open url")
+		}
+		audioURL := strings.Replace(lastURL, "/player/", "/", 1)
+		fmt.Println("Audio:", audioURL)
 	}
 	return nil
 }

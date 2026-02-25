@@ -186,9 +186,24 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 				if idx+1 >= len(code) {
 					return len(code), fmt.Errorf("backslash at eof")
 				}
-				// feel free to implement escape sequences properly if you wanna
-				chars = append(chars, code[idx+1])
-				idx += 2
+				switch code[idx+1] {
+				case 'n':
+					chars = append(chars, '\n')
+					idx += 2
+				case 'u':
+					if idx+6 >= len(code) {
+						return len(code), fmt.Errorf("got eof during unicode escape sequence")
+					}
+					char, err := strconv.Unquote(fmt.Sprintf(`'%s'`, code[idx:idx+6]))
+					if err != nil {
+						return idx, fmt.Errorf("parsing unicode escape %q: %w", code[idx:idx+6], err)
+					}
+					chars = append(chars, []byte(char)...)
+					idx += 6
+				default:
+					chars = append(chars, code[idx+1])
+					idx += 2
+				}
 				continue
 			case '"':
 				lit.BloksJavascriptValue = string(chars)

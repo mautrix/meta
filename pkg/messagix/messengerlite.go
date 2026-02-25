@@ -81,7 +81,7 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 			}
 			return encryptedPW, nil
 		},
-		MakeBloksRequest: fb.client.makeBloksRequest,
+		MakeBloksRequest: fb.client.MakeBloksRequest,
 	}
 }
 
