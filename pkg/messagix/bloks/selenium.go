@@ -620,16 +620,20 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateMFALandingAPAction, StateChooseMFAAPAction, StateChosenMFAAPAction, StateEnteredEmailCodeAPAction:
-		// This is a super weird action that appears to be handled by the Bloks runtime in
-		// an unusual way. It is basically an action, but formatted as a page with a
-		// component inside it that has the action code, but then the page itself is tagged
-		// as an action.
-		action := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
+		action := b.CurrentAction.Action()
 		if action == nil {
-			return nil, fmt.Errorf("AP action %q did not contain script", b.State)
+			// This is a super weird action that appears to be handled by the Bloks runtime in
+			// an unusual way. It is basically an action, but formatted as a page with a
+			// component inside it that has the action code, but then the page itself is tagged
+			// as an action.
+			script := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
+			if script == nil {
+				return nil, fmt.Errorf("AP action %q did not contain script", b.State)
+			}
+			action = &script.AST
 		}
 
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, &action.AST)
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, action)
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
