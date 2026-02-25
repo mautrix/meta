@@ -302,7 +302,7 @@ func mainE() error {
 				if !ok {
 					return false
 				}
-				return str == "Code"
+				return str == "Code" || str == "Enter code"
 			}) != nil
 		})
 		err := codeInput.SetTextContent(*do2FA)

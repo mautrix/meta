@@ -356,6 +356,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			case "com.bloks.www.two_step_verification.login.async.text_captcha":
 				transitions[StateCaptchaPage] = StateEnteredCaptchaAction
 			case "com.bloks.www.ap.two_step_verification.entrypoint_async":
+				transitions[StateEnteredEmailPasswordAction] = StateMFALandingAPAction
 				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device":
 				transitions[StateMFALandingAPAction] = StateMFALandingPage
@@ -512,6 +513,15 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 					return fmt.Errorf("non-string TOTP code error: %T", value.Value())
 				}
 				b.LastError = msg
+			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
+				if b.State != StateEnteredEmailCodeAPAction {
+					break
+				}
+				msg, ok := value.Value().(string)
+				if !ok {
+					return fmt.Errorf("non-string email code error: %T", value.Value())
+				}
+				b.LastError = msg
 			}
 			return nil
 		},
@@ -619,18 +629,29 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateMFALandingAPAction, StateChooseMFAAPAction, StateChosenMFAAPAction, StateEnteredEmailCodeAPAction:
-		// This is a super weird action that appears to be handled by the Bloks runtime in
-		// an unusual way. It is basically an action, but formatted as a page with a
-		// component inside it that has the action code, but then the page itself is tagged
-		// as an action.
-		action := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
+		action := b.CurrentAction.Action()
 		if action == nil {
-			return nil, fmt.Errorf("AP action %q did not contain script", b.State)
+			// This is a super weird action that appears to be handled by the Bloks runtime in
+			// an unusual way. It is basically an action, but formatted as a page with a
+			// component inside it that has the action code, but then the page itself is tagged
+			// as an action.
+			script := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
+			if script == nil {
+				return nil, fmt.Errorf("AP action %q did not contain script", b.State)
+			}
+			action = &script.AST
 		}
 
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, &action.AST)
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, action)
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+
+		if b.State == StateEnteredEmailCodeAPAction {
+			if b.LastError != "" {
+				delete(userInput, "email_code")
+				b.State = StateEmailCodePage
+			}
 		}
 
 	case StateAFADAction:
@@ -674,6 +695,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				delete(userInput, "username")
 				delete(userInput, "password")
 				b.LastError = err.Error()
+				b.State = StateEmailPasswordPage
+			} else if strings.Contains(err.Error(), "isn't connected to an account") {
+				delete(userInput, "username")
+				delete(userInput, "password")
+				thing := "username"
+				if strings.Contains("@", userInput["username"]) {
+					thing = "email address"
+				}
+				b.LastError = fmt.Sprintf("That %s is not connected to a Messenger account", thing)
 				b.State = StateEmailPasswordPage
 			} else {
 				return nil, fmt.Errorf("execute %s: %w", b.State, err)
