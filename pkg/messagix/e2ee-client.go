@@ -49,9 +49,6 @@ func (c *Client) PrepareE2EEClient() (*whatsmeow.Client, error) {
 	e2eeClient.RefreshCAT = c.refreshCAT
 	e2eeClient.EnableAutoReconnect = true
 	e2eeClient.InitialAutoReconnect = true
-	if c.proxyAddr != "" {
-		e2eeClient.SetProxyAddress(c.proxyAddr)
-	}
 	return e2eeClient, nil
 }
 
