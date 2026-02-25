@@ -504,8 +504,15 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
 	// TODO figure out how to handle meta's false delete events
+	// If there's a corresponding LSDeleteThenInsertThread for this thread, the thread is being
+	// moved to another folder, not permanently deleted.
+	if _, hasResync := tk.syncs[threadKey]; hasResync {
+		zerolog.Ctx(tk.ctx).Debug().
+			Int64("thread_key", threadKey).
+			Msg("Ignoring LSDeleteThread for thread that has a corresponding resync")
+		return nil
+	}
 	// Delete the thread from the sync maps to prevent future events finding it
-	delete(tk.syncs, threadKey)
 	delete(tk.vtes, threadKey)
 	return &simplevent.ChatDelete{
 		EventMeta: simplevent.EventMeta{
