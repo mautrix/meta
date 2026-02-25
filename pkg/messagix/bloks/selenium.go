@@ -9,7 +9,6 @@ import (
 	"image"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -522,19 +521,6 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 
 var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
 
-func readFile(name string) ([]byte, error) {
-	f, err := os.Open(fmt.Sprintf("/tmp/%s", name))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
 	{
@@ -549,37 +535,29 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateTestCaptcha:
 		if userInput["captcha_code"] == "" {
-			image, err := readFile("captcha.png")
-			if err != nil {
-				return nil, err
-			}
-			audio, err := readFile("captcha.mp3")
-			if err != nil {
-				return nil, err
-			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.captcha",
-				Instructions: "Facebook requires solving a captcha",
+				Instructions: "Here is a test captcha",
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Attachments: []*bridgev2.LoginUserInputAttachment{
 						{
 							Type:     event.MsgImage,
 							FileName: "captcha.png",
-							Content:  image,
+							Content:  debugImageCaptcha,
 							Info: bridgev2.LoginUserInputAttachmentInfo{
 								MimeType: "image/png",
 								Width:    280,
 								Height:   70,
-								Size:     5222,
+								Size:     len(debugImageCaptcha),
 							},
 						}, {
 							Type:     event.MsgAudio,
-							FileName: "captcha.mp3",
-							Content:  audio,
+							FileName: "captcha.ogg",
+							Content:  debugAudioCaptcha,
 							Info: bridgev2.LoginUserInputAttachmentInfo{
-								MimeType: "audio/mpeg",
-								Size:     66048,
+								MimeType: "audio/ogg",
+								Size:     len(debugAudioCaptcha),
 							},
 						},
 					},
