@@ -513,6 +513,15 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 					return fmt.Errorf("non-string TOTP code error: %T", value.Value())
 				}
 				b.LastError = msg
+			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
+				if b.State != StateEnteredEmailCodeAPAction {
+					break
+				}
+				msg, ok := value.Value().(string)
+				if !ok {
+					return fmt.Errorf("non-string email code error: %T", value.Value())
+				}
+				b.LastError = msg
 			}
 			return nil
 		},
@@ -636,6 +645,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, action)
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+
+		if b.State == StateEnteredEmailCodeAPAction {
+			if b.LastError != "" {
+				delete(userInput, "email_code")
+				b.State = StateEmailCodePage
+			}
 		}
 
 	case StateAFADAction:
