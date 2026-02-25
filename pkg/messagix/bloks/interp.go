@@ -14,20 +14,21 @@ import (
 )
 
 type InterpBridge struct {
-	DeviceID            string
-	FamilyDeviceID      string
-	MachineID           string
-	EncryptPassword     func(context.Context, string) (string, error)
-	SIMPhones           any
-	DeviceEmails        any
-	IsAppInstalled      func(url string, pkgnames ...string) bool
-	HasAppPermissions   func(permissions ...string) bool
-	GetSecureNonces     func() []string
-	DoRPC               func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error
-	DisplayNewScreen    func(context.Context, string, *BloksBundle) error
-	HandleLoginResponse func(ctx context.Context, data string) error
-	StartTimer          func(name string, interval time.Duration, callback func() error) error
-	OpenURL             func(url string) error
+	DeviceID             string
+	FamilyDeviceID       string
+	MachineID            string
+	EncryptPassword      func(context.Context, string) (string, error)
+	SIMPhones            any
+	DeviceEmails         any
+	IsAppInstalled       func(url string, pkgnames ...string) bool
+	HasAppPermissions    func(permissions ...string) bool
+	GetSecureNonces      func() []string
+	DoRPC                func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error
+	DisplayNewScreen     func(context.Context, string, *BloksBundle) error
+	HandleLoginResponse  func(ctx context.Context, data string) error
+	StartTimer           func(name string, interval time.Duration, callback func() error) error
+	OpenURL              func(url string) error
+	HandleVariableChange func(name string, value *BloksScriptLiteral) error
 }
 
 type Interpreter struct {
@@ -137,6 +138,11 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	if br.OpenURL == nil {
 		br.OpenURL = func(url string) error {
 			return fmt.Errorf("unhandled url %s", url)
+		}
+	}
+	if br.HandleVariableChange == nil {
+		br.HandleVariableChange = func(name string, value *BloksScriptLiteral) error {
+			return nil
 		}
 	}
 	for _, item := range p.Variables {
@@ -452,6 +458,10 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		i.GlobalVars[BloksVariableID(varname)] = value
+		err = i.Bridge.HandleVariableChange(varname, value)
+		if err != nil {
+			return nil, err
+		}
 		return BloksNothing, nil
 	case "bk.action.array.Make":
 		results := []*BloksScriptLiteral{}
@@ -975,7 +985,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.qpl.userflow.MarkPointV2",
 		"bk.action.qpl.userflow.EndFlowSuccessV2",
 		"bk.action.caa.reg.SaveCachedInfo",
-		"bk.action.textinput.SetTextV2":
+		"bk.action.textinput.SetTextV2",
+		"bk.action.caa.reg.SaveMachineID",
+		"bk.action.caa.ShowLoggedInResetPassword":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))

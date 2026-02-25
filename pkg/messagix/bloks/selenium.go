@@ -35,6 +35,9 @@ func (bb *BloksBundle) FindDescendants(pred func(*BloksTreeComponent) bool) []*B
 }
 
 func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	if btn == nil {
+		return nil
+	}
 	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
 		return comp.FindDescendant(pred)
 	}
@@ -49,6 +52,9 @@ func (btn *BloksTreeNode) FindDescendant(pred func(*BloksTreeComponent) bool) *B
 }
 
 func (btn *BloksTreeNode) FindDescendants(pred func(*BloksTreeComponent) bool) []*BloksTreeComponent {
+	if btn == nil {
+		return nil
+	}
 	if comp, ok := btn.BloksTreeNodeContent.(*BloksTreeComponent); ok {
 		return comp.FindDescendants(pred)
 	}
@@ -130,6 +136,9 @@ func FilterByAttribute(compid BloksComponentID, attr BloksAttributeID, value str
 }
 
 func (comp *BloksTreeComponent) GetAttribute(name BloksAttributeID) string {
+	if comp == nil {
+		return ""
+	}
 	attr := comp.Attributes[name]
 	if attr == nil {
 		return ""
@@ -259,6 +268,7 @@ const (
 	StateEmailPasswordPage          BrowserState = "enter-email-and-password-page"
 	StateEnteredEmailPasswordAction BrowserState = "entered-email-and-password-action"
 	StateEmailCodePage              BrowserState = "enter-code-from-email-page"
+	StateEnteredEmailCodeAction     BrowserState = "entered-code-from-email-action"
 	StateEnteredEmailCodeAPAction   BrowserState = "entered-code-from-email-ap-action"
 	StateRedirectToMFALandingAction BrowserState = "redirect-to-mfa-landing-action"
 	StateCaptchaPage                BrowserState = "captcha-page"
@@ -339,6 +349,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateEmailPasswordPage] = StateEnteredEmailPasswordAction
 			case "com.bloks.www.two_step_verification.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
+				transitions[StateEnteredEmailCodeAction] = StateMFALandingPage
 			case "com.bloks.www.two_step_verification.async.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateRedirectToMFALandingAction
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
@@ -364,6 +375,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateChooseMFAPage] = StateChosenMFAAction
 			case "com.bloks.www.ap.two_step_verification.code_entry":
 				transitions[StateChosenMFAAPAction] = StateEmailCodePage
+			case "com.bloks.www.caa.ar.submit_code.async":
+				transitions[StateEmailCodePage] = StateEnteredEmailCodeAction
 			case "com.bloks.www.ap.two_step_verification.code_entry_async":
 				transitions[StateEmailCodePage] = StateEnteredEmailCodeAPAction
 			case "com.bloks.www.two_factor_login.enter_totp_code":
@@ -463,7 +476,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			transitions[StateEnteredCaptchaAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
 			transitions[StateAFADCompleteAction] = StateSuccess
-			transitions[StateEmailCodePage] = StateSuccess
+			transitions[StateEnteredEmailCodeAction] = StateSuccess
 			transitions[StateEnteredEmailCodeAPAction] = StateSuccess
 			if transitions[b.State] == StateUnknown {
 				return fmt.Errorf("can't handle login response in state %s", b.State)
@@ -487,6 +500,20 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 		},
 		OpenURL: func(url string) error {
 			b.DisplayedURL = url
+			return nil
+		},
+		HandleVariableChange: func(name string, value *BloksScriptLiteral) error {
+			switch name {
+			case "BLOKS_TWO_STEP_VERIFICATION_ENTER_CODE:error_message":
+				if b.State != StateEnteredTOTPAction {
+					break
+				}
+				msg, ok := value.Value().(string)
+				if !ok {
+					return fmt.Errorf("non-string TOTP code error: %T", value.Value())
+				}
+				b.LastError = msg
+			}
 			return nil
 		},
 	}
@@ -662,7 +689,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			b.AFADDisplayed = true
 		}
 
-	case StateRedirectToLoginAction, StateEnteredEmailPasswordAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateEnteredTOTPAction, StateAFADCompleteAction:
+	case StateEnteredEmailPasswordAction:
 		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
 			if err.Error() == "Invalid username or password" {
@@ -673,6 +700,35 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			} else {
 				return nil, fmt.Errorf("execute %s: %w", b.State, err)
 			}
+		}
+
+	case StateEnteredEmailCodeAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "Please re-enter") {
+				delete(userInput, "email_code")
+				b.LastError = err.Error()
+				b.State = StateEmailCodePage
+			} else {
+				return nil, fmt.Errorf("execute %s: %w", b.State, err)
+			}
+		}
+
+	case StateEnteredTOTPAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+		// Check if a TOTP error was logged by the action. Sort of a hack.
+		if b.LastError != "" {
+			delete(userInput, "totp_code")
+			b.State = StateTOTPPage
+		}
+
+	case StateRedirectToLoginAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateAFADCompleteAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
 		}
 
 	case StateEmailPasswordPage:
@@ -729,9 +785,23 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					if comp.ComponentID != "bk.data.TextSpan" {
 						return false
 					}
-					return strings.HasPrefix(comp.GetAttribute("text"), "Enter the code")
+					for _, prefix := range []string{
+						"Enter the code",
+						"We sent a code",
+					} {
+						if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
+							return true
+						}
+					}
+					return false
 				}).
 				GetAttribute("text")
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
 
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -982,10 +1052,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateTOTPPage:
 		if userInput["totp_code"] == "" {
+			instructions := "Enter a six-digit code from your authenticator app"
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       "fi.mau.meta.messengerlite.totp",
-				Instructions: "Enter a six-digit code from your authenticator app",
+				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
