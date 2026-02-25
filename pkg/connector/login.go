@@ -17,6 +17,7 @@ import (
 	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
@@ -353,6 +354,9 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
 		log.Error().Err(err).Msg("Login steps returned error")
+		if errors.As(err, &bloks.CheckpointError{}) {
+			err = ErrLoginCheckpoint
+		}
 		return nil, err
 	}
 	if step != nil {

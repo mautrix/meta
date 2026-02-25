@@ -13,6 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
+type CheckpointError struct {
+	error
+}
+
 type InterpBridge struct {
 	DeviceID             string
 	FamilyDeviceID       string
@@ -959,7 +963,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("%s: %s", flow.Error.ErrorUserTitle, flow.Error.ErrorUserMessage)
+		return nil, CheckpointError{fmt.Errorf("%s: %s", flow.Error.ErrorUserTitle, flow.Error.ErrorUserMessage)}
 	case "bk.action.dialog.OpenDialog":
 		msg, err := evalTreeProp35(ctx, i, &call.Args[0], "opendialog")
 		if err != nil {

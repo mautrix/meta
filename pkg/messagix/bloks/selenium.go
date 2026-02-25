@@ -680,6 +680,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				delete(userInput, "password")
 				b.LastError = err.Error()
 				b.State = StateEmailPasswordPage
+			} else if strings.Contains(err.Error(), "isn't connected to an account") {
+				delete(userInput, "username")
+				delete(userInput, "password")
+				thing := "username"
+				if strings.Contains("@", userInput["username"]) {
+					thing = "email address"
+				}
+				b.LastError = fmt.Sprintf("That %s is not connected to a Messenger account", thing)
+				b.State = StateEmailPasswordPage
 			} else {
 				return nil, fmt.Errorf("execute %s: %w", b.State, err)
 			}
