@@ -365,16 +365,17 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		return step, nil
 	}
 
+	_ = newCookies
 	return nil, fmt.Errorf("if you see this then it works")
 
-	m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
+	// m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
 
-	step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
-	if err != nil {
-		return nil, err
-	}
+	// step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	return step, nil
+	// return step, nil
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
