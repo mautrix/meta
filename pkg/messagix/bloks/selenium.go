@@ -356,6 +356,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			case "com.bloks.www.two_step_verification.login.async.text_captcha":
 				transitions[StateCaptchaPage] = StateEnteredCaptchaAction
 			case "com.bloks.www.ap.two_step_verification.entrypoint_async":
+				transitions[StateEnteredEmailPasswordAction] = StateMFALandingAPAction
 				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device":
 				transitions[StateMFALandingAPAction] = StateMFALandingPage
