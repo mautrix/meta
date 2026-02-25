@@ -101,10 +101,15 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 		return nil, fmt.Errorf("unexpected thread key in response: %d != %d", repl.ThreadKey1, threadID)
 	}
 	realThreadID := repl.ThreadKey2
+	zerolog.Ctx(ctx).Debug().
+		Int64("thread_id", realThreadID).
+		Int64("req_thread_id", repl.ThreadKey1).
+		Msg("Created group")
 	portal, err := m.Main.Bridge.GetPortalByKey(ctx, m.makeFBPortalKey(realThreadID, table.GROUP_THREAD))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get portal: %w", err)
 	}
+	var portalInfo *bridgev2.ChatInfo
 	if params.RoomID != "" {
 		err = portal.UpdateMatrixRoomID(ctx, params.RoomID, bridgev2.UpdateMatrixRoomIDParams{
 			OverwriteOldPortal: true,
@@ -115,15 +120,28 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 			return nil, fmt.Errorf("failed to update room ID after creating group: %w", err)
 		}
 	} else {
-		err = portal.RoomCreated.WaitTimeoutCtx(ctx, 10*time.Second)
+		err = portal.RoomCreated.WaitTimeoutCtx(ctx, 5*time.Second)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("New group chat portal wasn't created automatically")
+			portalInfo = m.makeMinimalChatInfo(realThreadID, table.GROUP_THREAD)
+			portalInfo.Members = &bridgev2.ChatMemberList{
+				ExcludeChangesFromTimeline: true,
+				MemberMap:                  bridgev2.ChatMemberMap{},
+			}
+			for _, pcp := range participants {
+				portalInfo.Members.MemberMap.Set(bridgev2.ChatMember{
+					EventSender: m.makeEventSender(pcp),
+				})
+			}
+			portalInfo.Members.MemberMap.Set(bridgev2.ChatMember{
+				EventSender: m.selfEventSender(),
+			})
 		}
 	}
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
 		Portal:     portal,
-		PortalInfo: m.makeMinimalChatInfo(realThreadID, table.GROUP_THREAD),
+		PortalInfo: portalInfo,
 	}, nil
 }
 
