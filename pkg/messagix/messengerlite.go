@@ -20,6 +20,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/util/random"
 )
 
@@ -232,25 +233,25 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 }
 
 type apnsEncryptionParams struct {
-	Algorithm string `json:"algorithm"`
-	Key       []byte `json:"key"`
-	KeyID     string `json:"key_id"`
+	Algorithm string `json:"algorithm,omitempty"`
+	Key       []byte `json:"key,omitempty"`
+	KeyID     string `json:"key_id,omitempty"`
 }
 
 type apnsExtraData struct {
-	IPhoneSettingMask int `json:"iphone_setting_mask"`
+	IPhoneSettingMask int `json:"iphone_setting_mask,omitempty"`
 }
 
 type apnsProtocolParams struct {
-	DeviceID               string               `json:"device_id"`
-	Encryption             apnsEncryptionParams `json:"encryption"`
-	ExtraData              apnsExtraData        `json:"extra_data"`
-	FamilyDeviceID         string               `json:"family_device_id"`
-	IOSIdentifierForVendor string               `json:"ios_identifier_for_vendor"`
-	IsNonPhone             bool                 `json:"is_non_phone"`
-	RequestID              string               `json:"request_id"`
-	Token                  string               `json:"token"`
-	URL                    string               `json:"url"`
+	DeviceID               string               `json:"device_id,omitempty"`
+	Encryption             apnsEncryptionParams `json:"encryption,omitempty"`
+	ExtraData              apnsExtraData        `json:"extra_data,omitempty"`
+	FamilyDeviceID         string               `json:"family_device_id,omitempty"`
+	IOSIdentifierForVendor string               `json:"ios_identifier_for_vendor,omitempty"`
+	IsNonPhone             *bool                `json:"is_non_phone,omitempty"`
+	RequestID              string               `json:"request_id,omitempty"`
+	Token                  string               `json:"token,omitempty"`
+	URL                    string               `json:"url,omitempty"`
 }
 
 func (m *MessengerLiteMethods) RegisterPushNotifications(ctx context.Context, endpoint string, loginMeta metaid.MessengerLiteLoginMetadata) error {
@@ -267,13 +268,14 @@ func (m *MessengerLiteMethods) RegisterPushNotifications(ctx context.Context, en
 		},
 		FamilyDeviceID:         loginMeta.FamilyDeviceID,
 		IOSIdentifierForVendor: strings.ToUpper(uuid.New().String()),
-		IsNonPhone:             false,
 		Token:                  fakeEndpoint,
+		IsNonPhone:             ptr.Ptr(false),
 		URL:                    "http://push.apple.com/pushkit/voip",
 	}
 	protocol2 := protocol1
 	protocol2.Token = endpoint
 	protocol2.RequestID = strings.ToUpper(uuid.New().String())
+	protocol2.Encryption.Key = random.Bytes(32)
 	protocol2.URL = ""
 
 	for _, protocol := range []apnsProtocolParams{protocol1, protocol2} {
