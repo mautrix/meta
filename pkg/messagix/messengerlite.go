@@ -3,6 +3,7 @@ package messagix
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -247,17 +248,18 @@ type apnsProtocolParams struct {
 	FamilyDeviceID         string               `json:"family_device_id"`
 	IOSIdentifierForVendor string               `json:"ios_identifier_for_vendor"`
 	IsNonPhone             bool                 `json:"is_non_phone"`
+	RequestID              string               `json:"request_id"`
 	Token                  string               `json:"token"`
 	URL                    string               `json:"url"`
 }
 
 func (m *MessengerLiteMethods) RegisterPushNotifications(ctx context.Context, endpoint string, loginMeta metaid.MessengerLiteLoginMetadata) error {
-	fakeKey := random.Bytes(32)
-	protocol := apnsProtocolParams{
+	fakeEndpoint := hex.EncodeToString(random.Bytes(32))
+	protocol1 := apnsProtocolParams{
 		DeviceID: loginMeta.DeviceID,
 		Encryption: apnsEncryptionParams{
 			Algorithm: "AES_GCM",
-			Key:       fakeKey,
+			Key:       random.Bytes(32),
 			KeyID:     fmt.Sprintf("%d", time.Now().Unix()),
 		},
 		ExtraData: apnsExtraData{
@@ -266,42 +268,48 @@ func (m *MessengerLiteMethods) RegisterPushNotifications(ctx context.Context, en
 		FamilyDeviceID:         loginMeta.FamilyDeviceID,
 		IOSIdentifierForVendor: strings.ToUpper(uuid.New().String()),
 		IsNonPhone:             false,
-		Token:                  endpoint,
+		Token:                  fakeEndpoint,
 		URL:                    "http://push.apple.com/pushkit/voip",
 	}
+	protocol2 := protocol1
+	protocol2.Token = endpoint
+	protocol2.RequestID = strings.ToUpper(uuid.New().String())
+	protocol2.URL = ""
 
-	protocolB, err := json.Marshal(protocol)
-	if err != nil {
-		return fmt.Errorf("marshal apns protocol params: %w", err)
-	}
-	protocolB = bytes.ReplaceAll(protocolB, []byte{'/'}, []byte{'\\', '/'})
+	for _, protocol := range []apnsProtocolParams{protocol1, protocol2} {
+		protocolB, err := json.Marshal(protocol)
+		if err != nil {
+			return fmt.Errorf("marshal apns protocol params: %w", err)
+		}
+		protocolB = bytes.ReplaceAll(protocolB, []byte{'/'}, []byte{'\\', '/'})
 
-	form := url.Values{}
-	form.Add("access_token", loginMeta.AccessToken)
-	form.Add("protocol_params", string(protocolB))
+		form := url.Values{}
+		form.Add("access_token", loginMeta.AccessToken)
+		form.Add("protocol_params", string(protocolB))
 
-	analHdr, err := makeRequestAnalyticsHeader(false)
-	if err != nil {
-		return err
-	}
-	headers := map[string]string{
-		"accept":                      "*/*",
-		"x-fb-http-engine":            "NSURL",
-		"x-fb-request-analytics-tags": analHdr,
-		"request_token":               strings.ToUpper(uuid.New().String()),
-		"accept-language":             "en-US,en;q=0.9",
-		"user-agent":                  useragent.MessengerLiteUserAgent,
-		"x-fb-appid":                  useragent.MessengerLiteAppId,
-	}
+		analHdr, err := makeRequestAnalyticsHeader(false)
+		if err != nil {
+			return err
+		}
+		headers := map[string]string{
+			"accept":                      "*/*",
+			"x-fb-http-engine":            "NSURL",
+			"x-fb-request-analytics-tags": analHdr,
+			"request_token":               strings.ToUpper(uuid.New().String()),
+			"accept-language":             "en-US,en;q=0.9",
+			"user-agent":                  useragent.MessengerLiteUserAgent,
+			"x-fb-appid":                  useragent.MessengerLiteAppId,
+		}
 
-	httpHeaders := http.Header{}
-	for k, v := range headers {
-		httpHeaders.Set(k, v)
-	}
+		httpHeaders := http.Header{}
+		for k, v := range headers {
+			httpHeaders.Set(k, v)
+		}
 
-	resp, _, err := m.client.MakeRequest(ctx, "https://graph.facebook.com/v2.10/me/register_push_tokens", "POST", httpHeaders, []byte(form.Encode()), types.FORM)
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad http status on push registration: %d", resp.StatusCode)
+		resp, _, err := m.client.MakeRequest(ctx, "https://graph.facebook.com/v2.10/me/register_push_tokens", "POST", httpHeaders, []byte(form.Encode()), types.FORM)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("bad http status on push registration: %d", resp.StatusCode)
+		}
 	}
 
 	return nil
