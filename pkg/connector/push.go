@@ -65,19 +65,19 @@ type DoubleToken struct {
 
 func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
 	meta := m.UserLogin.Metadata.(*metaid.UserLoginMetadata)
-	if meta.PushKeys == nil {
-		meta.GeneratePushKeys()
-		err := m.UserLogin.Save(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to save push key: %w", err)
-		}
-	}
-	keys := messagix.PushKeys{
-		P256DH: meta.PushKeys.P256DH,
-		Auth:   meta.PushKeys.Auth,
-	}
 	switch pushType {
 	case bridgev2.PushTypeWeb:
+		if meta.PushKeys == nil {
+			meta.GeneratePushKeys()
+			err := m.UserLogin.Save(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to save push key: %w", err)
+			}
+		}
+		keys := messagix.PushKeys{
+			P256DH: meta.PushKeys.P256DH,
+			Auth:   meta.PushKeys.Auth,
+		}
 		var encToken string
 		if token[0] == '{' && token[len(token)-1] == '}' {
 			var dt DoubleToken
@@ -106,7 +106,7 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 			return cli.Instagram.RegisterPushNotifications(ctx, token, keys)
 		}
 	case bridgev2.PushTypeAPNs:
-		return m.Client.MessengerLite.RegisterPushNotifications(ctx, token, keys, meta.MessengerLite)
+		return m.Client.MessengerLite.RegisterPushNotifications(ctx, token, meta.MessengerLite)
 	default:
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}

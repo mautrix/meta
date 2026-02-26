@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/util/random"
 )
 
 type MessengerLiteLoginState struct {
@@ -249,13 +251,14 @@ type apnsProtocolParams struct {
 	URL                    string               `json:"url"`
 }
 
-func (m *MessengerLiteMethods) RegisterPushNotifications(ctx context.Context, endpoint string, keys PushKeys, loginMeta metaid.MessengerLiteLoginMetadata) error {
+func (m *MessengerLiteMethods) RegisterPushNotifications(ctx context.Context, endpoint string, loginMeta metaid.MessengerLiteLoginMetadata) error {
+	fakeKey := random.Bytes(32)
 	protocol := apnsProtocolParams{
 		DeviceID: loginMeta.DeviceID,
 		Encryption: apnsEncryptionParams{
 			Algorithm: "AES_GCM",
-			Key:       []byte(keys.P256DH),
-			KeyID:     fmt.Sprintf("%s", time.Now().Unix()),
+			Key:       fakeKey,
+			KeyID:     fmt.Sprintf("%d", time.Now().Unix()),
 		},
 		ExtraData: apnsExtraData{
 			IPhoneSettingMask: 640,
@@ -269,8 +272,9 @@ func (m *MessengerLiteMethods) RegisterPushNotifications(ctx context.Context, en
 
 	protocolB, err := json.Marshal(protocol)
 	if err != nil {
-		return fmt.Errorf("marshal apns protocl params: %w", err)
+		return fmt.Errorf("marshal apns protocol params: %w", err)
 	}
+	protocolB = bytes.ReplaceAll(protocolB, []byte{'/'}, []byte{'\\', '/'})
 
 	form := url.Values{}
 	form.Add("access_token", loginMeta.AccessToken)
