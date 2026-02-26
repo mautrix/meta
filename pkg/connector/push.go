@@ -32,6 +32,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -40,12 +41,21 @@ var (
 	_ bridgev2.BackgroundSyncingNetworkAPI = (*MetaClient)(nil)
 )
 
-var pushCfg = &bridgev2.PushConfig{
+var webPushCfg = &bridgev2.PushConfig{
 	Web: &bridgev2.WebPushConfig{VapidKey: "BIBn3E_rWTci8Xn6P9Xj3btShT85Wdtne0LtwNUyRQ5XjFNkuTq9j4MPAVLvAFhXrUU1A9UxyxBA7YIOjqDIDHI"},
 }
 
+var apnsPushCfg = &bridgev2.PushConfig{
+	APNs: &bridgev2.APNsPushConfig{
+		BundleID: "com.facebook.Messenger",
+	},
+}
+
 func (m *MetaClient) GetPushConfigs() *bridgev2.PushConfig {
-	return pushCfg
+	if m.Client.Platform == types.MessengerLite {
+		return apnsPushCfg
+	}
+	return webPushCfg
 }
 
 type DoubleToken struct {
@@ -54,9 +64,6 @@ type DoubleToken struct {
 }
 
 func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
-	if pushType != bridgev2.PushTypeWeb {
-		return fmt.Errorf("unsupported push type %s", pushType)
-	}
 	meta := m.UserLogin.Metadata.(*metaid.UserLoginMetadata)
 	if meta.PushKeys == nil {
 		meta.GeneratePushKeys()
@@ -69,32 +76,39 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 		P256DH: meta.PushKeys.P256DH,
 		Auth:   meta.PushKeys.Auth,
 	}
-	var encToken string
-	if token[0] == '{' && token[len(token)-1] == '}' {
-		var dt DoubleToken
-		err := json.Unmarshal([]byte(token), &dt)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal double token: %w", err)
+	switch pushType {
+	case bridgev2.PushTypeWeb:
+		var encToken string
+		if token[0] == '{' && token[len(token)-1] == '}' {
+			var dt DoubleToken
+			err := json.Unmarshal([]byte(token), &dt)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal double token: %w", err)
+			}
+			token = dt.Unencrypted
+			encToken = dt.Encrypted
 		}
-		token = dt.Unencrypted
-		encToken = dt.Encrypted
-	}
-	if encToken != "" {
-		err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
-			Endpoint: encToken,
-			Auth:     meta.PushKeys.Auth,
-			P256DH:   meta.PushKeys.P256DH,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to register e2ee notifications: %w", err)
+		if encToken != "" {
+			err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
+				Endpoint: encToken,
+				Auth:     meta.PushKeys.Auth,
+				P256DH:   meta.PushKeys.P256DH,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to register e2ee notifications: %w", err)
+			}
 		}
-	}
-	if cli := m.Client; cli == nil {
-		return messagix.ErrClientIsNil
-	} else if cli.Platform.IsMessenger() {
-		return cli.Facebook.RegisterPushNotifications(ctx, token, keys)
-	} else {
-		return cli.Instagram.RegisterPushNotifications(ctx, token, keys)
+		if cli := m.Client; cli == nil {
+			return messagix.ErrClientIsNil
+		} else if cli.Platform.IsMessenger() {
+			return cli.Facebook.RegisterPushNotifications(ctx, token, keys)
+		} else {
+			return cli.Instagram.RegisterPushNotifications(ctx, token, keys)
+		}
+	case bridgev2.PushTypeAPNs:
+		return m.Client.MessengerLite.RegisterPushNotifications(ctx, token, keys, meta.MessengerLite)
+	default:
+		return fmt.Errorf("unsupported push type %s", pushType)
 	}
 }
 

@@ -221,6 +221,7 @@ func loginWithCookies(
 	bridgeUser *bridgev2.User,
 	conn *MetaConnector,
 	c *cookies.Cookies,
+	mlm metaid.MessengerLiteLoginMetadata,
 ) (*bridgev2.LoginStep, error) {
 
 	log.Debug().
@@ -263,9 +264,10 @@ func loginWithCookies(
 			Name: user.GetName(),
 		},
 		Metadata: &metaid.UserLoginMetadata{
-			Platform: c.Platform,
-			Cookies:  c,
-			LoginUA:  loginUA,
+			Platform:      c.Platform,
+			Cookies:       c,
+			LoginUA:       loginUA,
+			MessengerLite: mlm,
 		},
 	}, nil)
 	if err != nil {
@@ -311,7 +313,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, c)
+	return loginWithCookies(ctx, log, client, m.User, m.Main, c, metaid.MessengerLiteLoginMetadata{})
 }
 
 type MetaNativeLogin struct {
@@ -351,7 +353,7 @@ func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error)
 func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
 	log := m.User.Log.With().Str("component", "messagix").Logger()
 
-	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
+	step, loginResp, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
@@ -363,11 +365,20 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		return step, nil
 	}
 
-	_ = newCookies
+	newCookies := loginResp.GetCookies()
 
 	m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
 
-	step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
+	loginMeta := m.SavedClient.MessengerLite.GetLoginMetadata()
+	step, err = loginWithCookies(
+		ctx, log, m.SavedClient, m.User, m.Main, newCookies,
+		metaid.MessengerLiteLoginMetadata{
+			DeviceID:       loginMeta.DeviceID,
+			FamilyDeviceID: loginMeta.FamilyDeviceID,
+			MachineID:      loginMeta.MachineID,
+			AccessToken:    loginResp.AccessToken,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
