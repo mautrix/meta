@@ -343,6 +343,10 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 	m.UserLogin.RemoteProfile.Name = currentUser.GetName()
 	if !m.LoginMeta.Platform.IsMessenger() {
 		m.UserLogin.RemoteProfile.Username = currentUser.GetUsername()
+		// Instagram users may not have a displayname
+		if m.UserLogin.RemoteName == "" {
+			m.UserLogin.RemoteName = currentUser.GetUsername()
+		}
 	}
 	m.UserLogin.RemoteProfile.Avatar = m.Ghost.AvatarMXC
 
