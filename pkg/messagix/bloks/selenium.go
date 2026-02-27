@@ -741,7 +741,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateEmailPasswordPage:
 		if userInput["username"] == "" || userInput["password"] == "" {
-			instructions := "Enter your Messenger credentials"
+			instructions := "Enter your Facebook credentials. The Messenger network will only work with Facebook accounts."
 			if b.LastError != "" {
 				instructions = fmt.Sprintf("%s. %s", b.LastError, instructions)
 				b.LastError = ""
