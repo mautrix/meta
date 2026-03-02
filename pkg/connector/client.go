@@ -454,7 +454,11 @@ func (m *MetaClient) connectE2EE() error {
 	if isNew {
 		fbid := metaid.ParseUserLoginID(m.UserLogin.ID)
 		log.Info().Msg("Registering new e2ee device")
-		err = m.Client.RegisterE2EE(ctx, fbid)
+		var ml *metaid.MessengerLiteLoginMetadata
+		if meta, ok := m.UserLogin.Metadata.(*metaid.UserLoginMetadata); ok && meta != nil {
+			ml = &meta.MessengerLite
+		}
+		err = m.Client.RegisterE2EE(ctx, fbid, ml)
 		if err != nil {
 			return fmt.Errorf("failed to register e2ee device: %w", err)
 		}
