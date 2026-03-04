@@ -992,6 +992,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		foundMethods := map[string]*BloksTreeComponent{}
 		methodNames := []string{}
 
+		knownMethods := map[string]bool{
+			"Notification on another device": true,
+			"Authentication app":             true,
+			"Email":                          true,
+			"Text message":                   false,
+			"Backup code":                    false,
+			"Verify with Google":             false,
+		}
+
 		listItems := b.CurrentPage.FindDescendant(FilterByAttribute(
 			"bk.data.TextSpan", "text", "Choose a way to confirm it’s you",
 		)).
@@ -1006,8 +1015,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				GetChildren("spans")[0].
 				FindDescendant(FilterByComponent("bk.data.TextSpan"))
 			method := span.GetAttribute("text")
-			if method == "Verify with Google" {
-				// Can't handle this yet, don't present it
+			if !knownMethods[method] {
+				log.Warn().Str("mfa_method", method).Msg("Ignoring unsupported MFA method")
 				continue
 			}
 			foundMethods[method] = span
