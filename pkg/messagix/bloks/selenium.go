@@ -289,6 +289,8 @@ const (
 	StateSMSPageAfterSend           BrowserState = "sms-page-after-send"
 	StateSendSMSAction              BrowserState = "send-sms-action"
 	StateEnteredSMSAction           BrowserState = "entered-sms-action"
+	StateBackupCodePage             BrowserState = "backup-code-page"
+	StateEnteredBackupCodeAction    BrowserState = "entered-backup-code-action"
 	StateSuccess                    BrowserState = "success"
 )
 
@@ -374,6 +376,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 				transitions[StateSMSPageAfterSend] = StateEnteredSMSAction
+				transitions[StateBackupCodePage] = StateEnteredBackupCodeAction
 			case "com.bloks.www.two_step_verification.method_picker":
 				transitions[StateMFALandingPage] = StateChooseMFAPage
 			case "com.bloks.www.two_step_verification.method_picker.navigation.async":
@@ -398,6 +401,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateChosenMFAAction] = StateSMSPage
 			case "com.bloks.www.two_step_verification.send_code.async":
 				transitions[StateSMSPage] = StateSendSMSAction
+			case "com.bloks.www.two_factor_login.enter_backup_code":
+				transitions[StateChosenMFAAction] = StateBackupCodePage
 			case "com.bloks.www.bloks.caa.reg.youthregulation.deletepregent.async":
 				// Ignore this for now as it doesn't seem required.
 				//
@@ -406,7 +411,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				// current page state.
 				return nil
 			default:
-				return fmt.Errorf("unexpected rpc %s", name)
+				return fmt.Errorf("unexpected rpc %s isPage=%v", name, isPage)
 			}
 			if transitions[b.State] == StateUnknown {
 				return fmt.Errorf("can't handle rpc %s in state %s", name, b.State)
@@ -490,6 +495,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			transitions[StateEnteredCaptchaAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
 			transitions[StateEnteredSMSAction] = StateSuccess
+			transitions[StateEnteredBackupCodeAction] = StateSuccess
 			transitions[StateAFADCompleteAction] = StateSuccess
 			transitions[StateEnteredEmailCodeAction] = StateSuccess
 			transitions[StateEnteredEmailCodeAPAction] = StateSuccess
@@ -520,12 +526,14 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 		HandleVariableChange: func(name string, value *BloksScriptLiteral) error {
 			switch name {
 			case "BLOKS_TWO_STEP_VERIFICATION_ENTER_CODE:error_message":
-				if b.State != StateEnteredTOTPAction && b.State != StateEnteredSMSAction {
-					break
+				switch b.State {
+				case StateEnteredTOTPAction, StateEnteredSMSAction, StateEnteredBackupCodeAction:
+				default:
+					return nil
 				}
 				msg, ok := value.Value().(string)
 				if !ok {
-					return fmt.Errorf("non-string TOTP or SMS code error: %T", value.Value())
+					return fmt.Errorf("non-string code error: %T", value.Value())
 				}
 				b.LastError = msg
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
@@ -778,6 +786,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			b.State = StateSMSPageAfterSend
 		}
 
+	case StateEnteredBackupCodeAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+		// This is again similar to TOTP handling. We could maybe combine these cases.
+		if b.LastError != "" {
+			delete(userInput, "backup_code")
+			b.State = StateBackupCodePage
+		}
+
 	case StateRedirectToLoginAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateAFADCompleteAction:
 		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
@@ -866,6 +885,51 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FillInput(ctx, b.CurrentPage.Interpreter, userInput["email_code"])
 		if err != nil {
 			return nil, fmt.Errorf("filling email code input: %w", err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
+
+	case StateBackupCodePage:
+		if userInput["backup_code"] == "" {
+			instructions := "Enter one of your two-factor backup codes."
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
+
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.backup_code",
+				Instructions: instructions,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "backup_code", Name: "Backup code", Type: bridgev2.LoginInputFieldType2FACode},
+					},
+				},
+			}
+			break
+		}
+
+		err := b.CurrentPage.
+			FindDescendant(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Code",
+				)) != nil
+			}).
+			FillInput(ctx, b.CurrentPage.Interpreter, userInput["backup_code"])
+		if err != nil {
+			return nil, fmt.Errorf("filling backup code input: %w", err)
 		}
 
 		err = b.CurrentPage.
@@ -1026,8 +1090,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			"Notification on another device": true,
 			"Authentication app":             true,
 			"Email":                          true,
-			"Backup code":                    false,
 			"Text message":                   true,
+			"Backup code":                    true,
 			"Verify with Google":             false,
 		}
 

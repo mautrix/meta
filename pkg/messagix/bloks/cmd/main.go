@@ -34,6 +34,7 @@ var doWeirdAction = flag.Bool("weird-action", false, "Do the weird page-embedded
 var anotherWay = flag.Bool("another-way", false, "Click the alternate MFA method button")
 var doSMS = flag.Bool("sms", false, "Trigger sending SMS code")
 var doSMSCode = flag.String("sms-code", "", "Submit SMS code")
+var doBackupCode = flag.String("backup-code", "", "Submit backup code")
 
 func main() {
 	err := mainE()
@@ -436,6 +437,28 @@ func mainE() error {
 			FillInput(ctx, interp, *doSMSCode)
 		if err != nil {
 			return fmt.Errorf("filling sms code input: %w", err)
+		}
+
+		err = bundle.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tapping continue: %w", err)
+		}
+	} else if *doBackupCode != "" {
+		err := bundle.
+			FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(bloks.FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Code",
+				)) != nil
+			}).
+			FillInput(ctx, interp, *doBackupCode)
+		if err != nil {
+			return fmt.Errorf("filling backup code input: %w", err)
 		}
 
 		err = bundle.
