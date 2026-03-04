@@ -441,6 +441,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(first < second), nil
+	case "bk.action.f32.Const":
+		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.bloks.GetScript":
 		name, err := evalAs[string](ctx, i, &call.Args[0], "getscript")
 		if err != nil {
@@ -998,6 +1000,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.bloks.DismissKeyboard",
 		"bk.action.qpl.userflow.MarkPointV2",
 		"bk.action.qpl.userflow.EndFlowSuccessV2",
+		"bk.action.qpl.userflow.AnnotateV2",
 		"bk.action.caa.reg.SaveCachedInfo",
 		"bk.action.textinput.SetTextV2",
 		"bk.action.caa.reg.SaveMachineID",

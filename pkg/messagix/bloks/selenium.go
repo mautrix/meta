@@ -285,6 +285,10 @@ const (
 	StateTOTPPage                   BrowserState = "totp-page"
 	StateEnteredTOTPAction          BrowserState = "entered-totp-action"
 	StateOAuthPage                  BrowserState = "oauth-page"
+	StateSMSPage                    BrowserState = "sms-page"
+	StateSMSPageAfterSend           BrowserState = "sms-page-after-send"
+	StateSendSMSAction              BrowserState = "send-sms-action"
+	StateEnteredSMSAction           BrowserState = "entered-sms-action"
 	StateSuccess                    BrowserState = "success"
 )
 
@@ -369,6 +373,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateChooseMFAPage] = StateChosenMFAAPAction
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
+				transitions[StateSMSPageAfterSend] = StateEnteredSMSAction
 			case "com.bloks.www.two_step_verification.method_picker":
 				transitions[StateMFALandingPage] = StateChooseMFAPage
 			case "com.bloks.www.two_step_verification.method_picker.navigation.async":
@@ -389,6 +394,10 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateAFADAction] = StateAFADCompleteAction
 			case "com.bloks.www.ap.two_step_verification.login_with_third_party":
 				transitions[StateChosenMFAAPAction] = StateOAuthPage
+			case "com.bloks.www.two_step_verification.enter_sms_code":
+				transitions[StateChosenMFAAction] = StateSMSPage
+			case "com.bloks.www.two_step_verification.send_code.async":
+				transitions[StateSMSPage] = StateSendSMSAction
 			case "com.bloks.www.bloks.caa.reg.youthregulation.deletepregent.async":
 				// Ignore this for now as it doesn't seem required.
 				//
@@ -439,6 +448,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				b.AFADCallback = callback
 			case StateEnteredCaptchaAction:
 				b.CaptchaCallback = callback
+			case StateSendSMSAction:
+				// For now we won't actually evaluate the action because it is a
+				// little awkward to do so, and it does not seem required. This
+				// should be fixed at some point.
+				b.State = StateSMSPageAfterSend
 			}
 
 			return nil
@@ -475,6 +489,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			transitions[StateEnteredEmailPasswordAction] = StateSuccess
 			transitions[StateEnteredCaptchaAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
+			transitions[StateEnteredSMSAction] = StateSuccess
 			transitions[StateAFADCompleteAction] = StateSuccess
 			transitions[StateEnteredEmailCodeAction] = StateSuccess
 			transitions[StateEnteredEmailCodeAPAction] = StateSuccess
@@ -505,12 +520,12 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 		HandleVariableChange: func(name string, value *BloksScriptLiteral) error {
 			switch name {
 			case "BLOKS_TWO_STEP_VERIFICATION_ENTER_CODE:error_message":
-				if b.State != StateEnteredTOTPAction {
+				if b.State != StateEnteredTOTPAction && b.State != StateEnteredSMSAction {
 					break
 				}
 				msg, ok := value.Value().(string)
 				if !ok {
-					return fmt.Errorf("non-string TOTP code error: %T", value.Value())
+					return fmt.Errorf("non-string TOTP or SMS code error: %T", value.Value())
 				}
 				b.LastError = msg
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
@@ -530,6 +545,25 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 }
 
 var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
+
+func (b *Browser) getCodeInstructions() string {
+	return b.CurrentPage.
+		FindDescendant(func(comp *BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.data.TextSpan" {
+				return false
+			}
+			for _, prefix := range []string{
+				"Enter the code",
+				"We sent a code",
+			} {
+				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
+					return true
+				}
+			}
+			return false
+		}).
+		GetAttribute("text")
+}
 
 func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) (step *bridgev2.LoginStep, err error) {
 	log := zerolog.Ctx(ctx)
@@ -733,6 +767,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			b.State = StateTOTPPage
 		}
 
+	case StateEnteredSMSAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+		// This uses the same logic as TOTP code submission. Sort of.
+		if b.LastError != "" {
+			delete(userInput, "sms_code")
+			b.State = StateSMSPageAfterSend
+		}
+
 	case StateRedirectToLoginAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateAFADCompleteAction:
 		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
 		if err != nil {
@@ -788,22 +833,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateEmailCodePage:
 		if userInput["email_code"] == "" {
-			instructions := b.CurrentPage.
-				FindDescendant(func(comp *BloksTreeComponent) bool {
-					if comp.ComponentID != "bk.data.TextSpan" {
-						return false
-					}
-					for _, prefix := range []string{
-						"Enter the code",
-						"We sent a code",
-					} {
-						if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
-							return true
-						}
-					}
-					return false
-				}).
-				GetAttribute("text")
+			instructions := b.getCodeInstructions()
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
 					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
@@ -996,8 +1026,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			"Notification on another device": true,
 			"Authentication app":             true,
 			"Email":                          true,
-			"Text message":                   false,
 			"Backup code":                    false,
+			"Text message":                   true,
 			"Verify with Google":             false,
 		}
 
@@ -1142,6 +1172,62 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateOAuthPage:
 		return nil, fmt.Errorf("can't handle Google OAuth yet")
+
+	case StateSMSPage:
+		for _, mount := range b.CurrentPage.FindDescendants(FilterByComponent("bk.components.OnMount")) {
+			script := mount.GetScript("on_first_mount")
+			if script == nil {
+				continue
+			}
+			_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &script.AST)
+			if err != nil {
+				return nil, fmt.Errorf("sms on_mount script: %w", err)
+			}
+		}
+
+	case StateSMSPageAfterSend:
+		if userInput["sms_code"] == "" {
+			instructions := b.getCodeInstructions()
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.sms",
+				Instructions: instructions,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "sms_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
+					},
+				},
+			}
+			break
+		}
+
+		err := b.CurrentPage.
+			FindDescendant(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Code",
+				)) != nil
+			}).
+			FillInput(ctx, b.CurrentPage.Interpreter, userInput["sms_code"])
+		if err != nil {
+			return nil, fmt.Errorf("filling sms code input: %w", err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
 
 	default:
 		return nil, fmt.Errorf("unexpected state %s", b.State)

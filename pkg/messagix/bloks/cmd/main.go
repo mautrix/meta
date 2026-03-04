@@ -32,6 +32,8 @@ var rpcParams = flag.String("rpc-params", "", "JSON body for Bloks RPC")
 var captcha = flag.Bool("captcha", false, "Extract information from the captcha page")
 var doWeirdAction = flag.Bool("weird-action", false, "Do the weird page-embedded action")
 var anotherWay = flag.Bool("another-way", false, "Click the alternate MFA method button")
+var doSMS = flag.Bool("sms", false, "Trigger sending SMS code")
+var doSMSCode = flag.String("sms-code", "", "Submit SMS code")
 
 func main() {
 	err := mainE()
@@ -166,6 +168,18 @@ func mainE() error {
 			return fmt.Errorf("tapping method selection button: %w", err)
 		}
 		return nil
+	}
+	if *doSMS {
+		for _, mount := range bundle.FindDescendants(bloks.FilterByComponent("bk.components.OnMount")) {
+			script := mount.GetScript("on_first_mount")
+			if script == nil {
+				continue
+			}
+			_, err := interp.Evaluate(ctx, &script.AST)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	if *doAction {
 		gotNewScreen := false
@@ -409,6 +423,28 @@ func mainE() error {
 		}
 		audioURL := strings.Replace(lastURL, "/player/", "/", 1)
 		fmt.Println("Audio:", audioURL)
+	} else if *doSMSCode != "" {
+		err := bundle.
+			FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(bloks.FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Code",
+				)) != nil
+			}).
+			FillInput(ctx, interp, *doSMSCode)
+		if err != nil {
+			return fmt.Errorf("filling sms code input: %w", err)
+		}
+
+		err = bundle.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tapping continue: %w", err)
+		}
 	}
 	return nil
 }
