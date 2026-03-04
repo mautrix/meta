@@ -291,6 +291,7 @@ const (
 	StateEnteredSMSAction           BrowserState = "entered-sms-action"
 	StateBackupCodePage             BrowserState = "backup-code-page"
 	StateEnteredBackupCodeAction    BrowserState = "entered-backup-code-action"
+	StateWhatsAppPage               BrowserState = "whatsapp-page"
 	StateSuccess                    BrowserState = "success"
 )
 
@@ -403,6 +404,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateSMSPage] = StateSendSMSAction
 			case "com.bloks.www.two_factor_login.enter_backup_code":
 				transitions[StateChosenMFAAction] = StateBackupCodePage
+			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
+				transitions[StateChosenMFAAction] = StateWhatsAppPage
 			case "com.bloks.www.bloks.caa.reg.youthregulation.deletepregent.async":
 				// Ignore this for now as it doesn't seem required.
 				//
@@ -1092,6 +1095,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			"Email":                          true,
 			"Text message":                   true,
 			"Backup code":                    true,
+			"WhatsApp":                       true,
 			"Verify with Google":             false,
 		}
 
