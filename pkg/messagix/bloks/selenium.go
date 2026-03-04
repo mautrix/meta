@@ -1017,6 +1017,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			method := span.GetAttribute("text")
 			if !knownMethods[method] {
 				log.Warn().Str("mfa_method", method).Msg("Ignoring unsupported MFA method")
+				continue
 			}
 			foundMethods[method] = span
 			methodNames = append(methodNames, method)
