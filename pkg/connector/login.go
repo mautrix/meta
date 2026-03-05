@@ -132,6 +132,9 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	case types.Instagram:
 		return []bridgev2.LoginFlow{loginFlowInstagram}
 	case types.MessengerLite:
+		if m.Config.AllowCookieLoginOnMessengerLite {
+			return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowMessengerLite}
+		}
 		return []bridgev2.LoginFlow{loginFlowMessengerLite}
 	default:
 		panic("unknown mode in config")
