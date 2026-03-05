@@ -143,7 +143,7 @@ type BloksComponent struct {
 }
 
 type BloksAppBundle struct {
-	Tree string `json:"bloks_bundle_tree"` // BloksLayout
+	Tree string `json:"bloks_bundle_tree"` // BloksBundle struct
 }
 
 type BloksActionData struct {
@@ -155,5 +155,5 @@ type BloksAction struct {
 }
 
 type BloksActionBundle struct {
-	BundleAction string `json:"bloks_bundle_action"` // BloksLayout
+	BundleAction string `json:"bloks_bundle_action"` // BloksBundle struct
 }
