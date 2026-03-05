@@ -710,11 +710,25 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 	if msg.Portal.RoomType == database.RoomTypeDM {
 		return false, fmt.Errorf("changing avatar not supported in DMs")
 	}
-	if m.LoginMeta.Platform == types.Instagram {
-		// TODO: implement Instagram avatar changing. IG Web doesn't support this.
-		return false, fmt.Errorf("changing avatar not supported on Instagram")
-	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+	if m.LoginMeta.Platform == types.Instagram {
+		if msg.Content.URL == "" {
+			err := m.Client.Instagram.RemoveGroupAvatar(ctx, strconv.FormatInt(threadID, 10))
+			if err != nil {
+				return false, fmt.Errorf("failed to remove Instagram avatar: %w", err)
+			}
+			return true, nil
+		}
+		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
+		if err != nil {
+			return false, fmt.Errorf("failed to download avatar: %w", err)
+		}
+		err = m.Client.Instagram.EditGroupAvatar(ctx, strconv.FormatInt(threadID, 10), data)
+		if err != nil {
+			return false, fmt.Errorf("failed to set Instagram avatar: %w", err)
+		}
+		return true, nil
+	}
 	var imageID int64
 	if msg.Content.URL == "" {
 		// TODO: handle removing avatar. Messenger web doesn't have a remove option?
