@@ -291,6 +291,10 @@ const (
 	StateEnteredSMSAction           BrowserState = "entered-sms-action"
 	StateBackupCodePage             BrowserState = "backup-code-page"
 	StateEnteredBackupCodeAction    BrowserState = "entered-backup-code-action"
+	StateWhatsAppPage               BrowserState = "whatsapp-page"
+	StateWhatsAppPageAfterSend      BrowserState = "whatsapp-page-after-send"
+	StateSendWhatsAppAction         BrowserState = "send-whatsapp-action"
+	StateEnteredWhatsAppAction      BrowserState = "entered-whatsapp-action"
 	StateSuccess                    BrowserState = "success"
 )
 
@@ -376,6 +380,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			case "com.bloks.www.two_step_verification.verify_code.async":
 				transitions[StateTOTPPage] = StateEnteredTOTPAction
 				transitions[StateSMSPageAfterSend] = StateEnteredSMSAction
+				transitions[StateWhatsAppPageAfterSend] = StateEnteredWhatsAppAction
 				transitions[StateBackupCodePage] = StateEnteredBackupCodeAction
 			case "com.bloks.www.two_step_verification.method_picker":
 				transitions[StateMFALandingPage] = StateChooseMFAPage
@@ -401,8 +406,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateChosenMFAAction] = StateSMSPage
 			case "com.bloks.www.two_step_verification.send_code.async":
 				transitions[StateSMSPage] = StateSendSMSAction
+				transitions[StateWhatsAppPage] = StateSendWhatsAppAction
 			case "com.bloks.www.two_factor_login.enter_backup_code":
 				transitions[StateChosenMFAAction] = StateBackupCodePage
+			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
+				transitions[StateChosenMFAAction] = StateWhatsAppPage
 			case "com.bloks.www.bloks.caa.reg.youthregulation.deletepregent.async":
 				// Ignore this for now as it doesn't seem required.
 				//
@@ -458,6 +466,9 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				// little awkward to do so, and it does not seem required. This
 				// should be fixed at some point.
 				b.State = StateSMSPageAfterSend
+			case StateSendWhatsAppAction:
+				// Same deal here.
+				b.State = StateWhatsAppPageAfterSend
 			}
 
 			return nil
@@ -495,6 +506,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			transitions[StateEnteredCaptchaAction] = StateSuccess
 			transitions[StateEnteredTOTPAction] = StateSuccess
 			transitions[StateEnteredSMSAction] = StateSuccess
+			transitions[StateEnteredWhatsAppAction] = StateSuccess
 			transitions[StateEnteredBackupCodeAction] = StateSuccess
 			transitions[StateAFADCompleteAction] = StateSuccess
 			transitions[StateEnteredEmailCodeAction] = StateSuccess
@@ -527,7 +539,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			switch name {
 			case "BLOKS_TWO_STEP_VERIFICATION_ENTER_CODE:error_message":
 				switch b.State {
-				case StateEnteredTOTPAction, StateEnteredSMSAction, StateEnteredBackupCodeAction:
+				case StateEnteredTOTPAction, StateEnteredSMSAction, StateEnteredWhatsAppAction, StateEnteredBackupCodeAction:
 				default:
 					return nil
 				}
@@ -784,6 +796,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if b.LastError != "" {
 			delete(userInput, "sms_code")
 			b.State = StateSMSPageAfterSend
+		}
+
+	case StateEnteredWhatsAppAction:
+		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		if err != nil {
+			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+		}
+		// See above.
+		if b.LastError != "" {
+			delete(userInput, "whatsapp_code")
+			b.State = StateWhatsAppPageAfterSend
 		}
 
 	case StateEnteredBackupCodeAction:
@@ -1092,6 +1115,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			"Email":                          true,
 			"Text message":                   true,
 			"Backup code":                    true,
+			"WhatsApp":                       true,
 			"Verify with Google":             false,
 		}
 
@@ -1283,6 +1307,62 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FillInput(ctx, b.CurrentPage.Interpreter, userInput["sms_code"])
 		if err != nil {
 			return nil, fmt.Errorf("filling sms code input: %w", err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
+
+	case StateWhatsAppPage:
+		for _, mount := range b.CurrentPage.FindDescendants(FilterByComponent("bk.components.OnMount")) {
+			script := mount.GetScript("on_first_mount")
+			if script == nil {
+				continue
+			}
+			_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &script.AST)
+			if err != nil {
+				return nil, fmt.Errorf("whatsapp on_mount script: %w", err)
+			}
+		}
+
+	case StateWhatsAppPageAfterSend:
+		if userInput["whatsapp_code"] == "" {
+			instructions := b.getCodeInstructions()
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.whatsapp",
+				Instructions: instructions,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "whatsapp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
+					},
+				},
+			}
+			break
+		}
+
+		err := b.CurrentPage.
+			FindDescendant(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.TextInput" {
+					return false
+				}
+				return comp.FindDescendant(FilterByAttribute(
+					"bk.components.AccessibilityExtension", "label", "Code",
+				)) != nil
+			}).
+			FillInput(ctx, b.CurrentPage.Interpreter, userInput["whatsapp_code"])
+		if err != nil {
+			return nil, fmt.Errorf("filling whatsapp code input: %w", err)
 		}
 
 		err = b.CurrentPage.
