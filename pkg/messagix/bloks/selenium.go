@@ -15,11 +15,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 var (
