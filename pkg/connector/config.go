@@ -21,8 +21,10 @@ type Config struct {
 	Mode    types.Platform `yaml:"-"`
 	IGE2EE  bool           `yaml:"ig_e2ee"`
 
-	AllowMessengerComOnFB           bool `yaml:"allow_messenger_com_on_fb"`
-	AllowCookieLoginOnMessengerLite bool `yaml:"allow_cookie_login_on_messenger_lite"`
+	RawAllowedModes []string         `yaml:"allowed_modes"`
+	AllowedModes    []types.Platform `yaml:"-"`
+
+	AllowMessengerComOnFB bool `yaml:"allow_messenger_com_on_fb"`
 
 	Proxy        string `yaml:"proxy"`
 	GetProxyFrom string `yaml:"get_proxy_from"`
@@ -64,6 +66,17 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 
 func (c *Config) PostProcess() (err error) {
 	c.Mode = types.PlatformFromString(c.RawMode)
+	c.AllowedModes = []types.Platform{}
+	for _, rawMode := range c.RawAllowedModes {
+		mode := types.PlatformFromString(rawMode)
+		if !mode.IsValid() {
+			return fmt.Errorf("unknown mode in allowed_modes: %q", rawMode)
+		}
+		if mode == types.FacebookTor {
+			return fmt.Errorf("cannot use facebook-tor in allowed_modes, set mode instead")
+		}
+		c.AllowedModes = append(c.AllowedModes, mode)
+	}
 	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
 	return err
 }
@@ -71,6 +84,7 @@ func (c *Config) PostProcess() (err error) {
 func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "mode")
 	helper.Copy(up.Bool, "allow_messenger_com_on_fb")
+	helper.Copy(up.List, "allowed_modes")
 	helper.Copy(up.Bool, "ig_e2ee")
 	helper.Copy(up.Str, "displayname_template")
 	helper.Copy(up.Str|up.Null, "proxy")
@@ -87,7 +101,6 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
-	helper.Copy(up.Bool, "allow_cookie_login_on_messenger_lite")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
