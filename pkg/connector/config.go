@@ -21,7 +21,8 @@ type Config struct {
 	Mode    types.Platform `yaml:"-"`
 	IGE2EE  bool           `yaml:"ig_e2ee"`
 
-	AllowMessengerComOnFB bool `yaml:"allow_messenger_com_on_fb"`
+	AllowMessengerComOnFB           bool `yaml:"allow_messenger_com_on_fb"`
+	AllowCookieLoginOnMessengerLite bool `yaml:"allow_cookie_login_on_messenger_lite"`
 
 	Proxy        string `yaml:"proxy"`
 	GetProxyFrom string `yaml:"get_proxy_from"`
@@ -86,6 +87,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
+	helper.Copy(up.Bool, "allow_cookie_login_on_messenger_lite")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
