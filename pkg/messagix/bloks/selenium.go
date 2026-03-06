@@ -19,8 +19,6 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
-
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 var (
@@ -358,15 +356,6 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			switch name {
 			case "com.bloks.www.bloks.caa.login.async.send_login_request":
 				transitions[StateEmailPasswordPage] = StateEnteredEmailPasswordAction
-				// Facebook actually always waits a really long time before sending
-				// a response to the login request. It is not uncommon for it to
-				// time out with the default setting of 10 seconds to receive
-				// response headers. For this specific request, increase the
-				// timeout.
-				ctx = context.WithValue(
-					ctx, types.ContextKeyHTTPResponseHeaderTimeoutOverride,
-					20*time.Second,
-				)
 			case "com.bloks.www.two_step_verification.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
 				transitions[StateEnteredEmailCodeAction] = StateMFALandingPage

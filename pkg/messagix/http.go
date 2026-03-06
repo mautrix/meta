@@ -228,11 +228,7 @@ func (c *Client) makeRequestDirect(ctx context.Context, url string, method strin
 
 	newRequest.Header = headers
 
-	hc := c.http
-	if timeout, ok := ctx.Value(types.ContextKeyHTTPResponseHeaderTimeoutOverride).(time.Duration); ok {
-		hc = c.httpSettings.WithResponseHeaderTimeout(timeout).Compile()
-	}
-	response, err := hc.Do(newRequest)
+	response, err := c.http.Do(newRequest)
 	defer func() {
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
