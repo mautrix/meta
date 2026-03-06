@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmaps"
 	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -343,15 +344,18 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
-	activeThreads := make(map[int64]bool)
+	activeThreads := make(exmaps.Set[int64])
 	for _, vte := range tbl.LSVerifyThreadExists {
-		activeThreads[vte.ThreadKey] = true
+		activeThreads.Add(vte.ThreadKey)
 	}
 	for _, uoi := range tbl.LSUpdateOrInsertThread {
-		activeThreads[uoi.ThreadKey] = true
+		activeThreads.Add(uoi.ThreadKey)
 	}
-	for _, rng := range tbl.LSInsertNewMessageRange {
-		activeThreads[rng.ThreadKey] = true
+	for _, inr := range tbl.LSInsertNewMessageRange {
+		activeThreads.Add(inr.ThreadKey)
+	}
+	for _, dit := range tbl.LSDeleteThenInsertThread {
+		activeThreads.Add(dit.ThreadKey)
 	}
 	params := threadMaps{
 		ctx:           ctx,
@@ -514,16 +518,8 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 }
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
-	// If there's a corresponding LSDeleteThenInsertThread, LSVerifyThreadExists,
-	// LSUpdateOrInsertThread, or LSInsertNewMessageRange for this thread, the thread
-	// is being moved/refreshed, not permanently deleted.
-	if _, hasResync := tk.syncs[threadKey]; hasResync {
-		zerolog.Ctx(tk.ctx).Debug().
-			Int64("thread_key", threadKey).
-			Msg("Ignoring LSDeleteThread for thread that has a corresponding resync")
-		return nil
-	}
-	if tk.activeThreads[threadKey] {
+	// Only issue the delete if we're confident it's not a delete then insert combination
+	if tk.activeThreads.Has(threadKey) {
 		zerolog.Ctx(tk.ctx).Debug().
 			Int64("thread_key", threadKey).
 			Msg("Ignoring LSDeleteThread for thread that has active upserts in the same sync")
@@ -757,7 +753,7 @@ type threadMaps struct {
 	m             *MetaClient
 	vtes          map[int64]*table.LSVerifyThreadExists
 	syncs         map[int64]*FBChatResync
-	activeThreads map[int64]bool
+	activeThreads exmaps.Set[int64]
 }
 
 type handlerParams struct {
@@ -773,7 +769,7 @@ type handlerParams struct {
 
 	vtes          map[int64]*table.LSVerifyThreadExists
 	syncs         map[int64]*FBChatResync
-	activeThreads map[int64]bool
+	activeThreads exmaps.Set[int64]
 }
 
 func collectPortalEvents[T ThreadKeyable](
