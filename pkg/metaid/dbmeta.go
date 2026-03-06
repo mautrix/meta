@@ -25,12 +25,20 @@ type GhostMetadata struct {
 	Username string `json:"username,omitempty"`
 }
 
+type MessengerLiteLoginMetadata struct {
+	DeviceID       string `json:"device_id"`
+	FamilyDeviceID string `json:"family_device_id"`
+	MachineID      string `json:"machine_id"`
+	AccessToken    string `json:"access_token"`
+}
+
 type UserLoginMetadata struct {
-	Platform   types.Platform   `json:"platform"`
-	Cookies    *cookies.Cookies `json:"cookies"`
-	WADeviceID uint16           `json:"wa_device_id,omitempty"`
-	PushKeys   *PushKeys        `json:"push_keys,omitempty"`
-	LoginUA    string           `json:"login_ua,omitempty"`
+	Platform      types.Platform             `json:"platform"`
+	Cookies       *cookies.Cookies           `json:"cookies"`
+	WADeviceID    uint16                     `json:"wa_device_id,omitempty"`
+	PushKeys      *PushKeys                  `json:"push_keys,omitempty"`
+	LoginUA       string                     `json:"login_ua,omitempty"`
+	MessengerLite MessengerLiteLoginMetadata `json:"messenger_lite"`
 
 	// Thread backfill state
 	BackfillCompleted bool `json:"backfill_completed,omitempty"`

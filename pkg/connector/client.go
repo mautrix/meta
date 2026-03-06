@@ -449,15 +449,20 @@ func (m *MetaClient) connectE2EE() error {
 		isNew = true
 		m.WADevice = m.Main.DeviceStore.NewDevice()
 	}
-	if suggested := m.Client.MessengerLite.GetSuggestedDeviceID(); suggested != uuid.Nil {
-		m.WADevice.FacebookUUID = suggested
+	if known := m.LoginMeta.MessengerLite.DeviceID; known != "" {
+		// we know this uuid is safe to parse because we generated it
+		m.WADevice.FacebookUUID = uuid.MustParse(known)
 	}
 	m.Client.SetDevice(m.WADevice)
 
 	if isNew {
 		fbid := metaid.ParseUserLoginID(m.UserLogin.ID)
 		log.Info().Msg("Registering new e2ee device")
-		err = m.Client.RegisterE2EE(ctx, fbid)
+		var ml *metaid.MessengerLiteLoginMetadata
+		if meta, ok := m.UserLogin.Metadata.(*metaid.UserLoginMetadata); ok && meta != nil {
+			ml = &meta.MessengerLite
+		}
+		err = m.Client.RegisterE2EE(ctx, fbid, ml)
 		if err != nil {
 			return fmt.Errorf("failed to register e2ee device: %w", err)
 		}
