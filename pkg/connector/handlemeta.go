@@ -343,11 +343,22 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
+	activeThreads := make(map[int64]bool)
+	for _, vte := range tbl.LSVerifyThreadExists {
+		activeThreads[vte.ThreadKey] = true
+	}
+	for _, uoi := range tbl.LSUpdateOrInsertThread {
+		activeThreads[uoi.ThreadKey] = true
+	}
+	for _, rng := range tbl.LSInsertNewMessageRange {
+		activeThreads[rng.ThreadKey] = true
+	}
 	params := threadMaps{
-		ctx:   ctx,
-		m:     m,
-		vtes:  threadExists,
-		syncs: threadResyncs,
+		ctx:           ctx,
+		m:             m,
+		vtes:          threadExists,
+		syncs:         threadResyncs,
+		activeThreads: activeThreads,
 	}
 	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
 
@@ -503,13 +514,19 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 }
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
-	// TODO figure out how to handle meta's false delete events
-	// If there's a corresponding LSDeleteThenInsertThread for this thread, the thread is being
-	// moved to another folder, not permanently deleted.
+	// If there's a corresponding LSDeleteThenInsertThread, LSVerifyThreadExists,
+	// LSUpdateOrInsertThread, or LSInsertNewMessageRange for this thread, the thread
+	// is being moved/refreshed, not permanently deleted.
 	if _, hasResync := tk.syncs[threadKey]; hasResync {
 		zerolog.Ctx(tk.ctx).Debug().
 			Int64("thread_key", threadKey).
 			Msg("Ignoring LSDeleteThread for thread that has a corresponding resync")
+		return nil
+	}
+	if tk.activeThreads[threadKey] {
+		zerolog.Ctx(tk.ctx).Debug().
+			Int64("thread_key", threadKey).
+			Msg("Ignoring LSDeleteThread for thread that has active upserts in the same sync")
 		return nil
 	}
 	// Delete the thread from the sync maps to prevent future events finding it
@@ -736,10 +753,11 @@ type ThreadKeyable interface {
 }
 
 type threadMaps struct {
-	ctx   context.Context
-	m     *MetaClient
-	vtes  map[int64]*table.LSVerifyThreadExists
-	syncs map[int64]*FBChatResync
+	ctx           context.Context
+	m             *MetaClient
+	vtes          map[int64]*table.LSVerifyThreadExists
+	syncs         map[int64]*FBChatResync
+	activeThreads map[int64]bool
 }
 
 type handlerParams struct {
@@ -753,8 +771,9 @@ type handlerParams struct {
 
 	ThreadMsgID string
 
-	vtes  map[int64]*table.LSVerifyThreadExists
-	syncs map[int64]*FBChatResync
+	vtes          map[int64]*table.LSVerifyThreadExists
+	syncs         map[int64]*FBChatResync
+	activeThreads map[int64]bool
 }
 
 func collectPortalEvents[T ThreadKeyable](
@@ -799,8 +818,9 @@ func collectPortalEvents[T ThreadKeyable](
 			Sync:              sync,
 			ThreadMsgID:       threadMsgID,
 
-			vtes:  p.vtes,
-			syncs: p.syncs,
+			vtes:          p.vtes,
+			syncs:         p.syncs,
+			activeThreads: p.activeThreads,
 		}, msg)
 		if evt != nil {
 			*innerQueue = append(*innerQueue, evt)
