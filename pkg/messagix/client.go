@@ -275,7 +275,9 @@ func (c *Client) SetHTTP(settings exhttp.ClientSettings) {
 	if c == nil {
 		return
 	}
-	c.httpSettings = settings.WithGlobalTimeout(60 * time.Second)
+	c.httpSettings = settings.
+		WithGlobalTimeout(60 * time.Second).
+		WithResponseHeaderTimeout(20 * time.Second)
 	if c.proxyAddr != "" {
 		c.httpSettings, _ = c.httpSettings.WithProxy(c.proxyAddr)
 	}
