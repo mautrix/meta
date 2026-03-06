@@ -117,6 +117,26 @@ var (
 )
 
 func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
+	if len(m.Config.AllowedModes) > 0 {
+		flows := []bridgev2.LoginFlow{}
+		// Note that we return login flows in whatever order
+		// the user specified them in the config file.
+		for _, mode := range m.Config.AllowedModes {
+			switch mode {
+			case types.Facebook:
+				flows = append(flows, loginFlowFacebook)
+			case types.Messenger:
+				flows = append(flows, loginFlowMessenger)
+			case types.Instagram:
+				flows = append(flows, loginFlowInstagram)
+			case types.MessengerLite:
+				flows = append(flows, loginFlowMessengerLite)
+			default:
+				panic("unknown mode in config")
+			}
+		}
+		return flows
+	}
 	switch m.Config.Mode {
 	case types.Unset:
 		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram, loginFlowMessengerLite}

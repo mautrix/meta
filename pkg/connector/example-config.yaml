@@ -10,6 +10,8 @@
 mode:
 # Should users be allowed to pick messenger.com login when mode is set to `facebook`?
 allow_messenger_com_on_fb: false
+# Explicit list of allowed login methods. Overrides other login method options if non-empty.
+allowed_modes: []
 
 # When in Instagram mode, should the bridge connect to WhatsApp servers for encrypted chats?
 # In FB/Messenger mode encryption is always enabled, this option only affects Instagram mode.
