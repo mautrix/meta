@@ -344,7 +344,7 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
-	activeThreads := exmaps.NewSetWithItems([]int64{})
+	activeThreads := make(exmaps.Set[int64])
 	for _, vte := range tbl.LSVerifyThreadExists {
 		activeThreads.Add(vte.ThreadKey)
 	}
