@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmaps"
+	"go.mau.fi/util/ptr"
 	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -416,6 +417,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage, &innerQueue)
+	collectPortalEvents(params, tbl.LSDeleteThenInsertMessageRequest, m.handleDeleteThenInsertMessageRequest, &innerQueue)
 	collectPortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
@@ -517,6 +519,22 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 	return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
 }
 
+func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg *table.LSDeleteThenInsertMessageRequest) bridgev2.RemoteEvent {
+	if tk.Sync != nil {
+		if tk.Sync.Raw != nil && tk.Sync.Raw.FolderName == folderSpam {
+			return nil
+		}
+		tk.Sync.Info.MessageRequest = ptr.Ptr(true)
+		tk.Sync.Info.ExtraUpdates = bridgev2.MergeExtraUpdaters(tk.Sync.Info.ExtraUpdates, forcePortalBridgeInfoResync)
+		return nil
+	}
+	return &FBMessageRequestEvent{
+		ThreadKey: msg.ThreadKey,
+		PortalKey: tk.Portal,
+		m:         m,
+	}
+}
+
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
 	// Only issue the delete if we're confident it's not a delete then insert combination
 	if tk.activeThreads.Has(threadKey) {
@@ -547,6 +565,11 @@ func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
 		meta.ThreadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
 		return true
 	}
+	return false
+}
+
+func forcePortalBridgeInfoResync(ctx context.Context, portal *bridgev2.Portal) bool {
+	portal.UpdateBridgeInfo(ctx)
 	return false
 }
 

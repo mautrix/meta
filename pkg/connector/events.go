@@ -68,7 +68,7 @@ func (evt *VerifyThreadExistsEvent) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
-	return evt.FolderName != folderPending && evt.FolderName != folderSpam
+	return evt.FolderName != folderSpam
 }
 
 func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {
@@ -107,7 +107,11 @@ func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bri
 			zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Requested full thread info")
 		}
 	}
-	return evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType), nil
+	chatInfo := evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType)
+	if evt.FolderName == folderPending {
+		chatInfo.MessageRequest = ptr.Ptr(true)
+	}
+	return chatInfo, nil
 }
 
 type FBMessageEvent struct {
@@ -569,6 +573,9 @@ func (r *FBChatResync) ShouldCreatePortal() bool {
 	if r.Raw == nil {
 		return false
 	}
+	if r.Info != nil && r.Info.MessageRequest != nil && *r.Info.MessageRequest {
+		return true
+	}
 	return r.Raw.FolderName != folderPending && r.Raw.FolderName != folderSpam
 }
 
@@ -655,4 +662,40 @@ func (r *FBChatResync) CheckNeedsBackfill(ctx context.Context, lastMessage *data
 
 func (r *FBChatResync) GetBundledBackfillData() any {
 	return r.Backfill
+}
+
+type FBMessageRequestEvent struct {
+	ThreadKey int64
+	PortalKey networkid.PortalKey
+	m         *MetaClient
+}
+
+var _ bridgev2.RemoteChatResyncWithInfo = (*FBMessageRequestEvent)(nil)
+var _ bridgev2.RemoteEventThatMayCreatePortal = (*FBMessageRequestEvent)(nil)
+
+func (evt *FBMessageRequestEvent) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventChatResync
+}
+
+func (evt *FBMessageRequestEvent) ShouldCreatePortal() bool {
+	return true
+}
+
+func (evt *FBMessageRequestEvent) GetPortalKey() networkid.PortalKey {
+	return evt.PortalKey
+}
+
+func (evt *FBMessageRequestEvent) AddLogContext(c zerolog.Context) zerolog.Context {
+	return c.Int64("thread_id", evt.ThreadKey).Bool("message_request", true)
+}
+
+func (evt *FBMessageRequestEvent) GetSender() bridgev2.EventSender {
+	return bridgev2.EventSender{}
+}
+
+func (evt *FBMessageRequestEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	info := evt.m.makeMinimalChatInfo(evt.ThreadKey, table.UNKNOWN_THREAD_TYPE)
+	info.MessageRequest = ptr.Ptr(true)
+	info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, forcePortalBridgeInfoResync)
+	return info, nil
 }
