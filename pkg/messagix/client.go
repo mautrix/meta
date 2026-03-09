@@ -221,6 +221,7 @@ func (c *Client) configurePlatformClient() {
 		c.Facebook = &FacebookMethods{client: c}
 	case types.MessengerLite:
 		selectedEndpoints = endpoints.MessengerLiteEndpoints
+		c.Facebook = &FacebookMethods{client: c}
 		c.MessengerLite = &MessengerLiteMethods{client: c}
 	case types.Instagram:
 		selectedEndpoints = endpoints.InstagramEndpoints
