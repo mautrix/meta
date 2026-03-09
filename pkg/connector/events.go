@@ -59,8 +59,9 @@ type VerifyThreadExistsEvent struct {
 }
 
 var (
-	_ bridgev2.RemoteChatResyncWithInfo       = (*VerifyThreadExistsEvent)(nil)
-	_ bridgev2.RemoteEventThatMayCreatePortal = (*VerifyThreadExistsEvent)(nil)
+	_ bridgev2.RemoteChatResyncWithInfo               = (*VerifyThreadExistsEvent)(nil)
+	_ bridgev2.RemoteEventThatMayCreatePortal         = (*VerifyThreadExistsEvent)(nil)
+	_ bridgev2.RemoteEventWithUncertainPortalReceiver = (*VerifyThreadExistsEvent)(nil)
 )
 
 func (evt *VerifyThreadExistsEvent) GetType() bridgev2.RemoteEventType {
@@ -73,6 +74,10 @@ func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
 
 func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {
 	return evt.m.makeFBPortalKey(evt.ThreadKey, evt.ThreadType)
+}
+
+func (evt *VerifyThreadExistsEvent) PortalReceiverIsUncertain() bool {
+	return evt.ThreadType == table.UNKNOWN_THREAD_TYPE
 }
 
 func (evt *VerifyThreadExistsEvent) AddLogContext(c zerolog.Context) zerolog.Context {
@@ -548,13 +553,16 @@ type FBChatResync struct {
 	UpsertID  int64
 	m         *MetaClient
 
+	UncertainReceiver bool
+
 	filled bool
 }
 
 var (
-	_ bridgev2.RemoteChatResyncWithInfo       = (*FBChatResync)(nil)
-	_ bridgev2.RemoteEventThatMayCreatePortal = (*FBChatResync)(nil)
-	_ bridgev2.RemoteChatResyncBackfillBundle = (*FBChatResync)(nil)
+	_ bridgev2.RemoteChatResyncWithInfo               = (*FBChatResync)(nil)
+	_ bridgev2.RemoteEventThatMayCreatePortal         = (*FBChatResync)(nil)
+	_ bridgev2.RemoteChatResyncBackfillBundle         = (*FBChatResync)(nil)
+	_ bridgev2.RemoteEventWithUncertainPortalReceiver = (*FBChatResync)(nil)
 )
 
 func (r *FBChatResync) GetType() bridgev2.RemoteEventType {
@@ -563,6 +571,10 @@ func (r *FBChatResync) GetType() bridgev2.RemoteEventType {
 
 func (r *FBChatResync) GetPortalKey() networkid.PortalKey {
 	return r.PortalKey
+}
+
+func (r *FBChatResync) PortalReceiverIsUncertain() bool {
+	return r.UncertainReceiver
 }
 
 func (r *FBChatResync) ShouldCreatePortal() bool {

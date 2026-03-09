@@ -176,10 +176,11 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			}
 			m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
 				EventMeta: simplevent.EventMeta{
-					Type:      bridgev2.RemoteEventTyping,
-					PortalKey: m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE),
-					Sender:    m.makeEventSender(userID),
-					Timestamp: evt.Timestamp,
+					Type:              bridgev2.RemoteEventTyping,
+					PortalKey:         m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE),
+					UncertainReceiver: true,
+					Sender:            m.makeEventSender(userID),
+					Timestamp:         evt.Timestamp,
 				},
 				Timeout: timeout,
 				Type:    bridgev2.TypingTypeText,
@@ -376,6 +377,8 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			Raw:       thread,
 			Members:   make(map[int64]bridgev2.ChatMember, thread.MemberCount),
 			m:         m,
+
+			UncertainReceiver: thread.ThreadType == table.UNKNOWN_THREAD_TYPE,
 		}
 	}
 	// TODO resync threads with LSUpdateOrInsertThread?
@@ -439,7 +442,7 @@ func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThr
 				return c.Int64("read_up_to", msg.LastReadWatermarkTimestampMs)
 			},
 			PortalKey:         tk.Portal,
-			UncertainReceiver: tk.UncertainReceiver,
+			UncertainReceiver: tk.IsUncertainReceiver(),
 			Sender:            m.selfEventSender(),
 		},
 		ReadUpTo: time.UnixMilli(msg.LastReadWatermarkTimestampMs),
@@ -459,7 +462,7 @@ func (m *MetaClient) handleUpdateReadReceipt(tk handlerParams, msg *table.LSUpda
 				return c.Int64("read_up_to", msg.ReadWatermarkTimestampMs)
 			},
 			PortalKey:         tk.Portal,
-			UncertainReceiver: tk.UncertainReceiver,
+			UncertainReceiver: tk.IsUncertainReceiver(),
 			Sender:            m.makeEventSender(msg.ContactId),
 			Timestamp:         timestamp,
 		},
@@ -481,7 +484,7 @@ func (m *MetaClient) handleTypingIndicator(tk handlerParams, msg *table.LSUpdate
 		EventMeta: simplevent.EventMeta{
 			Type:              bridgev2.RemoteEventTyping,
 			PortalKey:         tk.Portal,
-			UncertainReceiver: tk.UncertainReceiver,
+			UncertainReceiver: tk.IsUncertainReceiver(),
 			Sender:            m.makeEventSender(msg.SenderId),
 		},
 		Timeout: timeout,
@@ -503,7 +506,7 @@ func wrapMessageDelete(portal networkid.PortalKey, uncertain bool, messageID str
 }
 
 func (m *MetaClient) handleDeleteMessage(tk handlerParams, msg *table.LSDeleteMessage) bridgev2.RemoteEvent {
-	return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
+	return wrapMessageDelete(tk.Portal, tk.IsUncertainReceiver(), msg.MessageId)
 }
 
 func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.LSDeleteThenInsertMessage) bridgev2.RemoteEvent {
@@ -514,7 +517,7 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 			Msg("Got unexpected non-unsend DeleteThenInsertMessage command")
 		return nil
 	}
-	return wrapMessageDelete(tk.Portal, tk.UncertainReceiver, msg.MessageId)
+	return wrapMessageDelete(tk.Portal, tk.IsUncertainReceiver(), msg.MessageId)
 }
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
@@ -531,7 +534,7 @@ func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, on
 		EventMeta: simplevent.EventMeta{
 			Type:              bridgev2.RemoteEventChatDelete,
 			PortalKey:         tk.Portal,
-			UncertainReceiver: tk.UncertainReceiver,
+			UncertainReceiver: tk.IsUncertainReceiver(),
 		},
 		OnlyForMe: onlyForMe,
 	}
@@ -586,11 +589,11 @@ func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, uncertainReceiv
 }
 
 func (m *MetaClient) handleUpsertReaction(tk handlerParams, evt *table.LSUpsertReaction) bridgev2.RemoteEvent {
-	return m.wrapReaction(tk.Portal, tk.UncertainReceiver, evt.ActorId, evt.TimestampMs, evt.MessageId, evt.Reaction)
+	return m.wrapReaction(tk.Portal, tk.IsUncertainReceiver(), evt.ActorId, evt.TimestampMs, evt.MessageId, evt.Reaction)
 }
 
 func (m *MetaClient) handleDeleteReaction(tk handlerParams, evt *table.LSDeleteReaction) bridgev2.RemoteEvent {
-	return m.wrapReaction(tk.Portal, tk.UncertainReceiver, evt.ActorId, 0, evt.MessageId, "")
+	return m.wrapReaction(tk.Portal, tk.IsUncertainReceiver(), evt.ActorId, 0, evt.MessageId, "")
 }
 
 func (m *MetaClient) handleUpdateThreadName(tk handlerParams, evt *table.LSSyncUpdateThreadName) bridgev2.RemoteEvent {
@@ -713,7 +716,7 @@ func (m *MetaClient) handleMessageInsert(tk handlerParams, msg *table.WrappedMes
 	return &FBMessageEvent{
 		WrappedMessage:    msg,
 		portalKey:         tk.Portal,
-		uncertainReceiver: tk.UncertainReceiver,
+		uncertainReceiver: tk.IsUncertainReceiver(),
 		m:                 m,
 	}
 }
@@ -759,17 +762,20 @@ type threadMaps struct {
 type handlerParams struct {
 	ctx context.Context
 
-	ID                int64
-	Type              table.ThreadType
-	Portal            networkid.PortalKey
-	UncertainReceiver bool
-	Sync              *FBChatResync
+	ID     int64
+	Type   table.ThreadType
+	Portal networkid.PortalKey
+	Sync   *FBChatResync
 
 	ThreadMsgID string
 
 	vtes          map[int64]*table.LSVerifyThreadExists
 	syncs         map[int64]*FBChatResync
 	activeThreads exmaps.Set[int64]
+}
+
+func (tk handlerParams) IsUncertainReceiver() bool {
+	return tk.Type == table.UNKNOWN_THREAD_TYPE
 }
 
 func collectPortalEvents[T ThreadKeyable](
@@ -783,13 +789,10 @@ func collectPortalEvents[T ThreadKeyable](
 		sync, syncOK := p.syncs[threadKey]
 		v, ok := p.vtes[threadKey]
 		var threadType table.ThreadType
-		uncertain := false
 		if ok {
 			threadType = v.ThreadType
 		} else if syncOK {
 			threadType = sync.Raw.ThreadType
-		} else {
-			uncertain = true
 		}
 		// TODO this check isn't needed for all types
 		parentKey, threadMsgID, err := p.m.Main.DB.GetThreadByKey(p.ctx, threadKey)
@@ -797,7 +800,6 @@ func collectPortalEvents[T ThreadKeyable](
 			zerolog.Ctx(p.ctx).Warn().Err(err).Int64("thread_key", threadKey).Msg("Failed to get subthread key")
 		} else if threadMsgID != "" {
 			threadType = table.UNKNOWN_THREAD_TYPE
-			uncertain = true
 			threadKey = parentKey
 		}
 		if fn == nil {
@@ -807,12 +809,11 @@ func collectPortalEvents[T ThreadKeyable](
 		evt := fn(handlerParams{
 			ctx: p.ctx,
 
-			ID:                threadKey,
-			Type:              threadType,
-			Portal:            p.m.makeFBPortalKey(threadKey, threadType),
-			UncertainReceiver: uncertain,
-			Sync:              sync,
-			ThreadMsgID:       threadMsgID,
+			ID:          threadKey,
+			Type:        threadType,
+			Portal:      p.m.makeFBPortalKey(threadKey, threadType),
+			Sync:        sync,
+			ThreadMsgID: threadMsgID,
 
 			vtes:          p.vtes,
 			syncs:         p.syncs,

@@ -96,6 +96,8 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 			Backfill:  upsert,
 			UpsertID:  upsertID,
 			m:         m,
+
+			UncertainReceiver: tk.IsUncertainReceiver(),
 		}
 	}
 }
