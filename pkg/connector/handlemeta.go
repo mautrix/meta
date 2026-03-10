@@ -431,6 +431,12 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		}
 	}
 
+	zerolog.Ctx(ctx).Debug().
+		Any("updateThreadsRangesV2", tbl.LSUpdateThreadsRangesV2).
+		Any("upsertInboxThreadsRange", tbl.LSUpsertInboxThreadsRange).
+		Any("upsertSyncGroupThreadsRange", tbl.LSUpsertSyncGroupThreadsRange).
+		Msg("Thread range debug data in table")
+
 	return
 }
 

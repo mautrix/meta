@@ -527,6 +527,7 @@ func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*socket
 		return nil, nil, ErrClientIsNil
 	}
 	keyStore := c.syncManager.getSyncGroupKeyStore(syncGroup)
+	zerolog.Ctx(ctx).Debug().Any("key_store", keyStore).Msg("Current key store for thread sync")
 	if keyStore == nil || !keyStore.HasMoreBefore {
 		return nil, nil, nil // No more threads
 	}
