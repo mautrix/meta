@@ -22,6 +22,8 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
@@ -82,19 +84,29 @@ func (db *MetaDB) PutReconnectionState(ctx context.Context, loginID networkid.Us
 	_, err := db.Exec(ctx, `
 		INSERT INTO meta_reconnection_state (bridge_id, login_id, state)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (bridge_id, login_id) DO UPDATE SET state = excluded.state
+		ON CONFLICT (bridge_id, login_id) DO UPDATE SET state = excluded.state, last_used = NULL
 	`, db.BridgeID, loginID, string(state))
 	return err
 }
 
-func (db *MetaDB) PopReconnectionState(ctx context.Context, loginID networkid.UserLoginID) (state json.RawMessage, err error) {
+func (db *MetaDB) GetReconnectionState(ctx context.Context, loginID networkid.UserLoginID) (state json.RawMessage, lastUsed time.Time, err error) {
 	var stateStr string
-	err = db.QueryRow(ctx, "DELETE FROM meta_reconnection_state WHERE bridge_id = $1 AND login_id = $2 RETURNING state", db.BridgeID, loginID).
-		Scan(&stateStr)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = nil
-	} else if err == nil {
-		state = []byte(stateStr)
+	var lastUsedInt sql.NullInt64
+	err = db.QueryRow(ctx, "SELECT state, last_used FROM meta_reconnection_state WHERE bridge_id = $1 AND login_id = $2", db.BridgeID, loginID).
+		Scan(&stateStr, &lastUsedInt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+		}
+		return
+	}
+	if lastUsedInt.Int64 != 0 {
+		lastUsed = time.UnixMilli(lastUsedInt.Int64)
+	}
+	state = []byte(stateStr)
+	_, err = db.Exec(ctx, "UPDATE meta_reconnection_state SET last_used = $3 WHERE bridge_id = $1 AND login_id = $2", db.BridgeID, loginID, time.Now().UnixMilli())
+	if err != nil {
+		err = fmt.Errorf("failed to update last used ts: %w", err)
 	}
 	return
 }

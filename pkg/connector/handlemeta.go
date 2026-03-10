@@ -234,6 +234,7 @@ func (m *MetaClient) handleTableLoop(ctx context.Context) {
 		case evt := <-m.parsedTables:
 			m.notifyBackgroundConnAboutEvent(true)
 			m.handleParsedTable(ctx, evt.IsInitial, evt.Table, evt.Events)
+			m.saveConnectionState(ctx, nil)
 			m.notifyBackgroundConnAboutEvent(false)
 		case <-ctx.Done():
 			return

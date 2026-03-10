@@ -1,4 +1,4 @@
--- v0 -> v4 (compatible with v1+): Latest schema
+-- v0 -> v5 (compatible with v1+): Latest schema
 CREATE TABLE meta_thread (
     parent_key BIGINT NOT NULL,
     thread_key BIGINT NOT NULL,
@@ -9,9 +9,10 @@ CREATE TABLE meta_thread (
 );
 
 CREATE TABLE meta_reconnection_state (
-    bridge_id TEXT  NOT NULL,
-    login_id  TEXT  NOT NULL,
-    state     jsonb NOT NULL,
+    bridge_id TEXT   NOT NULL,
+    login_id  TEXT   NOT NULL,
+    state     jsonb  NOT NULL,
+    last_used BIGINT,
 
     PRIMARY KEY (bridge_id, login_id),
     CONSTRAINT meta_reconnection_state_user_login_fkey FOREIGN KEY (bridge_id, login_id)
