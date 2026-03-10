@@ -42,7 +42,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 		msg, err = m.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
 	}
 	if err != nil {
-		return nil, nil
+		return nil, err
 	} else if msg == nil {
 		return nil, fmt.Errorf("message not found")
 	}
@@ -113,9 +113,9 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 				return &mediaproxy.FileMeta{}, client.E2EEClient.DownloadToFile(ctx, info, f)
 			},
 		}, nil
+	default:
+		return nil, fmt.Errorf("unknown media type: %v", mediaInfo.Type)
 	}
-
-	return nil, nil
 }
 
 // refreshMediaURL routes to the appropriate refresh method based on attachment type
