@@ -359,6 +359,15 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return first, nil
 		}
 		return i.Evaluate(ctx, &call.Args[1])
+	case "bk.action.bool.And":
+		first, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		if !first.IsTruthy() {
+			return first, nil
+		}
+		return i.Evaluate(ctx, &call.Args[1])
 	case "bk.action.bloks.GetVariable2", "bk.action.bloks.GetVariableWithScope":
 		// The second argument to the WithScope variant is an integer that may specify
 		// whether to get a local or global variable. For now, ignore.
