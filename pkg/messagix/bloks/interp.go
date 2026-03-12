@@ -440,16 +440,26 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(first.Value() == second.Value()), nil
-	case "bk.action.f32.Lt":
-		first, err := evalAs[int64](ctx, i, &call.Args[0], "lt")
+	case "bk.action.f32.Lt", "bk.action.i64.Lt":
+		first, err := evalAs[int64](ctx, i, &call.Args[0], "lt lhs")
 		if err != nil {
 			return nil, err
 		}
-		second, err := evalAs[int64](ctx, i, &call.Args[1], "lt")
+		second, err := evalAs[int64](ctx, i, &call.Args[1], "lt rhs")
 		if err != nil {
 			return nil, err
 		}
 		return BloksLiteralOf(first < second), nil
+	case "bk.action.f32.Gt", "bk.action.i64.Gt":
+		first, err := evalAs[int64](ctx, i, &call.Args[0], "gt lhs")
+		if err != nil {
+			return nil, err
+		}
+		second, err := evalAs[int64](ctx, i, &call.Args[1], "gt rhs")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(first > second), nil
 	case "bk.action.f32.Const":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.bloks.GetScript":
