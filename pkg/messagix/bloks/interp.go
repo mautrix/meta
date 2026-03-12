@@ -74,9 +74,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 					break
 				}
 			}
-			globals[id] = BloksLiteralOf(item.Info.Initial)
+			globals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		case "ls":
-			locals[id] = BloksLiteralOf(item.Info.Initial)
+			locals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		default:
 			return nil, fmt.Errorf("unexpected var type %s", item.Type)
 		}

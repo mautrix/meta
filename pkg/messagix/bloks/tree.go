@@ -91,7 +91,7 @@ func (bb *BloksBundle) Print(indent string) error {
 			if datum.Info.InitialScript != nil {
 				datum.Info.InitialScript.Print(indent + "    ")
 			} else {
-				BloksLiteralOf(datum.Info.Initial).Print(indent + "    ")
+				BloksLiteralFromJavaScript(datum.Info.Initial).Print(indent + "    ")
 			}
 			fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
 		}
