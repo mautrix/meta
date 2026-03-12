@@ -58,7 +58,7 @@ func (c *Client) newSyncManager() *SyncManager {
 	}
 }
 
-func (sm *SyncManager) syncSocketData(ctx context.Context, db int64, cb func()) {
+func (sm *SyncManager) syncSocketData(ctx context.Context, db int64, cb func(), outErr *error) {
 	defer cb()
 	database, ok := sm.store[db]
 	if !ok {
@@ -69,20 +69,23 @@ func (sm *SyncManager) syncSocketData(ctx context.Context, db int64, cb func()) 
 	err := sm.SyncSocketData(ctx, db, database)
 	if err != nil {
 		sm.client.Logger.Err(err).Int64("database_id", db).Msg("Failed to sync database through socket")
+		if db == 1 {
+			*outErr = err
+		}
 	} else {
 		sm.client.Logger.Debug().Any("database_id", db).Any("database", database).Msg("Synced database")
 	}
 }
 
-func (sm *SyncManager) EnsureSyncedSocket(ctx context.Context, databases []int64) error {
+func (sm *SyncManager) EnsureSyncedSocket(ctx context.Context, databases []int64) (err error) {
 	var wg sync.WaitGroup
 	wg.Add(len(databases))
 	for _, db := range databases {
-		go sm.syncSocketData(ctx, db, wg.Done)
+		go sm.syncSocketData(ctx, db, wg.Done, &err)
 	}
 	wg.Wait()
 
-	return nil
+	return
 }
 
 func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db *socket.QueryMetadata) error {
