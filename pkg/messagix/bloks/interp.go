@@ -604,6 +604,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		dict[key] = val
 		return BloksNothing, nil
+	case "bk.action.array.Length":
+		arr, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "array.length")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(int64(len(arr))), nil
 	case "ig.action.IsDarkModeEnabled":
 		return BloksLiteralOf(false), nil
 	case "bk.action.mins.InByVal":
