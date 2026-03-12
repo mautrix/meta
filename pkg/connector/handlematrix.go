@@ -172,13 +172,15 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 						return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
 					}
 				}
-				log.Warn().Msg("Message send response didn't include message ID")
+				log.Warn().Any("response", resp).Msg("Message send response didn't include message ID")
+				return nil, fmt.Errorf("%w: message send response didn't include message ID", ErrServerRejectedMessage)
 			}
 		}
 		var parsedTSTime time.Time
 		parsedTS, err := methods.ParseMessageID(msgID)
 		if err != nil {
 			log.Warn().Err(err).Str("message_id", msgID).Msg("Failed to parse message ID")
+			return nil, fmt.Errorf("%w: failed to parse message ID: %v", ErrServerRejectedMessage, err)
 		} else {
 			parsedTSTime = time.UnixMilli(parsedTS)
 			if parsedTSTime.Before(time.Now().Add(-1 * time.Hour)) {
