@@ -1029,7 +1029,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.caa.reg.SaveCachedInfo",
 		"bk.action.textinput.SetTextV2",
 		"bk.action.caa.reg.SaveMachineID",
-		"bk.action.caa.ShowLoggedInResetPassword":
+		"bk.action.caa.ShowLoggedInResetPassword",
+		"bk.fx.action.FetchAllAvailableNativeAuthDataForCaller":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
