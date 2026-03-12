@@ -134,6 +134,27 @@ type BloksScriptLiteral struct {
 	BloksJavascriptValue
 }
 
+func BloksLiteralFromJavaScript(j BloksJavascriptValue) *BloksScriptLiteral {
+	switch j := j.(type) {
+	case []any:
+		arr := []*BloksScriptLiteral{}
+		for _, item := range j {
+			arr = append(arr, BloksLiteralFromJavaScript(item))
+		}
+		return BloksLiteralOf(arr)
+	case map[string]any:
+		dict := map[string]*BloksScriptLiteral{}
+		for key, val := range j {
+			dict[key] = BloksLiteralFromJavaScript(val)
+		}
+		return BloksLiteralOf(dict)
+	case int:
+		return BloksLiteralOf(int64(j))
+	default:
+		return BloksLiteralOf(j)
+	}
+}
+
 func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 	for idx := start; idx < len(code); idx++ {
 		switch code[idx] {

@@ -74,9 +74,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 					break
 				}
 			}
-			globals[id] = BloksLiteralOf(item.Info.Initial)
+			globals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		case "ls":
-			locals[id] = BloksLiteralOf(item.Info.Initial)
+			locals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		default:
 			return nil, fmt.Errorf("unexpected var type %s", item.Type)
 		}
@@ -440,16 +440,26 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(first.Value() == second.Value()), nil
-	case "bk.action.f32.Lt":
-		first, err := evalAs[int64](ctx, i, &call.Args[0], "lt")
+	case "bk.action.f32.Lt", "bk.action.i64.Lt":
+		first, err := evalAs[int64](ctx, i, &call.Args[0], "lt lhs")
 		if err != nil {
 			return nil, err
 		}
-		second, err := evalAs[int64](ctx, i, &call.Args[1], "lt")
+		second, err := evalAs[int64](ctx, i, &call.Args[1], "lt rhs")
 		if err != nil {
 			return nil, err
 		}
 		return BloksLiteralOf(first < second), nil
+	case "bk.action.f32.Gt", "bk.action.i64.Gt":
+		first, err := evalAs[int64](ctx, i, &call.Args[0], "gt lhs")
+		if err != nil {
+			return nil, err
+		}
+		second, err := evalAs[int64](ctx, i, &call.Args[1], "gt rhs")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(first > second), nil
 	case "bk.action.f32.Const":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.bloks.GetScript":
@@ -594,6 +604,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		dict[key] = val
 		return BloksNothing, nil
+	case "bk.action.array.Length":
+		arr, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "array.length")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(int64(len(arr))), nil
 	case "ig.action.IsDarkModeEnabled":
 		return BloksLiteralOf(false), nil
 	case "bk.action.mins.InByVal":
@@ -1013,7 +1029,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.caa.reg.SaveCachedInfo",
 		"bk.action.textinput.SetTextV2",
 		"bk.action.caa.reg.SaveMachineID",
-		"bk.action.caa.ShowLoggedInResetPassword":
+		"bk.action.caa.ShowLoggedInResetPassword",
+		"bk.fx.action.FetchAllAvailableNativeAuthDataForCaller":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
