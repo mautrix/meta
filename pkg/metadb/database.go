@@ -89,6 +89,13 @@ func (db *MetaDB) PutReconnectionState(ctx context.Context, loginID networkid.Us
 	return err
 }
 
+func (db *MetaDB) DeleteReconnectionState(ctx context.Context, loginID networkid.UserLoginID) error {
+	_, err := db.Exec(ctx, `
+		DELETE FROM meta_reconnection_state WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID)
+	return err
+}
+
 func (db *MetaDB) GetReconnectionState(ctx context.Context, loginID networkid.UserLoginID) (state json.RawMessage, lastUsed time.Time, err error) {
 	var stateStr string
 	var lastUsedInt sql.NullInt64

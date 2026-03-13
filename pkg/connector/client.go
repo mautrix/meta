@@ -603,6 +603,10 @@ func (m *MetaClient) FullReconnect() {
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)
+	err := m.Main.DB.DeleteReconnectionState(ctx, m.UserLogin.ID)
+	if err != nil {
+		m.UserLogin.Log.Err(err).Msg("Failed to delete cached reconnection state for full reconnect")
+	}
 	m.Connect(ctx)
 	m.lastFullReconnect = time.Now()
 }
