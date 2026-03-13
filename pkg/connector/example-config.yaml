@@ -13,10 +13,6 @@ allow_messenger_com_on_fb: false
 # Explicit list of allowed login methods. Overrides other login method options if non-empty.
 allowed_modes: []
 
-# When in Instagram mode, should the bridge connect to WhatsApp servers for encrypted chats?
-# In FB/Messenger mode encryption is always enabled, this option only affects Instagram mode.
-ig_e2ee: false
-
 # Displayname template for FB/IG users. Available variables:
 #  .DisplayName - The display name set by the user.
 #  .Username - The username set by the user.

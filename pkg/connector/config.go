@@ -19,7 +19,6 @@ var ExampleConfig string
 type Config struct {
 	RawMode string         `yaml:"mode"`
 	Mode    types.Platform `yaml:"-"`
-	IGE2EE  bool           `yaml:"ig_e2ee"`
 
 	RawAllowedModes []string         `yaml:"allowed_modes"`
 	AllowedModes    []types.Platform `yaml:"-"`
@@ -85,7 +84,6 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "mode")
 	helper.Copy(up.Bool, "allow_messenger_com_on_fb")
 	helper.Copy(up.List, "allowed_modes")
-	helper.Copy(up.Bool, "ig_e2ee")
 	helper.Copy(up.Str, "displayname_template")
 	helper.Copy(up.Str|up.Null, "proxy")
 	helper.Copy(up.Str|up.Null, "get_proxy_from")
