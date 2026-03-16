@@ -457,6 +457,9 @@ func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, a
 			found = true
 		}
 	}
+	if found {
+		mime = "video/mp4"
+	}
 	if !found {
 		for _, ver := range resp.ImageVersions2.Candidates {
 			if ver.Width*ver.Height > width*height {
@@ -497,6 +500,7 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 
 var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
 var reelActionURLRegex2 = regexp.MustCompile(`^https://instagram\.com/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
+var reelActionURLRegex3 = regexp.MustCompile(`^https://(?:www\.)?instagram\.com/stories/([a-z0-9._]{1,30})/(\d+)`)
 var usernameRegex = regexp.MustCompile(`^[a-z0-9.-_]{3,32}$`)
 var ErrURLNotFound = errors.New("url not found")
 
@@ -753,6 +757,99 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 			secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
 			return secondConverted
 		}
+	case strings.HasPrefix(att.CTA.NativeUrl, "https://www.instagram.com/stories/"):
+		storyURL := removeLPHP(att.CTA.ActionUrl)
+		if !strings.HasPrefix(storyURL, "https://www.instagram.com/stories/") {
+			storyURL = att.CTA.NativeUrl
+		}
+		log.Trace().Any("cta_data", att.CTA).Msg("Fetching XMA story from www.instagram.com URL (type 3)")
+		match := reelActionURLRegex3.FindStringSubmatch(storyURL)
+		if len(match) != 3 {
+			log.Warn().Str("story_url", storyURL).Msg("Failed to parse story action URL (type 3)")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "parse fail"
+			addExternalURLCaption(minimalConverted.Content, storyURL)
+			return minimalConverted
+		}
+		mediaID := match[2]
+		parsedURL, _ := url.Parse(storyURL)
+		reelID := ""
+		if parsedURL != nil {
+			reelID = parsedURL.Query().Get("reel_id")
+		}
+		externalURL := fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", match[1], mediaID)
+		minimalConverted.Extra["external_url"] = externalURL
+		addExternalURLCaption(minimalConverted.Content, externalURL)
+		if !mc.ShouldFetchXMA(ctx) {
+			log.Debug().Msg("Not fetching XMA media")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
+			return minimalConverted
+		}
+		if reelID == "" {
+			reelID = match[1]
+		}
+		resp, err := ig.FetchReel(ctx, []string{reelID}, mediaID)
+		if err != nil {
+			log.Err(err).Str("story_url", storyURL).Msg("Failed to fetch XMA story (type 3)")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "fetch fail"
+			return minimalConverted
+		}
+		reel, ok := resp.Reels[reelID]
+		if !ok {
+			log.Warn().
+				Str("story_url", storyURL).
+				Str("reel_id", reelID).
+				Str("media_id", mediaID).
+				Str("response_status", resp.Status).
+				Msg("Got empty XMA story response (type 3)")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "empty response"
+			return minimalConverted
+		}
+		if reel.User != nil && reel.User.Username != "" {
+			externalURL = fmt.Sprintf("https://www.instagram.com/stories/%s/%s/", reel.User.Username, mediaID)
+			minimalConverted.Extra["external_url"] = externalURL
+		}
+		minimalConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
+		var relevantItem *responses.Items
+		foundIDs := make([]string, len(reel.Items))
+		for i, item := range reel.Items {
+			foundIDs[i] = item.Pk
+			if item.Pk == mediaID {
+				relevantItem = &item.Items
+			}
+		}
+		if relevantItem == nil {
+			log.Warn().
+				Str("story_url", storyURL).
+				Str("reel_id", reelID).
+				Str("media_id", mediaID).
+				Strs("found_ids", foundIDs).
+				Msg("Failed to find exact item in fetched XMA story (type 3)")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "item not found in response"
+			return minimalConverted
+		}
+		log.Debug().Msg("Fetched XMA story (type 3) and found exact item")
+		xmaRefresh := &MediaRefreshMeta{
+			StoryMediaID: mediaID,
+			StoryReelID:  reelID,
+		}
+		secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem, xmaRefresh)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer fetched media")
+			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "reupload fail"
+			return minimalConverted
+		}
+		if !mc.DirectMedia {
+			secondConverted.Content.Info.ThumbnailInfo = minimalConverted.Content.Info
+			secondConverted.Content.Info.ThumbnailURL = minimalConverted.Content.URL
+			secondConverted.Content.Info.ThumbnailFile = minimalConverted.Content.File
+		}
+		secondConverted.Extra["com.beeper.instagram_item_username"] = reel.User.Username
+		if externalURL != "" {
+			secondConverted.Extra["external_url"] = externalURL
+			addExternalURLCaption(secondConverted.Content, externalURL)
+		}
+		secondConverted.Extra["fi.mau.meta.xma_fetch_status"] = "success"
+		return secondConverted
 	default:
 		log.Debug().
 			Any("cta_data", att.CTA).
