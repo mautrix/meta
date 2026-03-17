@@ -2,6 +2,7 @@ package graphql
 
 type GraphQLDoc struct {
 	DocId        string
+	ClientDocId  string
 	CallerClass  string
 	FriendlyName string
 
@@ -35,6 +36,16 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		CallerClass:  "RelayModern",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
 	},
+	"IGUpdateGroupAvatar": {
+		ClientDocId:  "5576567352987267181917649770",
+		CallerClass:  "RelayModern",
+		FriendlyName: "IGDirectUpdateThreadImageMutation",
+	},
+	"IGRemoveGroupAvatar": {
+		ClientDocId:  "50027745118339199321503686240",
+		CallerClass:  "RelayModern",
+		FriendlyName: "IGDirectRemoveThreadImageMutation",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {
@@ -45,6 +56,12 @@ type IGDeleteThreadGraphQLRequestPayload struct {
 type IGEditGroupTitleGraphQLRequestPayload struct {
 	ThreadID string `json:"thread_fbid"`
 	NewTitle string `json:"new_title"`
+}
+
+type IGEditGroupAvatarGraphQLRequestPayload struct {
+	ThreadID           string `json:"ig_thread_igid"`
+	OfflineThreadingID string `json:"offline_threading_id"`
+	AttachmentFBID     string `json:"attachment_fbid,omitempty"`
 }
 
 type LSPlatformGraphQLLightspeedRequestPayload struct {
