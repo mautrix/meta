@@ -304,29 +304,6 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	return mediaTransport, fileName, nil
 }
 
-func buildVideoMessage(
-	reuploaded *waMediaTransport.WAMediaTransport,
-	caption *waCommon.MessageText,
-	content *event.MessageEventContent,
-	gifPlayback bool,
-) (*waConsumerApplication.ConsumerApplication_VideoMessage, error) {
-	videoMsg := &waConsumerApplication.ConsumerApplication_VideoMessage{
-		Caption: caption,
-	}
-	err := videoMsg.Set(&waMediaTransport.VideoTransport{
-		Integral: &waMediaTransport.VideoTransport_Integral{
-			Transport: reuploaded,
-		},
-		Ancillary: &waMediaTransport.VideoTransport_Ancillary{
-			Height:      proto.Uint32(uint32(content.Info.Height)),
-			Width:       proto.Uint32(uint32(content.Info.Width)),
-			Seconds:     proto.Uint32(uint32(content.Info.Duration / 1000)),
-			GifPlayback: &gifPlayback,
-		},
-	})
-	return videoMsg, err
-}
-
 func (mc *MessageConverter) wrapWhatsAppMedia(
 	evt *event.Event,
 	content *event.MessageEventContent,
@@ -336,12 +313,6 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 ) (output waConsumerApplication.ConsumerApplication_Content_Content, err error) {
 	switch content.MsgType {
 	case event.MsgImage:
-		if content.Info.MimeType == "image/gif" {
-			var videoMsg *waConsumerApplication.ConsumerApplication_VideoMessage
-			videoMsg, err = buildVideoMessage(reuploaded, caption, content, true)
-			output = &waConsumerApplication.ConsumerApplication_Content_VideoMessage{VideoMessage: videoMsg}
-			return
-		}
 		imageMsg := &waConsumerApplication.ConsumerApplication_ImageMessage{
 			Caption: caption,
 		}
@@ -368,10 +339,23 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_StickerMessage{StickerMessage: stickerMsg}
 	case event.MsgVideo:
+		videoMsg := &waConsumerApplication.ConsumerApplication_VideoMessage{
+			Caption: caption,
+		}
 		customInfo, _ := evt.Content.Raw["info"].(map[string]any)
 		isGif, _ := customInfo["fi.mau.gif"].(bool)
-		var videoMsg *waConsumerApplication.ConsumerApplication_VideoMessage
-		videoMsg, err = buildVideoMessage(reuploaded, caption, content, isGif)
+
+		err = videoMsg.Set(&waMediaTransport.VideoTransport{
+			Integral: &waMediaTransport.VideoTransport_Integral{
+				Transport: reuploaded,
+			},
+			Ancillary: &waMediaTransport.VideoTransport_Ancillary{
+				Height:      proto.Uint32(uint32(content.Info.Height)),
+				Width:       proto.Uint32(uint32(content.Info.Width)),
+				Seconds:     proto.Uint32(uint32(content.Info.Duration / 1000)),
+				GifPlayback: &isGif,
+			},
+		})
 		output = &waConsumerApplication.ConsumerApplication_Content_VideoMessage{VideoMessage: videoMsg}
 	case event.MsgAudio:
 		_, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]
