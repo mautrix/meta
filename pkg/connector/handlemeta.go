@@ -572,7 +572,7 @@ func (m *MetaClient) handleMoveThreadToE2EE(tk handlerParams, msg *table.LSMoveT
 	})
 }
 
-func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, uncertainReceiver bool, sender, timestamp int64, messageID, emoji string) *simplevent.Reaction {
+func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, uncertainReceiver bool, sender int64, messageID, emoji string) *simplevent.Reaction {
 	evt := &simplevent.Reaction{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventReaction,
@@ -586,9 +586,6 @@ func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, uncertainReceiv
 		TargetMessage: metaid.MakeFBMessageID(messageID),
 		Emoji:         emoji,
 	}
-	if timestamp != 0 {
-		evt.Timestamp = time.UnixMilli(timestamp)
-	}
 	if emoji == "" {
 		evt.Type = bridgev2.RemoteEventReactionRemove
 	}
@@ -596,11 +593,11 @@ func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, uncertainReceiv
 }
 
 func (m *MetaClient) handleUpsertReaction(tk handlerParams, evt *table.LSUpsertReaction) bridgev2.RemoteEvent {
-	return m.wrapReaction(tk.Portal, tk.IsUncertainReceiver(), evt.ActorId, evt.TimestampMs, evt.MessageId, evt.Reaction)
+	return m.wrapReaction(tk.Portal, tk.IsUncertainReceiver(), evt.ActorId, evt.MessageId, evt.Reaction)
 }
 
 func (m *MetaClient) handleDeleteReaction(tk handlerParams, evt *table.LSDeleteReaction) bridgev2.RemoteEvent {
-	return m.wrapReaction(tk.Portal, tk.IsUncertainReceiver(), evt.ActorId, 0, evt.MessageId, "")
+	return m.wrapReaction(tk.Portal, tk.IsUncertainReceiver(), evt.ActorId, evt.MessageId, "")
 }
 
 func (m *MetaClient) handleUpdateThreadName(tk handlerParams, evt *table.LSSyncUpdateThreadName) bridgev2.RemoteEvent {
