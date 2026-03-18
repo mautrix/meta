@@ -5,17 +5,16 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 func (m *MetaClient) StartThreadBackfill(ctx context.Context) error {
-	if m.Main.Config.ThreadBackfill.BatchCount == 0 {
-		return nil
-	}
-
 	log := m.UserLogin.Log.With().Str("action", "thread_backfill").Logger()
 	ctx = log.WithContext(ctx)
+
+	if m.Main.Config.ThreadBackfill.BatchCount == 0 {
+		log.Debug().Msg("Thread backfill disabled")
+		return nil
+	}
 
 	if m.LoginMeta.BackfillCompleted {
 		log.Debug().Msg("Thread backfill already completed, skipping")
@@ -23,29 +22,46 @@ func (m *MetaClient) StartThreadBackfill(ctx context.Context) error {
 	}
 	log.Info().Msg("Starting thread backfill")
 
-	return m.runThreadBackfill(ctx)
+	// First run backfill for group 1 = Facebook chats
+	if err := m.runThreadBackfillForSyncGroup(ctx, 1); err != nil {
+		return err
+	}
+	// Then backfill any other sync groups with more threads available
+	additionalGroups := m.Client.GetSyncGroupsWithMoreThreads()
+	for syncGroup := range additionalGroups {
+		if err := m.runThreadBackfillForSyncGroup(ctx, syncGroup); err != nil {
+			return err
+		}
+	}
+
+	// Only once all sync groups have been paginated we mark backfill as complete
+	m.LoginMeta.BackfillCompleted = true
+	if err := m.UserLogin.Save(ctx); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save backfill completion state")
+	}
+	return nil
 }
 
-func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
-	log := zerolog.Ctx(ctx)
-	delay := m.Main.Config.ThreadBackfill.BatchDelay
+func (m *MetaClient) runThreadBackfillForSyncGroup(ctx context.Context, syncGroup int64) error {
+	log := zerolog.Ctx(ctx).With().Str("action", "thread_backfill").Int64("sync_group", syncGroup).Logger()
 
+	delay := m.Main.Config.ThreadBackfill.BatchDelay
+	batchLimit := m.Main.Config.ThreadBackfill.BatchCount
 	batchCount := 0
-	var lastMinThreadKey int64
+
+	var prevMinThreadKey int64
 
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		// Fetch next batch of threads, TODO: other SyncGroups?
-		keyStore, tbl, err := m.Client.FetchMoreThreads(ctx, 1) // SyncGroup 1
+		keyStore, tbl, err := m.Client.FetchMoreThreads(ctx, syncGroup)
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more threads")
 			return err
 		} else if tbl == nil {
 			log.Info().Int("batches_processed", batchCount).Msg("Thread backfill complete - no more threads")
-			m.markBackfillComplete(ctx, m.LoginMeta)
 			return nil
 		}
 
@@ -54,15 +70,20 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 		// Process received threads (handled via normal event flow)
 		m.parseAndQueueTable(ctx, tbl, false)
 
-		// Check if more threads available - note HasMoreBefore may never become false, so we also
-		// check if the MinThreadKey hasn't moved, in which case we know we paginated everything.
-		if keyStore == nil || !keyStore.HasMoreBefore || keyStore.MinThreadKey == lastMinThreadKey || batchCount >= m.Main.Config.ThreadBackfill.BatchCount {
-			log.Info().Int("batches_processed", batchCount).Msg("Thread backfill complete - fully paginated")
-			m.markBackfillComplete(ctx, m.LoginMeta)
+		// Check if more threads available - note HasMoreBefore may never become false, so we watch
+		// for empty tables as well to identify when we've fully paginated.
+		if keyStore == nil || !keyStore.HasMoreBefore {
+			log.Info().Int("batches_processed", batchCount).Any("keystore", keyStore).Msg("Thread backfill complete - fully paginated (has no more)")
+			return nil
+		} else if keyStore.MinThreadKey == prevMinThreadKey {
+			log.Info().Int("batches_processed", batchCount).Any("keystore", keyStore).Msg("Thread backfill complete - fully paginated (thread key did not change)")
+			return nil
+		} else if batchLimit > 0 && batchCount >= batchLimit {
+			log.Info().Int("batched_processed", batchCount).Msg("Thread backfill complete - hit batch count limit")
 			return nil
 		}
 
-		lastMinThreadKey = keyStore.MinThreadKey
+		prevMinThreadKey = keyStore.MinThreadKey
 
 		log.Debug().
 			Int("batch", batchCount).
@@ -78,12 +99,5 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 				return ctx.Err()
 			}
 		}
-	}
-}
-
-func (m *MetaClient) markBackfillComplete(ctx context.Context, meta *metaid.UserLoginMetadata) {
-	meta.BackfillCompleted = true
-	if err := m.UserLogin.Save(ctx); err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to save backfill completion state")
 	}
 }

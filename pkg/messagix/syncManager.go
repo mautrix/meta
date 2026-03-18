@@ -314,6 +314,23 @@ func (c *Client) GetSyncGroupKeyStore(syncGroup int64) *socket.KeyStoreData {
 	return c.syncManager.getSyncGroupKeyStore(syncGroup)
 }
 
+func (sm *SyncManager) getSyncGroupsWithMoreThreads() map[int64]*socket.KeyStoreData {
+	result := make(map[int64]*socket.KeyStoreData)
+	for id, ks := range sm.keyStore {
+		if ks.HasMoreBefore {
+			result[id] = ks
+		}
+	}
+	return result
+}
+
+func (c *Client) GetSyncGroupsWithMoreThreads() map[int64]*socket.KeyStoreData {
+	if c == nil || c.syncManager == nil {
+		return nil
+	}
+	return c.syncManager.getSyncGroupsWithMoreThreads()
+}
+
 /*
 these 3 return the same stuff
 updateThreadsRangesV2, upsertInboxThreadsRange, upsertSyncGroupThreadsRange
