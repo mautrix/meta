@@ -274,12 +274,16 @@ func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThrea
 		syncGroup := syncGroupData.SyncGroup
 		keyStore, ok := sm.keyStore[syncGroup]
 		if !ok {
-			err = fmt.Errorf("could not find keyStore by database ID %d", syncGroup)
-			sm.client.Logger.Error().
-				Any("sync_group_data", syncGroupData).
-				Int64("database_id", syncGroup).
-				Msg("Could not find key store by database ID")
-			continue
+			keyStore = &socket.KeyStoreData{
+				MinThreadKey:              0,
+				ParentThreadKey:           -1,
+				MinLastActivityTimestampMs: 9999999999999,
+				HasMoreBefore:             false,
+			}
+			sm.keyStore[syncGroup] = keyStore
+			sm.client.Logger.Debug().
+				Int64("sync_group", syncGroup).
+				Msg("Created new key store entry for previously unknown sync group")
 		}
 		keyStore.HasMoreBefore = syncGroupData.HasMoreBefore
 		keyStore.MinLastActivityTimestampMs = syncGroupData.MinLastActivityTimestampMS
