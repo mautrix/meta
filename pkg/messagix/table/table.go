@@ -19,6 +19,7 @@ type LSTable struct {
 	LSUpsertSyncGroupThreadsRange                    []*LSUpsertSyncGroupThreadsRange                    `json:",omitempty"`
 	LSUpsertInboxThreadsRange                        []*LSUpsertInboxThreadsRange                        `json:",omitempty"`
 	LSUpdateThreadsRangesV2                          []*LSUpdateThreadsRangesV2                          `json:",omitempty"`
+	LSUpsertFolder                                   []*LSUpsertFolder                                   `json:",omitempty"`
 	LSUpsertFolderSeenTimestamp                      []*LSUpsertFolderSeenTimestamp                      `json:",omitempty"`
 	LSSetHMPSStatus                                  []*LSSetHMPSStatus                                  `json:",omitempty"`
 	LSTruncateTablesForSyncGroup                     []*LSTruncateTablesForSyncGroup                     `json:",omitempty"`
@@ -244,6 +245,7 @@ var SPTable = map[string]string{
 	"executeFirstBlockForSyncTransaction":            "LSExecuteFirstBlockForSyncTransaction",
 	"updateThreadsRangesV2":                          "LSUpdateThreadsRangesV2",
 	"upsertSyncGroupThreadsRange":                    "LSUpsertSyncGroupThreadsRange",
+	"upsertFolder":                                   "LSUpsertFolder",
 	"upsertFolderSeenTimestamp":                      "LSUpsertFolderSeenTimestamp",
 	"setHMPSStatus":                                  "LSSetHMPSStatus",
 	"handleRepliesOnUnsend":                          "LSHandleRepliesOnUnsend",
