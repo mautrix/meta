@@ -275,10 +275,10 @@ func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThrea
 		keyStore, ok := sm.keyStore[syncGroup]
 		if !ok {
 			keyStore = &socket.KeyStoreData{
-				MinThreadKey:              0,
-				ParentThreadKey:           -1,
+				MinThreadKey:               0,
+				ParentThreadKey:            -1,
 				MinLastActivityTimestampMs: 9999999999999,
-				HasMoreBefore:             false,
+				HasMoreBefore:              false,
 			}
 			sm.keyStore[syncGroup] = keyStore
 			sm.client.Logger.Debug().
