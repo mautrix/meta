@@ -359,6 +359,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			case "com.bloks.www.two_step_verification.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
 				transitions[StateEnteredEmailCodeAction] = StateMFALandingPage
+				transitions[StateEnteredCaptchaAction] = StateMFALandingPage
 			case "com.bloks.www.two_step_verification.async.entrypoint":
 				transitions[StateEnteredEmailPasswordAction] = StateRedirectToMFALandingAction
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
