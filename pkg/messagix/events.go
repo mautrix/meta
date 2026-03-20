@@ -5,8 +5,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	badGlobalLog "github.com/rs/zerolog/log"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
@@ -53,23 +55,33 @@ func (s *Socket) handleReadyEvent(ctx context.Context, data *Event_Ready) error 
 	s.client.canSendMessages.Set()
 
 	tskm := s.client.newTaskManager()
-	tskm.AddNewTask(&socket.FetchThreadsTask{
-		IsAfter:                    0,
-		ParentThreadKey:            -1,
-		ReferenceThreadKey:         0,
-		ReferenceActivityTimestamp: 9999999999999,
-		AdditionalPagesToFetch:     0,
-		Cursor:                     s.client.syncManager.GetCursor(1),
-		SyncGroup:                  1,
-	})
-	tskm.AddNewTask(&socket.FetchThreadsTask{
-		IsAfter:                    0,
-		ParentThreadKey:            -1,
-		ReferenceThreadKey:         0,
-		ReferenceActivityTimestamp: 9999999999999,
-		AdditionalPagesToFetch:     0,
-		SyncGroup:                  95,
-	})
+	ptks := s.client.configs.ParentThreadKeys
+	if len(ptks) == 0 {
+		zerolog.Ctx(ctx).Warn().Msg("Parent thread keys are not known")
+		ptks = []int64{-1}
+	} else if !slices.Contains(ptks, -1) {
+		zerolog.Ctx(ctx).Warn().Ints64("ptks", ptks).Msg("Parent thread keys don't contain -1")
+		ptks = append(ptks, -1)
+	}
+	for _, tk := range ptks {
+		tskm.AddNewTask(&socket.FetchThreadsTask{
+			IsAfter:                    0,
+			ParentThreadKey:            tk,
+			ReferenceThreadKey:         0,
+			ReferenceActivityTimestamp: 9999999999999,
+			AdditionalPagesToFetch:     0,
+			Cursor:                     s.client.syncManager.GetCursor(1),
+			SyncGroup:                  1,
+		})
+		tskm.AddNewTask(&socket.FetchThreadsTask{
+			IsAfter:                    0,
+			ParentThreadKey:            tk,
+			ReferenceThreadKey:         0,
+			ReferenceActivityTimestamp: 9999999999999,
+			AdditionalPagesToFetch:     0,
+			SyncGroup:                  95,
+		})
+	}
 
 	syncGroupKeyStore1 := s.client.syncManager.getSyncGroupKeyStore(1)
 	if syncGroupKeyStore1 != nil {

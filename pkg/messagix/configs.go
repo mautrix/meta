@@ -25,6 +25,7 @@ type Configs struct {
 	RoutingNamespace   string
 	Bitmap             *crypto.Bitmap
 	CSRBitmap          *crypto.Bitmap
+	ParentThreadKeys   []int64
 }
 
 func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.LSTable, error) {
@@ -72,6 +73,8 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 		ls, err = c.client.syncManager.SyncDataGraphQL(ctx, []int64{1, 2, 95})
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95: %w", err)
+		} else if ls == nil {
+			return ls, fmt.Errorf("sync data via graphql returned nil LSTable")
 		}
 	} else {
 		if len(ls.LSUpsertSyncGroupThreadsRange) > 0 {
@@ -85,10 +88,19 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 			return ls, fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
 		}
 	}
-	c.client.Logger.Trace().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
-	c.client.Logger.Trace().Any("value", c.CSRBitmap.CompressedStr).Msg("Loaded __csr bitmap")
-	c.client.Logger.Trace().Any("versionId", c.VersionID).Any("appId", c.BrowserConfigTable.MessengerWebInitData.AppID).Msg("Loaded versionId & appId")
-	c.client.Logger.Debug().Any("broker", c.client.socket.broker).Msg("Configs successfully setup!")
+	var ptks []int64
+	for _, ptk := range ls.LSThreadsRangesQuery {
+		c.client.Logger.Trace().Any("data", ptk).Msg("Found parent thread key")
+		ptks = append(ptks, ptk.ParentThreadKey)
+	}
+	c.client.configs.ParentThreadKeys = ptks
+	c.client.Logger.Trace().Str("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
+	c.client.Logger.Trace().Str("value", c.CSRBitmap.CompressedStr).Msg("Loaded __csr bitmap")
+	c.client.Logger.Trace().
+		Int64("versionId", c.VersionID).
+		Int64("appId", c.BrowserConfigTable.MessengerWebInitData.AppID).
+		Msg("Loaded versionId & appId")
+	c.client.Logger.Debug().Str("broker", c.client.socket.broker).Msg("Configs successfully setup!")
 
 	return ls, nil
 }
