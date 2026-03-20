@@ -432,6 +432,12 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		}
 	}
 
+	for _, folder := range tbl.LSUpsertFolder {
+		zerolog.Ctx(ctx).Debug().
+			Any("folder", folder).
+			Msg("Discovered folder via LSUpsertFolder")
+	}
+
 	zerolog.Ctx(ctx).Debug().
 		Any("updateThreadsRangesV2", tbl.LSUpdateThreadsRangesV2).
 		Any("upsertInboxThreadsRange", tbl.LSUpsertInboxThreadsRange).
