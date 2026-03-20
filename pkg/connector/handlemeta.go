@@ -432,6 +432,14 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		}
 	}
 
+	for _, folder := range tbl.LSUpsertFolder {
+		zerolog.Ctx(ctx).Debug().
+			Int64("parent_thread_key", folder.ParentThreadKey).
+			Int64("thread_type", int64(folder.ThreadType)).
+			Str("folder_name", folder.FolderName).
+			Msg("Discovered folder via LSUpsertFolder")
+	}
+
 	zerolog.Ctx(ctx).Debug().
 		Any("updateThreadsRangesV2", tbl.LSUpdateThreadsRangesV2).
 		Any("upsertInboxThreadsRange", tbl.LSUpsertInboxThreadsRange).
