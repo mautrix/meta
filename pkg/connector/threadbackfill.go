@@ -43,6 +43,10 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more threads")
 			return err
+		} else if tbl == nil {
+			log.Info().Int("batches_processed", batchCount).Msg("Thread backfill complete - no more threads")
+			m.markBackfillComplete(ctx, m.LoginMeta)
+			return nil
 		}
 
 		batchCount++
