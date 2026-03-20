@@ -29,9 +29,9 @@ func (m *MetaClient) StartThreadBackfill(ctx context.Context) error {
 func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 	log := zerolog.Ctx(ctx)
 	delay := m.Main.Config.ThreadBackfill.BatchDelay
-
+	batchLimit := m.Main.Config.ThreadBackfill.BatchCount
 	batchCount := 0
-	var lastMinThreadKey int64
+	var prevMinThreadKey int64
 
 	for {
 		if ctx.Err() != nil {
@@ -43,10 +43,6 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more threads")
 			return err
-		} else if tbl == nil {
-			log.Info().Int("batches_processed", batchCount).Msg("Thread backfill complete - no more threads")
-			m.markBackfillComplete(ctx, m.LoginMeta)
-			return nil
 		}
 
 		batchCount++
@@ -54,15 +50,30 @@ func (m *MetaClient) runThreadBackfill(ctx context.Context) error {
 		// Process received threads (handled via normal event flow)
 		m.parseAndQueueTable(ctx, tbl, false)
 
-		// Check if more threads available - note HasMoreBefore may never become false, so we also
-		// check if the MinThreadKey hasn't moved, in which case we know we paginated everything.
-		if keyStore == nil || !keyStore.HasMoreBefore || keyStore.MinThreadKey == lastMinThreadKey || batchCount >= m.Main.Config.ThreadBackfill.BatchCount {
-			log.Info().Int("batches_processed", batchCount).Msg("Thread backfill complete - fully paginated")
+		// Check if more threads available - note HasMoreBefore may never become false, so we watch
+		// for empty tables as well to identify when we've fully paginated.
+		if keyStore == nil || !keyStore.HasMoreBefore {
+			log.Info().
+				Int("batches_processed", batchCount).
+				Any("keystore", keyStore).
+				Msg("Thread backfill complete - fully paginated (has no more)")
+			m.markBackfillComplete(ctx, m.LoginMeta)
+			return nil
+		} else if keyStore.MinThreadKey == prevMinThreadKey {
+			log.Info().
+				Int("batches_processed", batchCount).
+				Any("keystore", keyStore).
+				Msg("Thread backfill complete - fully paginated (thread key did not change)")
+			m.markBackfillComplete(ctx, m.LoginMeta)
+			return nil
+		} else if batchLimit > 0 && batchCount >= batchLimit {
+			log.Info().Int("batched_processed", batchCount).
+				Msg("Thread backfill complete - hit batch count limit")
 			m.markBackfillComplete(ctx, m.LoginMeta)
 			return nil
 		}
 
-		lastMinThreadKey = keyStore.MinThreadKey
+		prevMinThreadKey = keyStore.MinThreadKey
 
 		log.Debug().
 			Int("batch", batchCount).
