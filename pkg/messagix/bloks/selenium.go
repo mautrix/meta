@@ -259,6 +259,7 @@ type BrowserState string
 // AFAD = Approve From Another Device
 // TOTP = Time-Based One-Time Passcode
 // MFA = Multi-Factor Authentication
+// AP = Authentication Platform
 const (
 	StateUnknown                    BrowserState = ""
 	StateTestCaptcha                BrowserState = "test-captcha"
@@ -274,6 +275,7 @@ const (
 	StateEnteredCaptchaAction       BrowserState = "entered-captcha-action"
 	StateMFALandingAPAction         BrowserState = "mfa-landing-ap-action"
 	StateMFALandingPage             BrowserState = "mfa-landing-page"
+	StatePossibleMandatoryAFADPAge  BrowserState = "possibly-mandatory-afad-page"
 	StateChooseMFAAPAction          BrowserState = "choose-mfa-ap-action"
 	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
 	StateChosenMFAAPAction          BrowserState = "chosen-mfa-type-ap-action"
@@ -370,9 +372,10 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingAPAction
 				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device":
-				transitions[StateMFALandingAPAction] = StateMFALandingPage
+				transitions[StateMFALandingAPAction] = StatePossibleMandatoryAFADPAge
 				transitions[StateChosenMFAAPAction] = StateAFADPage
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device_async":
+				transitions[StatePossibleMandatoryAFADPAge] = StateChooseMFAAPAction
 				transitions[StateMFALandingPage] = StateChooseMFAAPAction
 			case "com.bloks.www.ap.two_step_verification.challenge_picker":
 				transitions[StateChooseMFAAPAction] = StateChooseMFAPage
@@ -1097,11 +1100,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 
-	case StateMFALandingPage:
-		err := b.CurrentPage.
+	case StateMFALandingPage, StatePossibleMandatoryAFADPAge:
+		btn := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
-			FindContainingButton().
-			TapButton(ctx, b.CurrentPage.Interpreter)
+			FindContainingButton()
+		// The scuffed AFAD page may also act as an MFA landing page instead, but we can't
+		// tell until we see whether or not there is a button that would take us to the MFA
+		// method selection page. If there is, we'll follow it like in the non-AP case,
+		// otherwise we'll just treat this as a mandatory AFAD page.
+		if btn == nil && b.State == StatePossibleMandatoryAFADPAge {
+			b.State = StateAFADPage
+			break
+		}
+		err := btn.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping method selection button: %w", err)
 		}
