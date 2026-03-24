@@ -2,7 +2,7 @@ package graphql
 
 type GraphQLDoc struct {
 	DocId        string
-	ClientDocId  string
+	ClientDocID  string
 	CallerClass  string
 	FriendlyName string
 
@@ -37,12 +37,12 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
 	},
 	"IGUpdateGroupAvatar": {
-		ClientDocId:  "5576567352987267181917649770",
+		ClientDocID:  "5576567352987267181917649770",
 		CallerClass:  "RelayModern",
 		FriendlyName: "IGDirectUpdateThreadImageMutation",
 	},
 	"IGRemoveGroupAvatar": {
-		ClientDocId:  "50027745118339199321503686240",
+		ClientDocID:  "50027745118339199321503686240",
 		CallerClass:  "RelayModern",
 		FriendlyName: "IGDirectRemoveThreadImageMutation",
 	},

@@ -405,7 +405,7 @@ func (ig *InstagramMethods) makeIGraphQLRequest(ctx context.Context, docName, ro
 		ServerTimestamps:                 "true",
 		Locale:                           "user",
 		FbAPIReqFriendlyName:             graphQLDoc.FriendlyName,
-		ClientDocID:                      graphQLDoc.ClientDocId,
+		ClientDocID:                      graphQLDoc.ClientDocID,
 		EnableCanonicalNaming:            "true",
 		EnableCanonicalVariableOverrides: "true",
 		EnableCanonicalNamingAmbiguousTypePrefixing: "true",
