@@ -44,6 +44,7 @@ type Config struct {
 	SendPresenceOnTyping             bool `yaml:"send_presence_on_typing"`
 	ReceiveInstagramTypingIndicators bool `yaml:"receive_instagram_typing_indicators"`
 	DisableViewOnce                  bool `yaml:"disable_view_once"`
+	MarketplaceSpace                 bool `yaml:"marketplace_space"`
 
 	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
 }
@@ -97,6 +98,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "send_presence_on_typing")
 	helper.Copy(up.Bool, "receive_instagram_typing_indicators")
 	helper.Copy(up.Bool, "disable_view_once")
+	helper.Copy(up.Bool, "marketplace_space")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
 }

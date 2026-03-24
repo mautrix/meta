@@ -153,7 +153,7 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 	}
 	var parentIDPtr *networkid.PortalID
 	// TODO allow for non-marketplace threads?
-	if parentThreadKey != -1 && parentThreadKey != 0 && threadType == table.MARKETPLACE {
+	if parentThreadKey != -1 && parentThreadKey != 0 && threadType == table.MARKETPLACE && m.Main.Config.MarketplaceSpace {
 		parentIDPtr = ptr.Ptr(metaid.MakeFBPortalID(parentThreadKey))
 	}
 	return &bridgev2.ChatInfo{

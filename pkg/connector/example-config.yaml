@@ -50,6 +50,8 @@ send_presence_on_typing: false
 receive_instagram_typing_indicators: true
 # Should view-once messages be disabled entirely?
 disable_view_once: false
+# Should FB marketplace chats have a separate space inside the main Facebook space?
+marketplace_space: true
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:
