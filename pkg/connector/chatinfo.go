@@ -126,7 +126,7 @@ func updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(
 	}
 }
 
-func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.ThreadType) *bridgev2.ChatInfo {
+func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.ThreadType, parentThreadKey int64) *bridgev2.ChatInfo {
 	selfEvtSender := m.selfEventSender()
 	members := &bridgev2.ChatMemberList{
 		MemberMap: map[networkid.UserID]bridgev2.ChatMember{selfEvtSender.Sender: {
@@ -136,7 +136,9 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 	}
 
 	roomType := database.RoomTypeDefault
-	if threadType.IsOneToOne() {
+	if threadType == table.FOLDER {
+		roomType = database.RoomTypeSpace
+	} else if threadType.IsOneToOne() {
 		roomType = database.RoomTypeDM
 		members.OtherUserID = metaid.MakeUserID(threadID)
 		members.IsFull = true
@@ -149,10 +151,16 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 			members.MemberMap = makeNoteToSelfMembers(members.OtherUserID, nil)
 		}
 	}
+	var parentIDPtr *networkid.PortalID
+	// TODO allow for non-marketplace threads?
+	if parentThreadKey != -1 && parentThreadKey != 0 && threadType == table.MARKETPLACE {
+		parentIDPtr = ptr.Ptr(metaid.MakeFBPortalID(parentThreadKey))
+	}
 	return &bridgev2.ChatInfo{
 		Members:     members,
 		Type:        &roomType,
 		CanBackfill: !threadType.IsWhatsApp(),
+		ParentID:    parentIDPtr,
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
 			if threadType == table.GROUP_THREAD && meta.ThreadType > 15 {
@@ -166,6 +174,13 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 			return
 		},
 	}
+}
+
+func (m *MetaClient) wrapFolderInfo(folder *table.LSUpsertFolder) *bridgev2.ChatInfo {
+	chatInfo := m.makeMinimalChatInfo(folder.ThreadKey, table.FOLDER, -1)
+	chatInfo.Name = &folder.ThreadName
+	chatInfo.Avatar = wrapAvatar(folder.ThreadPictureURL)
+	return chatInfo
 }
 
 func makeNoteToSelfMembers(otherUserID networkid.UserID, info *bridgev2.UserInfo) map[networkid.UserID]bridgev2.ChatMember {
@@ -209,7 +224,7 @@ func (m *MetaClient) makeWADirectChatInfo(recipient types.JID) *bridgev2.ChatInf
 }
 
 func (m *MetaClient) wrapChatInfo(tbl table.ThreadInfo) *bridgev2.ChatInfo {
-	chatInfo := m.makeMinimalChatInfo(tbl.GetThreadKey(), tbl.GetThreadType())
+	chatInfo := m.makeMinimalChatInfo(tbl.GetThreadKey(), tbl.GetThreadType(), tbl.GetParentThreadKey())
 	if *chatInfo.Type != database.RoomTypeDM {
 		if tbl.GetThreadName() != "" {
 			chatInfo.Name = ptr.Ptr(tbl.GetThreadName())

@@ -12,6 +12,7 @@ type ThreadInfo interface {
 	GetThreadDescription() string
 	GetThreadPictureUrl() string
 	GetFolderName() string
+	GetParentThreadKey() int64
 }
 
 type LSTruncateMetadataThreads struct{}
@@ -152,6 +153,10 @@ func (lsdt *LSDeleteThenInsertThread) GetThreadDescription() string {
 
 func (lsdt *LSDeleteThenInsertThread) GetFolderName() string {
 	return lsdt.FolderName
+}
+
+func (lsdt *LSDeleteThenInsertThread) GetParentThreadKey() int64 {
+	return lsdt.ParentThreadKey
 }
 
 type LSAddParticipantIdToGroupThread struct {
@@ -597,6 +602,10 @@ func (lsui *LSUpdateOrInsertThread) GetThreadDescription() string {
 
 func (lsui *LSUpdateOrInsertThread) GetFolderName() string {
 	return lsui.FolderName
+}
+
+func (lsui *LSUpdateOrInsertThread) GetParentThreadKey() int64 {
+	return lsui.ParentThreadKey
 }
 
 type LSSetThreadCannotUnsendReason struct {

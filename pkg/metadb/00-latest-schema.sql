@@ -1,4 +1,4 @@
--- v0 -> v5 (compatible with v1+): Latest schema
+-- v0 -> v6 (compatible with v1+): Latest schema
 CREATE TABLE meta_thread (
     parent_key BIGINT NOT NULL,
     thread_key BIGINT NOT NULL,

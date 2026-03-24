@@ -62,7 +62,7 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 		}
 		chat = &bridgev2.CreateChatResponse{
 			PortalKey:  m.makeFBPortalKey(id, tableType),
-			PortalInfo: m.makeMinimalChatInfo(id, tableType),
+			PortalInfo: m.makeMinimalChatInfo(id, tableType, 0),
 		}
 	}
 	ghost, _ := m.Main.Bridge.GetGhostByID(ctx, metaid.MakeUserID(id))
@@ -123,7 +123,7 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 		err = portal.RoomCreated.WaitTimeoutCtx(ctx, 5*time.Second)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("New group chat portal wasn't created automatically")
-			portalInfo = m.makeMinimalChatInfo(realThreadID, table.GROUP_THREAD)
+			portalInfo = m.makeMinimalChatInfo(realThreadID, table.GROUP_THREAD, 0)
 			portalInfo.Members = &bridgev2.ChatMemberList{
 				ExcludeChangesFromTimeline: true,
 				MemberMap:                  bridgev2.ChatMemberMap{},

@@ -92,7 +92,7 @@ func (evt *VerifyThreadExistsEvent) GetSender() bridgev2.EventSender {
 }
 
 func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	if portal.MXID == "" {
+	if portal.MXID == "" && evt.ThreadType != table.FOLDER {
 		if portal.Metadata.(*metaid.PortalMetadata).FetchAttempted.Swap(true) {
 			zerolog.Ctx(ctx).Warn().Msg("Not resending create request for thread that was already requested")
 			return nil, fmt.Errorf("thread resync was already requested")
@@ -112,7 +112,7 @@ func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bri
 			zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Requested full thread info")
 		}
 	}
-	return evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType), nil
+	return evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType, evt.ParentThreadKey), nil
 }
 
 type FBMessageEvent struct {
@@ -667,4 +667,39 @@ func (r *FBChatResync) CheckNeedsBackfill(ctx context.Context, lastMessage *data
 
 func (r *FBChatResync) GetBundledBackfillData() any {
 	return r.Backfill
+}
+
+type FBFolderResync struct {
+	PortalKey      networkid.PortalKey
+	LSUpsertFolder *table.LSUpsertFolder
+	m              *MetaClient
+}
+
+var (
+	_ bridgev2.RemoteChatResyncWithInfo       = (*FBFolderResync)(nil)
+	_ bridgev2.RemoteEventThatMayCreatePortal = (*FBFolderResync)(nil)
+)
+
+func (f *FBFolderResync) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventChatResync
+}
+
+func (f *FBFolderResync) GetPortalKey() networkid.PortalKey {
+	return f.PortalKey
+}
+
+func (f *FBFolderResync) ShouldCreatePortal() bool {
+	return true
+}
+
+func (f *FBFolderResync) AddLogContext(c zerolog.Context) zerolog.Context {
+	return c.Int64("folder_thread_id", f.LSUpsertFolder.ThreadKey)
+}
+
+func (f *FBFolderResync) GetSender() bridgev2.EventSender {
+	return bridgev2.EventSender{}
+}
+
+func (f *FBFolderResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	return f.m.wrapFolderInfo(f.LSUpsertFolder), nil
 }

@@ -346,6 +346,7 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
+	folderResyncs := make(map[int64]*FBFolderResync, len(tbl.LSUpsertFolder))
 	activeThreads := make(exmaps.Set[int64])
 	for _, vte := range tbl.LSVerifyThreadExists {
 		activeThreads.Add(vte.ThreadKey)
@@ -371,6 +372,15 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	for _, thread := range tbl.LSVerifyThreadExists {
 		threadExists[thread.ThreadKey] = thread
 	}
+	for _, folder := range tbl.LSUpsertFolder {
+		rs := &FBFolderResync{
+			PortalKey:      m.makeFBPortalKey(folder.ThreadKey, table.FOLDER),
+			LSUpsertFolder: folder,
+			m:              m,
+		}
+		folderResyncs[folder.ThreadKey] = rs
+		innerQueue = append(innerQueue, rs)
+	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
@@ -391,6 +401,8 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 
 	for _, verifyExists := range threadExists {
 		if _, resyncing := threadResyncs[verifyExists.ThreadKey]; resyncing {
+			continue
+		} else if _, folder := folderResyncs[verifyExists.ThreadKey]; folder {
 			continue
 		}
 		innerQueue = append(innerQueue, &VerifyThreadExistsEvent{LSVerifyThreadExists: verifyExists, m: m})
@@ -430,12 +442,6 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG thread")
 		}
-	}
-
-	for _, folder := range tbl.LSUpsertFolder {
-		zerolog.Ctx(ctx).Debug().
-			Any("folder", folder).
-			Msg("Discovered folder via LSUpsertFolder")
 	}
 
 	zerolog.Ctx(ctx).Debug().
