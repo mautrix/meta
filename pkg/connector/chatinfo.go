@@ -268,7 +268,12 @@ func (m *MetaClient) wrapChatMember(tbl *table.LSAddParticipantIdToGroupThread) 
 	}
 }
 
-func (m *MetaClient) wrapChatInfoChange(threadKey, participantID int64, threadType table.ThreadType, change *bridgev2.ChatInfoChange) *simplevent.ChatInfoChange {
+func (m *MetaClient) wrapChatInfoChange(
+	threadKey, participantID int64,
+	threadType table.ThreadType,
+	change *bridgev2.ChatInfoChange,
+	changeType string,
+) *simplevent.ChatInfoChange {
 	return &simplevent.ChatInfoChange{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventChatInfoChange,
@@ -276,7 +281,7 @@ func (m *MetaClient) wrapChatInfoChange(threadKey, participantID int64, threadTy
 				if participantID != 0 {
 					c = c.Int64("participant_id", participantID)
 				}
-				return c.Int64("thread_id", threadKey)
+				return c.Int64("thread_id", threadKey).Str("change_type", changeType)
 			},
 			PortalKey:         m.makeFBPortalKey(threadKey, threadType),
 			UncertainReceiver: threadType == table.UNKNOWN_THREAD_TYPE,

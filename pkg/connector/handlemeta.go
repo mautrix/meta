@@ -581,7 +581,7 @@ func (m *MetaClient) handleMoveThreadToE2EE(tk handlerParams, msg *table.LSMoveT
 		ChatInfo: &bridgev2.ChatInfo{
 			ExtraUpdates: markPortalAsEncrypted,
 		},
-	})
+	}, "LSMoveThreadToE2EECutoverFolder")
 }
 
 func (m *MetaClient) wrapReaction(portalKey networkid.PortalKey, uncertainReceiver bool, sender int64, messageID, emoji string) *simplevent.Reaction {
@@ -620,7 +620,7 @@ func (m *MetaClient) handleUpdateThreadName(tk handlerParams, evt *table.LSSyncU
 		ChatInfo: &bridgev2.ChatInfo{
 			Name: &evt.ThreadName,
 		},
-	})
+	}, "LSSyncUpdateThreadName")
 }
 
 func (m *MetaClient) handleSetThreadImage(tk handlerParams, evt *table.LSSetThreadImageURL) bridgev2.RemoteEvent {
@@ -631,7 +631,7 @@ func (m *MetaClient) handleSetThreadImage(tk handlerParams, evt *table.LSSetThre
 		ChatInfo: &bridgev2.ChatInfo{
 			Avatar: wrapAvatar(evt.ImageURL),
 		},
-	})
+	}, "LSSetThreadImageURL")
 }
 
 func (m *MetaClient) handleUpdateMuteSetting(tk handlerParams, evt *table.LSUpdateThreadMuteSetting) bridgev2.RemoteEvent {
@@ -652,7 +652,7 @@ func (m *MetaClient) handleUpdateMuteSetting(tk handlerParams, evt *table.LSUpda
 				MutedUntil: &mutedUntil,
 			},
 		},
-	})
+	}, "LSUpdateThreadMuteSetting")
 }
 
 func (m *MetaClient) handleAddParticipant(tk handlerParams, evt *table.LSAddParticipantIdToGroupThread) bridgev2.RemoteEvent {
@@ -666,7 +666,7 @@ func (m *MetaClient) handleAddParticipant(tk handlerParams, evt *table.LSAddPart
 				m.wrapChatMember(evt),
 			},
 		},
-	})
+	}, "LSAddParticipantIdToGroupThread")
 }
 
 func (m *MetaClient) handleSelfLeaveThread(tk handlerParams, evt *table.LSRemoveParticipantFromThread) bridgev2.RemoteEvent {
@@ -690,7 +690,7 @@ func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemo
 				PrevMembership: event.MembershipJoin,
 			}},
 		},
-	})
+	}, "LSRemoveParticipantFromThread")
 }
 
 func (m *MetaClient) handleSubthread(ctx context.Context, msg *table.WrappedMessage) {
