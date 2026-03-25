@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	imgjpeg "image/jpeg"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -316,6 +318,20 @@ func (ig *InstagramMethods) EditGroupTitle(ctx context.Context, threadID, newTit
 }
 
 func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string, avatar []byte) error {
+	detectedType := http.DetectContentType(avatar)
+	if detectedType != "image/jpeg" && detectedType != "image/png" {
+		img, _, err := image.Decode(bytes.NewReader(avatar))
+		if err != nil {
+			return fmt.Errorf("failed to decode avatar image: %w", err)
+		}
+		var buf bytes.Buffer
+		if err = imgjpeg.Encode(&buf, img, nil); err != nil {
+			return fmt.Errorf("failed to encode avatar image as jpeg: %w", err)
+		}
+		avatar = buf.Bytes()
+		detectedType = "image/jpeg"
+	}
+
 	entityID := fmt.Sprintf("%d_0_%d", ig.client.cookies.GetUserID(), methods.GenerateEpochID())
 	reqUrl := ig.client.GetEndpoint("rupload_ig") + entityID
 
@@ -324,7 +340,7 @@ func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string
 	h.Set("image_type", "FILE_ATTACHMENT")
 	h.Set("x-entity-name", entityID)
 	h.Set("x-entity-length", strconv.Itoa(len(avatar)))
-	h.Set("x-entity-type", "image/jpeg")
+	h.Set("x-entity-type", detectedType)
 	h.Set("offset", "0")
 	h.Set("priority", "u=6, i")
 
@@ -337,6 +353,9 @@ func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string
 	err = json.Unmarshal(respBody, &uploadResp)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal upload response: %w", err)
+	}
+	if uploadResp.MediaID == 0 {
+		return fmt.Errorf("failed to upload group avatar: no media id received. response: %s", string(respBody))
 	}
 
 	igVariables := &graphql.IGEditGroupAvatarGraphQLRequestPayload{
@@ -374,7 +393,7 @@ func (ig *InstagramMethods) buildAndroidHeaders() http.Header {
 	h.Set("ig-intended-user-id", strconv.FormatInt(ig.client.cookies.GetUserID(), 10))
 	h.Set("ig-u-ds-user-id", strconv.FormatInt(ig.client.cookies.GetUserID(), 10))
 	h.Set("x-mid", ig.client.cookies.Get(cookies.IGCookieMachineID))
-	h.Set("x-ig-app-id", ig.client.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
+	h.Set("x-ig-app-id", useragent.IGAndroidAppID)
 	return h
 }
 
