@@ -547,14 +547,13 @@ func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg 
 			return nil
 		}
 		tk.Sync.Info.MessageRequest = ptr.Ptr(true)
-		tk.Sync.Info.ExtraUpdates = bridgev2.MergeExtraUpdaters(tk.Sync.Info.ExtraUpdates, forcePortalBridgeInfoResync)
 		return nil
 	}
-	return &FBMessageRequestEvent{
-		ThreadKey: msg.ThreadKey,
-		PortalKey: tk.Portal,
-		m:         m,
-	}
+	return m.wrapChatInfoChange(msg.ThreadKey, 0, tk.Type, &bridgev2.ChatInfoChange{
+		ChatInfo: &bridgev2.ChatInfo{
+			MessageRequest: ptr.Ptr(true),
+		},
+	}, "LSDeleteThenInsertMessageRequest")
 }
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
@@ -587,11 +586,6 @@ func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
 		meta.ThreadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
 		return true
 	}
-	return false
-}
-
-func forcePortalBridgeInfoResync(ctx context.Context, portal *bridgev2.Portal) bool {
-	portal.UpdateBridgeInfo(ctx)
 	return false
 }
 

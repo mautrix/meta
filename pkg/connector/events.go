@@ -582,13 +582,13 @@ func (r *FBChatResync) PortalReceiverIsUncertain() bool {
 }
 
 func (r *FBChatResync) ShouldCreatePortal() bool {
-	if r.Raw == nil {
+	if r.Raw == nil || r.Raw.FolderName == folderSpam {
 		return false
 	}
 	if r.Info != nil && r.Info.MessageRequest != nil && *r.Info.MessageRequest {
 		return true
 	}
-	return r.Raw.FolderName != folderPending && r.Raw.FolderName != folderSpam
+	return r.Raw.FolderName != folderPending
 }
 
 func (r *FBChatResync) AddLogContext(c zerolog.Context) zerolog.Context {
@@ -709,41 +709,4 @@ func (f *FBFolderResync) GetSender() bridgev2.EventSender {
 
 func (f *FBFolderResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	return f.m.wrapFolderInfo(f.LSUpsertFolder), nil
-}
-
-type FBMessageRequestEvent struct {
-	ThreadKey int64
-	PortalKey networkid.PortalKey
-	m         *MetaClient
-}
-
-var _ bridgev2.RemoteChatResyncWithInfo = (*FBMessageRequestEvent)(nil)
-var _ bridgev2.RemoteEventThatMayCreatePortal = (*FBMessageRequestEvent)(nil)
-
-func (evt *FBMessageRequestEvent) GetType() bridgev2.RemoteEventType {
-	return bridgev2.RemoteEventChatResync
-}
-
-func (evt *FBMessageRequestEvent) ShouldCreatePortal() bool {
-	return true
-}
-
-func (evt *FBMessageRequestEvent) GetPortalKey() networkid.PortalKey {
-	return evt.PortalKey
-}
-
-func (evt *FBMessageRequestEvent) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c.Int64("thread_id", evt.ThreadKey).Bool("message_request", true)
-}
-
-func (evt *FBMessageRequestEvent) GetSender() bridgev2.EventSender {
-	return bridgev2.EventSender{}
-}
-
-func (evt *FBMessageRequestEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	info := evt.m.makeMinimalChatInfo(evt.ThreadKey, table.UNKNOWN_THREAD_TYPE, -1)
-	info.MessageRequest = ptr.Ptr(true)
-	info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, forcePortalBridgeInfoResync)
-	return info, nil
-}
 }
