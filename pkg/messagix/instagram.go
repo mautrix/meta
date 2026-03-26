@@ -15,6 +15,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -308,5 +309,41 @@ func (ig *InstagramMethods) EditGroupTitle(ctx context.Context, threadID, newTit
 	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
 		return fmt.Errorf("failed to edit group title with bad status code %d", resp.StatusCode)
 	}
+	return nil
+}
+
+func (ig *InstagramMethods) AcceptMessageRequest(ctx context.Context, threadID string) error {
+	threadFBID, err := ig.fetchRouteDefinition(ctx, threadID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch route definition for thread %s: %w", threadID, err)
+	}
+	igVariables := &graphql.IGAcceptMessageRequestGraphQLRequestPayload{
+		ThreadID:           threadFBID,
+		IGInboxFolder:      nil,
+		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),
+	}
+	resp, respBody, err := ig.client.makeGraphQLRequest(ctx, "IGAcceptMessageRequest", &igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to accept message request for thread %s: %w", threadID, err)
+	}
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return fmt.Errorf("failed to accept message request with bad status code %d", resp.StatusCode)
+	}
+
+	var graphqlResp struct {
+		Data struct {
+			AcceptMessageRequest *struct {
+				ID           string `json:"id"`
+				SystemFolder string `json:"system_folder"`
+				Folder       string `json:"folder"`
+			} `json:"ig_direct_accept_message_request"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(respBody, &graphqlResp); err != nil {
+		return fmt.Errorf("failed to parse accept message request response for thread %s: %w", threadID, err)
+	} else if graphqlResp.Data.AcceptMessageRequest == nil {
+		return fmt.Errorf("accept message request response for thread %s did not contain mutation data", threadID)
+	}
+
 	return nil
 }

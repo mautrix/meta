@@ -55,7 +55,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 12
+	return 1, 13
 }
 
 const MaxTextLength = 20000
@@ -71,7 +71,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2026_02_24"
+	base := "fi.mau.meta.capabilities.2026_03_26"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -205,6 +205,9 @@ func init() {
 	delete(igCaps.File, event.MsgFile)
 	for _, value := range igCaps.File {
 		value.Caption = event.CapLevelDropped
+	}
+	igCaps.MessageRequest = &event.MessageRequestFeatures{
+		AcceptWithButton: event.CapLevelFullySupported,
 	}
 	igCaps.ID += "+instagram"
 	igCapsGroup = igCaps.Clone()

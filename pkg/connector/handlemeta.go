@@ -393,7 +393,20 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			UncertainReceiver: thread.ThreadType == table.UNKNOWN_THREAD_TYPE,
 		}
 	}
-	// TODO resync threads with LSUpdateOrInsertThread?
+	for _, thread := range tbl.LSUpdateOrInsertThread {
+		if _, ok := threadResyncs[thread.ThreadKey]; ok {
+			continue
+		}
+		threadResyncs[thread.ThreadKey] = &FBChatResync{
+			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
+			Info:      m.wrapChatInfo(thread),
+			Update:    thread,
+			Members:   make(map[int64]bridgev2.ChatMember),
+			m:         m,
+
+			UncertainReceiver: thread.ThreadType == table.UNKNOWN_THREAD_TYPE,
+		}
+	}
 
 	// Deleting a thread will cancel all further events, so handle those first
 	collectPortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
@@ -825,7 +838,11 @@ func collectPortalEvents[T ThreadKeyable](
 		if ok {
 			threadType = v.ThreadType
 		} else if syncOK {
-			threadType = sync.Raw.ThreadType
+			if sync.Raw != nil {
+				threadType = sync.Raw.ThreadType
+			} else {
+				threadType = sync.Update.ThreadType
+			}
 		}
 		// TODO this check isn't needed for all types
 		parentKey, threadMsgID, err := p.m.Main.DB.GetThreadByKey(p.ctx, threadKey)

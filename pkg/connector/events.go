@@ -550,6 +550,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 
 type FBChatResync struct {
 	Raw       *table.LSDeleteThenInsertThread
+	Update    *table.LSUpdateOrInsertThread
 	PortalKey networkid.PortalKey
 	Info      *bridgev2.ChatInfo
 	Members   map[int64]bridgev2.ChatMember
@@ -582,29 +583,43 @@ func (r *FBChatResync) PortalReceiverIsUncertain() bool {
 }
 
 func (r *FBChatResync) ShouldCreatePortal() bool {
-	if r.Raw == nil || r.Raw.FolderName == folderSpam {
+	if r.Raw != nil && r.Raw.FolderName == folderSpam {
+		return false
+	} else if r.Update != nil && r.Update.FolderName == folderSpam {
 		return false
 	}
 	if r.Info != nil && r.Info.MessageRequest != nil && *r.Info.MessageRequest {
 		return true
 	}
-	return r.Raw.FolderName != folderPending
+	if r.Raw != nil {
+		return r.Raw.FolderName != folderPending
+	}
+	return r.Update.FolderName != folderPending
 }
 
 func (r *FBChatResync) AddLogContext(c zerolog.Context) zerolog.Context {
 	if r.UpsertID != 0 {
 		c = c.Int64("global_upsert_counter", r.UpsertID)
 	}
-	if r.Raw == nil {
-		return c
+	var threadID int64
+	var threadType table.ThreadType
+	var threadFolder string
+	if r.Raw != nil {
+		threadID = r.Raw.ThreadKey
+		threadType = r.Raw.ThreadType
+		threadFolder = r.Raw.FolderName
+	} else {
+		threadID = r.Update.ThreadKey
+		threadType = r.Update.ThreadType
+		threadFolder = r.Update.FolderName
 	}
 	c = c.
-		Int64("thread_id", r.Raw.ThreadKey).
-		Int("thread_type", int(r.Raw.ThreadType)).
+		Int64("thread_id", threadID).
+		Int("thread_type", int(threadType)).
 		Dict("debug_info", zerolog.Dict().
-			Str("thread_folder", r.Raw.FolderName).
-			Int64("ig_folder", r.Raw.IgFolder).
-			Int64("group_notification_settings", r.Raw.GroupNotificationSettings))
+			Str("thread_folder", threadFolder).
+			Int64("ig_folder", r.getIGFolder()).
+			Int64("group_notification_settings", r.getGroupNotificationSettings()))
 	return c
 }
 
@@ -613,7 +628,7 @@ func (r *FBChatResync) GetSender() bridgev2.EventSender {
 }
 
 func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	if r.Raw == nil {
+	if r.Info == nil {
 		return nil, nil
 	}
 	if len(r.Members) > 0 && !r.filled {
@@ -646,10 +661,11 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 func (r *FBChatResync) CheckNeedsBackfill(ctx context.Context, lastMessage *database.Message) (bool, error) {
 	// Check for forward backfill if we're handling a remote update, we need to fill any gap between
 	// the last message we know of and the last activity timestamp specified on the thread.
-	if r.Backfill == nil && r.Raw != nil && lastMessage != nil && r.Raw.LastActivityTimestampMs > lastMessage.Timestamp.UnixMilli() {
+	lastActivity := r.getLastActivityTimestampMs()
+	if r.Backfill == nil && lastActivity != 0 && lastMessage != nil && lastActivity > lastMessage.Timestamp.UnixMilli() {
 		zerolog.Ctx(ctx).Debug().
 			Int64("last_message_ts", lastMessage.Timestamp.UnixMilli()).
-			Int64("thread_last_activity_ts", r.Raw.LastActivityTimestampMs).
+			Int64("thread_last_activity_ts", lastActivity).
 			Msg("Thread has newer activity than last known message, triggering forward backfill")
 		return true, nil
 	}
@@ -674,6 +690,33 @@ func (r *FBChatResync) CheckNeedsBackfill(ctx context.Context, lastMessage *data
 
 func (r *FBChatResync) GetBundledBackfillData() any {
 	return r.Backfill
+}
+
+func (r *FBChatResync) getLastActivityTimestampMs() int64 {
+	if r.Raw != nil {
+		return r.Raw.LastActivityTimestampMs
+	} else if r.Update != nil {
+		return r.Update.LastActivityTimestampMs
+	}
+	return 0
+}
+
+func (r *FBChatResync) getIGFolder() int64 {
+	if r.Raw != nil {
+		return r.Raw.IgFolder
+	} else if r.Update != nil {
+		return r.Update.IgFolder
+	}
+	return 0
+}
+
+func (r *FBChatResync) getGroupNotificationSettings() int64 {
+	if r.Raw != nil {
+		return r.Raw.GroupNotificationSettings
+	} else if r.Update != nil {
+		return r.Update.GroupNotificationSettings
+	}
+	return 0
 }
 
 type FBFolderResync struct {
