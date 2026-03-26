@@ -13,6 +13,8 @@ const (
 	CONNECTION_REFUSED_SERVER_UNAVAILABLE
 	CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD
 	CONNECTION_REFUSED_UNAUTHORIZED
+
+	CONNECTION_REFUSED_UNKNOWN_24 ConnectionCode = 24
 )
 
 var connectionCodesDescription = map[ConnectionCode]string{
@@ -22,6 +24,7 @@ var connectionCodesDescription = map[ConnectionCode]string{
 	CONNECTION_REFUSED_SERVER_UNAVAILABLE:            "server unavailable",
 	CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD:      "bad username or password",
 	CONNECTION_REFUSED_UNAUTHORIZED:                  "unauthorized",
+	CONNECTION_REFUSED_UNKNOWN_24:                    "unknown connection code 24",
 }
 
 func (c ConnectionCode) Error() string {

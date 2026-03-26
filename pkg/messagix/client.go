@@ -338,7 +338,8 @@ func (c *Client) Connect(ctx context.Context) error {
 			}
 			if errors.Is(err, CONNECTION_REFUSED_UNAUTHORIZED) ||
 				// TODO server unavailable may mean a challenge state, should be checked somehow
-				errors.Is(err, CONNECTION_REFUSED_SERVER_UNAVAILABLE) {
+				errors.Is(err, CONNECTION_REFUSED_SERVER_UNAVAILABLE) ||
+				errors.Is(err, CONNECTION_REFUSED_UNKNOWN_24) {
 				c.HandleEvent(ctx, &Event_PermanentError{Err: err})
 				return
 			} else if errors.Is(err, CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD) && connectionAttempts > 5 {
