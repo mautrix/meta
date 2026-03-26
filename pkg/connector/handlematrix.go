@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -119,6 +120,17 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			if m.canReconnect() {
 				go m.FullReconnect()
 			}
+			return nil, err
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			code := IGConsentRequired
+			if m.LoginMeta.Platform.IsMessenger() {
+				code = FBConsentRequired
+			}
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      code,
+				UserAction: status.UserActionRestart,
+			})
 			return nil, err
 		} else if err != nil {
 			return nil, fmt.Errorf("failed to convert message: %w", err)
