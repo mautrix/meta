@@ -46,6 +46,7 @@ const (
 	FBConsentRequired          status.BridgeStateErrorCode = "fb-consent-required"
 	FBCheckpointRequired       status.BridgeStateErrorCode = "fb-checkpoint-required"
 	MetaProxyUpdateFail        status.BridgeStateErrorCode = "meta-proxy-update-fail"
+	MetaConnectError24         status.BridgeStateErrorCode = "meta-connect-error-24"
 )
 
 func init() {
@@ -66,6 +67,7 @@ func init() {
 		MetaServerUnavailable:      "Connection refused by server",
 		MetaConnectError:           "Unknown connection error",
 		MetaProxyUpdateFail:        "Failed to update proxy",
+		MetaConnectError24:         "Unknown connection error 24",
 	})
 }
 
@@ -137,6 +139,15 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 					Error:      IGChallengeRequiredMaybe,
 					UserAction: status.UserActionRestart,
 				}
+			}
+		} else if errors.Is(evt.Err, messagix.CONNECTION_REFUSED_UNKNOWN_24) {
+			m.metaState = status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      MetaConnectError24,
+			}
+			if m.canReconnect() {
+				log.Debug().Msg("Doing full reconnect after ConnectionCode(24)")
+				go m.FullReconnect()
 			}
 		} else {
 			m.metaState = status.BridgeState{
