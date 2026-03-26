@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -100,7 +100,7 @@ func (bb *BloksBundle) Print(indent string) error {
 	for id := range p.Scripts {
 		scriptIDs = append(scriptIDs, id)
 	}
-	sort.Slice(scriptIDs, func(i, j int) bool { return scriptIDs[i] < scriptIDs[j] })
+	slices.Sort(scriptIDs)
 	for _, id := range scriptIDs {
 		script := p.Scripts[id]
 		fmt.Printf("%s  <Script id=%q>\n", indent, id)
@@ -116,7 +116,7 @@ func (bb *BloksBundle) Print(indent string) error {
 	for id := range p.Templates {
 		templateIDs = append(templateIDs, id)
 	}
-	sort.Slice(templateIDs, func(i, j int) bool { return templateIDs[i] < templateIDs[j] })
+	slices.Sort(templateIDs)
 	for _, id := range templateIDs {
 		template := p.Templates[id]
 		fmt.Printf("%s  <Template id=%q>\n", indent, id)
@@ -347,7 +347,7 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 	for attr := range btc.Attributes {
 		attrs = append(attrs, attr)
 	}
-	sort.Slice(attrs, func(i, j int) bool { return attrs[i] < attrs[j] })
+	slices.Sort(attrs)
 	for _, id := range attrs {
 		value := btc.Attributes[id]
 		attrtype := ""
@@ -495,7 +495,7 @@ func (bst *BloksTreeScriptSet) Print(indent string) error {
 	for id := range bst.Scripts {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	for _, id := range ids {
 		script := bst.Scripts[id]
 		fmt.Printf("%s<Script %s>\n", indent, id.ToTag())
