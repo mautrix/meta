@@ -585,6 +585,10 @@ func (r *FBChatResync) ShouldCreatePortal() bool {
 		return false
 	} else if r.Update != nil && r.Update.FolderName == folderSpam {
 		return false
+	} else if r.Raw == nil && r.Update == nil {
+		// Backfill-only resyncs don't carry folder metadata, so they can't
+		// reliably decide portal creation here.
+		return false
 	}
 	if r.Info != nil && r.Info.MessageRequest != nil && *r.Info.MessageRequest {
 		return true
@@ -606,10 +610,13 @@ func (r *FBChatResync) AddLogContext(c zerolog.Context) zerolog.Context {
 		threadID = r.Raw.ThreadKey
 		threadType = r.Raw.ThreadType
 		threadFolder = r.Raw.FolderName
-	} else {
+	} else if r.Update != nil {
 		threadID = r.Update.ThreadKey
 		threadType = r.Update.ThreadType
 		threadFolder = r.Update.FolderName
+	} else {
+		threadID = metaid.ParseFBPortalID(r.PortalKey.ID)
+		threadFolder = "unknown"
 	}
 	c = c.
 		Int64("thread_id", threadID).

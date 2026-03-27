@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
@@ -346,4 +347,67 @@ func (ig *InstagramMethods) AcceptMessageRequest(ctx context.Context, threadID s
 	}
 
 	return nil
+}
+
+type igListMessageRequestsResponse struct {
+	Data struct {
+		Mailbox struct {
+			ThreadsByFolder struct {
+				Edges []struct {
+					Node struct {
+						Thread struct {
+							ThreadKey    string `json:"thread_key"`
+							SystemFolder string `json:"system_folder"`
+							IsGroup      bool   `json:"is_group"`
+						} `json:"as_ig_direct_thread"`
+					} `json:"node"`
+				} `json:"edges"`
+			} `json:"threads_by_folder"`
+		} `json:"get_slide_mailbox_for_iris_subscription"`
+	} `json:"data"`
+}
+
+func (ig *InstagramMethods) FetchMessageRequests(ctx context.Context) ([]*table.LSVerifyThreadExists, error) {
+	variables := &graphql.IGListMessageRequestsGraphQLRequestPayload{
+		DeviceIDForIrisSubscription:                  ig.client.configs.BrowserConfigTable.MqttWebDeviceID.ClientID,
+		EnablePendingThreadsList:                     true,
+		IGD30DayAgoTimestampMsRelayProvider:          strconv.FormatInt(time.Now().Add(-30*24*time.Hour).UnixMilli(), 10),
+		IGDPinnedThreadsRenderEnabledGKRelayProvider: true,
+		IGDMaxUnreadMessagesCountRelayProvider:       5,
+		IGDThreadListActionsEnabledGKRelayProvider:   true,
+	}
+	resp, respBody, err := ig.client.makeGraphQLRequest(ctx, "IGListMessageRequests", variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch instagram message requests: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("failed to fetch instagram message requests with bad status code %d", resp.StatusCode)
+	}
+
+	var parsed igListMessageRequestsResponse
+	if err = json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse instagram message requests response: %w", err)
+	}
+
+	threads := make([]*table.LSVerifyThreadExists, 0, len(parsed.Data.Mailbox.ThreadsByFolder.Edges))
+	for _, edge := range parsed.Data.Mailbox.ThreadsByFolder.Edges {
+		threadKey, err := strconv.ParseInt(edge.Node.Thread.ThreadKey, 10, 64)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Str("thread_key", edge.Node.Thread.ThreadKey).Msg("Failed to parse pending instagram thread key")
+			continue
+		}
+		threadType := table.ONE_TO_ONE
+		if edge.Node.Thread.IsGroup {
+			threadType = table.GROUP_THREAD
+		}
+		threads = append(threads, &table.LSVerifyThreadExists{
+			ThreadKey:  threadKey,
+			ThreadType: threadType,
+			FolderName: "pending",
+			SyncGroup:  1,
+		})
+	}
+
+	zerolog.Ctx(ctx).Debug().Int("thread_count", len(threads)).Msg("Fetched Instagram message requests")
+	return threads, nil
 }

@@ -40,6 +40,11 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		CallerClass:  "RelayModern",
 		FriendlyName: "useIGDirectAcceptMessageRequestMutation",
 	},
+	"IGListMessageRequests": {
+		DocID:        "25843909248644743",
+		CallerClass:  "RelayModern",
+		FriendlyName: "PolarisDirectMessageRequestQuery",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {
@@ -56,6 +61,15 @@ type IGAcceptMessageRequestGraphQLRequestPayload struct {
 	ThreadID           string  `json:"thread_fbid"`
 	IGInboxFolder      *string `json:"ig_inbox_folder"`
 	OfflineThreadingID string  `json:"offline_threading_id"`
+}
+
+type IGListMessageRequestsGraphQLRequestPayload struct {
+	DeviceIDForIrisSubscription                  string `json:"device_id_for_iris_subscription"`
+	EnablePendingThreadsList                     bool   `json:"enable_pending_threads_list"`
+	IGD30DayAgoTimestampMsRelayProvider          string `json:"__relay_internal__pv__IGD30DayAgoTimestampMsrelayprovider"`
+	IGDPinnedThreadsRenderEnabledGKRelayProvider bool   `json:"__relay_internal__pv__IGDPinnedThreadsRenderEnabledGKrelayprovider"`
+	IGDMaxUnreadMessagesCountRelayProvider       int    `json:"__relay_internal__pv__IGDMaxUnreadMessagesCountrelayprovider"`
+	IGDThreadListActionsEnabledGKRelayProvider   bool   `json:"__relay_internal__pv__IGDThreadListActionsEnabledGKrelayprovider"`
 }
 
 type LSPlatformGraphQLLightspeedRequestPayload struct {

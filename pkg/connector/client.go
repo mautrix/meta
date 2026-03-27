@@ -358,6 +358,7 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 	m.UserLogin.RemoteProfile.Avatar = m.Ghost.AvatarMXC
 
 	m.initialTable.Store(initialTable)
+	m.startMessageRequestSync(ctx)
 
 	err = m.Client.Connect(ctx)
 	if err != nil {
@@ -376,6 +377,7 @@ func (m *MetaClient) connectWithCache(ctx context.Context) {
 	go m.handleTableLoop(ctx)
 
 	m.initialTableHandled.Store(true)
+	m.startMessageRequestSync(ctx)
 	err := m.Client.Connect(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
