@@ -291,7 +291,7 @@ func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header 
 
 func (c *Client) buildMessengerLiteHeaders() (http.Header, error) {
 
-	analHdr, err := makeRequestAnalyticsHeader()
+	analHdr, err := makeRequestAnalyticsHeader(true)
 	if err != nil {
 		return nil, err
 	}

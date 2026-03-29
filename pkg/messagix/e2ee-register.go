@@ -41,7 +41,9 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 
+	messagix_types "go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 type ICDCFetchResponse struct {
@@ -88,6 +90,7 @@ func (c *Client) doE2EERequest(ctx context.Context, endpoint string, body url.Va
 	req.Header.Set("sec-fetch-site", "cross-site")
 	req.Header.Set("origin", c.GetEndpoint("base_url"))
 	req.Header.Set("referer", c.GetEndpoint("messages")+"/")
+	req.Header.Set("request_token", strings.ToUpper(uuid.NewString()))
 	zerolog.Ctx(ctx).Trace().
 		Str("url", addr).
 		Any("body", body).
@@ -117,12 +120,12 @@ func (c *Client) doE2EERequest(ctx context.Context, endpoint string, body url.Va
 	return nil
 }
 
-func (c *Client) fetchICDC(ctx context.Context, fbid int64, deviceUUID uuid.UUID) (*ICDCFetchResponse, error) {
+func (c *Client) fetchICDC(ctx context.Context, fbid int64, deviceUUID uuid.UUID, fbAppID string, fbCAT string) (*ICDCFetchResponse, error) {
 	formBody := url.Values{
 		"fbid":      {strconv.FormatInt(fbid, 10)},
-		"fb_cat":    {c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat},
-		"app_id":    {strconv.FormatInt(c.configs.BrowserConfigTable.MessengerWebInitData.AppID, 10)},
-		"device_id": {deviceUUID.String()},
+		"fb_cat":    {fbCAT},
+		"app_id":    {fbAppID},
+		"device_id": {strings.ToUpper(deviceUUID.String())},
 	}
 	var icdcResp ICDCFetchResponse
 	err := c.doE2EERequest(ctx, "icdc_fetch", formBody, &icdcResp)
@@ -150,7 +153,7 @@ func (c *Client) SetDevice(dev *store.Device) {
 	}
 }
 
-func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
+func (c *Client) RegisterE2EE(ctx context.Context, fbid int64, metadata *metaid.MessengerLiteLoginMetadata) error {
 	if c == nil {
 		return ErrClientIsNil
 	} else if c.device == nil {
@@ -159,7 +162,17 @@ func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 	if c.device.FacebookUUID == uuid.Nil {
 		c.device.FacebookUUID = uuid.New()
 	}
-	icdcMeta, err := c.fetchICDC(ctx, fbid, c.device.FacebookUUID)
+	fbAppID := strconv.FormatInt(c.configs.BrowserConfigTable.MessengerWebInitData.AppID, 10)
+	fbCAT := c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat
+	if c.Platform == messagix_types.MessengerLite {
+		fbAppID = useragent.MessengerLiteAppId
+		var err error
+		fbCAT, err = c.getMessengerLiteCAT(ctx, metadata)
+		if err != nil {
+			return fmt.Errorf("failed to fetch messenger-lite CAT: %w", err)
+		}
+	}
+	icdcMeta, err := c.fetchICDC(ctx, fbid, c.device.FacebookUUID, fbAppID, fbCAT)
 	if err != nil {
 		return fmt.Errorf("failed to fetch ICDC metadata: %w", err)
 	}
@@ -194,9 +207,9 @@ func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 	}
 	formBody := url.Values{
 		"fbid":       {strconv.FormatInt(fbid, 10)},
-		"fb_cat":     {c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat},
-		"app_id":     {strconv.FormatInt(c.configs.BrowserConfigTable.MessengerWebInitData.AppID, 10)},
-		"device_id":  {c.device.FacebookUUID.String()},
+		"fb_cat":     {fbCAT},
+		"app_id":     {fbAppID},
+		"device_id":  {strings.ToUpper(c.device.FacebookUUID.String())},
 		"e_regid":    {base64.StdEncoding.EncodeToString(binary.BigEndian.AppendUint32(nil, c.device.RegistrationID))},
 		"e_keytype":  {base64.StdEncoding.EncodeToString([]byte{ecc.DjbType})},
 		"e_ident":    {base64.StdEncoding.EncodeToString(c.device.IdentityKey.Pub[:])},
@@ -231,4 +244,45 @@ func (c *Client) RegisterE2EE(ctx context.Context, fbid int64) error {
 		Stringer("jid", c.device.ID).
 		Msg("ICDC registration successful")
 	return err
+}
+
+type messengerLiteCatResponse struct {
+	CAT string `json:"encrypted_serialized_cat"`
+}
+
+func (c *Client) getMessengerLiteCAT(ctx context.Context, metadata *metaid.MessengerLiteLoginMetadata) (string, error) {
+	analHdr, err := makeRequestAnalyticsHeader(false)
+	if err != nil {
+		return "", err
+	}
+	headers := map[string]string{
+		"accept":                      "*/*",
+		"x-fb-http-engine":            "NSURL",
+		"x-fb-request-analytics-tags": analHdr,
+		"request_token":               strings.ToUpper(uuid.New().String()),
+		"accept-language":             "en-US,en;q=0.9",
+		"user-agent":                  useragent.MessengerLiteUserAgent,
+		"x-fb-appid":                  useragent.MessengerLiteAppId,
+		"access_token":                metadata.AccessToken,
+	}
+
+	httpHeaders := http.Header{}
+	for k, v := range headers {
+		httpHeaders.Set(k, v)
+	}
+
+	resp, body, err := c.MakeRequest(ctx, "https://web.facebook.com/messaging/lightspeed/cat", "POST", httpHeaders, nil, messagix_types.NONE)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("bad http status on cat request: %d", resp.StatusCode)
+	}
+
+	var catResp messengerLiteCatResponse
+	err = json.Unmarshal(bytes.TrimPrefix(body, []byte("for (;;);")), &catResp)
+	if err != nil {
+		return "", fmt.Errorf("parse cat response: %w", err)
+	}
+	if catResp.CAT == "" {
+		return "", fmt.Errorf("no cat token in response")
+	}
+	return catResp.CAT, nil
 }
