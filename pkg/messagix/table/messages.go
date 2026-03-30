@@ -626,6 +626,21 @@ type LSUpdateSubscriptErrorMessage struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSIssueNewError struct {
+	TaskID       int64  `index:"0" json:",omitempty"`
+	ErrorCode    int64  `index:"1" json:",omitempty"`
+	ErrorTitle   string `index:"2" json:",omitempty"`
+	ErrorMessage string `index:"3" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSRemoveOptimisticGroupThread struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
 type LSUpdateSubThreadXMA struct {
 	ParentThreadKey int64 `index:"0" json:",omitempty"`
 	ThreadKey       int64 `index:"1" json:",omitempty"`

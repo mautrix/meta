@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
@@ -91,6 +92,17 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 	})
 	if err != nil {
 		return nil, err
+	} else if len(resp.LSIssueNewError) > 0 {
+		zerolog.Ctx(ctx).Warn().Any("data", resp).Msg("Server rejected group creation")
+		issueErr := resp.LSIssueNewError[0]
+		msg := issueErr.ErrorMessage
+		if msg == "" {
+			msg = issueErr.ErrorTitle
+		}
+		if msg == "" {
+			msg = "unknown error creating group"
+		}
+		return nil, bridgev2.RespError(mautrix.MForbidden.WithMessage(msg))
 	} else if len(resp.LSReplaceOptimisticThread) == 0 {
 		zerolog.Ctx(ctx).Debug().Any("data", resp).Msg("Unexpected create group response")
 		return nil, fmt.Errorf("no optimistic replace thread in response")
