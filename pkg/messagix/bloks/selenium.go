@@ -23,6 +23,19 @@ import (
 
 var (
 	ErrLoginPhoneNumber = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
+
+	// This error is returned in cases where we have observed Meta returning an error that is
+	// not due to anything the bridge or user has done wrong, and will cause login to fail for
+	// this account even in the official Messenger iOS app.
+	//
+	// Using an IP address with a low reputation for Meta makes it more likely that Meta will
+	// block logins for an undisclosed reason, but such blocks are account-specific and other
+	// accounts can still be logged into.
+	//
+	// Account logins are still sometimes blocked even when using a high-reputation residential
+	// IP address. It's possible that account configuration plays a role, for example which MFA
+	// methods are enabled, but the details are not known.
+	ErrLoginUninformative = bridgev2.RespError{ErrCode: "FI.MAU.META_UNINFORMATIVE_ERROR", Err: "Meta rejected the login without providing a reason, please try again", StatusCode: http.StatusBadRequest}
 )
 
 func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
@@ -354,6 +367,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
 			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
+			mayQueryError := false
 			transitions := map[BrowserState]BrowserState{}
 			switch name {
 			case "com.bloks.www.bloks.caa.login.async.send_login_request":
@@ -371,6 +385,14 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			case "com.bloks.www.ap.two_step_verification.entrypoint_async":
 				transitions[StateEnteredEmailPasswordAction] = StateMFALandingAPAction
 				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
+				// This RPC is sometimes rejected with a generic "server error
+				// field_exception" response when transitioning from the captcha
+				// page to the MFA landing page. The error can be reproduced on the
+				// official Messenger iOS app so it is not a bridge issue. Entering
+				// the wrong captcha produces a different, non-error response - so
+				// we know there is nothing the user could do to cause this, it is
+				// purely Meta's fault.
+				mayQueryError = true
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device":
 				transitions[StateMFALandingAPAction] = StatePossibleMandatoryAFADPAge
 				transitions[StateChosenMFAAPAction] = StateAFADPage
@@ -444,6 +466,9 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 
 			pageOrAction, err := cfg.MakeBloksRequest(ctx, doc, NewBloksRequest(name, paramsInner))
 			if err != nil {
+				if mayQueryError && strings.Contains(err.Error(), "Query Error") {
+					return ErrLoginUninformative
+				}
 				return fmt.Errorf("rpc %s: %w", name, err)
 			}
 
