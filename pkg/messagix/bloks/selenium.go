@@ -35,7 +35,7 @@ var (
 	// Account logins are still sometimes blocked even when using a high-reputation residential
 	// IP address. It's possible that account configuration plays a role, for example which MFA
 	// methods are enabled, but the details are not known.
-	ErrLoginUninformative = bridgev2.RespError{ErrCode: "FI.MAU.META_UNINFORMATIVE_ERROR", Err: "Meta rejected the login without providing a reason, please try again", StatusCode: http.StatusBadRequest}
+	ErrLoginUninformative = bridgev2.RespError{ErrCode: "FI.MAU.META_UNINFORMATIVE_ERROR", Err: "Facebook rejected the login without providing a reason, please try again", StatusCode: http.StatusBadRequest}
 )
 
 func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
