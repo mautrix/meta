@@ -13,12 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
+	"go.mau.fi/util/exhttp"
+
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
-	"go.mau.fi/util/exhttp"
 )
 
 var filename = flag.String("file", "", "Bloks response to parse")
