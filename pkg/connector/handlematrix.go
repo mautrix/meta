@@ -172,19 +172,15 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				}
 			}
 			if len(msgID) == 0 {
+				log.Warn().Any("response", resp).Msg("Message send response didn't include message ID")
 				for _, failed := range resp.LSMarkOptimisticMessageFailed {
-					if failed.OTID == otidStr {
-						log.Warn().Str("message", failed.Message).Msg("Sending message failed (optimistic)")
-						return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
-					}
+					log.Warn().Str("message", failed.Message).Msg("Sending message failed (optimistic)")
+					return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
 				}
 				for _, failed := range resp.LSHandleFailedTask {
-					if failed.OTID == otidStr {
-						log.Warn().Str("message", failed.Message).Msg("Sending message failed (task)")
-						return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
-					}
+					log.Warn().Str("message", failed.Message).Msg("Sending message failed (task)")
+					return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
 				}
-				log.Warn().Any("response", resp).Msg("Message send response didn't include message ID")
 				return nil, fmt.Errorf("%w: message send response didn't include message ID", ErrServerRejectedMessage)
 			}
 		}
