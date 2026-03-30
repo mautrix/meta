@@ -20,6 +20,7 @@ import (
 
 var filename = flag.String("file", "", "Bloks response to parse")
 var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
+var doHTML = flag.Bool("html", false, "Print as HTML")
 var doLogin = flag.Bool("login", false, "Click the login button")
 var do2FA = flag.String("2fa", "", "Submit a two-factor code")
 var doMethods = flag.Bool("methods", false, "Print the available 2FA methods")
@@ -112,6 +113,9 @@ func mainE() error {
 	}
 	if *doPrint {
 		return bundle.Print("")
+	}
+	if *doHTML {
+		return bundle.PrintHTML("")
 	}
 	lastURL := ""
 	bridge := bloks.InterpBridge{
