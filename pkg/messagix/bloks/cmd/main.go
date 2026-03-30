@@ -10,11 +10,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+
+	"go.mau.fi/util/exhttp"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -36,6 +40,8 @@ var anotherWay = flag.Bool("another-way", false, "Click the alternate MFA method
 var doSMS = flag.Bool("sms", false, "Trigger sending SMS code")
 var doSMSCode = flag.String("sms-code", "", "Submit SMS code")
 var doBackupCode = flag.String("backup-code", "", "Submit backup code")
+var doEncrypt = flag.String("encrypt", "", "Encrypt a password")
+var deviceID = flag.String("device-id", "", "Device ID for password encryption")
 
 func main() {
 	err := mainE()
@@ -78,6 +84,29 @@ func mainE() error {
 	log := zerolog.New(zerolog.NewConsoleWriter()).Level(logLevel)
 	ctx = log.WithContext(ctx)
 
+	if *doEncrypt != "" {
+		if *deviceID == "" {
+			return fmt.Errorf("must give -device-id to use -encrypt")
+		}
+		cook := &cookies.Cookies{
+			Platform: types.MessengerLite,
+		}
+		cl := messagix.NewClient(cook, log, &messagix.Config{
+			ClientSettings: exhttp.SensibleClientSettings,
+		})
+		cl.MessengerLite.SetDeviceIdentifiers(uuid.MustParse(*deviceID))
+		key, err := cl.FetchLightspeedKey(ctx)
+		if err != nil {
+			return err
+		}
+		enc, err := crypto.EncryptPassword(int(types.MessengerLite), key.KeyID, key.PublicKey, *doEncrypt)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(enc)
+		return nil
+	}
 	if *doRPC != "" {
 		if *rpcParams == "" {
 			return fmt.Errorf("-rpc-params is mandatory when using -rpc")

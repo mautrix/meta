@@ -70,7 +70,7 @@ type LightspeedKeyResponse struct {
 func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 	return &bloks.BrowserConfig{
 		EncryptPassword: func(ctx context.Context, password string) (string, error) {
-			key, err := fb.client.fetchLightspeedKey(ctx)
+			key, err := fb.client.FetchLightspeedKey(ctx)
 			if err != nil {
 				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
 			}
@@ -85,7 +85,7 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 	}
 }
 
-func (c *Client) fetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
+func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
 	endpoint := c.GetEndpoint("pwd_key")
 
 	params := map[string]any{
@@ -179,6 +179,11 @@ func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
 		newCookies.Set(cookies.MetaCookieName(raw.Name), raw.Value)
 	}
 	return newCookies
+}
+
+// For testing only
+func (m *MessengerLiteMethods) SetDeviceIdentifiers(deviceID uuid.UUID) {
+	m.deviceID = deviceID
 }
 
 func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, *cookies.Cookies, error) {
