@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	imgjpeg "image/jpeg"
+	"net/http"
 	"net/url"
 	"strconv"
 
@@ -13,10 +16,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
+	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 // specific methods for insta api, not socket related
@@ -309,4 +315,135 @@ func (ig *InstagramMethods) EditGroupTitle(ctx context.Context, threadID, newTit
 		return fmt.Errorf("failed to edit group title with bad status code %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string, avatar []byte) error {
+	detectedType := http.DetectContentType(avatar)
+	if detectedType != "image/jpeg" && detectedType != "image/png" {
+		img, _, err := image.Decode(bytes.NewReader(avatar))
+		if err != nil {
+			return fmt.Errorf("failed to decode avatar image: %w", err)
+		}
+		var buf bytes.Buffer
+		if err = imgjpeg.Encode(&buf, img, nil); err != nil {
+			return fmt.Errorf("failed to encode avatar image as jpeg: %w", err)
+		}
+		avatar = buf.Bytes()
+		detectedType = "image/jpeg"
+	}
+
+	entityID := fmt.Sprintf("%d_0_%d", ig.client.cookies.GetUserID(), methods.GenerateEpochID())
+	reqUrl := ig.client.GetEndpoint("rupload_ig") + entityID
+
+	h := ig.buildAndroidHeaders()
+	h.Set("content-type", "application/octet-stream")
+	h.Set("image_type", "FILE_ATTACHMENT")
+	h.Set("x-entity-name", entityID)
+	h.Set("x-entity-length", strconv.Itoa(len(avatar)))
+	h.Set("x-entity-type", detectedType)
+	h.Set("offset", "0")
+	h.Set("priority", "u=6, i")
+
+	_, respBody, err := ig.client.MakeRequest(ctx, reqUrl, "POST", h, avatar, types.NONE)
+	if err != nil {
+		return fmt.Errorf("failed to upload group avatar: %w", err)
+	}
+
+	var uploadResp RUploadResponse
+	err = json.Unmarshal(respBody, &uploadResp)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal upload response: %w", err)
+	}
+	if uploadResp.MediaID == 0 {
+		return fmt.Errorf("failed to upload group avatar: no media id received. response: %s", string(respBody))
+	}
+
+	igVariables := &graphql.IGEditGroupAvatarGraphQLRequestPayload{
+		ThreadID:           threadID,
+		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),
+		AttachmentFBID:     strconv.FormatInt(uploadResp.MediaID, 10),
+	}
+
+	_, err = ig.makeIGraphQLRequest(ctx, "IGUpdateGroupAvatar", "xig_direct_update_thread_image", igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to set group avatar: %w", err)
+	}
+
+	return nil
+}
+
+func (ig *InstagramMethods) RemoveGroupAvatar(ctx context.Context, threadID string) error {
+	igVariables := &graphql.IGEditGroupAvatarGraphQLRequestPayload{
+		ThreadID:           threadID,
+		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),
+	}
+
+	_, err := ig.makeIGraphQLRequest(ctx, "IGRemoveGroupAvatar", "xig_direct_remove_thread_image", igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to remove group avatar: %w", err)
+	}
+
+	return nil
+}
+
+func (ig *InstagramMethods) buildAndroidHeaders() http.Header {
+	h := http.Header{}
+	h.Set("authorization", ig.client.GetRUploadToken())
+	h.Set("user-agent", useragent.AndroidUserAgent)
+	h.Set("ig-intended-user-id", strconv.FormatInt(ig.client.cookies.GetUserID(), 10))
+	h.Set("ig-u-ds-user-id", strconv.FormatInt(ig.client.cookies.GetUserID(), 10))
+	h.Set("x-mid", ig.client.cookies.Get(cookies.IGCookieMachineID))
+	h.Set("x-ig-app-id", useragent.IGAndroidAppID)
+	return h
+}
+
+func (ig *InstagramMethods) makeIGraphQLRequest(ctx context.Context, docName, rootFieldName string, variables interface{}) ([]byte, error) {
+	graphQLDoc, ok := graphql.GraphQLDocs[docName]
+	if !ok {
+		return nil, fmt.Errorf("graphql doc %s not found", docName)
+	}
+	h := ig.buildAndroidHeaders()
+	h.Set("x-fb-friendly-name", graphQLDoc.FriendlyName)
+	if rootFieldName != "" {
+		h.Set("x-root-field-name", rootFieldName)
+	}
+	h.Set("x-graphql-client-library", "pando")
+	h.Set("x-fb-http-engine", "Tigon/MNS/TCP")
+
+	graphQLUrl := ig.client.GetEndpoint("i_graphql")
+
+	vBytes, err := json.Marshal(variables)
+	if err != nil {
+		return nil, err
+	}
+
+	payload := &HttpQuery{
+		Method:                           "post",
+		Pretty:                           "false",
+		Format:                           "json",
+		ServerTimestamps:                 "true",
+		Locale:                           "user",
+		FbAPIReqFriendlyName:             graphQLDoc.FriendlyName,
+		ClientDocID:                      graphQLDoc.ClientDocID,
+		EnableCanonicalNaming:            "true",
+		EnableCanonicalVariableOverrides: "true",
+		EnableCanonicalNamingAmbiguousTypePrefixing: "true",
+		Variables: string(vBytes),
+	}
+
+	form, err := query.Values(payload)
+	if err != nil {
+		return nil, err
+	}
+	payloadBytes := []byte(form.Encode())
+
+	resp, respBody, err := ig.client.MakeRequest(ctx, graphQLUrl, "POST", h, payloadBytes, types.FORM)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return nil, fmt.Errorf("bad status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
 }

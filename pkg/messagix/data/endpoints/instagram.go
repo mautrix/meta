@@ -21,6 +21,8 @@ var InstagramEndpoints = map[string]string{
 	"icdc_register": "https://reg-e2ee.instagram.com/v2/fb_register_v2",
 
 	"media_upload":     instaBaseUrl + "/ajax/mercury/upload.php?",
+	"rupload_ig":       "https://rupload.facebook.com/messenger_image/",
+	"i_graphql":        "https://i.instagram.com/graphql_www",
 	"route_definition": instaBaseUrl + "/ajax/route-definition/",
 
 	"web_profile_info": instaApiV1Url + "/users/web_profile_info/?",
