@@ -18,7 +18,6 @@ package msgconv
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -285,16 +284,6 @@ func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *mess
 	return attachmentID, nil
 }
 
-type ruploadToken struct {
-	DSUserID  string `json:"ds_user_id"`
-	SessionID string `json:"sessionid"`
-}
-
-type ruploadResponse struct {
-	ID      int   `json:"id"`
-	MediaID int64 `json:"media_id"`
-}
-
 // There is a subset of Instagram accounts that are for some reason unable to upload
 // videos through the Instagram web API (even using the official Instagram website).
 // All other uploads and messages work fine (image, audio, file), it is specifically
@@ -309,22 +298,9 @@ func (mc *MessageConverter) reuploadVideoToMetaFallback(ctx context.Context, cli
 		time.Now().Unix()*1000,
 		time.Now().UnixMilli(),
 	)
-	token, err := json.Marshal(ruploadToken{
-		DSUserID:  client.GetCookies().Get("ds_user_id"),
-		SessionID: client.GetCookies().Get("sessionid"),
-	})
-	if err != nil {
-		return 0, err
-	}
 	h := http.Header{}
-	// required headers are: authorization, ig-u-ds-user-id,
-	// offset, user-agent, video_type, x-entity-length, x-entity-name
-	//
-	// omitted headers include: x-fb-request-analytics-tags,
-	// x-ig-salt-ids, x-mid, x_fb_video_waterfall_id,
-	// x-fb-conn-uuid-client
 	h.Add("accept-language", "en-US")
-	h.Add("authorization", fmt.Sprintf("Bearer IGT:2:%s", base64.StdEncoding.EncodeToString(token)))
+	h.Add("authorization", client.GetRUploadToken())
 	h.Add("ig-intended-user-id", client.GetCookies().Get("ds_user_id"))
 	h.Add("ig-u-ds-user-id", client.GetCookies().Get("ds_user_id"))
 	h.Add("ig-u-rur", client.GetCookies().Get("rur"))
@@ -357,7 +333,7 @@ func (mc *MessageConverter) reuploadVideoToMetaFallback(ctx context.Context, cli
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("bad status: %d", resp.StatusCode)
 	}
-	var respData ruploadResponse
+	var respData messagix.RUploadResponse
 	err = json.Unmarshal(body, &respData)
 	if err != nil {
 		return 0, err

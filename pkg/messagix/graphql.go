@@ -137,6 +137,10 @@ func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables 
 	payload.Variables = string(vBytes)
 	payload.ServerTimestamps = "true"
 	payload.DocID = graphQLDoc.DocID
+	if graphQLDoc.ClientDocID != "" {
+		payload.ClientDocID = graphQLDoc.ClientDocID
+		payload.DocID = ""
+	}
 	payload.Jssesw = graphQLDoc.Jsessw
 
 	form, err := query.Values(payload)

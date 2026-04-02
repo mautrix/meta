@@ -2,6 +2,7 @@ package graphql
 
 type GraphQLDoc struct {
 	DocID        string
+	ClientDocID  string
 	CallerClass  string
 	FriendlyName string
 
@@ -45,6 +46,16 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		CallerClass:  "RelayModern",
 		FriendlyName: "PolarisDirectMessageRequestQuery",
 	},
+	"IGUpdateGroupAvatar": {
+		ClientDocID:  "5576567352987267181917649770",
+		CallerClass:  "RelayModern",
+		FriendlyName: "IGDirectUpdateThreadImageMutation",
+	},
+	"IGRemoveGroupAvatar": {
+		ClientDocID:  "50027745118339199321503686240",
+		CallerClass:  "RelayModern",
+		FriendlyName: "IGDirectRemoveThreadImageMutation",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {
@@ -70,6 +81,12 @@ type IGListMessageRequestsGraphQLRequestPayload struct {
 	IGDPinnedThreadsRenderEnabledGKRelayProvider bool   `json:"__relay_internal__pv__IGDPinnedThreadsRenderEnabledGKrelayprovider"`
 	IGDMaxUnreadMessagesCountRelayProvider       int    `json:"__relay_internal__pv__IGDMaxUnreadMessagesCountrelayprovider"`
 	IGDThreadListActionsEnabledGKRelayProvider   bool   `json:"__relay_internal__pv__IGDThreadListActionsEnabledGKrelayprovider"`
+}
+
+type IGEditGroupAvatarGraphQLRequestPayload struct {
+	ThreadID           string `json:"ig_thread_igid"`
+	OfflineThreadingID string `json:"offline_threading_id"`
+	AttachmentFBID     string `json:"attachment_fbid,omitempty"`
 }
 
 type LSPlatformGraphQLLightspeedRequestPayload struct {

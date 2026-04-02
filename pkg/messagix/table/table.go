@@ -146,6 +146,8 @@ type LSTable struct {
 	LSUpdateExtraAttachmentColumns                   []*LSUpdateExtraAttachmentColumns                   `json:",omitempty"`
 	LSMoveThreadToE2EECutoverFolder                  []*LSMoveThreadToE2EECutoverFolder                  `json:",omitempty"`
 	LSHandleFailedTask                               []*LSHandleFailedTask                               `json:",omitempty"`
+	LSIssueNewError                                  []*LSIssueNewError                                  `json:",omitempty"`
+	LSRemoveOptimisticGroupThread                    []*LSRemoveOptimisticGroupThread                    `json:",omitempty"`
 	LSUpdateOrInsertEditMessageHistory               []*LSUpdateOrInsertEditMessageHistory               `json:",omitempty"`
 	LSVerifyHybridThreadExists                       []*LSVerifyHybridThreadExists                       `json:",omitempty"`
 	LSUpdateThreadAuthorityAndMappingWithOTIDFromJID []*LSUpdateThreadAuthorityAndMappingWithOTIDFromJID `json:",omitempty"`
@@ -306,6 +308,8 @@ var SPTable = map[string]string{
 	"updateExtraAttachmentColumns":                   "LSUpdateExtraAttachmentColumns",
 	"moveThreadToE2EECutoverFolder":                  "LSMoveThreadToE2EECutoverFolder",
 	"handleFailedTask":                               "LSHandleFailedTask",
+	"issueNewError":                                  "LSIssueNewError",
+	"removeOptimisticGroupThread":                    "LSRemoveOptimisticGroupThread",
 	"updateOrInsertEditMessageHistory":               "LSUpdateOrInsertEditMessageHistory",
 	"verifyHybridThreadExists":                       "LSVerifyHybridThreadExists",
 	"updateThreadAuthorityAndMappingWithOTIDFromJID": "LSUpdateThreadAuthorityAndMappingWithOTIDFromJID",

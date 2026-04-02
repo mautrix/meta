@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -100,7 +100,7 @@ func (bb *BloksBundle) Print(indent string) error {
 	for id := range p.Scripts {
 		scriptIDs = append(scriptIDs, id)
 	}
-	sort.Slice(scriptIDs, func(i, j int) bool { return scriptIDs[i] < scriptIDs[j] })
+	slices.Sort(scriptIDs)
 	for _, id := range scriptIDs {
 		script := p.Scripts[id]
 		fmt.Printf("%s  <Script id=%q>\n", indent, id)
@@ -116,7 +116,7 @@ func (bb *BloksBundle) Print(indent string) error {
 	for id := range p.Templates {
 		templateIDs = append(templateIDs, id)
 	}
-	sort.Slice(templateIDs, func(i, j int) bool { return templateIDs[i] < templateIDs[j] })
+	slices.Sort(templateIDs)
 	for _, id := range templateIDs {
 		template := p.Templates[id]
 		fmt.Printf("%s  <Template id=%q>\n", indent, id)
@@ -140,6 +140,23 @@ func (bb *BloksBundle) Print(indent string) error {
 		fmt.Printf("\n%s  </Action>\n", indent)
 	}
 	fmt.Printf("%s</Bundle>\n", indent)
+	return nil
+}
+
+func (bb *BloksBundle) PrintHTML(indent string) error {
+	fmt.Printf("%s<!DOCTYPE html>\n", indent)
+	fmt.Printf("%s<html>\n", indent)
+	fmt.Printf("%s  <head>\n", indent)
+	fmt.Printf("%s    <meta charset=\"utf-8\">\n", indent)
+	fmt.Printf("%s    <title>Bloks Page</title>\n", indent)
+	fmt.Printf("%s  </head>\n", indent)
+	fmt.Printf("%s  <body>\n", indent)
+	err := bb.Layout.Payload.Tree.PrintHTML(indent + "    ")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s  </body>\n", indent)
+	fmt.Printf("%s</html>\n", indent)
 	return nil
 }
 
@@ -284,6 +301,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 type BloksTreeNodeContent interface {
 	Unminify(m *Unminifier, parent *BloksTreeComponent)
 	Print(prefix string) error
+	PrintHTML(prefix string) error
 }
 
 type BloksTreeComponent struct {
@@ -347,7 +365,7 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 	for attr := range btc.Attributes {
 		attrs = append(attrs, attr)
 	}
-	sort.Slice(attrs, func(i, j int) bool { return attrs[i] < attrs[j] })
+	slices.Sort(attrs)
 	for _, id := range attrs {
 		value := btc.Attributes[id]
 		attrtype := ""
@@ -377,6 +395,97 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 		fmt.Printf("%s%s  </Property %s type=%s%s>\n", trailer, indent, id.ToTag(), attrtype, extra)
 	}
 	fmt.Printf("%s</Component name=%s>\n", indent, btc.ComponentID)
+	return nil
+}
+
+func cssToString(css map[string]string) string {
+	attrs := []string{}
+	for attr := range css {
+		attrs = append(attrs, attr)
+	}
+	slices.Sort(attrs)
+	parts := []string{}
+	for _, attr := range attrs {
+		if len(attr) <= 1 {
+			continue
+		}
+		if css[attr] == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s", attr, css[attr]))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func (btc *BloksTreeComponent) getCSS() map[string]string {
+	css := map[string]string{}
+	if style, ok := btc.Attributes["_style"]; ok {
+		style := style.BloksTreeNodeContent.(*BloksTreeComponent)
+		if style.ComponentID == "flex" {
+			for prop := range style.Attributes {
+				css[strings.ReplaceAll(string(prop), "_", "-")] = style.GetAttribute(prop)
+			}
+		}
+	}
+	return css
+}
+
+func (btc *BloksTreeComponent) PrintHTML(indent string) error {
+	switch btc.ComponentID {
+	case "bk.cds.bottomsheet.Wrapper":
+		fmt.Printf("%s<div class=\"%s\">\n", indent, btc.ComponentID)
+		fmt.Printf("%s  <div class=\"header\">\n", indent)
+		err := btc.Attributes["header"].PrintHTML(indent + "    ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s  </div>\n", indent)
+		fmt.Printf("%s  <div class=\"content\">\n", indent)
+		err = btc.Attributes["content"].PrintHTML(indent + "    ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s  </div>\n", indent)
+		fmt.Printf("%s</div>\n", indent)
+	case "bk.components.Flexbox":
+		css := btc.getCSS()
+		css["align-items"] = btc.GetAttribute("align_items")
+		css["flex-direction"] = btc.GetAttribute("flex_direction")
+		css["justify-content"] = btc.GetAttribute("justify_content")
+		fmt.Printf("%s<div class=\"%s\" style=\"%s\">\n", indent, btc.ComponentID, cssToString(css))
+		err := btc.Attributes["children"].PrintHTML(indent + "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s</div>\n", indent)
+	case "bk.components.Collection":
+		css := btc.getCSS()
+		fmt.Printf("%s<div class=\"%s\" style=\"%s\">\n", indent, btc.ComponentID, cssToString(css))
+		err := btc.Attributes["children"].PrintHTML(indent + "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s</div>\n", indent)
+	case "bk.components.RichText", "bk.data.ComposableTextSpan":
+		fmt.Printf("%s<div class=\"%s\">\n", indent, btc.ComponentID)
+		err := btc.Attributes["spans"].PrintHTML(indent + "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s</div>\n", indent)
+	case "bk.data.TextSpan":
+		fmt.Printf("%s<span>%s</span>\n", indent, btc.GetAttribute("text"))
+	case "bk.components.TextInput":
+		fmt.Printf("%s<input type=\"%s\" placeholder=\"%s\">\n", indent, btc.GetAttribute("type"), btc.GetAttribute("placeholder"))
+	case "bk.components.Image":
+		fmt.Printf("%s<img id=\"%s\" src=\"%s\">\n", indent, btc.GetAttribute("unique_id"), btc.GetAttribute("url"))
+	default:
+		attrs := []BloksAttributeID{}
+		for attr := range btc.Attributes {
+			attrs = append(attrs, attr)
+		}
+		fmt.Printf("%s<!-- component %s omitted (props %+v) -->\n", indent, btc.ComponentID, attrs)
+	}
 	return nil
 }
 
@@ -420,6 +529,16 @@ func (btcl BloksTreeComponentList) Print(indent string) error {
 	return nil
 }
 
+func (btcl *BloksTreeComponentList) PrintHTML(indent string) error {
+	for _, comp := range *btcl {
+		err := comp.PrintHTML(indent)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type BloksTreeLiteral struct {
 	BloksJavascriptValue
 }
@@ -438,6 +557,11 @@ func (btl *BloksTreeLiteral) Print(indent string) error {
 		return err
 	}
 	fmt.Printf("%s%s\n", indent, str)
+	return nil
+}
+
+func (btl *BloksTreeLiteral) PrintHTML(indent string) error {
+	fmt.Printf("%s<!-- literal omitted -->\n", indent)
 	return nil
 }
 
@@ -471,6 +595,11 @@ func (bst *BloksTreeScript) Print(indent string) error {
 	return bst.AST.Print(indent)
 }
 
+func (bst *BloksTreeScript) PrintHTML(indent string) error {
+	fmt.Printf("%s<!-- script omitted -->\n", indent)
+	return nil
+}
+
 type BloksTreeScriptSet struct {
 	Scripts map[BloksAttributeID]BloksTreeScript
 }
@@ -495,7 +624,7 @@ func (bst *BloksTreeScriptSet) Print(indent string) error {
 	for id := range bst.Scripts {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	for _, id := range ids {
 		script := bst.Scripts[id]
 		fmt.Printf("%s<Script %s>\n", indent, id.ToTag())
@@ -505,5 +634,10 @@ func (bst *BloksTreeScriptSet) Print(indent string) error {
 		}
 		fmt.Printf("\n%s</Script %s>\n", indent, id.ToTag())
 	}
+	return nil
+}
+
+func (bst *BloksTreeScriptSet) PrintHTML(indent string) error {
+	fmt.Printf("%s<!-- script set omitted -->\n", indent)
 	return nil
 }

@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -120,6 +121,17 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			if m.canReconnect() {
 				go m.FullReconnect()
 			}
+			return nil, err
+		} else if errors.Is(err, messagix.ErrConsentRequired) {
+			code := IGConsentRequired
+			if m.LoginMeta.Platform.IsMessenger() {
+				code = FBConsentRequired
+			}
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateBadCredentials,
+				Error:      code,
+				UserAction: status.UserActionRestart,
+			})
 			return nil, err
 		} else if err != nil {
 			return nil, fmt.Errorf("failed to convert message: %w", err)
@@ -734,11 +746,25 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 	if msg.Portal.RoomType == database.RoomTypeDM {
 		return false, fmt.Errorf("changing avatar not supported in DMs")
 	}
-	if m.LoginMeta.Platform == types.Instagram {
-		// TODO: implement Instagram avatar changing. IG Web doesn't support this.
-		return false, fmt.Errorf("changing avatar not supported on Instagram")
-	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+	if m.LoginMeta.Platform == types.Instagram {
+		if msg.Content.URL == "" {
+			err := m.Client.Instagram.RemoveGroupAvatar(ctx, strconv.FormatInt(threadID, 10))
+			if err != nil {
+				return false, fmt.Errorf("failed to remove Instagram avatar: %w", err)
+			}
+			return true, nil
+		}
+		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
+		if err != nil {
+			return false, fmt.Errorf("failed to download avatar: %w", err)
+		}
+		err = m.Client.Instagram.EditGroupAvatar(ctx, strconv.FormatInt(threadID, 10), data)
+		if err != nil {
+			return false, fmt.Errorf("failed to set Instagram avatar: %w", err)
+		}
+		return true, nil
+	}
 	var imageID int64
 	if msg.Content.URL == "" {
 		// TODO: handle removing avatar. Messenger web doesn't have a remove option?

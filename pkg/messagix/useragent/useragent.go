@@ -16,6 +16,7 @@ const SecCHModel = `""`
 const SecCHPrefersColorScheme = "light"
 
 const AndroidUserAgent = "Instagram 404.0.0.48.76 Android (35/15; 420dpi; 1080x2400; Google/google; Pixel 7; panther; panther; en_US; 813748018)"
+const IGAndroidAppID = "567067343352427"
 
 const MessengerLiteAppId = "437626316973788"
 const MessengerLiteAccessToken = MessengerLiteAppId + "|3e1a7033ae7883bfb31f35375bad9c7a"
