@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmaps"
+	"go.mau.fi/util/ptr"
 	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -403,7 +404,20 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			UncertainReceiver: thread.ThreadType == table.UNKNOWN_THREAD_TYPE,
 		}
 	}
-	// TODO resync threads with LSUpdateOrInsertThread?
+	for _, thread := range tbl.LSUpdateOrInsertThread {
+		if _, ok := threadResyncs[thread.ThreadKey]; ok {
+			continue
+		}
+		threadResyncs[thread.ThreadKey] = &FBChatResync{
+			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
+			Info:      m.wrapChatInfo(thread),
+			Update:    thread,
+			Members:   make(map[int64]bridgev2.ChatMember),
+			m:         m,
+
+			UncertainReceiver: thread.ThreadType == table.UNKNOWN_THREAD_TYPE,
+		}
+	}
 
 	// Deleting a thread will cancel all further events, so handle those first
 	collectPortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
@@ -443,6 +457,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage, &innerQueue)
+	collectPortalEvents(params, tbl.LSDeleteThenInsertMessageRequest, m.handleDeleteThenInsertMessageRequest, &innerQueue)
 	collectPortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
@@ -550,6 +565,21 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 		return nil
 	}
 	return wrapMessageDelete(tk.Portal, tk.IsUncertainReceiver(), msg.MessageId)
+}
+
+func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg *table.LSDeleteThenInsertMessageRequest) bridgev2.RemoteEvent {
+	if tk.Sync != nil {
+		if tk.Sync.Raw != nil && tk.Sync.Raw.FolderName == folderSpam {
+			return nil
+		}
+		tk.Sync.Info.MessageRequest = ptr.Ptr(true)
+		return nil
+	}
+	return m.wrapChatInfoChange(msg.ThreadKey, 0, tk.Type, &bridgev2.ChatInfoChange{
+		ChatInfo: &bridgev2.ChatInfo{
+			MessageRequest: ptr.Ptr(true),
+		},
+	}, "LSDeleteThenInsertMessageRequest")
 }
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
@@ -821,7 +851,11 @@ func collectPortalEvents[T ThreadKeyable](
 		if ok {
 			threadType = v.ThreadType
 		} else if syncOK {
-			threadType = sync.Raw.ThreadType
+			if sync.Raw != nil {
+				threadType = sync.Raw.ThreadType
+			} else {
+				threadType = sync.Update.ThreadType
+			}
 		}
 		// TODO this check isn't needed for all types
 		parentKey, threadMsgID, err := p.m.Main.DB.GetThreadByKey(p.ctx, threadKey)

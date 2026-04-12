@@ -1,7 +1,7 @@
 package graphql
 
 type GraphQLDoc struct {
-	DocId        string
+	DocID        string
 	ClientDocID  string
 	CallerClass  string
 	FriendlyName string
@@ -11,30 +11,40 @@ type GraphQLDoc struct {
 
 var GraphQLDocs = map[string]GraphQLDoc{
 	"LSGraphQLRequest": {
-		DocId:        "7357432314358409",
+		DocID:        "7357432314358409",
 		CallerClass:  "RelayModern",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestQuery",
 	},
 	"LSGraphQLRequestIG": {
-		DocId:        "6195354443842040",
+		DocID:        "6195354443842040",
 		CallerClass:  "RelayModern",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestForIGDQuery",
 	},
 	"MAWCatQuery": {
-		DocId:        "23999698219677129",
+		DocID:        "23999698219677129",
 		CallerClass:  "RelayModern",
 		FriendlyName: "MAWCatQuery",
 		Jsessw:       "1",
 	},
 	"IGDeleteThread": {
-		DocId:        "23915602751379354",
+		DocID:        "23915602751379354",
 		CallerClass:  "RelayModern",
 		FriendlyName: "IGDInboxInfoDeleteThreadDialogOffMsysMutation",
 	},
 	"IGEditGroupTitle": {
-		DocId:        "29088580780787855",
+		DocID:        "29088580780787855",
 		CallerClass:  "RelayModern",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
+	},
+	"IGAcceptMessageRequest": {
+		DocID:        "25093807760274522",
+		CallerClass:  "RelayModern",
+		FriendlyName: "useIGDirectAcceptMessageRequestMutation",
+	},
+	"IGListMessageRequests": {
+		DocID:        "25843909248644743",
+		CallerClass:  "RelayModern",
+		FriendlyName: "PolarisDirectMessageRequestQuery",
 	},
 	"IGUpdateGroupAvatar": {
 		ClientDocID:  "5576567352987267181917649770",
@@ -56,6 +66,21 @@ type IGDeleteThreadGraphQLRequestPayload struct {
 type IGEditGroupTitleGraphQLRequestPayload struct {
 	ThreadID string `json:"thread_fbid"`
 	NewTitle string `json:"new_title"`
+}
+
+type IGAcceptMessageRequestGraphQLRequestPayload struct {
+	ThreadID           string  `json:"thread_fbid"`
+	IGInboxFolder      *string `json:"ig_inbox_folder"`
+	OfflineThreadingID string  `json:"offline_threading_id"`
+}
+
+type IGListMessageRequestsGraphQLRequestPayload struct {
+	DeviceIDForIrisSubscription                  string `json:"device_id_for_iris_subscription"`
+	EnablePendingThreadsList                     bool   `json:"enable_pending_threads_list"`
+	IGD30DayAgoTimestampMsRelayProvider          string `json:"__relay_internal__pv__IGD30DayAgoTimestampMsrelayprovider"`
+	IGDPinnedThreadsRenderEnabledGKRelayProvider bool   `json:"__relay_internal__pv__IGDPinnedThreadsRenderEnabledGKrelayprovider"`
+	IGDMaxUnreadMessagesCountRelayProvider       int    `json:"__relay_internal__pv__IGDMaxUnreadMessagesCountrelayprovider"`
+	IGDThreadListActionsEnabledGKRelayProvider   bool   `json:"__relay_internal__pv__IGDThreadListActionsEnabledGKrelayprovider"`
 }
 
 type IGEditGroupAvatarGraphQLRequestPayload struct {
