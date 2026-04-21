@@ -25,6 +25,10 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
+// ErrIGThreadNotFound is returned when a route definition request succeeds
+// but the thread_fbid is missing, indicating the thread no longer exists on Instagram.
+var ErrIGThreadNotFound = errors.New("instagram thread not found")
+
 // specific methods for insta api, not socket related
 type InstagramMethods struct {
 	client *Client
@@ -255,7 +259,7 @@ func (ig *InstagramMethods) fetchRouteDefinition(ctx context.Context, threadID s
 	}
 	threadFBID := routeDefResp.Payload.Result.Exports.RootView.Props.ThreadFBID
 	if threadFBID == "" {
-		return "", fmt.Errorf("thread_fbid not found in route definition response for thread %s", threadID)
+		return "", fmt.Errorf("%w in route definition response for thread %s", ErrIGThreadNotFound, threadID)
 	}
 
 	zerolog.Ctx(ctx).Info().
@@ -269,6 +273,11 @@ func (ig *InstagramMethods) fetchRouteDefinition(ctx context.Context, threadID s
 func (ig *InstagramMethods) DeleteThread(ctx context.Context, threadID string) error {
 	id, err := ig.fetchRouteDefinition(ctx, threadID)
 	if err != nil {
+		if errors.Is(err, ErrIGThreadNotFound) {
+			zerolog.Ctx(ctx).Warn().Err(err).Str("thread_id", threadID).
+				Msg("Thread not found on Instagram, assuming already deleted")
+			return nil
+		}
 		return fmt.Errorf("failed to fetch route definition for thread %s: %w", threadID, err)
 	}
 	igVariables := &graphql.IGDeleteThreadGraphQLRequestPayload{
