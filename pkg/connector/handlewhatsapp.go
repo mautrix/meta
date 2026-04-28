@@ -18,6 +18,8 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
+var MaxGenericWhatsappErrorRetries = 5
+
 func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	if m == nil || m.E2EEClient == nil {
 		return false
@@ -80,6 +82,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		m.e2eeConnectWaiter.Set()
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.waState)
+		m.waGenericErrors = 0
 	case *events.Disconnected:
 		log.Debug().Msg("Disconnected from WhatsApp socket")
 		m.e2eeConnectWaiter.Clear()
@@ -127,6 +130,10 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			} else if e.Reason == events.ConnectFailureClientUnknown {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 418 error")
+				go m.FullReconnect()
+			} else if e.Reason == events.ConnectFailureGeneric && m.canReconnect() && m.waGenericErrors < MaxGenericWhatsappErrorRetries {
+				log.Debug().Msg("Doing full reconnect after WhatsApp 400 error")
+				m.waGenericErrors++
 				go m.FullReconnect()
 			}
 		}
