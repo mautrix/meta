@@ -676,7 +676,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if !ok {
 			return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].BloksScriptNodeContent)
 		}
-		if ref.Function != "bk.action.bloks.GetVariable2" {
+		if ref.Function != "bk.action.bloks.GetVariable2" && ref.Function != "bk.action.bloks.GetVariableWithScope" {
 			return nil, fmt.Errorf("reading from non-ref funcall %s", ref.Function)
 		}
 		varname, err := evalAs[string](ctx, i, &ref.Args[0], "ref.read")
@@ -691,10 +691,10 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "bk.action.ref.Write":
 		ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
 		if !ok {
-			return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].BloksScriptNodeContent)
+			return nil, fmt.Errorf("reading from non-ref %T (for write)", call.Args[0].BloksScriptNodeContent)
 		}
-		if ref.Function != "bk.action.bloks.GetVariable2" {
-			return nil, fmt.Errorf("reading from non-ref funcall %s", ref.Function)
+		if ref.Function != "bk.action.bloks.GetVariable2" && ref.Function != "bk.action.bloks.GetVariableWithScope" {
+			return nil, fmt.Errorf("reading from non-ref funcall %s (for write)", ref.Function)
 		}
 		varname, err := evalAs[string](ctx, i, &ref.Args[0], "ref.read")
 		if err != nil {
@@ -1013,8 +1013,13 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, i.Bridge.OpenURL(url)
+	case "bk.action.caa.GenerateUUID":
+		// This may be wrong, just guessed the implementation based on the function name, it seems to work
+		return BloksLiteralOf(uuid.New().String()), nil
 	case
 		"bk.action.animated.Start",
+		"bk.action.animated.Build",
+		"bk.action.animated.StartToken",
 		"bk.action.logging.LogEvent",
 		"bk.action.LogFlytrapData",
 		"bk.action.qpl.MarkerStartV2",
