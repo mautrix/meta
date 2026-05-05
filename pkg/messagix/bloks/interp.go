@@ -368,6 +368,23 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return first, nil
 		}
 		return i.Evaluate(ctx, &call.Args[1])
+	case "bk.action.core.Let":
+		// Lazy-init: return arg0 if non-null, else apply the FuncConst in arg1.
+		current, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		if current.IsTruthy() {
+			return current, nil
+		}
+		init, err := evalAs[*BloksLambda](ctx, i, &call.Args[1], "let.init")
+		if err != nil {
+			return nil, err
+		}
+		newArgs := make([]*BloksScriptLiteral, maxInterpArgs)
+		copy(newArgs, init.BoundArgs)
+		ctx = context.WithValue(ctx, interpCtxArgs, newArgs)
+		return i.Evaluate(ctx, init.Body)
 	case "bk.action.bloks.GetVariable2", "bk.action.bloks.GetVariableWithScope":
 		// The second argument to the WithScope variant is an integer that may specify
 		// whether to get a local or global variable. For now, ignore.
