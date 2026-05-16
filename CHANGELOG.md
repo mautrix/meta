@@ -1,3 +1,9 @@
+# v26.05
+
+* Changed connection code 24 to use transient disconnect state instead of
+  unknown error when the bridge auto-reconnects.
+* Fixed more bugs with iOS Messenger login mode.
+
 # v26.04
 
 * Added support for backfilling missed messages in marketplace chats.
