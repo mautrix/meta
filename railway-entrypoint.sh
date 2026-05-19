@@ -1,17 +1,20 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
-mkdir -p /data
+DATA_DIR=/data
+CONFIG="$DATA_DIR/config.yaml"
 
-# Write config.yaml from environment variables
-cat > /data/config.yaml << EOF
+mkdir -p "$DATA_DIR"
+
+if [ ! -f "$CONFIG" ]; then
+  cat > "$CONFIG" << YAML
 homeserver:
-    address: https://matrix-conduit-production-8de3.up.railway.app
-    domain: matrix-conduit-production-8de3.up.railway.app
+    address: ${MATRIX_HOMESERVER_URL}
+    domain: ${MATRIX_HOMESERVER_DOMAIN}
     software: standard
 
 appservice:
-    address: https://meta-production-b153.up.railway.app
+    address: ${MAUTRIX_PUBLIC_URL}
     hostname: 0.0.0.0
     port: 29319
     database:
@@ -21,8 +24,9 @@ appservice:
     bot:
         username: metabot
         displayname: Meta Bridge Bot
-    as_token: d0cfd9178b845de71a554fe4390f8046e652793f4a954c69e0f12374bb056858
-    hs_token: e8d4253f277fe3d07ed590a9092ef7bab0b8b890a76aea1a09d29803e99484b0
+        avatar: mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak
+    as_token: ${MAUTRIX_AS_TOKEN}
+    hs_token: ${MAUTRIX_HS_TOKEN}
 
 meta:
     mode: instagram
@@ -33,11 +37,15 @@ bridge:
     double_puppet_server_map: {}
     double_puppet_allow_discovery: false
     login_shared_secret_map: {}
+    private_chat_portal_meta: default
+    portal_message_buffer: 128
     federate_rooms: false
     encryption:
         allow: false
         default: false
         require: false
+    relay:
+        enabled: false
 
 logging:
     min_level: debug
@@ -45,6 +53,10 @@ logging:
         - type: stdout
           format: pretty-colored
           min_level: debug
-EOF
+YAML
+  echo "[entrypoint] Config written to $CONFIG"
+else
+  echo "[entrypoint] Config already exists, skipping write"
+fi
 
-exec /docker-run.sh
+exec /usr/bin/mautrix-meta -c "$CONFIG" "$@"
