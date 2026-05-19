@@ -11,6 +11,7 @@ RUN apk add --no-cache ffmpeg su-exec ca-certificates olm bash jq curl \
 
 COPY --from=builder /usr/bin/mautrix-meta /usr/bin/mautrix-meta
 COPY docker-run.sh /docker-run.sh
-RUN chmod +x /docker-run.sh
+COPY railway-entrypoint.sh /railway-entrypoint.sh
+RUN chmod +x /docker-run.sh /railway-entrypoint.sh
 
-CMD ["/docker-run.sh"]
+CMD ["/railway-entrypoint.sh"]
