@@ -113,7 +113,7 @@ func (p *ResponseHandler) waitForDetails(ctx context.Context, packetID uint16, c
 	case <-ctx.Done():
 		p.deleteDetails(packetID, channelType)
 		return nil, ctx.Err()
-	case <-time.After(packetTimeout):
+	case <-time.After(PacketTimeout):
 		p.deleteDetails(packetID, channelType)
 		return nil, ErrTimeout
 	}
