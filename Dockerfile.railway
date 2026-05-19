@@ -14,4 +14,6 @@ COPY docker-run.sh /docker-run.sh
 COPY railway-entrypoint.sh /railway-entrypoint.sh
 RUN chmod +x /docker-run.sh /railway-entrypoint.sh
 
+COPY railway-entrypoint.sh /railway-entrypoint.sh
+RUN chmod +x /railway-entrypoint.sh
 CMD ["/railway-entrypoint.sh"]
