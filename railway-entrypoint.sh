@@ -6,8 +6,8 @@ CONFIG="$DATA_DIR/config.yaml"
 
 mkdir -p "$DATA_DIR"
 
-if [ ! -f "$CONFIG" ]; then
-  cat > "$CONFIG" << YAML
+# Always write fresh config from env vars
+cat > "$CONFIG" << YAML
 homeserver:
     address: ${MATRIX_HOMESERVER_URL}
     domain: ${MATRIX_HOMESERVER_DOMAIN}
@@ -54,9 +54,6 @@ logging:
           format: pretty-colored
           min_level: debug
 YAML
-  echo "[entrypoint] Config written to $CONFIG"
-else
-  echo "[entrypoint] Config already exists, skipping write"
-fi
+echo "[entrypoint] Config written to $CONFIG"
 
 exec /usr/bin/mautrix-meta -c "$CONFIG" "$@"
