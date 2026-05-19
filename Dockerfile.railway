@@ -13,5 +13,4 @@ COPY --from=builder /usr/bin/mautrix-meta /usr/bin/mautrix-meta
 COPY docker-run.sh /docker-run.sh
 RUN chmod +x /docker-run.sh
 
-VOLUME /data
 CMD ["/docker-run.sh"]
