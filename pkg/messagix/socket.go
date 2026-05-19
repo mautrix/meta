@@ -329,6 +329,9 @@ func (s *Socket) sendData(data []byte) error {
 	if conn == nil {
 		return fmt.Errorf("not connected")
 	}
+	if err := conn.SetWriteDeadline(time.Now().Add(WriteTimeout)); err != nil {
+		return fmt.Errorf("failed to set write deadline: %w", err)
+	}
 	err := conn.WriteMessage(websocket.BinaryMessage, data)
 	if exhttp.IsNetworkError(err) {
 		closeErr := conn.Close()
