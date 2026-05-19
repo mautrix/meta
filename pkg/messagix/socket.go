@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exhttp"
 	"go.mau.fi/util/ptr"
@@ -93,24 +93,29 @@ func (s *Socket) CanConnect() error {
 	return nil
 }
 
-func (c *Client) GetDialer() *websocket.Dialer {
-	dialer := websocket.Dialer{HandshakeTimeout: HandshakeTimeout}
+func (c *Client) GetDialer() *websocket.DialOptions {
+	transport := &http.Transport{}
 	if c.httpProxy != nil {
-		dialer.Proxy = c.httpProxy
+		transport.Proxy = c.httpProxy
 	} else if c.socksProxy != nil {
-		dialer.NetDial = c.socksProxy.Dial
-
-		contextDialer, ok := c.socksProxy.(proxy.ContextDialer)
-		if ok {
-			dialer.NetDialContext = contextDialer.DialContext
+		if contextDialer, ok := c.socksProxy.(proxy.ContextDialer); ok {
+			transport.DialContext = contextDialer.DialContext
+		} else {
+			//nolint:staticcheck // fallback path: socksProxy doesn't implement ContextDialer
+			transport.Dial = c.socksProxy.Dial
 		}
 	}
 	if DisableTLSVerification {
-		dialer.TLSClientConfig = &tls.Config{
+		transport.TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true,
 		}
 	}
-	return &dialer
+	return &websocket.DialOptions{
+		HTTPClient: &http.Client{
+			Timeout:   HandshakeTimeout,
+			Transport: transport,
+		},
+	}
 }
 
 func (s *Socket) Connect(ctx context.Context) error {
@@ -119,15 +124,17 @@ func (s *Socket) Connect(ctx context.Context) error {
 		return err
 	}
 
-	headers := s.getConnHeaders()
 	brokerUrl := s.BuildBrokerURL()
 
-	dialer := s.client.GetDialer()
+	opts := s.client.GetDialer()
+	opts.HTTPHeader = s.getConnHeaders()
 	s.client.Logger.Debug().Str("broker", brokerUrl).Msg("Dialing socket")
-	conn, _, err := dialer.DialContext(ctx, brokerUrl, headers)
+	conn, _, err := websocket.Dial(ctx, brokerUrl, opts)
 	if err != nil {
 		return fmt.Errorf("%w: %w", socket.ErrDial, err)
 	}
+	// Disable read size limit; MQTT messages can exceed the default 32KiB.
+	conn.SetReadLimit(-1)
 
 	s.conn = conn
 	err = s.sendConnectPacket()
@@ -173,8 +180,7 @@ func (s *Socket) Disconnect() {
 		(*fn)()
 	}
 	if s.conn != nil {
-		_ = s.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(3*time.Second))
-		_ = s.conn.Close()
+		_ = s.conn.Close(websocket.StatusNormalClosure, "")
 	}
 }
 
@@ -188,17 +194,11 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("closed cleanly")))
 		closedCleanly.Store(true)
 	}))
-	conn.SetCloseHandler(func(code int, text string) error {
-		closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("closed by server: %d %s", code, text)))
-		closedCleanly.Store(true)
-		s.client.Logger.Info().Int("code", code).Str("text", text).Msg("Websocket closed by server")
-		return nil
-	})
 	pongTimeoutTimer := time.NewTimer(PongTimeout)
 	defer pongTimeoutTimer.Stop()
 	wsQueue := make(chan any, 32)
 	closeDueToError := func(reason string) {
-		err := conn.Close()
+		err := conn.CloseNow()
 		if err != nil && !errors.Is(err, net.ErrClosed) {
 			s.client.Logger.Debug().Err(err).Msg("Error closing connection after " + reason)
 		}
@@ -299,12 +299,19 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	}()
 	zerolog.Ctx(ctx).Debug().Msg("Connection established, starting read loop")
 	for {
-		messageType, p, err := conn.ReadMessage()
+		messageType, p, err := conn.Read(ctx)
 		if err != nil {
-			closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("failed to read message: %w", err)))
-			if !closedCleanly.Load() {
-				s.client.Logger.Err(err).Msg("Error reading message from socket")
-				closeDueToError("reading message failed")
+			var ce websocket.CloseError
+			if errors.As(err, &ce) {
+				closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("closed by server: %d %s", ce.Code, ce.Reason)))
+				closedCleanly.Store(true)
+				s.client.Logger.Info().Int("code", int(ce.Code)).Str("text", ce.Reason).Msg("Websocket closed by server")
+			} else {
+				closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("failed to read message: %w", err)))
+				if !closedCleanly.Load() {
+					s.client.Logger.Err(err).Msg("Error reading message from socket")
+					closeDueToError("reading message failed")
+				}
 			}
 			// Hacky sleep to give the ready handler time to run and set the best available error
 			time.Sleep(100 * time.Millisecond)
@@ -314,9 +321,9 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		pongTimeoutTimer.Reset(PongTimeout)
 
 		switch messageType {
-		case websocket.TextMessage:
+		case websocket.MessageText:
 			s.client.Logger.Warn().Bytes("bytes", p).Msg("Unexpected text message in websocket")
-		case websocket.BinaryMessage:
+		case websocket.MessageBinary:
 			handleBinaryMessage(p)
 		}
 	}
@@ -329,12 +336,11 @@ func (s *Socket) sendData(data []byte) error {
 	if conn == nil {
 		return fmt.Errorf("not connected")
 	}
-	if err := conn.SetWriteDeadline(time.Now().Add(WriteTimeout)); err != nil {
-		return fmt.Errorf("failed to set write deadline: %w", err)
-	}
-	err := conn.WriteMessage(websocket.BinaryMessage, data)
+	ctx, cancel := context.WithTimeout(context.Background(), WriteTimeout)
+	defer cancel()
+	err := conn.Write(ctx, websocket.MessageBinary, data)
 	if exhttp.IsNetworkError(err) {
-		closeErr := conn.Close()
+		closeErr := conn.CloseNow()
 		if closeErr != nil && !errors.Is(err, net.ErrClosed) {
 			s.client.Logger.Debug().Err(closeErr).Msg("Error closing connection after network error")
 			return errors.Join(err, closeErr)
