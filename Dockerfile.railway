@@ -1,0 +1,17 @@
+FROM golang:1-alpine3.23 AS builder
+RUN apk add --no-cache git ca-certificates build-base olm-dev
+
+WORKDIR /build
+COPY . .
+RUN go build -o /usr/bin/mautrix-meta ./cmd/mautrix-meta
+
+FROM alpine:3.23
+RUN apk add --no-cache ffmpeg su-exec ca-certificates olm bash jq curl \
+    && adduser -u 1337 -D -h /data mautrix
+
+COPY --from=builder /usr/bin/mautrix-meta /usr/bin/mautrix-meta
+COPY docker-run.sh /docker-run.sh
+RUN chmod +x /docker-run.sh
+
+VOLUME /data
+CMD ["/docker-run.sh"]
