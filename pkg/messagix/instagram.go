@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
@@ -326,6 +327,42 @@ func (ig *InstagramMethods) EditGroupTitle(ctx context.Context, threadID, newTit
 	return nil
 }
 
+func (ig *InstagramMethods) AcceptMessageRequest(ctx context.Context, threadID string) error {
+	threadFBID, err := ig.fetchRouteDefinition(ctx, threadID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch route definition for thread %s: %w", threadID, err)
+	}
+	igVariables := &graphql.IGAcceptMessageRequestGraphQLRequestPayload{
+		ThreadID:           threadFBID,
+		IGInboxFolder:      nil,
+		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),
+	}
+	resp, respBody, err := ig.client.makeGraphQLRequest(ctx, "IGAcceptMessageRequest", &igVariables)
+	if err != nil {
+		return fmt.Errorf("failed to accept message request for thread %s: %w", threadID, err)
+	}
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		return fmt.Errorf("failed to accept message request with bad status code %d", resp.StatusCode)
+	}
+
+	var graphqlResp struct {
+		Data struct {
+			AcceptMessageRequest *struct {
+				ID           string `json:"id"`
+				SystemFolder string `json:"system_folder"`
+				Folder       string `json:"folder"`
+			} `json:"ig_direct_accept_message_request"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(respBody, &graphqlResp); err != nil {
+		return fmt.Errorf("failed to parse accept message request response for thread %s: %w", threadID, err)
+	} else if graphqlResp.Data.AcceptMessageRequest == nil {
+		return fmt.Errorf("accept message request response for thread %s did not contain mutation data", threadID)
+	}
+
+	return nil
+}
+
 func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string, avatar []byte) error {
 	detectedType := http.DetectContentType(avatar)
 	if detectedType != "image/jpeg" && detectedType != "image/png" {
@@ -379,6 +416,69 @@ func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string
 	}
 
 	return nil
+}
+
+type igListMessageRequestsResponse struct {
+	Data struct {
+		Mailbox struct {
+			ThreadsByFolder struct {
+				Edges []struct {
+					Node struct {
+						Thread struct {
+							ThreadKey    string `json:"thread_key"`
+							SystemFolder string `json:"system_folder"`
+							IsGroup      bool   `json:"is_group"`
+						} `json:"as_ig_direct_thread"`
+					} `json:"node"`
+				} `json:"edges"`
+			} `json:"threads_by_folder"`
+		} `json:"get_slide_mailbox_for_iris_subscription"`
+	} `json:"data"`
+}
+
+func (ig *InstagramMethods) FetchMessageRequests(ctx context.Context) ([]*table.LSVerifyThreadExists, error) {
+	variables := &graphql.IGListMessageRequestsGraphQLRequestPayload{
+		DeviceIDForIrisSubscription:                  ig.client.configs.BrowserConfigTable.MqttWebDeviceID.ClientID,
+		EnablePendingThreadsList:                     true,
+		IGD30DayAgoTimestampMsRelayProvider:          strconv.FormatInt(time.Now().Add(-30*24*time.Hour).UnixMilli(), 10),
+		IGDPinnedThreadsRenderEnabledGKRelayProvider: true,
+		IGDMaxUnreadMessagesCountRelayProvider:       5,
+		IGDThreadListActionsEnabledGKRelayProvider:   true,
+	}
+	resp, respBody, err := ig.client.makeGraphQLRequest(ctx, "IGListMessageRequests", variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch instagram message requests: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("failed to fetch instagram message requests with bad status code %d", resp.StatusCode)
+	}
+
+	var parsed igListMessageRequestsResponse
+	if err = json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse instagram message requests response: %w", err)
+	}
+
+	threads := make([]*table.LSVerifyThreadExists, 0, len(parsed.Data.Mailbox.ThreadsByFolder.Edges))
+	for _, edge := range parsed.Data.Mailbox.ThreadsByFolder.Edges {
+		threadKey, err := strconv.ParseInt(edge.Node.Thread.ThreadKey, 10, 64)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Str("thread_key", edge.Node.Thread.ThreadKey).Msg("Failed to parse pending instagram thread key")
+			continue
+		}
+		threadType := table.ONE_TO_ONE
+		if edge.Node.Thread.IsGroup {
+			threadType = table.GROUP_THREAD
+		}
+		threads = append(threads, &table.LSVerifyThreadExists{
+			ThreadKey:  threadKey,
+			ThreadType: threadType,
+			FolderName: "pending",
+			SyncGroup:  1,
+		})
+	}
+
+	zerolog.Ctx(ctx).Debug().Int("thread_count", len(threads)).Msg("Fetched Instagram message requests")
+	return threads, nil
 }
 
 func (ig *InstagramMethods) RemoveGroupAvatar(ctx context.Context, threadID string) error {
