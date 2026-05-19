@@ -94,7 +94,7 @@ func (s *Socket) CanConnect() error {
 }
 
 func (c *Client) GetDialer() *websocket.Dialer {
-	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
+	dialer := websocket.Dialer{HandshakeTimeout: HandshakeTimeout}
 	if c.httpProxy != nil {
 		dialer.Proxy = c.httpProxy
 	} else if c.socksProxy != nil {
@@ -157,9 +157,13 @@ func (s *Socket) BuildBrokerURL() string {
 	}
 }
 
-const pongTimeout = 30 * time.Second
-const packetTimeout = 30 * time.Second
-const pingInterval = 10 * time.Second
+var (
+	PongTimeout      = 30 * time.Second
+	PacketTimeout    = 30 * time.Second
+	PingInterval     = 10 * time.Second
+	HandshakeTimeout = 20 * time.Second
+	WriteTimeout     = 20 * time.Second
+)
 
 func (s *Socket) Disconnect() {
 	if s == nil {
@@ -190,7 +194,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		s.client.Logger.Info().Int("code", code).Str("text", text).Msg("Websocket closed by server")
 		return nil
 	})
-	pongTimeoutTicker := time.NewTicker(pongTimeout)
+	pongTimeoutTicker := time.NewTicker(PongTimeout)
 	defer pongTimeoutTicker.Stop()
 	wsQueue := make(chan any, 32)
 	closeDueToError := func(reason string) {
@@ -269,7 +273,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		}
 	}
 	go func() {
-		ticker := time.NewTicker(pingInterval)
+		ticker := time.NewTicker(PingInterval)
 		defer ticker.Stop()
 		for {
 			select {
