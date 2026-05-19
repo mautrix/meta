@@ -94,7 +94,7 @@ func (s *Socket) CanConnect() error {
 }
 
 func (c *Client) GetDialer() *websocket.Dialer {
-	dialer := websocket.Dialer{HandshakeTimeout: 20 * time.Second}
+	dialer := websocket.Dialer{HandshakeTimeout: HandshakeTimeout}
 	if c.httpProxy != nil {
 		dialer.Proxy = c.httpProxy
 	} else if c.socksProxy != nil {
@@ -157,9 +157,13 @@ func (s *Socket) BuildBrokerURL() string {
 	}
 }
 
-const pongTimeout = 30 * time.Second
-const packetTimeout = 30 * time.Second
-const pingInterval = 10 * time.Second
+var (
+	PongTimeout      = 30 * time.Second
+	PacketTimeout    = 30 * time.Second
+	PingInterval     = 10 * time.Second
+	HandshakeTimeout = 20 * time.Second
+	WriteTimeout     = 20 * time.Second
+)
 
 func (s *Socket) Disconnect() {
 	if s == nil {
@@ -190,8 +194,8 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		s.client.Logger.Info().Int("code", code).Str("text", text).Msg("Websocket closed by server")
 		return nil
 	})
-	pongTimeoutTicker := time.NewTicker(pongTimeout)
-	defer pongTimeoutTicker.Stop()
+	pongTimeoutTimer := time.NewTimer(PongTimeout)
+	defer pongTimeoutTimer.Stop()
 	wsQueue := make(chan any, 32)
 	closeDueToError := func(reason string) {
 		err := conn.Close()
@@ -238,7 +242,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		switch evt := resp.ResponseData.(type) {
 		case *Event_PingResp:
 			s.client.Logger.Trace().Msg("Got ping response")
-			pongTimeoutTicker.Reset(pongTimeout)
 		case *Event_PublishResponse:
 			evt.QoS = resp.QOS()
 			if s.handlePublishResponseEvent(ctx, evt, false) {
@@ -269,7 +272,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		}
 	}
 	go func() {
-		ticker := time.NewTicker(pingInterval)
+		ticker := time.NewTicker(PingInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -284,7 +287,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 					closeDueToError("ping failed")
 					return
 				}
-			case <-pongTimeoutTicker.C:
+			case <-pongTimeoutTimer.C:
 				closeErr.CompareAndSwap(nil, ptr.Ptr(fmt.Errorf("pong timeout")))
 				s.client.Logger.Error().Msg("Pong timeout")
 				closeDueToError("pong timeout")
@@ -307,6 +310,8 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			time.Sleep(100 * time.Millisecond)
 			return *closeErr.Load()
 		}
+		// Any inbound traffic counts as proof-of-life; reset the pong timeout.
+		pongTimeoutTimer.Reset(PongTimeout)
 
 		switch messageType {
 		case websocket.TextMessage:
@@ -323,6 +328,9 @@ func (s *Socket) sendData(data []byte) error {
 	conn := s.conn
 	if conn == nil {
 		return fmt.Errorf("not connected")
+	}
+	if err := conn.SetWriteDeadline(time.Now().Add(WriteTimeout)); err != nil {
+		return fmt.Errorf("failed to set write deadline: %w", err)
 	}
 	err := conn.WriteMessage(websocket.BinaryMessage, data)
 	if exhttp.IsNetworkError(err) {
