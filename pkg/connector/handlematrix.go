@@ -30,15 +30,16 @@ import (
 )
 
 var (
-	_ bridgev2.EditHandlingNetworkAPI        = (*MetaClient)(nil)
-	_ bridgev2.ReactionHandlingNetworkAPI    = (*MetaClient)(nil)
-	_ bridgev2.RedactionHandlingNetworkAPI   = (*MetaClient)(nil)
-	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*MetaClient)(nil)
-	_ bridgev2.ChatViewingNetworkAPI         = (*MetaClient)(nil)
-	_ bridgev2.TypingHandlingNetworkAPI      = (*MetaClient)(nil)
-	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*MetaClient)(nil)
-	_ bridgev2.RoomNameHandlingNetworkAPI    = (*MetaClient)(nil)
-	_ bridgev2.RoomAvatarHandlingNetworkAPI  = (*MetaClient)(nil)
+	_ bridgev2.EditHandlingNetworkAPI            = (*MetaClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI        = (*MetaClient)(nil)
+	_ bridgev2.RedactionHandlingNetworkAPI       = (*MetaClient)(nil)
+	_ bridgev2.ReadReceiptHandlingNetworkAPI     = (*MetaClient)(nil)
+	_ bridgev2.ChatViewingNetworkAPI             = (*MetaClient)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI          = (*MetaClient)(nil)
+	_ bridgev2.MessageRequestAcceptingNetworkAPI = (*MetaClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI      = (*MetaClient)(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI        = (*MetaClient)(nil)
+	_ bridgev2.RoomAvatarHandlingNetworkAPI      = (*MetaClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*MetaConnector)(nil)
@@ -688,6 +689,27 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		return nil
 	}
 	return fmt.Errorf("unknown platform for deleting chat: %v", platform)
+}
+
+func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *bridgev2.MatrixAcceptMessageRequest) error {
+	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
+	platform := m.LoginMeta.Platform
+
+	zerolog.Ctx(ctx).Info().
+		Int64("thread_id", threadID).
+		Any("platform", platform).
+		Bool("implicit", msg.Content != nil && msg.Content.IsImplicit).
+		Msg("Accepting message request")
+
+	if platform.IsInstagram() {
+		return m.Client.Instagram.AcceptMessageRequest(ctx, strconv.FormatInt(threadID, 10))
+	}
+
+	return bridgev2.WrapErrorInStatus(fmt.Errorf("accepting message requests is not implemented for %v", platform)).
+		WithIsCertain(true).
+		WithErrorAsMessage().
+		WithSendNotice(false).
+		WithErrorReason(event.MessageStatusUnsupported)
 }
 
 func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
