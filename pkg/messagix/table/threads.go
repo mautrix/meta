@@ -731,3 +731,29 @@ type LSUpdateThreadAuthorityAndMappingWithOTIDFromJID struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSHybridThreadDelete struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSResetGroupInvites struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+	InviteeID int64 `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSDeleteMessageRequest struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSFillDeanonCacheForE2EEThread struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+	// field 2 has some value
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
