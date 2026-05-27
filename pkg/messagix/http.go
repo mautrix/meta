@@ -153,7 +153,7 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 			Str("prev_url", prevURL).
 			Msg("HTTP request was redirected")
 	}
-	if req.URL.Path == "/challenge/" {
+	if strings.HasPrefix(req.URL.Path, "/challenge/") {
 		return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
 	} else if req.URL.Path == "/accounts/suspended/" {
 		return fmt.Errorf("%w: redirected to %s", ErrAccountSuspended, req.URL.String())
