@@ -63,6 +63,8 @@ var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
 	WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
 
 var ErrForbidden = errors.New("http forbidden")
+var ErrNoContentLength = errors.New("server didn't return media size")
+var ErrUnexpectedStatusCode = errors.New("unexpected status code")
 
 func addDownloadHeaders(hdr http.Header, mime string) {
 	hdr.Set("Accept", "*/*")
@@ -188,14 +190,20 @@ func downloadChunkedVideo(ctx context.Context, mime, url string, maxSize int64) 
 	}
 	addDownloadHeaders(req.Header, mime)
 	resp, err := mediaHTTPClient.Do(req)
+	if err == nil {
+		// There's no body so close it immediately
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to send HEAD request: %w", err)
+	} else if resp.StatusCode == http.StatusForbidden || (resp.StatusCode == http.StatusOK && resp.Header.Get("Accept-Ranges") != "bytes") {
+		log.Warn().Int("status_code", resp.StatusCode).
+			Msg("HEAD request failed, falling back to normal download")
+		return downloadMedia(ctx, mime, url, maxSize, "", false)
 	} else if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("unexpected status code %d for HEAD request", resp.StatusCode)
-	} else if resp.Header.Get("Accept-Ranges") != "bytes" {
-		return 0, nil, fmt.Errorf("server does not support byte range requests")
+		return 0, nil, fmt.Errorf("%w %d for HEAD request", ErrUnexpectedStatusCode, resp.StatusCode)
 	} else if resp.ContentLength <= 0 {
-		return 0, nil, fmt.Errorf("server didn't return media size")
+		return 0, nil, ErrNoContentLength
 	} else if resp.ContentLength > maxSize {
 		return resp.ContentLength, nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
 	}
