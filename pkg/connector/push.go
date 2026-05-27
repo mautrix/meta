@@ -19,6 +19,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -32,6 +33,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -89,9 +91,21 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 			return fmt.Errorf("failed to register e2ee notifications: %w", err)
 		}
 	}
-	if cli := m.Client; cli == nil {
+	cli := m.Client
+	if cli == nil {
 		return messagix.ErrClientIsNil
-	} else if cli.Platform.IsMessenger() {
+	}
+	err := doRegisterPush(ctx, cli, token, keys)
+	if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
+		zerolog.Ctx(ctx).Debug().Msg("Doing full reconnect and retrying push registration")
+		m.FullReconnect()
+		err = doRegisterPush(ctx, cli, token, keys)
+	}
+	return err
+}
+
+func doRegisterPush(ctx context.Context, cli *messagix.Client, token string, keys messagix.PushKeys) error {
+	if cli.Platform.IsMessenger() {
 		return cli.Facebook.RegisterPushNotifications(ctx, token, keys)
 	} else {
 		return cli.Instagram.RegisterPushNotifications(ctx, token, keys)
