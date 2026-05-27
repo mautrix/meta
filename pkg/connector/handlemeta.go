@@ -146,10 +146,12 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 				StateEvent: status.StateUnknownError,
 				Error:      MetaConnectError24,
 			}
-			if m.canReconnect() {
+			if m.canReconnectError24() {
 				m.metaState.StateEvent = status.StateTransientDisconnect
 				log.Debug().Msg("Doing full reconnect after ConnectionCode(24)")
 				go m.FullReconnect()
+			} else {
+				log.Warn().Msg("Last full reconnect was too recent, can't reconnect after ConnectionCode(24)")
 			}
 		} else {
 			m.metaState = status.BridgeState{

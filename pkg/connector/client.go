@@ -52,6 +52,7 @@ type MetaClient struct {
 
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	lastFullReconnect     time.Time
+	lastError24Reconnect  time.Time
 	connectWaiter         *exsync.Event
 	e2eeConnectWaiter     *exsync.Event
 	firstE2EEConnectDone  bool
@@ -593,6 +594,14 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 
 func (m *MetaClient) canReconnect() bool {
 	return time.Since(m.lastFullReconnect) > time.Duration(m.Main.Config.MinFullReconnectIntervalSeconds)*time.Second && m.LoginMeta.Cookies != nil
+}
+
+func (m *MetaClient) canReconnectError24() bool {
+	if !m.canReconnect() && time.Since(m.lastError24Reconnect) < 10*time.Minute {
+		return false
+	}
+	m.lastError24Reconnect = time.Now()
+	return true
 }
 
 func (m *MetaClient) FullReconnect() {
