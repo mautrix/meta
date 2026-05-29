@@ -65,7 +65,7 @@ type LSDeleteThenInsertThread struct {
 	DisappearingSettingUpdatedTs          int64      `index:"26" json:",omitempty"`
 	DisappearingSettingUpdatedBy          int64      `index:"27" json:",omitempty"`
 	OngoingCallState                      int64      `index:"29" json:",omitempty"`
-	CannotReplyReason                     int64      `index:"30" json:",omitempty"`
+	CannotReplyReason                     any        `index:"30" json:",omitempty"`
 	CustomEmoji                           string     `index:"31" json:",omitempty"`
 	CustomEmojiImageUrl                   string     `index:"32" json:",omitempty"`
 	OutgoingBubbleColor                   int64      `index:"33" json:",omitempty"`
@@ -123,6 +123,7 @@ type LSDeleteThenInsertThread struct {
 	PauseThreadTimestamp                  int64      `index:"86" json:",omitempty"`
 	Metadata                              any        `index:"87" json:",omitempty"`
 	SyncSource                            any        `index:"88" json:",omitempty"`
+	UnreadMessageCount                    int64      `index:"89" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -187,6 +188,8 @@ type LSWriteThreadCapabilities struct {
 	Capabilities  int64 `index:"1" json:",omitempty"`
 	Capabilities2 int64 `index:"2" json:",omitempty"`
 	Capabilities3 int64 `index:"3" json:",omitempty"`
+	Capabilities4 int64 `index:"4" json:",omitempty"`
+	Capabilities5 int64 `index:"5" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -571,7 +574,11 @@ type LSUpdateOrInsertThread struct {
 	ThreadStatus                           int64      `index:"104" json:",omitempty"`
 	ThreadSubtype                          int64      `index:"105" json:",omitempty"`
 	PauseThreadTimestamp                   int64      `index:"106" json:",omitempty"`
-	Capabilities4                          string     `index:"107" json:",omitempty"`
+	Metadata                               any        `index:"107" json:",omitempty"`
+	Capabilities4                          int64      `index:"108" json:",omitempty"`
+	SyncSource                             any        `index:"109" json:",omitempty"`
+	Capabilities5                          int64      `index:"110" json:",omitempty"`
+	OngoingCallTimestampMS                 int64      `index:"111" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
