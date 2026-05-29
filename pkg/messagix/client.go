@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -67,8 +66,7 @@ type Client struct {
 	lsRequests      int
 	graphQLRequests int
 	endpoints       map[string]string
-	taskMutex       *sync.Mutex
-	activeTasks     []int
+	nextTaskID      atomic.Int64
 
 	catRefreshLock         sync.Mutex
 	unnecessaryCATRequests int
@@ -91,11 +89,10 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Cl
 		lsRequests:            0,
 		graphQLRequests:       1,
 		Platform:              cookies.Platform,
-		activeTasks:           make([]int, 0),
-		taskMutex:             &sync.Mutex{},
 		connectionLoopStopped: exsync.NewEvent(),
 		canSendMessages:       exsync.NewEvent(),
 	}
+	cli.nextTaskID.Store(-1) // start from 0
 	cli.SetHTTP(cfg.ClientSettings)
 	cli.connectionLoopStopped.Set()
 	if DisableTLSVerification {
@@ -485,16 +482,8 @@ func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
 	}
 }
 
-func (c *Client) getTaskID() int {
-	c.taskMutex.Lock()
-	defer c.taskMutex.Unlock()
-	id := 0
-	for slices.Contains[[]int, int](c.activeTasks, id) {
-		id++
-	}
-
-	c.activeTasks = append(c.activeTasks, id)
-	return id
+func (c *Client) getTaskID() int64 {
+	return c.nextTaskID.Add(1)
 }
 
 func (c *Client) WaitUntilCanSendMessages(ctx context.Context, timeout time.Duration) error {

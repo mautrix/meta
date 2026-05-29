@@ -66,13 +66,9 @@ func (tm *TaskManager) AddNewTask(task socket.Task) {
 		Label:        label,
 		Payload:      string(payloadMarshalled),
 		QueueName:    queueName,
-		TaskId:       tm.GetTaskID(),
+		TaskID:       tm.client.getTaskID(),
 	}
-	tm.client.Logger.Trace().Str("label", label).Any("payload", payload).Any("queueName", queueName).Int64("taskId", taskData.TaskId).Msg("Creating task")
+	tm.client.Logger.Trace().Str("label", label).Any("payload", payload).Any("queueName", queueName).Int64("taskId", taskData.TaskID).Msg("Creating task")
 
 	tm.currTasks = append(tm.currTasks, taskData)
-}
-
-func (tm *TaskManager) GetTaskID() int64 {
-	return int64(tm.client.getTaskID())
 }

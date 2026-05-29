@@ -50,7 +50,7 @@ type TaskData struct {
 	Label        string      `json:"label,omitempty"`
 	Payload      interface{} `json:"payload,omitempty"`
 	QueueName    interface{} `json:"queue_name,omitempty"`
-	TaskId       int64       `json:"task_id"`
+	TaskID       int64       `json:"task_id"`
 }
 
 type StatelessTaskData struct {
