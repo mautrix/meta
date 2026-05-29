@@ -1,9 +1,11 @@
 package messagix
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
@@ -49,7 +51,12 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 
 	if c.client.Platform == types.Instagram {
 		c.client.socket.broker = "wss://edge-chat.instagram.com/chat?"
-		c.BrowserConfigTable.MqttWebConfig.AppID = c.BrowserConfigTable.MessengerWebInitData.AppID
+		currentUserAppID, _ := strconv.ParseInt(c.BrowserConfigTable.CurrentUserInitialData.AppID, 10, 64)
+		c.BrowserConfigTable.MqttWebConfig.AppID = cmp.Or(
+			c.BrowserConfigTable.MessengerWebInitData.AppID,
+			currentUserAppID,
+			936619743392459,
+		)
 	} else {
 		if c.BrowserConfigTable.MqttWebConfig.Endpoint == "" {
 			return ls, fmt.Errorf("MQTT broker endpoint not found in page response (MqttWebConfig.Endpoint is empty)")
