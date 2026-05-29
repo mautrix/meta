@@ -1,3 +1,7 @@
+# v26.05.1
+
+* Fixed connecting to Instagram after an app ID change broke it.
+
 # v26.05
 
 * Changed connection code 24 to use transient disconnect state instead of
