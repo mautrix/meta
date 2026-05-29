@@ -84,7 +84,9 @@ func (s *Socket) handleReadyEvent(ctx context.Context, data *Event_Ready) error 
 	}
 
 	syncGroupKeyStore1 := s.client.syncManager.getSyncGroupKeyStore(1)
-	if syncGroupKeyStore1 != nil {
+	if syncGroupKeyStore1 != nil && (syncGroupKeyStore1.ParentThreadKey != -1 || syncGroupKeyStore1.MinThreadKey != 0 || syncGroupKeyStore1.MinLastActivityTimestampMs != 9999999999999) {
+		// TODO determine if this is needed at all, the ptks thing above might cover it
+		zerolog.Ctx(ctx).Debug().Msg("Adding fetch threads task from sync group key store")
 		//  syncGroupKeyStore95 := s.client.syncManager.getSyncGroupKeyStore(95)
 		tskm.AddNewTask(&socket.FetchThreadsTask{
 			IsAfter:                    0,
