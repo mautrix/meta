@@ -159,7 +159,7 @@ func (comp *BloksTreeComponent) GetAttribute(name BloksAttributeID) string {
 	if !ok {
 		return ""
 	}
-	str, ok := value.BloksJavascriptValue.(string)
+	str, ok := value.BloksJavaScriptValue.(string)
 	if !ok {
 		return ""
 	}

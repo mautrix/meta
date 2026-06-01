@@ -2,8 +2,12 @@ package bloks
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -82,18 +86,18 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 	}
 }
 
-func (bb *BloksBundle) Print(indent string) error {
+func (bb *BloksBundle) Print(w io.Writer, indent string) error {
 	p := &bb.Layout.Payload
-	fmt.Printf("%s<Bundle>\n", indent)
+	fmt.Fprintf(w, "%s<Bundle>\n", indent)
 	if p.VariablesOwner == p {
 		for _, datum := range p.Variables {
-			fmt.Printf("%s  <Datum id=%q>\n", indent, datum.ID)
+			fmt.Fprintf(w, "%s  <Datum id=%q>\n", indent, datum.ID)
 			if datum.Info.InitialScript != nil {
-				datum.Info.InitialScript.Print(indent + "    ")
+				datum.Info.InitialScript.Print(w, indent+"    ")
 			} else {
-				BloksLiteralFromJavaScript(datum.Info.Initial).Print(indent + "    ")
+				BloksLiteralFromJavaScript(datum.Info.Initial).Print(w, indent+"    ")
 			}
-			fmt.Printf("\n%s  </Datum id=%q>\n", indent, datum.ID)
+			fmt.Fprintf(w, "\n%s  </Datum id=%q>\n", indent, datum.ID)
 		}
 	}
 	scriptIDs := []BloksScriptID{}
@@ -103,14 +107,14 @@ func (bb *BloksBundle) Print(indent string) error {
 	slices.Sort(scriptIDs)
 	for _, id := range scriptIDs {
 		script := p.Scripts[id]
-		fmt.Printf("%s  <Script id=%q>\n", indent, id)
-		script.Print(indent + "    ")
-		fmt.Printf("\n%s  </Script id=%q>\n", indent, id)
+		fmt.Fprintf(w, "%s  <Script id=%q>\n", indent, id)
+		script.Print(w, indent+"    ")
+		fmt.Fprintf(w, "\n%s  </Script id=%q>\n", indent, id)
 	}
 	for _, emb := range p.Embedded {
-		fmt.Printf("%s  <EmbeddedPayload id=%q>\n", indent, emb.ID)
-		emb.Contents.Print(indent + "    ")
-		fmt.Printf("%s  </EmbeddedPayload id=%q>\n", indent, emb.ID)
+		fmt.Fprintf(w, "%s  <EmbeddedPayload id=%q>\n", indent, emb.ID)
+		emb.Contents.Print(w, indent+"    ")
+		fmt.Fprintf(w, "%s  </EmbeddedPayload id=%q>\n", indent, emb.ID)
 	}
 	templateIDs := []BloksTemplateID{}
 	for id := range p.Templates {
@@ -119,45 +123,66 @@ func (bb *BloksBundle) Print(indent string) error {
 	slices.Sort(templateIDs)
 	for _, id := range templateIDs {
 		template := p.Templates[id]
-		fmt.Printf("%s  <Template id=%q>\n", indent, id)
-		template.Print(indent + "    ")
-		fmt.Printf("%s  </Template id=%q>\n", indent, id)
+		fmt.Fprintf(w, "%s  <Template id=%q>\n", indent, id)
+		template.Print(w, indent+"    ")
+		fmt.Fprintf(w, "%s  </Template id=%q>\n", indent, id)
 	}
 	if p.Tree != nil {
-		fmt.Printf("%s  <Tree>\n", indent)
-		err := p.Tree.Print(indent + "    ")
+		fmt.Fprintf(w, "%s  <Tree>\n", indent)
+		err := p.Tree.Print(w, indent+"    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s  </Tree>\n", indent)
+		fmt.Fprintf(w, "%s  </Tree>\n", indent)
 	}
 	if p.Action != nil {
-		fmt.Printf("%s  <Action>\n", indent)
-		err := p.Action.Print(indent + "    ")
+		fmt.Fprintf(w, "%s  <Action>\n", indent)
+		err := p.Action.Print(w, indent+"    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\n%s  </Action>\n", indent)
+		fmt.Fprintf(w, "\n%s  </Action>\n", indent)
 	}
-	fmt.Printf("%s</Bundle>\n", indent)
+	fmt.Fprintf(w, "%s</Bundle>\n", indent)
 	return nil
 }
 
-func (bb *BloksBundle) PrintHTML(indent string) error {
-	fmt.Printf("%s<!DOCTYPE html>\n", indent)
-	fmt.Printf("%s<html>\n", indent)
-	fmt.Printf("%s  <head>\n", indent)
-	fmt.Printf("%s    <meta charset=\"utf-8\">\n", indent)
-	fmt.Printf("%s    <title>Bloks Page</title>\n", indent)
-	fmt.Printf("%s  </head>\n", indent)
-	fmt.Printf("%s  <body>\n", indent)
-	err := bb.Layout.Payload.Tree.PrintHTML(indent + "    ")
+func (bb *BloksBundle) PrintHTML(w io.Writer, indent string) error {
+	fmt.Fprintf(w, "%s<!DOCTYPE html>\n", indent)
+	fmt.Fprintf(w, "%s<html>\n", indent)
+	fmt.Fprintf(w, "%s  <head>\n", indent)
+	fmt.Fprintf(w, "%s    <meta charset=\"utf-8\">\n", indent)
+	fmt.Fprintf(w, "%s    <title>Bloks Page</title>\n", indent)
+	fmt.Fprintf(w, "%s  </head>\n", indent)
+	fmt.Fprintf(w, "%s  <body>\n", indent)
+	err := bb.Layout.Payload.Tree.PrintHTML(w, indent+"    ")
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s  </body>\n", indent)
-	fmt.Printf("%s</html>\n", indent)
+	fmt.Fprintf(w, "%s  </body>\n", indent)
+	fmt.Fprintf(w, "%s</html>\n", indent)
 	return nil
+}
+
+func (bb *BloksBundle) Redact() {
+	p := &bb.Layout.Payload
+	if p.VariablesOwner == p {
+		for _, datum := range p.Variables {
+			redactJavaScriptValue((*any)(&datum.Info.Initial))
+			datum.Info.InitialScript.Redact()
+		}
+	}
+	for _, scr := range p.Scripts {
+		scr.Redact()
+	}
+	for _, emb := range p.Embedded {
+		emb.Contents.Redact()
+	}
+	for _, tmp := range p.Templates {
+		tmp.Redact()
+	}
+	p.Tree.Redact()
+	p.Action.Redact()
 }
 
 type BloksLayout struct {
@@ -188,11 +213,87 @@ type BloksVariable struct {
 type BloksDatumInfo struct {
 	Name          string               `json:"key"`
 	Mode          string               `json:"mode"`
-	Initial       BloksJavascriptValue `json:"initial"`
+	Initial       BloksJavaScriptValue `json:"initial"`
 	InitialScript *BloksTreeScript     `json:"initial_lispy"`
 }
 
-type BloksJavascriptValue any
+type BloksJavaScriptValue any
+
+var likelyNonSensitive = regexp.MustCompile(strings.Join([]string{
+	// attr name like "extra_client_data_bks_input" or "should_trigger_override_login_2fa_action"
+	`^[a-z2]{2,12}(_[a-z2]{2,12})+$`,
+	// english sentence or display name
+	`^[A-Za-z']{1,12}( [A-Za-z']{1,12}[.,]?)+ *$`,
+	// clearly internal identifiers
+	`^com.bloks.`,
+	`^(CAA|caa|INTERNAL)_`,
+	`^i:(caa|com\.bloks)\.`,
+	// cdn url, not user specific
+	`^rsrc.php/`,
+}, `|`))
+
+var stringTypes = map[string]*regexp.Regexp{
+	"uuid_lowercase": regexp.MustCompile(`^[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}`),
+	"uuid_uppercase": regexp.MustCompile(`^[0-9A-Z]{8}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{12}`),
+	"hex":            regexp.MustCompile(`^[0-9a-f]+$`),
+}
+
+var likelyURL = regexp.MustCompile(`^([a-z]{2,10}://[a-z0-9.-]+/)(.+)$`)
+
+func redactString(s string) string {
+	if strings.HasPrefix(s, "redacted_") {
+		return s
+	}
+	var obj any
+	err := json.Unmarshal([]byte(s), &obj)
+	if err == nil {
+		redactJavaScriptValue(&obj)
+		out, err := json.Marshal(obj)
+		if err == nil {
+			return string(out)
+		}
+	}
+	if len(s) < 20 {
+		return s
+	}
+	if likelyNonSensitive.MatchString(s) {
+		return s
+	}
+	prefix := ""
+	if match := likelyURL.FindStringSubmatch(s); match != nil {
+		prefix = match[1]
+		s = match[2]
+	}
+	if likelyNonSensitive.MatchString(s) {
+		return prefix + s
+	}
+	stringType := "str"
+	for guess, regex := range stringTypes {
+		if regex.MatchString(s) {
+			stringType = guess
+			break
+		}
+	}
+	digest := sha256.New().Sum([]byte(s))
+	return fmt.Sprintf("%sredacted_%dchar_%s_%s", prefix, len(s), stringType, hex.EncodeToString(digest[:4]))
+}
+
+func redactJavaScriptValue(ptr *any) {
+	switch val := (*ptr).(type) {
+	case string:
+		*ptr = redactString(val)
+	case []any:
+		for idx := range val {
+			redactJavaScriptValue(&val[idx])
+		}
+	case map[string]any:
+		for key := range val {
+			obj := val[key]
+			redactJavaScriptValue(&obj)
+			val[key] = obj
+		}
+	}
+}
 
 type BloksEmbeddedPayload struct {
 	ID       BloksPayloadID `json:"id"`
@@ -251,7 +352,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if str, ok := literal.BloksJavascriptValue.(string); ok && (strings.HasPrefix(str, "\t") || strings.HasPrefix(str, "(")) {
+	if str, ok := literal.BloksJavaScriptValue.(string); ok && (strings.HasPrefix(str, "\t") || strings.HasPrefix(str, "(")) {
 		script := BloksTreeScript{}
 		err := script.Parse(str)
 		if err != nil {
@@ -260,7 +361,7 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 		btn.BloksTreeNodeContent = &script
 		return nil
 	}
-	if arr, ok := literal.BloksJavascriptValue.([]any); ok {
+	if arr, ok := literal.BloksJavaScriptValue.([]any); ok {
 		set := BloksTreeScriptSet{
 			Scripts: map[BloksAttributeID]BloksTreeScript{},
 		}
@@ -298,10 +399,18 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (btn *BloksTreeNode) Redact() {
+	if btn == nil {
+		return
+	}
+	btn.BloksTreeNodeContent.Redact()
+}
+
 type BloksTreeNodeContent interface {
 	Unminify(m *Unminifier, parent *BloksTreeComponent)
-	Print(prefix string) error
-	PrintHTML(prefix string) error
+	Print(w io.Writer, prefix string) error
+	PrintHTML(w io.Writer, prefix string) error
+	Redact()
 }
 
 type BloksTreeComponent struct {
@@ -359,8 +468,8 @@ func (btc *BloksTreeComponent) Unminify(m *Unminifier, parent *BloksTreeComponen
 	}
 }
 
-func (btc *BloksTreeComponent) Print(indent string) error {
-	fmt.Printf("%s<Component name=%s>\n", indent, btc.ComponentID)
+func (btc *BloksTreeComponent) Print(w io.Writer, indent string) error {
+	fmt.Fprintf(w, "%s<Component name=%s>\n", indent, btc.ComponentID)
 	attrs := []BloksAttributeID{}
 	for attr := range btc.Attributes {
 		attrs = append(attrs, attr)
@@ -387,14 +496,14 @@ func (btc *BloksTreeComponent) Print(indent string) error {
 		default:
 			panic("missing case in bloks tree switch")
 		}
-		fmt.Printf("%s  <Property %s type=%s%s>\n", indent, id.ToTag(), attrtype, extra)
-		err := value.BloksTreeNodeContent.Print(indent + "    ")
+		fmt.Fprintf(w, "%s  <Property %s type=%s%s>\n", indent, id.ToTag(), attrtype, extra)
+		err := value.BloksTreeNodeContent.Print(w, indent+"    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s%s  </Property %s type=%s%s>\n", trailer, indent, id.ToTag(), attrtype, extra)
+		fmt.Fprintf(w, "%s%s  </Property %s type=%s%s>\n", trailer, indent, id.ToTag(), attrtype, extra)
 	}
-	fmt.Printf("%s</Component name=%s>\n", indent, btc.ComponentID)
+	fmt.Fprintf(w, "%s</Component name=%s>\n", indent, btc.ComponentID)
 	return nil
 }
 
@@ -430,63 +539,69 @@ func (btc *BloksTreeComponent) getCSS() map[string]string {
 	return css
 }
 
-func (btc *BloksTreeComponent) PrintHTML(indent string) error {
+func (btc *BloksTreeComponent) PrintHTML(w io.Writer, indent string) error {
 	switch btc.ComponentID {
 	case "bk.cds.bottomsheet.Wrapper":
-		fmt.Printf("%s<div class=\"%s\">\n", indent, btc.ComponentID)
-		fmt.Printf("%s  <div class=\"header\">\n", indent)
-		err := btc.Attributes["header"].PrintHTML(indent + "    ")
+		fmt.Fprintf(w, "%s<div class=\"%s\">\n", indent, btc.ComponentID)
+		fmt.Fprintf(w, "%s  <div class=\"header\">\n", indent)
+		err := btc.Attributes["header"].PrintHTML(w, indent+"    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s  </div>\n", indent)
-		fmt.Printf("%s  <div class=\"content\">\n", indent)
-		err = btc.Attributes["content"].PrintHTML(indent + "    ")
+		fmt.Fprintf(w, "%s  </div>\n", indent)
+		fmt.Fprintf(w, "%s  <div class=\"content\">\n", indent)
+		err = btc.Attributes["content"].PrintHTML(w, indent+"    ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s  </div>\n", indent)
-		fmt.Printf("%s</div>\n", indent)
+		fmt.Fprintf(w, "%s  </div>\n", indent)
+		fmt.Fprintf(w, "%s</div>\n", indent)
 	case "bk.components.Flexbox":
 		css := btc.getCSS()
 		css["align-items"] = btc.GetAttribute("align_items")
 		css["flex-direction"] = btc.GetAttribute("flex_direction")
 		css["justify-content"] = btc.GetAttribute("justify_content")
-		fmt.Printf("%s<div class=\"%s\" style=\"%s\">\n", indent, btc.ComponentID, cssToString(css))
-		err := btc.Attributes["children"].PrintHTML(indent + "  ")
+		fmt.Fprintf(w, "%s<div class=\"%s\" style=\"%s\">\n", indent, btc.ComponentID, cssToString(css))
+		err := btc.Attributes["children"].PrintHTML(w, indent+"  ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s</div>\n", indent)
+		fmt.Fprintf(w, "%s</div>\n", indent)
 	case "bk.components.Collection":
 		css := btc.getCSS()
-		fmt.Printf("%s<div class=\"%s\" style=\"%s\">\n", indent, btc.ComponentID, cssToString(css))
-		err := btc.Attributes["children"].PrintHTML(indent + "  ")
+		fmt.Fprintf(w, "%s<div class=\"%s\" style=\"%s\">\n", indent, btc.ComponentID, cssToString(css))
+		err := btc.Attributes["children"].PrintHTML(w, indent+"  ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s</div>\n", indent)
+		fmt.Fprintf(w, "%s</div>\n", indent)
 	case "bk.components.RichText", "bk.data.ComposableTextSpan":
-		fmt.Printf("%s<div class=\"%s\">\n", indent, btc.ComponentID)
-		err := btc.Attributes["spans"].PrintHTML(indent + "  ")
+		fmt.Fprintf(w, "%s<div class=\"%s\">\n", indent, btc.ComponentID)
+		err := btc.Attributes["spans"].PrintHTML(w, indent+"  ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s</div>\n", indent)
+		fmt.Fprintf(w, "%s</div>\n", indent)
 	case "bk.data.TextSpan":
-		fmt.Printf("%s<span>%s</span>\n", indent, btc.GetAttribute("text"))
+		fmt.Fprintf(w, "%s<span>%s</span>\n", indent, btc.GetAttribute("text"))
 	case "bk.components.TextInput":
-		fmt.Printf("%s<input type=\"%s\" placeholder=\"%s\">\n", indent, btc.GetAttribute("type"), btc.GetAttribute("placeholder"))
+		fmt.Fprintf(w, "%s<input type=\"%s\" placeholder=\"%s\">\n", indent, btc.GetAttribute("type"), btc.GetAttribute("placeholder"))
 	case "bk.components.Image":
-		fmt.Printf("%s<img id=\"%s\" src=\"%s\">\n", indent, btc.GetAttribute("unique_id"), btc.GetAttribute("url"))
+		fmt.Fprintf(w, "%s<img id=\"%s\" src=\"%s\">\n", indent, btc.GetAttribute("unique_id"), btc.GetAttribute("url"))
 	default:
 		attrs := []BloksAttributeID{}
 		for attr := range btc.Attributes {
 			attrs = append(attrs, attr)
 		}
-		fmt.Printf("%s<!-- component %s omitted (props %+v) -->\n", indent, btc.ComponentID, attrs)
+		fmt.Fprintf(w, "%s<!-- component %s omitted (props %+v) -->\n", indent, btc.ComponentID, attrs)
 	}
 	return nil
+}
+
+func (btc *BloksTreeComponent) Redact() {
+	for _, child := range btc.Attributes {
+		child.Redact()
+	}
 }
 
 type BloksTreeComponentList []*BloksTreeComponent
@@ -519,9 +634,9 @@ func (btcl *BloksTreeComponentList) Unminify(m *Unminifier, parent *BloksTreeCom
 	}
 }
 
-func (btcl BloksTreeComponentList) Print(indent string) error {
+func (btcl BloksTreeComponentList) Print(w io.Writer, indent string) error {
 	for _, comp := range btcl {
-		err := comp.Print(indent)
+		err := comp.Print(w, indent)
 		if err != nil {
 			return err
 		}
@@ -529,40 +644,50 @@ func (btcl BloksTreeComponentList) Print(indent string) error {
 	return nil
 }
 
-func (btcl *BloksTreeComponentList) PrintHTML(indent string) error {
+func (btcl *BloksTreeComponentList) PrintHTML(w io.Writer, indent string) error {
 	for _, comp := range *btcl {
-		err := comp.PrintHTML(indent)
+		err := comp.PrintHTML(w, indent)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (btcl *BloksTreeComponentList) Redact() {
+	for _, comp := range *btcl {
+		comp.Redact()
+	}
 }
 
 type BloksTreeLiteral struct {
-	BloksJavascriptValue
+	BloksJavaScriptValue
 }
 
 func (btl *BloksTreeLiteral) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &btl.BloksJavascriptValue)
+	return json.Unmarshal(data, &btl.BloksJavaScriptValue)
 }
 
 func (btl *BloksTreeLiteral) Unminify(m *Unminifier, parent *BloksTreeComponent) {
 	//
 }
 
-func (btl *BloksTreeLiteral) Print(indent string) error {
-	str, err := json.Marshal(btl.BloksJavascriptValue)
+func (btl *BloksTreeLiteral) Print(w io.Writer, indent string) error {
+	str, err := json.Marshal(btl.BloksJavaScriptValue)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s%s\n", indent, str)
+	fmt.Fprintf(w, "%s%s\n", indent, str)
 	return nil
 }
 
-func (btl *BloksTreeLiteral) PrintHTML(indent string) error {
-	fmt.Printf("%s<!-- literal omitted -->\n", indent)
+func (btl *BloksTreeLiteral) PrintHTML(w io.Writer, indent string) error {
+	fmt.Fprintf(w, "%s<!-- literal omitted -->\n", indent)
 	return nil
+}
+
+func (btl *BloksTreeLiteral) Redact() {
+	redactJavaScriptValue((*any)(&btl.BloksJavaScriptValue))
 }
 
 type BloksTreeScript struct {
@@ -591,13 +716,20 @@ func (bst *BloksTreeScript) Parse(code string) error {
 	return err
 }
 
-func (bst *BloksTreeScript) Print(indent string) error {
-	return bst.AST.Print(indent)
+func (bst *BloksTreeScript) Print(w io.Writer, indent string) error {
+	return bst.AST.Print(w, indent)
 }
 
-func (bst *BloksTreeScript) PrintHTML(indent string) error {
-	fmt.Printf("%s<!-- script omitted -->\n", indent)
+func (bst *BloksTreeScript) PrintHTML(w io.Writer, indent string) error {
+	fmt.Fprintf(w, "%s<!-- script omitted -->\n", indent)
 	return nil
+}
+
+func (bst *BloksTreeScript) Redact() {
+	if bst == nil {
+		return
+	}
+	bst.AST.Redact()
 }
 
 type BloksTreeScriptSet struct {
@@ -619,7 +751,7 @@ func (bst *BloksTreeScriptSet) Unminify(m *Unminifier, parent *BloksTreeComponen
 	}
 }
 
-func (bst *BloksTreeScriptSet) Print(indent string) error {
+func (bst *BloksTreeScriptSet) Print(w io.Writer, indent string) error {
 	ids := []BloksAttributeID{}
 	for id := range bst.Scripts {
 		ids = append(ids, id)
@@ -627,17 +759,25 @@ func (bst *BloksTreeScriptSet) Print(indent string) error {
 	slices.Sort(ids)
 	for _, id := range ids {
 		script := bst.Scripts[id]
-		fmt.Printf("%s<Script %s>\n", indent, id.ToTag())
-		err := script.Print(indent + "  ")
+		fmt.Fprintf(w, "%s<Script %s>\n", indent, id.ToTag())
+		err := script.Print(w, indent+"  ")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\n%s</Script %s>\n", indent, id.ToTag())
+		fmt.Fprintf(w, "\n%s</Script %s>\n", indent, id.ToTag())
 	}
 	return nil
 }
 
-func (bst *BloksTreeScriptSet) PrintHTML(indent string) error {
-	fmt.Printf("%s<!-- script set omitted -->\n", indent)
+func (bst *BloksTreeScriptSet) PrintHTML(w io.Writer, indent string) error {
+	fmt.Fprintf(w, "%s<!-- script set omitted -->\n", indent)
 	return nil
+}
+
+func (bst *BloksTreeScriptSet) Redact() {
+	for key := range bst.Scripts {
+		scr := bst.Scripts[key]
+		scr.Redact()
+		bst.Scripts[key] = scr
+	}
 }

@@ -117,6 +117,18 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
 	}
 
+	if c.logRedactedBloksPayloads {
+		var redactedRespInner bloks.BloksBundle
+		err = json.Unmarshal([]byte(innerData), &redactedRespInner)
+		if err != nil {
+			return nil, fmt.Errorf("second time parsing inner bloks payload: %w", err)
+		}
+		redactedRespInner.Redact()
+		redacted := bytes.Buffer{}
+		redactedRespInner.Print(&redacted, "")
+		c.Logger.Debug().Str("bloks_app", appID).Bytes("resp", redacted.Bytes()).Msg("Logging redacted Bloks response")
+	}
+
 	return &respInner, nil
 }
 
