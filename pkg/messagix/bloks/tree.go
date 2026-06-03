@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -220,22 +221,80 @@ type BloksDatumInfo struct {
 type BloksJavaScriptValue any
 
 var likelyNonSensitive = regexp.MustCompile(strings.Join([]string{
-	// attr name like "extra_client_data_bks_input" or "should_trigger_override_login_2fa_action"
-	`^[a-z2]{2,12}(_[a-z2]{2,12})+$`,
-	// english sentence or display name
-	`^[A-Za-z']{1,12}( [A-Za-z']{1,12}[.,]?)+ *$`,
 	// clearly internal identifiers
 	`^com.bloks.`,
 	`^(CAA|caa|INTERNAL)_`,
 	`^i:(caa|com\.bloks)\.`,
+	// floating-point number
+	`^[0-9]{1,3}\.[0-9]{1,16}dp$`,
+}, `|`))
+
+var likelyNonSensitiveURLPath = regexp.MustCompile(strings.Join([]string{
 	// cdn url, not user specific
 	`^rsrc.php/`,
 }, `|`))
 
+var englishWord = regexp.MustCompile(`([A-Za-z0-9'-]+)[,.:;]? *`)
+var digitRegexp = regexp.MustCompile(`[0-9]`)
+var lowercaseLetterRegexp = regexp.MustCompile(`[a-z]`)
+var uppercaseLetterRegexp = regexp.MustCompile(`[A-Z]`)
+var alnumsRegexp = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+
+func likelyEnglishSentence(s string) bool {
+	words := englishWord.FindAllStringSubmatch(s, -1)
+	numReasonableChars := 0
+	for _, wordMatch := range words {
+		wordAndExtra := wordMatch[0]
+		word := wordMatch[1]
+		if len(word) > 24 {
+			continue
+		}
+		if strings.Count(word, "-") > 1 {
+			continue
+		}
+		if strings.Count(word, "'") > 1 {
+			continue
+		}
+		if len(digitRegexp.FindAllString(word, -1)) > 6 {
+			continue
+		}
+		if len(lowercaseLetterRegexp.FindAllString(word, -1)) > 2 && len(uppercaseLetterRegexp.FindAllString(word, -1)) > 2 {
+			continue
+		}
+		numReasonableChars += len(wordAndExtra)
+	}
+	return float64(numReasonableChars)/float64(len(s)) > 0.8 || len(s)-numReasonableChars < 10
+}
+
+func likelyAttributeName(s string) bool {
+	for _, delimiter := range []string{"-", "_"} {
+		bad := false
+		for part := range strings.SplitSeq(s, delimiter) {
+			if len(part) > 24 {
+				bad = true
+			}
+			if !alnumsRegexp.MatchString(part) {
+				bad = true
+			}
+			if len(digitRegexp.FindAllString(part, -1)) > 2 {
+				bad = true
+			}
+			if len(lowercaseLetterRegexp.FindAllString(part, -1)) > 2 && len(uppercaseLetterRegexp.FindAllString(part, -1)) > 2 {
+				bad = true
+			}
+		}
+		if !bad {
+			return true
+		}
+	}
+	return false
+}
+
 var stringTypes = map[string]*regexp.Regexp{
 	"uuid_lowercase": regexp.MustCompile(`^[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}`),
 	"uuid_uppercase": regexp.MustCompile(`^[0-9A-Z]{8}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{12}`),
-	"hex":            regexp.MustCompile(`^[0-9a-f]+$`),
+	"hex":            regexp.MustCompile(`^[0-9a-f]*[a-f][0-9a-f]*$`),
+	"number":         regexp.MustCompile(`^[0-9]+$`),
 }
 
 var likelyURL = regexp.MustCompile(`^([a-z]{2,10}://[a-z0-9.-]+/)(.+)$`)
@@ -253,10 +312,16 @@ func redactString(s string) string {
 			return string(out)
 		}
 	}
-	if len(s) < 20 {
+	if len(s) < 16 {
 		return s
 	}
 	if likelyNonSensitive.MatchString(s) {
+		return s
+	}
+	if likelyAttributeName(s) {
+		return s
+	}
+	if likelyEnglishSentence(s) {
 		return s
 	}
 	prefix := ""
@@ -264,7 +329,7 @@ func redactString(s string) string {
 		prefix = match[1]
 		s = match[2]
 	}
-	if likelyNonSensitive.MatchString(s) {
+	if likelyNonSensitiveURLPath.MatchString(s) {
 		return prefix + s
 	}
 	stringType := "str"
@@ -278,10 +343,42 @@ func redactString(s string) string {
 	return fmt.Sprintf("%sredacted_%dchar_%s_%s", prefix, len(s), stringType, hex.EncodeToString(digest[:4]))
 }
 
+// Integers can only have 10 significant figures before it might start
+// being the case that they are communicating sensitive data. Allowing
+// for 10 to accommodate seconds-since-epoch timestamps.
+const maxRedactedSigFigs = 10
+
+func redactInteger(num int64) int64 {
+	mag := math.Log10(math.Abs(float64(num)))
+	if mag <= maxRedactedSigFigs {
+		return num
+	}
+	factor := int64(math.Pow10(int(math.Ceil(mag) - maxRedactedSigFigs)))
+	num /= factor
+	num *= factor
+	return num
+}
+
+func redactFloat(num float64) float64 {
+	mag := math.Log10(math.Abs(num))
+	if mag <= maxRedactedSigFigs {
+		return num
+	}
+	factor := math.Pow10(int(math.Ceil(mag) - maxRedactedSigFigs))
+	num /= factor
+	num = math.Round(num)
+	num *= factor
+	return num
+}
+
 func redactJavaScriptValue(ptr *any) {
 	switch val := (*ptr).(type) {
 	case string:
 		*ptr = redactString(val)
+	case int64:
+		*ptr = redactInteger(val)
+	case float64:
+		*ptr = redactFloat(val)
 	case []any:
 		for idx := range val {
 			redactJavaScriptValue(&val[idx])

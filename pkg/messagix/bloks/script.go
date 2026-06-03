@@ -135,10 +135,23 @@ func (call *BloksScriptFuncall) Print(w io.Writer, indent string) error {
 func (call *BloksScriptFuncall) Redact() {
 	nonsensitive := map[int]bool{}
 	switch call.Function {
+	case "bk.action.qpl.MarkerAnnotate", "bk.action.qpl.MarkerEndV2":
+		nonsensitive[0] = true
 	case "bk.action.qpl.MarkerPoint":
+		nonsensitive[0] = true
 		nonsensitive[2] = true
 	case "bk.action.LogFlytrapData":
 		nonsensitive[1] = true
+	case "bk.action.bloks.WriteGlobalConsistencyStore":
+		nonsensitive[0] = true
+	case "bk.action.bloks.GetVariable2":
+		nonsensitive[0] = true
+	case "bk.action.bloks.GetScript":
+		nonsensitive[0] = true
+	case "bk.action.bloks.GetPayload":
+		nonsensitive[0] = true
+	case "bk.action.template.Make":
+		nonsensitive[0] = true
 	}
 	for idx, arg := range call.Args {
 		if nonsensitive[idx] {

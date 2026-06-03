@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -126,7 +127,18 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		redactedRespInner.Redact()
 		redacted := bytes.Buffer{}
 		redactedRespInner.Print(&redacted, "")
-		c.Logger.Debug().Str("bloks_app", appID).Bytes("resp", redacted.Bytes()).Msg("Logging redacted Bloks response")
+		compressed := bytes.Buffer{}
+		compressor := gzip.NewWriter(&compressed)
+		_, err = compressor.Write(redacted.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
+		}
+		err = compressor.Close()
+		if err != nil {
+			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
+		}
+		enc := base64.StdEncoding.AppendEncode(nil, compressed.Bytes())
+		c.Logger.Debug().Str("bloks_app", appID).Bytes("resp_gz", enc).Msg("Logging redacted Bloks response")
 	}
 
 	return &respInner, nil

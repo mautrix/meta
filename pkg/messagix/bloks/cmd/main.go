@@ -53,6 +53,9 @@ func main() {
 }
 
 func readAndParse[T any](filename string) (*T, error) {
+	if filename == "-" {
+		filename = "/dev/stdin"
+	}
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
