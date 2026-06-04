@@ -126,6 +126,9 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		}
 		redactedRespInner.Redact()
 		redacted, err := json.Marshal(redactedRespInner)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling redacted bloks payload: %w", err)
+		}
 		compressed := bytes.Buffer{}
 		compressor := gzip.NewWriter(&compressed)
 		_, err = compressor.Write(redacted)
