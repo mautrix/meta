@@ -75,8 +75,9 @@ type MetaClient struct {
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
 	return &messagix.Config{
-		MayConnectToDGW: m.Config.ReceiveInstagramTypingIndicators,
-		ClientSettings:  m.Bridge.GetHTTPClientSettings(),
+		MayConnectToDGW:          m.Config.ReceiveInstagramTypingIndicators,
+		ClientSettings:           m.Bridge.GetHTTPClientSettings(),
+		LogRedactedBloksPayloads: m.Config.LogRedactedBloksPayloads,
 	}
 }
 

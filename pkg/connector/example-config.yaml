@@ -52,6 +52,8 @@ receive_instagram_typing_indicators: true
 disable_view_once: false
 # Should FB marketplace chats have a separate space inside the main Facebook space?
 marketplace_space: true
+# Log raw Bloks payloads even at debug level, with any user identifiers or credentials redacted.
+log_redacted_bloks_payloads: false
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:

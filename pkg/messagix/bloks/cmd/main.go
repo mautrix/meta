@@ -24,6 +24,7 @@ import (
 
 var filename = flag.String("file", "", "Bloks response to parse")
 var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
+var doRedact = flag.Bool("redact", false, "Pretty-print the bundle but in redacted form")
 var doHTML = flag.Bool("html", false, "Print as HTML")
 var doLogin = flag.Bool("login", false, "Click the login button")
 var do2FA = flag.String("2fa", "", "Submit a two-factor code")
@@ -52,6 +53,9 @@ func main() {
 }
 
 func readAndParse[T any](filename string) (*T, error) {
+	if filename == "-" {
+		filename = "/dev/stdin"
+	}
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -141,10 +145,14 @@ func mainE() error {
 		return err
 	}
 	if *doPrint {
-		return bundle.Print("")
+		return bundle.Print(os.Stdout, "")
+	}
+	if *doRedact {
+		bundle.Redact()
+		return bundle.Print(os.Stdout, "")
 	}
 	if *doHTML {
-		return bundle.PrintHTML("")
+		return bundle.PrintHTML(os.Stdout, "")
 	}
 	lastURL := ""
 	bridge := bloks.InterpBridge{
@@ -248,7 +256,7 @@ func mainE() error {
 			if !ok {
 				return false
 			}
-			str, ok := name.BloksJavascriptValue.(string)
+			str, ok := name.BloksJavaScriptValue.(string)
 			if !ok {
 				return false
 			}
@@ -283,7 +291,7 @@ func mainE() error {
 			if !ok {
 				return false
 			}
-			str, ok := text.BloksJavascriptValue.(string)
+			str, ok := text.BloksJavaScriptValue.(string)
 			if !ok {
 				return false
 			}
@@ -346,7 +354,7 @@ func mainE() error {
 				if !ok {
 					return false
 				}
-				str, ok := label.BloksJavascriptValue.(string)
+				str, ok := label.BloksJavaScriptValue.(string)
 				if !ok {
 					return false
 				}

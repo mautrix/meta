@@ -35,8 +35,9 @@ var ErrClientIsNil = whatsmeow.ErrClientIsNil
 type EventHandler func(ctx context.Context, evt any)
 
 type Config struct {
-	MayConnectToDGW bool
-	ClientSettings  exhttp.ClientSettings
+	MayConnectToDGW          bool
+	ClientSettings           exhttp.ClientSettings
+	LogRedactedBloksPayloads bool
 }
 
 type Client struct {
@@ -74,6 +75,8 @@ type Client struct {
 	stopCurrentConnections atomic.Pointer[context.CancelFunc]
 	connectionLoopStopped  *exsync.Event
 	canSendMessages        *exsync.Event
+
+	logRedactedBloksPayloads bool
 }
 
 var DisableTLSVerification = false
@@ -84,13 +87,14 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Cl
 		panic("messagix: platform must be set in cookies")
 	}
 	cli := &Client{
-		cookies:               cookies,
-		Logger:                logger,
-		lsRequests:            0,
-		graphQLRequests:       1,
-		Platform:              cookies.Platform,
-		connectionLoopStopped: exsync.NewEvent(),
-		canSendMessages:       exsync.NewEvent(),
+		cookies:                  cookies,
+		Logger:                   logger,
+		lsRequests:               0,
+		graphQLRequests:          1,
+		Platform:                 cookies.Platform,
+		connectionLoopStopped:    exsync.NewEvent(),
+		canSendMessages:          exsync.NewEvent(),
+		logRedactedBloksPayloads: cfg.LogRedactedBloksPayloads,
 	}
 	cli.nextTaskID.Store(-1) // start from 0
 	cli.SetHTTP(cfg.ClientSettings)

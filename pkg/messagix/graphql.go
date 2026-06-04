@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -115,6 +116,29 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 	if err != nil {
 		c.Logger.Trace().Bytes("response", respData).Msg("failed to parse inner bloks payload")
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
+	}
+
+	if c.logRedactedBloksPayloads {
+		var redactedRespInner bloks.BloksBundle
+		err = json.Unmarshal([]byte(innerData), &redactedRespInner)
+		if err != nil {
+			return nil, fmt.Errorf("second time parsing inner bloks payload: %w", err)
+		}
+		redactedRespInner.Redact()
+		redacted := bytes.Buffer{}
+		redactedRespInner.Print(&redacted, "")
+		compressed := bytes.Buffer{}
+		compressor := gzip.NewWriter(&compressed)
+		_, err = compressor.Write(redacted.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
+		}
+		err = compressor.Close()
+		if err != nil {
+			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
+		}
+		enc := base64.StdEncoding.AppendEncode(nil, compressed.Bytes())
+		c.Logger.Debug().Str("bloks_app", appID).Bytes("resp_gz", enc).Msg("Logging redacted Bloks response")
 	}
 
 	return &respInner, nil
