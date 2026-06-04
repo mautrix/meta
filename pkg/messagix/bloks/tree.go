@@ -1,6 +1,7 @@
 package bloks
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +16,14 @@ import (
 )
 
 type BloksBundle struct {
+	Layout      BloksLayout  `json:"layout"`
+	Interpreter *Interpreter `json:"-"`
+}
+
+// same as BloksBundle but doesn't have json methods defined, so that we can do
+// pre/post-processing and then call back to the normal json methods without
+// entering an infinite loop
+type fakeBloksBundle struct {
 	Layout      BloksLayout  `json:"layout"`
 	Interpreter *Interpreter `json:"-"`
 }
@@ -40,21 +49,27 @@ func (bb *BloksBundle) SetupInterpreter(ctx context.Context, br *InterpBridge, p
 }
 
 func (bb *BloksBundle) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		Layout      BloksLayout  `json:"layout"`
-		Interpreter *Interpreter `json:"-"`
-	}
+	var raw fakeBloksBundle
 	err := json.Unmarshal(data, &raw)
 	if err != nil {
 		return err
 	}
-	*bb = raw
+	*bb = BloksBundle(raw)
 	m, err := GetUnminifier(bb)
 	if err != nil {
 		return err
 	}
 	bb.Unminify(m)
 	return nil
+}
+
+func (bb *BloksBundle) MarshalJSON() ([]byte, error) {
+	copy := *bb
+	pay := &copy.Layout.Payload
+	if pay.VariablesOwner != &bb.Layout.Payload {
+		pay.Variables = nil
+	}
+	return json.Marshal((*fakeBloksBundle)(&copy))
 }
 
 func (bb *BloksBundle) Unminify(m *Unminifier) {
@@ -194,9 +209,9 @@ type BloksLayout struct {
 type BloksPayload struct {
 	Scripts             map[BloksScriptID]BloksTreeScript `json:"ft"`
 	ReferencedVariables []BloksVariableID                 `json:"referenced"`
-	ReferencePayloads   []BloksPayloadID                  `json:"referenced_embedded_payload"`
+	ReferencedPayloads  []BloksPayloadID                  `json:"referenced_embedded_payload"`
 	Variables           []*BloksVariable                  `json:"data"`
-	VariablesOwner      *BloksPayload
+	VariablesOwner      *BloksPayload                     `json:"-"`
 	Embedded            []*BloksEmbeddedPayload           `json:"embedded_payloads"`
 	Props               []BloksProp                       `json:"props"`
 	Templates           map[BloksTemplateID]BloksTreeNode `json:"templates"`
@@ -494,6 +509,35 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	}
 	btn.BloksTreeNodeContent = &literal
 	return nil
+}
+
+func (btn BloksTreeNode) MarshalJSON() ([]byte, error) {
+	switch node := btn.BloksTreeNodeContent.(type) {
+	case *BloksTreeComponent:
+		return json.Marshal(map[BloksComponentID]any{
+			node.ComponentID: node.Attributes,
+		})
+	case *BloksTreeComponentList:
+		comps := []any{}
+		for _, comp := range *node {
+			comps = append(comps, map[BloksComponentID]any{
+				comp.ComponentID: comp.Attributes,
+			})
+		}
+		return json.Marshal(comps)
+	case *BloksTreeLiteral:
+		return json.Marshal(node.BloksJavaScriptValue)
+	case *BloksTreeScript:
+		return json.Marshal(node)
+	case *BloksTreeScriptSet:
+		data := []any{}
+		for prop, script := range node.Scripts {
+			data = append(data, prop, script)
+		}
+		return json.Marshal(data)
+	default:
+		return nil, fmt.Errorf("unexpected node type during marshal %T", node)
+	}
 }
 
 func (btn *BloksTreeNode) Redact() {
@@ -802,6 +846,17 @@ func (bs *BloksTreeScript) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("script: %w", err)
 	}
 	return nil
+}
+
+var indentRegexp = regexp.MustCompile(`\n?BLOKS_INDENT *`)
+
+func (bs BloksTreeScript) MarshalJSON() ([]byte, error) {
+	out := bytes.Buffer{}
+	err := bs.Print(&out, "BLOKS_INDENT")
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal("\t" + indentRegexp.ReplaceAllString(out.String(), " "))
 }
 
 func (bs *BloksTreeScript) Unminify(m *Unminifier, parent *BloksTreeComponent) {
