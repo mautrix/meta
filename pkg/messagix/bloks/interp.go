@@ -120,9 +120,14 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 			return nil
 		}
 	}
-	if br.DoRPC == nil {
-		br.DoRPC = func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
-			return fmt.Errorf("unhandled rpc %s (isPage %v)", name, isPage)
+	if br.DoPageRPC == nil {
+		br.DoPageRPC = func(ctx context.Context, name string, params map[string]string) (*BloksBundle, error) {
+			return nil, fmt.Errorf("unhandled page rpc %s", name)
+		}
+	}
+	if br.DoActionRPC == nil {
+		br.DoActionRPC = func(ctx context.Context, name string, params map[string]string) (*BloksScriptNode, error) {
+			return nil, fmt.Errorf("unhandled action rpc %s", name)
 		}
 	}
 	if br.DisplayNewScreen == nil {

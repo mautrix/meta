@@ -167,14 +167,25 @@ func mainE() error {
 	}
 	lastURL := ""
 	bridge := bloks.InterpBridge{
-		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *bloks.BloksScriptLiteral) error) error {
-			fmt.Printf("%s isPage=%v\n", name, isPage)
+		DoPageRPC: func(ctx context.Context, name string, params map[string]string) (*bloks.BloksBundle, error) {
+			fmt.Printf("%s type=page\n", name)
 			payload, err := json.Marshal(params)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			fmt.Printf("%s\n", string(payload))
-			return nil
+			return nil, nil
+		},
+		DoActionRPC: func(ctx context.Context, name string, params map[string]string) (*bloks.BloksScriptNode, error) {
+			fmt.Printf("%s type=action\n", name)
+			payload, err := json.Marshal(params)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Printf("%s\n", string(payload))
+			return &bloks.BloksScriptNode{
+				BloksScriptNodeContent: bloks.BloksNull,
+			}, nil
 		},
 		HandleLoginResponse: func(ctx context.Context, data string) error {
 			fmt.Printf("%s\n", data)
