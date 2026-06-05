@@ -181,7 +181,7 @@ func mainE() error {
 			return nil
 		},
 		StartTimer: func(name string, interval time.Duration, callback func() error) error {
-			for _ = range 3 {
+			for range 3 {
 				err := callback()
 				if err != nil {
 					return err
