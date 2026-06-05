@@ -44,6 +44,7 @@ var doSMSCode = flag.String("sms-code", "", "Submit SMS code")
 var doBackupCode = flag.String("backup-code", "", "Submit backup code")
 var doEncrypt = flag.String("encrypt", "", "Encrypt a password")
 var deviceID = flag.String("device-id", "", "Device ID for password encryption")
+var doCaptcha = flag.String("captcha-code", "", "Captcha code to submit")
 
 func main() {
 	err := mainE()
@@ -180,7 +181,7 @@ func mainE() error {
 			return nil
 		},
 		StartTimer: func(name string, interval time.Duration, callback func() error) error {
-			for i := 0; i < 3; i++ {
+			for _ = range 3 {
 				err := callback()
 				if err != nil {
 					return err
@@ -475,6 +476,28 @@ func mainE() error {
 		}
 		audioURL := strings.Replace(lastURL, "/player/", "/", 1)
 		fmt.Println("Audio:", audioURL)
+		if *doCaptcha != "" {
+			err := bundle.
+				FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+					if comp.ComponentID != "bk.components.TextInput" {
+						return false
+					}
+					return comp.FindDescendant(bloks.FilterByAttribute(
+						"bk.components.AccessibilityExtension", "label", "Enter characters",
+					)) != nil
+				}).
+				FillInput(ctx, interp, *doCaptcha)
+			if err != nil {
+				return fmt.Errorf("filling captcha code input: %w", err)
+			}
+			err = bundle.
+				FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+				FindContainingButton().
+				TapButton(ctx, interp)
+			if err != nil {
+				return fmt.Errorf("tapping continue: %w", err)
+			}
+		}
 	} else if *doSMSCode != "" {
 		err := bundle.
 			FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
