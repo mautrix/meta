@@ -184,7 +184,7 @@ func mainE() error {
 			}
 			fmt.Printf("%s\n", string(payload))
 			return &bloks.BloksScriptNode{
-				BloksScriptNodeContent: bloks.BloksNull,
+				Content: bloks.BloksNull,
 			}, nil
 		},
 		HandleLoginResponse: func(ctx context.Context, data string) error {

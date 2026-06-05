@@ -216,9 +216,9 @@ func evalAs[T any](ctx context.Context, i *Interpreter, form *BloksScriptNode, w
 }
 
 func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (string, error) {
-	make, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	make, ok := form.Content.(*BloksScriptFuncall)
 	if !ok {
-		return "", fmt.Errorf("%s non-funcall %T", where, form.BloksScriptNodeContent)
+		return "", fmt.Errorf("%s non-funcall %T", where, form.Content)
 	}
 	if make.Function != "bk.action.tree.Make" {
 		return "", fmt.Errorf("%s non-tree funcall %s", where, make.Function)
@@ -246,9 +246,9 @@ func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, 
 }
 
 func evalTreeCallback(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (*BloksLambda, error) {
-	make, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	make, ok := form.Content.(*BloksScriptFuncall)
 	if !ok {
-		return nil, fmt.Errorf("%s non-funcall %T", where, form.BloksScriptNodeContent)
+		return nil, fmt.Errorf("%s non-funcall %T", where, form.Content)
 	}
 	if make.Function != "bk.action.tree.Make" {
 		return nil, fmt.Errorf("%s non-tree funcall %s", where, make.Function)
@@ -332,16 +332,16 @@ func getBloksType(lit *BloksScriptLiteral) (int64, error) {
 }
 
 func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*BloksScriptLiteral, error) {
-	if lit, ok := form.BloksScriptNodeContent.(*BloksScriptLiteral); ok {
+	if lit, ok := form.Content.(*BloksScriptLiteral); ok {
 		return lit, nil
 	}
 	ambientArgs, ok := ctx.Value(interpCtxArgs).([]*BloksScriptLiteral)
 	if !ok {
 		ambientArgs = make([]*BloksScriptLiteral, maxInterpArgs)
 	}
-	call, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	call, ok := form.Content.(*BloksScriptFuncall)
 	if !ok {
-		return nil, fmt.Errorf("unexpected script node %T", form.BloksScriptNodeContent)
+		return nil, fmt.Errorf("unexpected script node %T", form.Content)
 	}
 	// Some of the cases in this switch are not needed for any given login. However different
 	// functions get pulled in depending on which API you are talking to, so I left in
@@ -695,9 +695,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		// other than looking them up using getvar, it should work the same.
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.ref.Read":
-		ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
+		ref, ok := call.Args[0].Content.(*BloksScriptFuncall)
 		if !ok {
-			return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].BloksScriptNodeContent)
+			return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].Content)
 		}
 		if ref.Function != "bk.action.bloks.GetVariable2" && ref.Function != "bk.action.bloks.GetVariableWithScope" {
 			return nil, fmt.Errorf("reading from non-ref funcall %s", ref.Function)
@@ -712,9 +712,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return value, nil
 	case "bk.action.ref.Write":
-		ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
+		ref, ok := call.Args[0].Content.(*BloksScriptFuncall)
 		if !ok {
-			return nil, fmt.Errorf("reading from non-ref %T (for write)", call.Args[0].BloksScriptNodeContent)
+			return nil, fmt.Errorf("reading from non-ref %T (for write)", call.Args[0].Content)
 		}
 		if ref.Function != "bk.action.bloks.GetVariable2" && ref.Function != "bk.action.bloks.GetVariableWithScope" {
 			return nil, fmt.Errorf("reading from non-ref funcall %s (for write)", ref.Function)
@@ -756,13 +756,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		// Evaluate the action and also pass it to the callback
 		_, err = i.Evaluate(ctx, &BloksScriptNode{
-			BloksScriptNodeContent: &BloksScriptFuncall{
+			Content: &BloksScriptFuncall{
 				Function: "bk.action.core.Apply",
 				Args: []BloksScriptNode{{
 					BloksLiteralOf(callback),
-				}, {
-					action,
-				}},
+				}, *action},
 			},
 		})
 		if err != nil {
@@ -825,12 +823,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "h9a":
 		// ignore second argument for now, use first & third
 		return i.Evaluate(ctx, &BloksScriptNode{
-			BloksScriptNodeContent: &BloksScriptFuncall{
+			Content: &BloksScriptFuncall{
 				Function: "bk.action.core.Apply",
 				Args: []BloksScriptNode{
 					call.Args[2],
 					{
-						BloksScriptNodeContent: &BloksScriptFuncall{
+						Content: &BloksScriptFuncall{
 							Function: "bk.action.string.EncryptPassword",
 							Args:     []BloksScriptNode{call.Args[0]},
 						},
@@ -902,10 +900,10 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		return BloksLiteralOf(btype), nil
 	case "bk.action.mins.GetByValOr":
 		return i.Evaluate(ctx, &BloksScriptNode{
-			BloksScriptNodeContent: &BloksScriptFuncall{
+			Content: &BloksScriptFuncall{
 				Function: "bk.action.bool.Or",
 				Args: []BloksScriptNode{{
-					BloksScriptNodeContent: &BloksScriptFuncall{
+					Content: &BloksScriptFuncall{
 						Function: "bk.action.map.Get",
 						Args: []BloksScriptNode{
 							call.Args[0],
@@ -1006,7 +1004,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		err = i.Bridge.StartTimer(name, time.Duration(interval)*time.Millisecond, func() error {
 			_, err := i.Evaluate(ctx, &BloksScriptNode{
-				BloksScriptNodeContent: &BloksScriptFuncall{
+				Content: &BloksScriptFuncall{
 					Function: "bk.action.core.Apply",
 					Args: []BloksScriptNode{{
 						BloksLiteralOf(cb),

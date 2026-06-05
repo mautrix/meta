@@ -860,7 +860,7 @@ func (bs BloksTreeScript) MarshalJSON() ([]byte, error) {
 }
 
 func (bs *BloksTreeScript) Unminify(m *Unminifier, parent *BloksTreeComponent) {
-	bs.AST.Unminify(m)
+	bs.AST.Content.Unminify(m)
 }
 
 func (bst *BloksTreeScript) Parse(code string) error {
@@ -869,7 +869,7 @@ func (bst *BloksTreeScript) Parse(code string) error {
 }
 
 func (bst *BloksTreeScript) Print(w io.Writer, indent string) error {
-	return bst.AST.Print(w, indent)
+	return bst.AST.Content.Print(w, indent)
 }
 
 func (bst *BloksTreeScript) PrintHTML(w io.Writer, indent string) error {
@@ -881,7 +881,7 @@ func (bst *BloksTreeScript) Redact() {
 	if bst == nil {
 		return
 	}
-	bst.AST.Redact()
+	bst.AST.Content.Redact()
 }
 
 type BloksTreeScriptSet struct {
