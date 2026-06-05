@@ -315,7 +315,7 @@ var stringTypes = map[string]*regexp.Regexp{
 var likelyURL = regexp.MustCompile(`^([a-z]{2,10}://[a-z0-9.-]+/)(.+)$`)
 
 func redactString(s string) string {
-	if strings.HasPrefix(s, "redacted_") {
+	if strings.Contains(s, "redacted_") {
 		return s
 	}
 	var obj any
