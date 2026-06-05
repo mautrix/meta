@@ -274,43 +274,24 @@ type BrowserState string
 // MFA = Multi-Factor Authentication
 // AP = Authentication Platform
 const (
-	StateUnknown                    BrowserState = ""
-	StateTestCaptcha                BrowserState = "test-captcha"
-	StateInitial                    BrowserState = "initial"
-	StateRedirectToLoginAction      BrowserState = "redirect-to-login-action"
-	StateEmailPasswordPage          BrowserState = "enter-email-and-password-page"
-	StateEnteredEmailPasswordAction BrowserState = "entered-email-and-password-action"
-	StateEmailCodePage              BrowserState = "enter-code-from-email-page"
-	StateEnteredEmailCodeAction     BrowserState = "entered-code-from-email-action"
-	StateEnteredEmailCodeAPAction   BrowserState = "entered-code-from-email-ap-action"
-	StateRedirectToMFALandingAction BrowserState = "redirect-to-mfa-landing-action"
-	StateCaptchaPage                BrowserState = "captcha-page"
-	StateEnteredCaptchaAction       BrowserState = "entered-captcha-action"
-	StateMFALandingAPAction         BrowserState = "mfa-landing-ap-action"
-	StateMFALandingPage             BrowserState = "mfa-landing-page"
-	StatePossibleMandatoryAFADPAge  BrowserState = "possibly-mandatory-afad-page"
-	StateChooseMFAAPAction          BrowserState = "choose-mfa-ap-action"
-	StateChooseMFAPage              BrowserState = "choose-mfa-type-page"
-	StateChosenMFAAPAction          BrowserState = "chosen-mfa-type-ap-action"
-	StateChosenMFAAction            BrowserState = "chosen-mfa-type-action"
-	StateAFADPage                   BrowserState = "afad-page"
-	StateAFADAction                 BrowserState = "afad-action"
-	StateAFADWait                   BrowserState = "afad-waiting"
-	StateAFADCompleteAction         BrowserState = "afad-complete-action"
-	StateTOTPPage                   BrowserState = "totp-page"
-	StateEnteredTOTPAction          BrowserState = "entered-totp-action"
-	StateOAuthPage                  BrowserState = "oauth-page"
-	StateSMSPage                    BrowserState = "sms-page"
-	StateSMSPageAfterSend           BrowserState = "sms-page-after-send"
-	StateSendSMSAction              BrowserState = "send-sms-action"
-	StateEnteredSMSAction           BrowserState = "entered-sms-action"
-	StateBackupCodePage             BrowserState = "backup-code-page"
-	StateEnteredBackupCodeAction    BrowserState = "entered-backup-code-action"
-	StateWhatsAppPage               BrowserState = "whatsapp-page"
-	StateWhatsAppPageAfterSend      BrowserState = "whatsapp-page-after-send"
-	StateSendWhatsAppAction         BrowserState = "send-whatsapp-action"
-	StateEnteredWhatsAppAction      BrowserState = "entered-whatsapp-action"
-	StateSuccess                    BrowserState = "success"
+	StateUnknown               BrowserState = ""
+	StateTestCaptcha           BrowserState = "test-captcha"
+	StateInitial               BrowserState = "initial"
+	StateEmailPasswordPage     BrowserState = "enter-email-and-password-page"
+	StateEmailCodePage         BrowserState = "enter-code-from-email-page"
+	StateCaptchaPage           BrowserState = "captcha-page"
+	StateMFALandingPage        BrowserState = "mfa-landing-page"
+	StateChooseMFAPage         BrowserState = "choose-mfa-type-page"
+	StateAFADPage              BrowserState = "afad-page"
+	StateAFADPageWaiting       BrowserState = "afad-waiting"
+	StateTOTPPage              BrowserState = "totp-page"
+	StateOAuthPage             BrowserState = "oauth-page"
+	StateSMSPage               BrowserState = "sms-page"
+	StateSMSPageAfterSend      BrowserState = "sms-page-after-send"
+	StateBackupCodePage        BrowserState = "backup-code-page"
+	StateWhatsAppPage          BrowserState = "whatsapp-page"
+	StateWhatsAppPageAfterSend BrowserState = "whatsapp-page-after-send"
+	StateSuccess               BrowserState = "success"
 )
 
 type BrowserConfig struct {
@@ -319,25 +300,108 @@ type BrowserConfig struct {
 }
 
 type Browser struct {
-	State         BrowserState
-	CurrentPage   *BloksBundle
-	CurrentAction *BloksBundle
+	State       BrowserState
+	CurrentPage *BloksBundle
 
 	Config *BrowserConfig
 	Bridge *InterpBridge
 
-	CaptchaCallback    func(*BloksScriptLiteral) error
-	NumCaptchaAttempts int
-
 	AFADNotification string
 	AFADInterval     time.Duration
-	AFADCallback     func(*BloksScriptLiteral) error
-	AFADDisplayed    bool
+	AFADCallback     func() error
 	LoginData        string
 	DisplayedURL     string
 
 	LastError string
 }
+
+// You will want an explanation of how to maintain this code.
+//
+// The problem being solved is tricky because Facebook wants to shake their frontend around like a
+// dog with a stick, and you never really know which way things will get yanked. State changes
+// happen in all kinds of callbacks. But at the same time we kind of need to keep track of where we
+// are at least a bit, so we know what page we're on and whether there was an error we need to
+// report to the user. Despite not being able to write down the whole flow graph explicitly.
+//
+// The current implementation of the page state graph works as follows.
+//
+// There is a single b.State variable that keeps track of what page we're on. This is associated
+// with a single Bloks bundle stored in b.CurrentPage. Only one page can be displayed/active at a
+// time. Now note that there are also Bloks bundles that represent actions. But these aren't
+// incorporated into the state graph, unlike in previous versions of this code. Instead, when we get
+// an action bundle, we execute it immediately, and just catch up later to see if it did what we
+// were hoping it would.
+//
+// The state starts off in StateInitial, which kicks things off by making a Bloks request manually
+// and executing the action that it gets back. When an action is executed, it can trigger further
+// action RPC calls, which can execute further actions. Or it can trigger page RPC calls, which lead
+// to the interpreter invoking DisplayNewScreen, which updates the page state.
+//
+// Now, depending on the page state, we have a big switch statement that tells us what actions to
+// undertake. This maps reasonably to the human interpretation of "which page am I looking at, and
+// therefore what buttons should I try to tap". We expect that executing the logic for a given page
+// will do some sequence of actions that navigates us to another page, and if it doesn't, we crash.
+// The tricky part comes in when we want to incorporate user input and recoverable errors into that
+// flow.
+//
+// User input: Our implementation here is driven in part by how bridgev2 handles user input. Which
+// is that you return a list of input fields, then get called back later with the values for those
+// input fields, and must then return another list of input fields, and so on until eventually you
+// return success. To provide that interface on top of our big switch statement, we put the switch
+// statement in a loop, and give each switch case the capability to return user input fields. Then
+// the loop keeps running the switch statement to transition through pages until reaching one where
+// the implementation says "this page needs some inputs to complete". Bridgev2 calls us back later
+// with the values for those inputs, and the same switch case sees that it has now been passed
+// values, so it skips over returning the user input list, and instead uses those values to complete
+// the page logic.
+//
+// Recoverable errors: This is handled by a single b.LastError variable, which is intended
+// exclusively for recoverable errors that occur within a single page (i.e., an error that occurs by
+// redirecting to a separate error page would not be handled by this mechanism). We have at least
+// two different ways we can get a recoverable error, which Facebook chooses between based on
+// planetary alignment and the phase of the moon.
+//
+// One is that executing the page interactions can trigger a Bloks error popup, which the
+// interpreter translates into returning a Golang error object. In cases where this might happen due
+// to bad user input, we check the error return value, see if it's an error message from Facebook
+// that we understand, and if so, assign it to b.LastError. (Otherwise we just return it as fatal.)
+//
+// The second case is that executing the page interactions doesn't throw an error, but does update a
+// page variable, which is intended to display the error message inline. Rather than try to parse
+// out those inline error messages from the actual page contents, which is tricky given Facebook's
+// disgusting lack of proper CSS selector or other navigability/accessibility features, we just use
+// the interpreter to hook onto those variables, and update b.LastError when one of them gets set.
+//
+// In summary, we execute the page logic, maybe catch certain errors, and at the end of it, either
+// we are on a new page (in which case b.LastError is reset), or we are still on the same page and
+// b.LastError is set to something (in which case we loop back, display the error to the user, and
+// ask for input again), or we are still on the same page and there is no b.LastError (in which case
+// there has been a logic error and we crash).
+//
+// To make the above happen as described, we follow this pattern for all switch cases that take user
+// input:
+//
+// ```
+// case StateAskingForXYZPage:
+//   xyz := userInput["xyz"]
+//   if xyz == "" {
+//     step = &bridgev2.LoginStep{ ... }
+//     break
+//   }
+//
+//   delete(userInput, "xyz")
+//   b.LastError = "Some generic message about how XYZ was rejected"
+//
+//   ... try to submit xyz, maybe overwrite b.LastError ...
+// ```
+//
+// If the submission logic works, and we end up on a new page, b.LastError is thrown away. If it
+// doesn't work, we have a placeholder error message that can be shown to the user next time.
+// (Include it into the instructions in the returned LoginStep if it's set.) If our variable watches
+// or error checking work properly, we will get a more specific b.LastError that can be used
+// instead. And finally, note that deleting the field from userInput ensures that if we end up in an
+// error state, then we'll re-prompt the user for input, rather than reusing what they gave last
+// time.
 
 func NewBrowser(cfg *BrowserConfig) *Browser {
 	b := Browser{
@@ -364,157 +428,89 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 		// cannot be generated on the client side so this fact is purely informational.
 		MachineID:       "",
 		EncryptPassword: cfg.EncryptPassword,
-		DoRPC: func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
+		DoPageRPC: func(ctx context.Context, name string, params map[string]string) (*BloksBundle, error) {
 			log := zerolog.Ctx(ctx)
-			log.Debug().Str("state", string(b.State)).Str("rpc", name).Msg("Invoking RPC from Bloks")
-			mayQueryError := false
-			transitions := map[BrowserState]BrowserState{}
-			switch name {
-			case "com.bloks.www.bloks.caa.login.async.send_login_request":
-				transitions[StateEmailPasswordPage] = StateEnteredEmailPasswordAction
-			case "com.bloks.www.two_step_verification.entrypoint":
-				transitions[StateEnteredEmailPasswordAction] = StateMFALandingPage
-				transitions[StateEnteredEmailCodeAction] = StateMFALandingPage
-				transitions[StateEnteredCaptchaAction] = StateMFALandingPage
-			case "com.bloks.www.two_step_verification.async.entrypoint":
-				transitions[StateEnteredEmailPasswordAction] = StateRedirectToMFALandingAction
-			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
-				transitions[StateRedirectToMFALandingAction] = StateCaptchaPage
-			case "com.bloks.www.two_step_verification.login.async.text_captcha":
-				transitions[StateCaptchaPage] = StateEnteredCaptchaAction
-			case "com.bloks.www.ap.two_step_verification.entrypoint_async":
-				transitions[StateEnteredEmailPasswordAction] = StateMFALandingAPAction
-				transitions[StateEnteredCaptchaAction] = StateMFALandingAPAction
-				// This RPC is sometimes rejected with a generic "server error
-				// field_exception" response when transitioning from the captcha
-				// page to the MFA landing page. The error can be reproduced on the
-				// official Messenger iOS app so it is not a bridge issue. Entering
-				// the wrong captcha produces a different, non-error response - so
-				// we know there is nothing the user could do to cause this, it is
-				// purely Meta's fault.
-				mayQueryError = true
-			case "com.bloks.www.ap.two_step_verification.approve_from_another_device":
-				transitions[StateMFALandingAPAction] = StatePossibleMandatoryAFADPAge
-				transitions[StateChosenMFAAPAction] = StateAFADPage
-			case "com.bloks.www.ap.two_step_verification.approve_from_another_device_async":
-				transitions[StatePossibleMandatoryAFADPAge] = StateChooseMFAAPAction
-				transitions[StateMFALandingPage] = StateChooseMFAAPAction
-			case "com.bloks.www.ap.two_step_verification.challenge_picker":
-				transitions[StateChooseMFAAPAction] = StateChooseMFAPage
-			case "com.bloks.www.bloks.ap.two_step_verification.challenge_picker.async":
-				transitions[StateChooseMFAPage] = StateChosenMFAAPAction
-			case "com.bloks.www.two_step_verification.verify_code.async":
-				transitions[StateTOTPPage] = StateEnteredTOTPAction
-				transitions[StateSMSPageAfterSend] = StateEnteredSMSAction
-				transitions[StateWhatsAppPageAfterSend] = StateEnteredWhatsAppAction
-				transitions[StateBackupCodePage] = StateEnteredBackupCodeAction
-			case "com.bloks.www.two_step_verification.method_picker":
-				transitions[StateMFALandingPage] = StateChooseMFAPage
-			case "com.bloks.www.two_step_verification.method_picker.navigation.async":
-				transitions[StateChooseMFAPage] = StateChosenMFAAction
-			case "com.bloks.www.ap.two_step_verification.code_entry":
-				transitions[StateChosenMFAAPAction] = StateEmailCodePage
-			case "com.bloks.www.caa.ar.submit_code.async":
-				transitions[StateEmailCodePage] = StateEnteredEmailCodeAction
-			case "com.bloks.www.ap.two_step_verification.code_entry_async":
-				transitions[StateEmailCodePage] = StateEnteredEmailCodeAPAction
-			case "com.bloks.www.two_factor_login.enter_totp_code":
-				transitions[StateChosenMFAAction] = StateTOTPPage
-			case "com.bloks.www.two_step_verification.approve_from_another_device":
-				transitions[StateChosenMFAAction] = StateAFADPage
-			case "com.bloks.www.two_step_verification.afad_state.async":
-				transitions[StateAFADPage] = StateAFADAction
-			case "com.bloks.www.two_step_verification.afad_complete.async":
-				transitions[StateAFADAction] = StateAFADCompleteAction
-			case "com.bloks.www.ap.two_step_verification.login_with_third_party":
-				transitions[StateChosenMFAAPAction] = StateOAuthPage
-			case "com.bloks.www.two_step_verification.enter_sms_code":
-				transitions[StateChosenMFAAction] = StateSMSPage
-			case "com.bloks.www.two_step_verification.send_code.async":
-				transitions[StateSMSPage] = StateSendSMSAction
-				transitions[StateWhatsAppPage] = StateSendWhatsAppAction
-			case "com.bloks.www.two_factor_login.enter_backup_code":
-				transitions[StateChosenMFAAction] = StateBackupCodePage
-			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
-				transitions[StateChosenMFAAction] = StateWhatsAppPage
-			case "com.bloks.www.bloks.caa.reg.youthregulation.deletepregent.async":
-				// Ignore this for now as it doesn't seem required.
-				//
-				// If it becomes important, implement a better framework for
-				// allowing arbitrary actions to be executed without leaving the
-				// current page state.
-				return nil
-			default:
-				return fmt.Errorf("unexpected rpc %s isPage=%v", name, isPage)
-			}
-			if transitions[b.State] == StateUnknown {
-				return fmt.Errorf("can't handle rpc %s in state %s", name, b.State)
-			}
-
+			log.Debug().Str("state", string(b.State)).Str("rpc", name).Str("rpc_type", "page").Msg("Invoking RPC from Bloks")
 			var paramsInner BloksParamsInner
 			err := json.Unmarshal([]byte(params["params"]), &paramsInner)
 			if err != nil {
-				return fmt.Errorf("parsing %s params: %w", name, err)
+				return nil, fmt.Errorf("parsing %s params: %w", name, err)
 			}
-
-			var doc *BloksDoc
-			if isPage {
-				doc = &BloksAppDoc
-			} else {
-				doc = &BloksActionDoc
-			}
-
-			pageOrAction, err := cfg.MakeBloksRequest(ctx, doc, NewBloksRequest(name, paramsInner))
+			bundle, err := cfg.MakeBloksRequest(ctx, &BloksAppDoc, NewBloksRequest(name, paramsInner))
 			if err != nil {
-				if mayQueryError && strings.Contains(err.Error(), "Query Error") {
-					return ErrLoginUninformative
+				return nil, fmt.Errorf("rpc %s: %w", name, err)
+			}
+			return bundle, nil
+		},
+		DoActionRPC: func(ctx context.Context, name string, params map[string]string) (*BloksScriptNode, error) {
+			log := zerolog.Ctx(ctx)
+			log.Debug().Str("state", string(b.State)).Str("rpc", name).Str("rpc_type", "action").Msg("Invoking RPC from Bloks")
+			var paramsInner BloksParamsInner
+			err := json.Unmarshal([]byte(params["params"]), &paramsInner)
+			if err != nil {
+				return nil, fmt.Errorf("parsing %s params: %w", name, err)
+			}
+			bundle, err := cfg.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(name, paramsInner))
+			if err != nil {
+				return nil, fmt.Errorf("rpc %s: %w", name, err)
+			}
+			action := bundle.Action()
+			if action == nil {
+				// This is a super weird action that appears to be handled by the Bloks runtime in
+				// an unusual way. It is basically an action, but formatted as a page with a
+				// component inside it that has the action code, but then the page itself is tagged
+				// as an action.
+				script := bundle.FindDescendant(FilterByComponent("action")).GetScript("on_load")
+				if script == nil {
+					return nil, fmt.Errorf("AP action from rpc %s did not contain script", name)
 				}
-				return fmt.Errorf("rpc %s: %w", name, err)
+				action = &script.AST
 			}
-
-			err = pageOrAction.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
-			if err != nil {
-				return err
-			}
-
-			if isPage {
-				b.CurrentPage = pageOrAction
-			} else {
-				b.CurrentAction = pageOrAction
-			}
-
-			b.State = transitions[b.State]
-
-			switch b.State {
-			case StateAFADAction:
-				b.AFADCallback = callback
-			case StateEnteredCaptchaAction:
-				b.CaptchaCallback = callback
-			case StateSendSMSAction:
-				// For now we won't actually evaluate the action because it is a
-				// little awkward to do so, and it does not seem required. This
-				// should be fixed at some point.
-				b.State = StateSMSPageAfterSend
-			case StateSendWhatsAppAction:
-				// Same deal here.
-				b.State = StateWhatsAppPageAfterSend
-			}
-
-			return nil
+			return action, nil
 		},
 		DisplayNewScreen: func(ctx context.Context, name string, page *BloksBundle) error {
 			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("screen", name).Msg("Displaying new screen from Bloks")
-			transitions := map[BrowserState]BrowserState{}
+			newState := StateUnknown
 			switch name {
 			case "com.bloks.www.caa.login.login_homepage":
-				transitions[StateRedirectToLoginAction] = StateEmailPasswordPage
-			case "com.bloks.www.caa.ar.code_entry":
-				transitions[StateEnteredEmailPasswordAction] = StateEmailCodePage
+				newState = StateEmailPasswordPage
+			case "com.bloks.www.caa.ar.code_entry",
+				"com.bloks.www.ap.two_step_verification.code_entry":
+				newState = StateEmailCodePage
+			case "com.bloks.www.two_step_verification.entrypoint":
+				newState = StateMFALandingPage
+			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
+				newState = StateCaptchaPage
+			case "com.bloks.www.ap.two_step_verification.approve_from_another_device",
+				"com.bloks.www.two_step_verification.approve_from_another_device":
+				// Meta tends to send you here by default and we need to treat it as
+				// a landing page that we then navigate to the MFA method picker
+				// from. But in case we already went to the method picker and picked
+				// AFAD, then we will end up back here and we want to actually do
+				// AFAD, not redirect back to the picker again.
+				if b.State == StateChooseMFAPage {
+					newState = StateAFADPage
+				} else {
+					newState = StateMFALandingPage
+				}
+			case "com.bloks.www.ap.two_step_verification.challenge_picker",
+				"com.bloks.www.two_step_verification.method_picker":
+				newState = StateChooseMFAPage
+			case "com.bloks.www.two_factor_login.enter_totp_code":
+				newState = StateTOTPPage
+			case "com.bloks.www.ap.two_step_verification.login_with_third_party":
+				newState = StateOAuthPage
+			case "com.bloks.www.two_step_verification.enter_sms_code":
+				newState = StateSMSPage
+			case "com.bloks.www.two_factor_login.enter_backup_code":
+				newState = StateBackupCodePage
+			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
+				newState = StateWhatsAppPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
-			if transitions[b.State] == StateUnknown {
+			if newState == StateUnknown {
 				return fmt.Errorf("can't handle new screen %s in state %s", name, b.State)
 			}
 
@@ -524,37 +520,21 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			}
 
 			b.CurrentPage = page
-			b.State = transitions[b.State]
+			b.State = newState
 			return nil
 		},
 		HandleLoginResponse: func(ctx context.Context, data string) error {
 			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Msg("Handling login response from Bloks")
-			transitions := map[BrowserState]BrowserState{}
-			transitions[StateEnteredEmailPasswordAction] = StateSuccess
-			transitions[StateEnteredCaptchaAction] = StateSuccess
-			transitions[StateEnteredTOTPAction] = StateSuccess
-			transitions[StateEnteredSMSAction] = StateSuccess
-			transitions[StateEnteredWhatsAppAction] = StateSuccess
-			transitions[StateEnteredBackupCodeAction] = StateSuccess
-			transitions[StateAFADCompleteAction] = StateSuccess
-			transitions[StateEnteredEmailCodeAction] = StateSuccess
-			transitions[StateEnteredEmailCodeAPAction] = StateSuccess
-			if transitions[b.State] == StateUnknown {
-				return fmt.Errorf("can't handle login response in state %s", b.State)
-			}
-
 			b.LoginData = data
-			b.State = transitions[b.State]
+			b.State = StateSuccess
 			return nil
 		},
 		StartTimer: func(name string, interval time.Duration, callback func() error) error {
 			switch name {
 			case "approve_from_another_device_polling_timer":
-				// The callback just re-runs the same on_appear logic, so for now
-				// we'll just re-load the page instead of actually triggering the
-				// callback logic in a loop.
 				b.AFADInterval = interval
+				b.AFADCallback = callback
 			default:
 				return fmt.Errorf("unexpected timer %s", name)
 			}
@@ -568,7 +548,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			switch name {
 			case "BLOKS_TWO_STEP_VERIFICATION_ENTER_CODE:error_message":
 				switch b.State {
-				case StateEnteredTOTPAction, StateEnteredSMSAction, StateEnteredWhatsAppAction, StateEnteredBackupCodeAction:
+				case StateTOTPPage, StateSMSPage, StateWhatsAppPage, StateBackupCodePage:
 				default:
 					return nil
 				}
@@ -578,7 +558,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				}
 				b.LastError = msg
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
-				if b.State != StateEnteredEmailCodeAPAction {
+				if b.State != StateEmailCodePage {
 					break
 				}
 				msg, ok := value.Value().(string)
@@ -685,178 +665,23 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("rpc %s: %w", rpc, err)
 		}
 
-		err = action.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
+		// Arguably this is a bit wrong? We don't save this interpreter anywhere, and end up
+		// not having a CurrentPage interpreter in the initial DisplayNewScreen call, so it
+		// gets constructed from scratch. But this seems like it's working fine for now.
+		err = action.SetupInterpreter(ctx, b.Bridge, nil)
 		if err != nil {
 			return nil, fmt.Errorf("setup %s interpreter: %w", b.State, err)
 		}
 
-		b.CurrentAction = action
-		b.State = StateRedirectToLoginAction
-
-	case StateEnteredCaptchaAction:
-		b.NumCaptchaAttempts += 1
-
-		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
+		_, err = action.Interpreter.Evaluate(ctx, action.Action())
 		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
-		}
-
-		err = b.CaptchaCallback(result)
-		if err != nil {
-			return nil, fmt.Errorf("execute captcha callback: %w", err)
-		}
-
-		if b.State == StateEnteredCaptchaAction {
-			b.State = StateCaptchaPage
-			delete(userInput, "captcha_code")
-		}
-
-	case StateMFALandingAPAction, StateChooseMFAAPAction, StateChosenMFAAPAction, StateEnteredEmailCodeAPAction:
-		action := b.CurrentAction.Action()
-		if action == nil {
-			// This is a super weird action that appears to be handled by the Bloks runtime in
-			// an unusual way. It is basically an action, but formatted as a page with a
-			// component inside it that has the action code, but then the page itself is tagged
-			// as an action.
-			script := b.CurrentAction.FindDescendant(FilterByComponent("action")).GetScript("on_load")
-			if script == nil {
-				return nil, fmt.Errorf("AP action %q did not contain script", b.State)
-			}
-			action = &script.AST
-		}
-
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, action)
-		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
-		}
-
-		if b.State == StateEnteredEmailCodeAPAction {
-			if b.LastError != "" {
-				delete(userInput, "email_code")
-				b.State = StateEmailCodePage
-			}
-		}
-
-	case StateAFADAction:
-		result, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
-		}
-
-		err = b.AFADCallback(result)
-		if err != nil {
-			return nil, fmt.Errorf("execute AFAD callback: %w", err)
-		}
-
-		if b.State != StateAFADAction {
-			break
-		}
-
-		if b.AFADInterval <= 0 {
-			return nil, fmt.Errorf("no AFAD timer scheduled")
-		}
-
-		b.State = StateAFADWait
-
-		// Only display the login step once, keep polling in background
-		if !b.AFADDisplayed {
-			step = &bridgev2.LoginStep{
-				Type:         bridgev2.LoginStepTypeDisplayAndWait,
-				StepID:       "fi.mau.meta.messengerlite.afad_wait",
-				Instructions: b.AFADNotification,
-				DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-					Type: bridgev2.LoginDisplayTypeNothing,
-				},
-			}
-			b.AFADDisplayed = true
-		}
-
-	case StateEnteredEmailPasswordAction:
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			if err.Error() == "Invalid username or password" {
-				delete(userInput, "username")
-				delete(userInput, "password")
-				b.LastError = err.Error()
-				b.State = StateEmailPasswordPage
-			} else if strings.Contains(err.Error(), "isn't connected to an account") {
-				delete(userInput, "username")
-				delete(userInput, "password")
-				thing := "username"
-				if strings.Contains("@", userInput["username"]) {
-					thing = "email address"
-				}
-				b.LastError = fmt.Sprintf("That %s is not connected to a Messenger account", thing)
-				b.State = StateEmailPasswordPage
-			} else {
-				return nil, fmt.Errorf("execute %s: %w", b.State, err)
-			}
-		}
-
-	case StateEnteredEmailCodeAction:
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "Please re-enter") {
-				delete(userInput, "email_code")
-				b.LastError = err.Error()
-				b.State = StateEmailCodePage
-			} else {
-				return nil, fmt.Errorf("execute %s: %w", b.State, err)
-			}
-		}
-
-	case StateEnteredTOTPAction:
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
-		}
-		// Check if a TOTP error was logged by the action. Sort of a hack.
-		if b.LastError != "" {
-			delete(userInput, "totp_code")
-			b.State = StateTOTPPage
-		}
-
-	case StateEnteredSMSAction:
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
-		}
-		// This uses the same logic as TOTP code submission. Sort of.
-		if b.LastError != "" {
-			delete(userInput, "sms_code")
-			b.State = StateSMSPageAfterSend
-		}
-
-	case StateEnteredWhatsAppAction:
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
-		}
-		// See above.
-		if b.LastError != "" {
-			delete(userInput, "whatsapp_code")
-			b.State = StateWhatsAppPageAfterSend
-		}
-
-	case StateEnteredBackupCodeAction:
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
-		}
-		// This is again similar to TOTP handling. We could maybe combine these cases.
-		if b.LastError != "" {
-			delete(userInput, "backup_code")
-			b.State = StateBackupCodePage
-		}
-
-	case StateRedirectToLoginAction, StateRedirectToMFALandingAction, StateChosenMFAAction, StateAFADCompleteAction:
-		_, err := b.CurrentAction.Interpreter.Evaluate(ctx, b.CurrentAction.Action())
-		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", b.State, err)
+			return nil, fmt.Errorf("initial action: %w", err)
 		}
 
 	case StateEmailPasswordPage:
-		if userInput["username"] == "" || userInput["password"] == "" {
+		username := userInput["username"]
+		password := userInput["password"]
+		if username == "" || password == "" {
 			instructions := "Enter your Facebook credentials. The Messenger network will only work with Facebook accounts."
 			if b.LastError != "" {
 				instructions = fmt.Sprintf("%s. %s", b.LastError, instructions)
@@ -876,20 +701,25 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
-		if !definitelyNotPhoneNumberRegexp.MatchString(userInput["username"]) {
+		if !definitelyNotPhoneNumberRegexp.MatchString(username) {
 			return nil, ErrLoginPhoneNumber
 		}
 
+		// Set up in case we don't navigate to a new page successfully
+		delete(userInput, "username")
+		delete(userInput, "password")
+		b.LastError = "Facebook rejected that login"
+
 		err = b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "email")).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["username"])
+			FillInput(ctx, b.CurrentPage.Interpreter, username)
 		if err != nil {
 			return nil, fmt.Errorf("filling email input: %w", err)
 		}
 
 		err = b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "password")).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["password"])
+			FillInput(ctx, b.CurrentPage.Interpreter, password)
 		if err != nil {
 			return nil, fmt.Errorf("filling password input: %w", err)
 		}
@@ -899,11 +729,23 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FindContainingButton().
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			return nil, fmt.Errorf("tapping login button: %w", err)
+			log.Debug().Err(err).Msg("Got error from username/password submission")
+			if strings.Contains(err.Error(), "Invalid username or password") {
+				b.LastError = "Invalid username or password"
+			} else if strings.Contains(err.Error(), "isn't connected to an account") {
+				thing := "username"
+				if strings.Contains("@", username) {
+					thing = "email address"
+				}
+				b.LastError = fmt.Sprintf("That %s is not connected to a Messenger account", thing)
+			} else {
+				return nil, fmt.Errorf("tapping login button: %w", err)
+			}
 		}
 
 	case StateEmailCodePage:
-		if userInput["email_code"] == "" {
+		emailCode := userInput["email_code"]
+		if emailCode == "" {
 			instructions := b.getCodeInstructions()
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
@@ -925,6 +767,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
+		// Set up in case we don't navigate to a new page successfully
+		delete(userInput, "email_code")
+		b.LastError = "Facebook rejected that code"
+
 		err := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
@@ -934,7 +780,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Enter code",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["email_code"])
+			FillInput(ctx, b.CurrentPage.Interpreter, emailCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling email code input: %w", err)
 		}
@@ -944,11 +790,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FindContainingButton().
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			return nil, fmt.Errorf("tapping continue: %w", err)
+			log.Debug().Err(err).Msg("Got error from email code submission")
+			if strings.Contains(err.Error(), "Please re-enter") {
+				// retry
+			} else {
+				return nil, fmt.Errorf("tapping continue: %w", err)
+			}
 		}
 
 	case StateBackupCodePage:
-		if userInput["backup_code"] == "" {
+		backupCode := userInput["backup_code"]
+		if backupCode == "" {
 			instructions := "Enter one of your two-factor backup codes."
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
@@ -970,6 +822,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
+		// Set up in case we don't navigate to a new page successfully
+		delete(userInput, "backup_code")
+		b.LastError = "Facebook rejected that code"
+
 		err := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
@@ -979,7 +835,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["backup_code"])
+			FillInput(ctx, b.CurrentPage.Interpreter, backupCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling backup code input: %w", err)
 		}
@@ -1065,8 +921,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 
 			instructions := "Facebook requires solving a captcha"
-			if b.NumCaptchaAttempts > 0 {
-				instructions = "Facebook rejected that captcha solution"
+			if b.LastError != "" {
+				instructions = b.LastError
 			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -1103,6 +959,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
+		// Set up in case we don't navigate to a new page successfully
+		delete(userInput, "captcha_code")
+		b.LastError = "Facebook rejected that captcha solution"
+
 		err := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
@@ -1112,7 +972,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Enter characters",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["captcha_code"])
+			FillInput(ctx, b.CurrentPage.Interpreter, captchaCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling captcha code input: %w", err)
 		}
@@ -1122,10 +982,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FindContainingButton().
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
+			// The entrypoint_async RPC is sometimes rejected with a generic "server
+			// error field_exception" response when transitioning from the captcha page
+			// to the MFA landing page. The error can be reproduced on the official
+			// Messenger iOS app so it is not a bridge issue. Entering the wrong captcha
+			// produces a different, non-error response - so we know there is nothing
+			// the user could do to cause this, it is purely Meta's fault.
+			if strings.Contains(err.Error(), "Query Error") {
+				return nil, ErrLoginUninformative
+			}
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 
-	case StateMFALandingPage, StatePossibleMandatoryAFADPAge:
+	case StateMFALandingPage:
 		btn := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
 			FindContainingButton()
@@ -1133,7 +1002,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		// tell until we see whether or not there is a button that would take us to the MFA
 		// method selection page. If there is, we'll follow it like in the non-AP case,
 		// otherwise we'll just treat this as a mandatory AFAD page.
-		if btn == nil && b.State == StatePossibleMandatoryAFADPAge {
+		if btn == nil {
 			b.State = StateAFADPage
 			break
 		}
@@ -1223,7 +1092,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateTOTPPage:
-		if userInput["totp_code"] == "" {
+		totpCode := userInput["totp_code"]
+		if totpCode == "" {
 			instructions := "Enter a six-digit code from your authenticator app"
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
@@ -1244,6 +1114,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
+		// Set up in case we don't navigate to a new page successfully
+		delete(userInput, "totp_code")
+		b.LastError = "Facebook rejected that code"
+
 		err := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
@@ -1253,7 +1127,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["totp_code"])
+			FillInput(ctx, b.CurrentPage.Interpreter, totpCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling mfa code input: %w", err)
 		}
@@ -1291,9 +1165,33 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 		}
 
-	case StateAFADWait:
-		time.Sleep(b.AFADInterval)
-		b.State = StateAFADPage
+		if b.State != StateAFADPage {
+			break
+		}
+
+		if b.AFADInterval <= 0 {
+			return nil, fmt.Errorf("no AFAD timer scheduled")
+		}
+
+		// Only display the login step once, keep polling in background
+		step = &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeDisplayAndWait,
+			StepID:       "fi.mau.meta.messengerlite.afad_wait",
+			Instructions: b.AFADNotification,
+			DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
+				Type: bridgev2.LoginDisplayTypeNothing,
+			},
+		}
+		b.State = StateAFADPageWaiting
+
+	case StateAFADPageWaiting:
+		for b.State == StateAFADPageWaiting {
+			time.Sleep(b.AFADInterval)
+			err := b.AFADCallback()
+			if err != nil {
+				return nil, fmt.Errorf("AFAD callback: %w", err)
+			}
+		}
 
 	case StateOAuthPage:
 		return nil, fmt.Errorf("can't handle Google OAuth yet")
@@ -1310,8 +1208,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 		}
 
+		// Running the on_mount handlers should have triggered a code to be sent.
+		b.State = StateSMSPageAfterSend
+
 	case StateSMSPageAfterSend:
-		if userInput["sms_code"] == "" {
+		smsCode := userInput["sms_code"]
+		if smsCode == "" {
 			instructions := b.getCodeInstructions()
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
@@ -1332,6 +1234,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
+		// Set up in case we don't navigate to a new page successfully
+		delete(userInput, "sms_code")
+		b.LastError = "Facebook rejected that code"
+
 		err := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
@@ -1341,7 +1247,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["sms_code"])
+			FillInput(ctx, b.CurrentPage.Interpreter, smsCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling sms code input: %w", err)
 		}
@@ -1366,8 +1272,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 		}
 
+		// Running the on_mount handlers should have triggered a code to be sent.
+		b.State = StateWhatsAppPageAfterSend
+
 	case StateWhatsAppPageAfterSend:
-		if userInput["whatsapp_code"] == "" {
+		whatsAppCode := userInput["whatsapp_code"]
+		if whatsAppCode == "" {
 			instructions := b.getCodeInstructions()
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
@@ -1388,6 +1298,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
+		// Set up in case we don't navigate to a new page successfully
+		delete(userInput, "whatsapp_code")
+		b.LastError = "Facebook rejected that code"
+
 		err := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
@@ -1397,7 +1311,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, userInput["whatsapp_code"])
+			FillInput(ctx, b.CurrentPage.Interpreter, whatsAppCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling whatsapp code input: %w", err)
 		}
@@ -1414,13 +1328,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		return nil, fmt.Errorf("unexpected state %s", b.State)
 	}
 	if b.State == prevState {
-		if step == nil {
-			return nil, fmt.Errorf("handling %s failed to advance flow", prevState)
-		} else {
+		if step != nil {
 			log.Debug().Str("cur_state", string(b.State)).Any("steps", step).Msg("Requested user input")
+		} else if b.LastError != "" {
+			log.Debug().Str("cur_state", string(b.State)).Str("last_error", b.LastError).Msg("Got intra-screen error, remaining in current state")
+		} else {
+			return nil, fmt.Errorf("handling %s failed to advance flow", prevState)
 		}
 	} else {
 		log.Debug().Str("old_state", string(prevState)).Str("new_state", string(b.State)).Msg("Transitioned login step")
+
+		// Ignore LastError, which is only used for signaling an error within the current
+		// page and can be ignored once we move to a new page.
+		b.LastError = ""
 	}
 	return step, nil
 }

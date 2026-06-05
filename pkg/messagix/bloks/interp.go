@@ -27,7 +27,8 @@ type InterpBridge struct {
 	IsAppInstalled       func(url string, pkgnames ...string) bool
 	HasAppPermissions    func(permissions ...string) bool
 	GetSecureNonces      func() []string
-	DoRPC                func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error
+	DoPageRPC            func(ctx context.Context, name string, params map[string]string) (*BloksBundle, error)
+	DoActionRPC          func(ctx context.Context, name string, params map[string]string) (*BloksScriptNode, error)
 	DisplayNewScreen     func(context.Context, string, *BloksBundle) error
 	HandleLoginResponse  func(ctx context.Context, data string) error
 	StartTimer           func(name string, interval time.Duration, callback func() error) error
@@ -744,18 +745,20 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		err = i.Bridge.DoRPC(ctx, name, flatParams, false, func(result *BloksScriptLiteral) error {
-			_, err := i.Evaluate(ctx, &BloksScriptNode{
-				BloksScriptNodeContent: &BloksScriptFuncall{
-					Function: "bk.action.core.Apply",
-					Args: []BloksScriptNode{{
-						BloksLiteralOf(callback),
-					}, {
-						result,
-					}},
-				},
-			})
-			return err
+		action, err := i.Bridge.DoActionRPC(ctx, name, flatParams)
+		if err != nil {
+			return nil, err
+		}
+		// Evaluate the action and also pass it to the callback
+		_, err = i.Evaluate(ctx, &BloksScriptNode{
+			BloksScriptNodeContent: &BloksScriptFuncall{
+				Function: "bk.action.core.Apply",
+				Args: []BloksScriptNode{{
+					BloksLiteralOf(callback),
+				}, {
+					action,
+				}},
+			},
 		})
 		if err != nil {
 			return nil, err
@@ -948,7 +951,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			flatParams[key] = str
 		}
-		err = i.Bridge.DoRPC(ctx, name, flatParams, true, nil)
+		page, err := i.Bridge.DoPageRPC(ctx, name, flatParams)
+		if err != nil {
+			return nil, err
+		}
+		err = i.Bridge.DisplayNewScreen(ctx, name, page)
 		if err != nil {
 			return nil, err
 		}
