@@ -657,6 +657,33 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(int64(len(arr))), nil
+	case "bk.action.array.Get":
+		mapping, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		switch val := mapping.Value().(type) {
+		case map[string]*BloksScriptLiteral:
+			key, err := evalAs[string](ctx, i, &call.Args[1], "array.get")
+			if err != nil {
+				return nil, err
+			}
+			if val[key] == nil {
+				return nil, fmt.Errorf("array key %s not present in map", key)
+			}
+			return val[key], nil
+		case []*BloksScriptLiteral:
+			idx, err := evalAs[int64](ctx, i, &call.Args[1], "array.get")
+			if err != nil {
+				return nil, err
+			}
+			if idx < 0 || idx >= int64(len(val)) {
+				return nil, fmt.Errorf("array index %d out of bounds for length %d", idx, len(val))
+			}
+			return val[idx], nil
+		default:
+			return nil, fmt.Errorf("expected array or map in array.get, got %T", mapping.Value())
+		}
 	case "ig.action.IsDarkModeEnabled":
 		return BloksLiteralOf(false), nil
 	case "bk.action.mins.InByVal":
