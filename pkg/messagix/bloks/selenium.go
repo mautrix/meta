@@ -466,6 +466,13 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				}
 				action = &script.AST
 			}
+			// Action payload doesn't include a new page, but it might include some
+			// extra payloads or scripts, we need to merge those in.
+			interp, err := NewInterpreter(ctx, bundle, b.Bridge, b.CurrentPage.GetInterpreter())
+			if err != nil {
+				return nil, fmt.Errorf("merging interpreter with new action")
+			}
+			b.CurrentPage.Interpreter = interp
 			return action, nil
 		},
 		DisplayNewScreen: func(ctx context.Context, name string, page *BloksBundle) error {
@@ -665,9 +672,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("rpc %s: %w", rpc, err)
 		}
 
-		// Arguably this is a bit wrong? We don't save this interpreter anywhere, and end up
-		// not having a CurrentPage interpreter in the initial DisplayNewScreen call, so it
-		// gets constructed from scratch. But this seems like it's working fine for now.
+		// Set up the action bundle as if it's the "current page", just so we have this
+		// variable non-null and can reference it later. Even though it's really an action,
+		// not a page.
+		b.CurrentPage = action
+
 		err = action.SetupInterpreter(ctx, b.Bridge, nil)
 		if err != nil {
 			return nil, fmt.Errorf("setup %s interpreter: %w", b.State, err)

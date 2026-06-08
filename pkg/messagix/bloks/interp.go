@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 	"time"
@@ -48,19 +49,25 @@ type Interpreter struct {
 func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *Interpreter) (*Interpreter, error) {
 	p := b.Layout.Payload
 	scripts := map[BloksScriptID]*BloksLambda{}
+	payloads := map[BloksPayloadID]*BloksBundleRef{}
+	globals := map[BloksVariableID]*BloksScriptLiteral{}
+	locals := map[BloksVariableID]*BloksScriptLiteral{}
+	if old != nil {
+		maps.Copy(scripts, old.Scripts)
+		maps.Copy(payloads, old.Payloads)
+		maps.Copy(globals, old.GlobalVars)
+		maps.Copy(locals, old.LocalVars)
+	}
 	for id, script := range p.Scripts {
 		scripts[id] = &BloksLambda{
 			Body: &script.AST,
 		}
 	}
-	payloads := map[BloksPayloadID]*BloksBundleRef{}
 	for _, payload := range p.Embedded {
 		payloads[payload.ID] = &BloksBundleRef{
 			Bundle: &payload.Contents,
 		}
 	}
-	globals := map[BloksVariableID]*BloksScriptLiteral{}
-	locals := map[BloksVariableID]*BloksScriptLiteral{}
 	for _, item := range p.Variables {
 		// Deal with the dynamic variables later
 		if item.Info.InitialScript != nil {
@@ -69,14 +76,13 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		id := BloksVariableID(item.ID)
 		switch item.Type {
 		case "gs":
-			if old != nil {
-				if oldval, ok := old.GlobalVars[id]; ok {
-					globals[id] = oldval
-					break
-				}
+			// Check if global var was already set
+			if globals[id] != nil {
+				break
 			}
 			globals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		case "ls":
+			// Local vars do not carry over between screens
 			locals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		default:
 			return nil, fmt.Errorf("unexpected var type %s", item.Type)
@@ -181,6 +187,23 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 	}
 	return &interp, nil
+}
+
+func (interp *Interpreter) MergeActionBundle(b *BloksBundle) {
+	p := b.Layout.Payload
+	for id, script := range p.Scripts {
+		interp.Scripts[id] = &BloksLambda{
+			Body: &script.AST,
+		}
+	}
+	for _, payload := range p.Embedded {
+		interp.Payloads[payload.ID] = &BloksBundleRef{
+			Bundle: &payload.Contents,
+		}
+	}
+	// We might want to handle variables here as well. Or combine this with
+	// the main method for constructing a new Interpreter instance based on
+	// an old one.
 }
 
 type BloksLambda struct {
