@@ -738,6 +738,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					thing = "email address"
 				}
 				b.LastError = fmt.Sprintf("That %s is not connected to a Messenger account", thing)
+			} else if strings.Contains(err.Error(), "com.bloks.www.caa.assistive_login_confirmation") {
+				// Facebook tries to send us to this screen when they think we are
+				// demonstrating substantial incompetence at entering an email
+				// address, like not putting a domain after the at-sign. It really
+				// just means the email address isn't valid though so let's report
+				// it like that.
+				//
+				// Technically we don't know that's the ONLY case where this screen
+				// comes up, but it's the only one sighted thus far. Update this if
+				// something new is discovered.
+				b.LastError = "Invalid email address"
 			} else {
 				return nil, fmt.Errorf("tapping login button: %w", err)
 			}
