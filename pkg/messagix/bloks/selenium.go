@@ -1014,6 +1014,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if strings.Contains(err.Error(), "Query Error") {
 				return nil, ErrLoginUninformative
 			}
+			// Sometimes just for spice, they will throw you a "Wrong Credentials" /
+			// "Invalid username or password" error here, even though what you submitted
+			// was a captcha rather than a username or password. And of course this
+			// happens even if you gave the correct password. If you actually gave a
+			// wrong password, it would have errored out at the password step, if we get
+			// the same error here, it means the Zuck says no.
+			if strings.Contains(err.Error(), "Invalid username or password") {
+				return nil, ErrLoginUninformative
+			}
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 
