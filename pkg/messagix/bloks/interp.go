@@ -169,6 +169,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		if item.Info.InitialScript == nil {
 			continue
 		}
+		// Technically we shouldn't do this evaluation until after we
+		// know if the value will be used or not, but as of yet I have
+		// not seen a case where it matters.
 		value, err := interp.Evaluate(ctx, &item.Info.InitialScript.AST)
 		if err != nil {
 			return nil, fmt.Errorf("var %s: %w", item.ID, err)
@@ -176,14 +179,14 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		id := BloksVariableID(item.ID)
 		switch item.Type {
 		case "gs":
-			if old != nil {
-				if oldval, ok := old.GlobalVars[id]; ok {
-					globals[id] = oldval
-					break
-				}
+			if globals[id] != nil {
+				break
 			}
 			globals[id] = value
 		case "ls":
+			if locals[id] != nil && !clearLocals {
+				break
+			}
 			locals[id] = value
 		default:
 			return nil, fmt.Errorf("unexpected var type %s", item.Type)
