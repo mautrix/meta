@@ -34,7 +34,7 @@ type InterpBridge struct {
 	HandleLoginResponse  func(ctx context.Context, data string) error
 	StartTimer           func(name string, interval time.Duration, callback func() error) error
 	OpenURL              func(url string) error
-	HandleVariableChange func(name string, value *BloksScriptLiteral) error
+	HandleVariableChange func(ctx context.Context, name string, value *BloksScriptLiteral) error
 }
 
 type Interpreter struct {
@@ -157,7 +157,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 	}
 	if br.HandleVariableChange == nil {
-		br.HandleVariableChange = func(name string, value *BloksScriptLiteral) error {
+		br.HandleVariableChange = func(ctx context.Context, name string, value *BloksScriptLiteral) error {
 			return nil
 		}
 	}
@@ -563,7 +563,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		i.GlobalVars[BloksVariableID(varname)] = value
-		err = i.Bridge.HandleVariableChange(varname, value)
+		err = i.Bridge.HandleVariableChange(ctx, varname, value)
 		if err != nil {
 			return nil, err
 		}
@@ -973,20 +973,22 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return BloksLiteralOf(btype), nil
 	case "bk.action.mins.GetByValOr":
-		return i.Evaluate(ctx, &BloksScriptNode{
+		lookup, err := i.Evaluate(ctx, &BloksScriptNode{
 			Content: &BloksScriptFuncall{
-				Function: "bk.action.bool.Or",
-				Args: []BloksScriptNode{{
-					Content: &BloksScriptFuncall{
-						Function: "bk.action.map.Get",
-						Args: []BloksScriptNode{
-							call.Args[0],
-							call.Args[1],
-						},
-					},
-				}, call.Args[2]},
+				Function: "bk.action.map.Get",
+				Args: []BloksScriptNode{
+					call.Args[0],
+					call.Args[1],
+				},
 			},
 		})
+		if err != nil {
+			return nil, err
+		}
+		if lookup.Value() == nil {
+			return i.Evaluate(ctx, &call.Args[2])
+		}
+		return lookup, nil
 	case "bk.action.fx.OpenSyncScreen", "bk.action.fx.PushSyncScreen":
 		name, err := evalTreeProp35(ctx, i, &call.Args[0], "pushscreen")
 		if err != nil {

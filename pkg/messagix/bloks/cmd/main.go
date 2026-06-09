@@ -45,6 +45,7 @@ var doBackupCode = flag.String("backup-code", "", "Submit backup code")
 var doEncrypt = flag.String("encrypt", "", "Encrypt a password")
 var deviceID = flag.String("device-id", "", "Device ID for password encryption")
 var doCaptcha = flag.String("captcha-code", "", "Captcha code to submit")
+var captchaResponse = flag.String("captcha-resp", "", "Bloks response for captcha submission")
 
 func main() {
 	err := mainE()
@@ -183,6 +184,14 @@ func mainE() error {
 				return nil, err
 			}
 			fmt.Printf("%s\n", string(payload))
+			if *captchaResponse != "" {
+				bundle, err := readAndParse[bloks.BloksBundle](*captchaResponse)
+				if err != nil {
+					return nil, err
+				}
+				fmt.Printf("(providing response from %s)\n", *captchaResponse)
+				return bundle.Action(), nil
+			}
 			return &bloks.BloksScriptNode{
 				Content: bloks.BloksNull,
 			}, nil
@@ -205,6 +214,10 @@ func mainE() error {
 				return fmt.Errorf("already opened a url this session")
 			}
 			lastURL = url
+			return nil
+		},
+		HandleVariableChange: func(ctx context.Context, name string, value *bloks.BloksScriptLiteral) error {
+			log.Trace().Str("variable", name).Any("value", value.Flatten(false)).Msg("Handling variable value change")
 			return nil
 		},
 	}
@@ -457,35 +470,43 @@ func mainE() error {
 			}
 		}
 	} else if *captcha {
-		img := bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
-		if img == nil {
-			return fmt.Errorf("can't find captcha image")
+		getURLs := func() (string, string, error) {
+			img := bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
+			if img == nil {
+				return "", "", fmt.Errorf("can't find captcha image")
+			}
+			imageURL := img.GetDynamicAttribute(ctx, interp, "url")
+			if imageURL == "" {
+				return "", "", fmt.Errorf("captcha image has no url")
+			}
+			audio := bundle.FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+			if audio == nil {
+				return "", "", fmt.Errorf("can't find audio text")
+			}
+			clickable := audio.FindDescendant(bloks.FilterByComponent("bk.style.textspan.ClickableStyle"))
+			if clickable == nil {
+				return "", "", fmt.Errorf("audio text is not clickable")
+			}
+			onClick := clickable.GetScript("on_click")
+			if onClick == nil {
+				return "", "", fmt.Errorf("no on_click on audio text")
+			}
+			_, err := interp.Evaluate(ctx, &onClick.AST)
+			if err != nil {
+				return "", "", fmt.Errorf("clicking on audio text: %w", err)
+			}
+			if lastURL == "" {
+				return "", "", fmt.Errorf("clicking on audio text failed to open url")
+			}
+			audioURL := strings.Replace(lastURL, "/player/", "/", 1)
+			lastURL = ""
+			return imageURL, audioURL, nil
 		}
-		imageURL := img.GetDynamicAttribute(ctx, interp, "url")
-		if imageURL == "" {
-			return fmt.Errorf("captcha image has no url")
+		imageURL, audioURL, err := getURLs()
+		if err != nil {
+			return err
 		}
 		fmt.Println("Image:", imageURL)
-		audio := bundle.FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
-		if audio == nil {
-			return fmt.Errorf("can't find audio text")
-		}
-		clickable := audio.FindDescendant(bloks.FilterByComponent("bk.style.textspan.ClickableStyle"))
-		if clickable == nil {
-			return fmt.Errorf("audio text is not clickable")
-		}
-		onClick := clickable.GetScript("on_click")
-		if onClick == nil {
-			return fmt.Errorf("no on_click on audio text")
-		}
-		_, err := interp.Evaluate(ctx, &onClick.AST)
-		if err != nil {
-			return fmt.Errorf("clicking on audio text: %w", err)
-		}
-		if lastURL == "" {
-			return fmt.Errorf("clicking on audio text failed to open url")
-		}
-		audioURL := strings.Replace(lastURL, "/player/", "/", 1)
 		fmt.Println("Audio:", audioURL)
 		if *doCaptcha != "" {
 			err := bundle.
@@ -508,6 +529,16 @@ func mainE() error {
 			if err != nil {
 				return fmt.Errorf("tapping continue: %w", err)
 			}
+		}
+		newImageURL, newAudioURL, err := getURLs()
+		if err != nil {
+			return err
+		}
+		if newImageURL != imageURL {
+			fmt.Println("New image:", newImageURL)
+		}
+		if newAudioURL != audioURL {
+			fmt.Println("New audio:", newAudioURL)
 		}
 	} else if *doSMSCode != "" {
 		err := bundle.

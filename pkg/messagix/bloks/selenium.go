@@ -551,7 +551,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			b.DisplayedURL = url
 			return nil
 		},
-		HandleVariableChange: func(name string, value *BloksScriptLiteral) error {
+		HandleVariableChange: func(ctx context.Context, name string, value *BloksScriptLiteral) error {
 			switch name {
 			case "BLOKS_TWO_STEP_VERIFICATION_ENTER_CODE:error_message":
 				switch b.State {
