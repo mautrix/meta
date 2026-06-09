@@ -195,21 +195,17 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	return &interp, nil
 }
 
-func (interp *Interpreter) MergeActionBundle(b *BloksBundle) {
-	p := b.Layout.Payload
-	for id, script := range p.Scripts {
-		interp.Scripts[id] = &BloksLambda{
-			Body: &script.AST,
-		}
+func (interp *Interpreter) MergeActionBundle(ctx context.Context, b *BloksBundle) error {
+	// Kind of a hack, maybe do this better
+	newInterp, err := NewInterpreter(ctx, b, &interp.Bridge, interp, false)
+	if err != nil {
+		return err
 	}
-	for _, payload := range p.Embedded {
-		interp.Payloads[payload.ID] = &BloksBundleRef{
-			Bundle: &payload.Contents,
-		}
-	}
-	// We might want to handle variables here as well. Or combine this with
-	// the main method for constructing a new Interpreter instance based on
-	// an old one.
+	interp.Scripts = newInterp.Scripts
+	interp.Payloads = newInterp.Payloads
+	interp.LocalVars = newInterp.LocalVars
+	interp.GlobalVars = newInterp.GlobalVars
+	return nil
 }
 
 type BloksLambda struct {

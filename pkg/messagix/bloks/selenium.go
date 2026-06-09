@@ -468,11 +468,14 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			}
 			// Action payload doesn't include a new page, but it might include some
 			// extra payloads or scripts, we need to merge those in.
-			interp, err := NewInterpreter(ctx, bundle, b.Bridge, b.CurrentPage.GetInterpreter(), false)
+			//
+			// NB: Terrible bug happens if you re-assign b.CurrentPage.Interpreter here,
+			// because the calling code still has a reference to the old interpreter and
+			// any variable updates in the callback will be lost.
+			err = b.CurrentPage.Interpreter.MergeActionBundle(ctx, bundle)
 			if err != nil {
 				return nil, fmt.Errorf("merging interpreter with new action")
 			}
-			b.CurrentPage.Interpreter = interp
 			return action, nil
 		},
 		DisplayNewScreen: func(ctx context.Context, name string, page *BloksBundle) error {
