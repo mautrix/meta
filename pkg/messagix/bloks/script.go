@@ -9,7 +9,10 @@ import (
 )
 
 type BloksScriptNode struct {
-	BloksScriptNodeContent
+	// Make this an explicit field because otherwise it becomes
+	// legal to put a BloksScriptNode as a BloksScriptNodeContent
+	// because the type checker doesn't care about your feelings
+	Content BloksScriptNodeContent
 }
 
 var ErrParseEndOfFuncall = errors.New("end of funcall")
@@ -21,13 +24,13 @@ func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 			continue
 		case '(':
 			funcall := BloksScriptFuncall{}
-			node.BloksScriptNodeContent = &funcall
+			node.Content = &funcall
 			return funcall.Parse(code, idx)
 		case ')':
 			return idx, ErrParseEndOfFuncall
 		default:
 			var literal BloksScriptLiteral
-			node.BloksScriptNodeContent = &literal
+			node.Content = &literal
 			return literal.Parse(code, idx)
 		}
 	}
@@ -113,7 +116,7 @@ func (call *BloksScriptFuncall) Unminify(m *Unminifier) {
 		call.Function = real
 	}
 	for _, arg := range call.Args {
-		arg.Unminify(m)
+		arg.Content.Unminify(m)
 	}
 }
 
@@ -126,7 +129,7 @@ func (call *BloksScriptFuncall) Print(w io.Writer, indent string) error {
 		if idx > 0 {
 			fmt.Fprintf(w, "\n")
 		}
-		arg.Print(w, indent+"  ")
+		arg.Content.Print(w, indent+"  ")
 	}
 	fmt.Fprintf(w, ")")
 	return nil
@@ -155,12 +158,12 @@ func (call *BloksScriptFuncall) Redact() {
 	}
 	for idx, arg := range call.Args {
 		if nonsensitive[idx] {
-			switch arg.BloksScriptNodeContent.(type) {
+			switch arg.Content.(type) {
 			case *BloksScriptLiteral:
 				continue
 			}
 		}
-		arg.Redact()
+		arg.Content.Redact()
 	}
 }
 

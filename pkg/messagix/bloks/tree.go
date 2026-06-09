@@ -39,8 +39,8 @@ func (bb *BloksBundle) Action() *BloksScriptNode {
 	return &bb.Layout.Payload.Action.AST
 }
 
-func (bb *BloksBundle) SetupInterpreter(ctx context.Context, br *InterpBridge, prev *Interpreter) error {
-	interp, err := NewInterpreter(ctx, bb, br, prev)
+func (bb *BloksBundle) SetupInterpreter(ctx context.Context, br *InterpBridge, prev *Interpreter, clearLocals bool) error {
+	interp, err := NewInterpreter(ctx, bb, br, prev, clearLocals)
 	if err != nil {
 		return err
 	}
@@ -354,7 +354,9 @@ func redactString(s string) string {
 			break
 		}
 	}
-	digest := sha256.New().Sum([]byte(s))
+	h := sha256.New()
+	h.Write([]byte(s))
+	digest := h.Sum(nil)
 	return fmt.Sprintf("%sredacted_%dchar_%s_%s", prefix, len(s), stringType, hex.EncodeToString(digest[:4]))
 }
 
@@ -860,7 +862,7 @@ func (bs BloksTreeScript) MarshalJSON() ([]byte, error) {
 }
 
 func (bs *BloksTreeScript) Unminify(m *Unminifier, parent *BloksTreeComponent) {
-	bs.AST.Unminify(m)
+	bs.AST.Content.Unminify(m)
 }
 
 func (bst *BloksTreeScript) Parse(code string) error {
@@ -869,7 +871,7 @@ func (bst *BloksTreeScript) Parse(code string) error {
 }
 
 func (bst *BloksTreeScript) Print(w io.Writer, indent string) error {
-	return bst.AST.Print(w, indent)
+	return bst.AST.Content.Print(w, indent)
 }
 
 func (bst *BloksTreeScript) PrintHTML(w io.Writer, indent string) error {
@@ -881,7 +883,7 @@ func (bst *BloksTreeScript) Redact() {
 	if bst == nil {
 		return
 	}
-	bst.AST.Redact()
+	bst.AST.Content.Redact()
 }
 
 type BloksTreeScriptSet struct {

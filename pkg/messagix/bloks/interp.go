@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 	"time"
@@ -27,12 +28,13 @@ type InterpBridge struct {
 	IsAppInstalled       func(url string, pkgnames ...string) bool
 	HasAppPermissions    func(permissions ...string) bool
 	GetSecureNonces      func() []string
-	DoRPC                func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error
+	DoPageRPC            func(ctx context.Context, name string, params map[string]string) (*BloksBundle, error)
+	DoActionRPC          func(ctx context.Context, name string, params map[string]string) (*BloksScriptNode, error)
 	DisplayNewScreen     func(context.Context, string, *BloksBundle) error
 	HandleLoginResponse  func(ctx context.Context, data string) error
 	StartTimer           func(name string, interval time.Duration, callback func() error) error
 	OpenURL              func(url string) error
-	HandleVariableChange func(name string, value *BloksScriptLiteral) error
+	HandleVariableChange func(ctx context.Context, name string, value *BloksScriptLiteral) error
 }
 
 type Interpreter struct {
@@ -44,22 +46,28 @@ type Interpreter struct {
 	GlobalVars map[BloksVariableID]*BloksScriptLiteral
 }
 
-func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *Interpreter) (*Interpreter, error) {
+func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *Interpreter, clearLocals bool) (*Interpreter, error) {
 	p := b.Layout.Payload
 	scripts := map[BloksScriptID]*BloksLambda{}
+	payloads := map[BloksPayloadID]*BloksBundleRef{}
+	globals := map[BloksVariableID]*BloksScriptLiteral{}
+	locals := map[BloksVariableID]*BloksScriptLiteral{}
+	if old != nil {
+		maps.Copy(scripts, old.Scripts)
+		maps.Copy(payloads, old.Payloads)
+		maps.Copy(globals, old.GlobalVars)
+		maps.Copy(locals, old.LocalVars)
+	}
 	for id, script := range p.Scripts {
 		scripts[id] = &BloksLambda{
 			Body: &script.AST,
 		}
 	}
-	payloads := map[BloksPayloadID]*BloksBundleRef{}
 	for _, payload := range p.Embedded {
 		payloads[payload.ID] = &BloksBundleRef{
 			Bundle: &payload.Contents,
 		}
 	}
-	globals := map[BloksVariableID]*BloksScriptLiteral{}
-	locals := map[BloksVariableID]*BloksScriptLiteral{}
 	for _, item := range p.Variables {
 		// Deal with the dynamic variables later
 		if item.Info.InitialScript != nil {
@@ -68,14 +76,16 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		id := BloksVariableID(item.ID)
 		switch item.Type {
 		case "gs":
-			if old != nil {
-				if oldval, ok := old.GlobalVars[id]; ok {
-					globals[id] = oldval
-					break
-				}
+			// Check if global var was already set
+			if globals[id] != nil {
+				break
 			}
 			globals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		case "ls":
+			// Local vars do not carry over between screens
+			if locals[id] != nil && !clearLocals {
+				break
+			}
 			locals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		default:
 			return nil, fmt.Errorf("unexpected var type %s", item.Type)
@@ -119,9 +129,14 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 			return nil
 		}
 	}
-	if br.DoRPC == nil {
-		br.DoRPC = func(ctx context.Context, name string, params map[string]string, isPage bool, callback func(result *BloksScriptLiteral) error) error {
-			return fmt.Errorf("unhandled rpc %s (isPage %v)", name, isPage)
+	if br.DoPageRPC == nil {
+		br.DoPageRPC = func(ctx context.Context, name string, params map[string]string) (*BloksBundle, error) {
+			return nil, fmt.Errorf("unhandled page rpc %s", name)
+		}
+	}
+	if br.DoActionRPC == nil {
+		br.DoActionRPC = func(ctx context.Context, name string, params map[string]string) (*BloksScriptNode, error) {
+			return nil, fmt.Errorf("unhandled action rpc %s", name)
 		}
 	}
 	if br.DisplayNewScreen == nil {
@@ -145,7 +160,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 	}
 	if br.HandleVariableChange == nil {
-		br.HandleVariableChange = func(name string, value *BloksScriptLiteral) error {
+		br.HandleVariableChange = func(ctx context.Context, name string, value *BloksScriptLiteral) error {
 			return nil
 		}
 	}
@@ -154,6 +169,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		if item.Info.InitialScript == nil {
 			continue
 		}
+		// Technically we shouldn't do this evaluation until after we
+		// know if the value will be used or not, but as of yet I have
+		// not seen a case where it matters.
 		value, err := interp.Evaluate(ctx, &item.Info.InitialScript.AST)
 		if err != nil {
 			return nil, fmt.Errorf("var %s: %w", item.ID, err)
@@ -161,20 +179,33 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		id := BloksVariableID(item.ID)
 		switch item.Type {
 		case "gs":
-			if old != nil {
-				if oldval, ok := old.GlobalVars[id]; ok {
-					globals[id] = oldval
-					break
-				}
+			if globals[id] != nil {
+				break
 			}
 			globals[id] = value
 		case "ls":
+			if locals[id] != nil && !clearLocals {
+				break
+			}
 			locals[id] = value
 		default:
 			return nil, fmt.Errorf("unexpected var type %s", item.Type)
 		}
 	}
 	return &interp, nil
+}
+
+func (interp *Interpreter) MergeActionBundle(ctx context.Context, b *BloksBundle) error {
+	// Kind of a hack, maybe do this better
+	newInterp, err := NewInterpreter(ctx, b, &interp.Bridge, interp, false)
+	if err != nil {
+		return err
+	}
+	interp.Scripts = newInterp.Scripts
+	interp.Payloads = newInterp.Payloads
+	interp.LocalVars = newInterp.LocalVars
+	interp.GlobalVars = newInterp.GlobalVars
+	return nil
 }
 
 type BloksLambda struct {
@@ -209,10 +240,24 @@ func evalAs[T any](ctx context.Context, i *Interpreter, form *BloksScriptNode, w
 	return cast, nil
 }
 
+func evalFloat(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (float64, error) {
+	val, err := i.Evaluate(ctx, form)
+	if err != nil {
+		return 0, err
+	}
+	if cast, ok := val.Value().(float64); ok {
+		return cast, nil
+	}
+	if cast, ok := val.Value().(int64); ok {
+		return float64(cast), nil
+	}
+	return 0, fmt.Errorf("expected int64 or float64 in %s, got %T", where, val.Value())
+}
+
 func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (string, error) {
-	make, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	make, ok := form.Content.(*BloksScriptFuncall)
 	if !ok {
-		return "", fmt.Errorf("%s non-funcall %T", where, form.BloksScriptNodeContent)
+		return "", fmt.Errorf("%s non-funcall %T", where, form.Content)
 	}
 	if make.Function != "bk.action.tree.Make" {
 		return "", fmt.Errorf("%s non-tree funcall %s", where, make.Function)
@@ -240,9 +285,9 @@ func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, 
 }
 
 func evalTreeCallback(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (*BloksLambda, error) {
-	make, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	make, ok := form.Content.(*BloksScriptFuncall)
 	if !ok {
-		return nil, fmt.Errorf("%s non-funcall %T", where, form.BloksScriptNodeContent)
+		return nil, fmt.Errorf("%s non-funcall %T", where, form.Content)
 	}
 	if make.Function != "bk.action.tree.Make" {
 		return nil, fmt.Errorf("%s non-tree funcall %s", where, make.Function)
@@ -326,16 +371,16 @@ func getBloksType(lit *BloksScriptLiteral) (int64, error) {
 }
 
 func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*BloksScriptLiteral, error) {
-	if lit, ok := form.BloksScriptNodeContent.(*BloksScriptLiteral); ok {
+	if lit, ok := form.Content.(*BloksScriptLiteral); ok {
 		return lit, nil
 	}
 	ambientArgs, ok := ctx.Value(interpCtxArgs).([]*BloksScriptLiteral)
 	if !ok {
 		ambientArgs = make([]*BloksScriptLiteral, maxInterpArgs)
 	}
-	call, ok := form.BloksScriptNodeContent.(*BloksScriptFuncall)
+	call, ok := form.Content.(*BloksScriptFuncall)
 	if !ok {
-		return nil, fmt.Errorf("unexpected script node %T", form.BloksScriptNodeContent)
+		return nil, fmt.Errorf("unexpected script node %T", form.Content)
 	}
 	// Some of the cases in this switch are not needed for any given login. However different
 	// functions get pulled in depending on which API you are talking to, so I left in
@@ -479,6 +524,16 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		return BloksLiteralOf(first > second), nil
 	case "bk.action.f32.Const":
 		return i.Evaluate(ctx, &call.Args[0])
+	case "bk.action.f32.Add":
+		first, err := evalFloat(ctx, i, &call.Args[0], "add lhs")
+		if err != nil {
+			return nil, err
+		}
+		second, err := evalFloat(ctx, i, &call.Args[1], "add rhs")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(first + second), nil
 	case "bk.action.bloks.GetScript":
 		name, err := evalAs[string](ctx, i, &call.Args[0], "getscript")
 		if err != nil {
@@ -510,7 +565,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		i.GlobalVars[BloksVariableID(varname)] = value
-		err = i.Bridge.HandleVariableChange(varname, value)
+		err = i.Bridge.HandleVariableChange(ctx, varname, value)
 		if err != nil {
 			return nil, err
 		}
@@ -627,6 +682,33 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(int64(len(arr))), nil
+	case "bk.action.array.Get":
+		mapping, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		switch val := mapping.Value().(type) {
+		case map[string]*BloksScriptLiteral:
+			key, err := evalAs[string](ctx, i, &call.Args[1], "array.get")
+			if err != nil {
+				return nil, err
+			}
+			if val[key] == nil {
+				return nil, fmt.Errorf("array key %s not present in map", key)
+			}
+			return val[key], nil
+		case []*BloksScriptLiteral:
+			idx, err := evalAs[int64](ctx, i, &call.Args[1], "array.get")
+			if err != nil {
+				return nil, err
+			}
+			if idx < 0 || idx >= int64(len(val)) {
+				return nil, fmt.Errorf("array index %d out of bounds for length %d", idx, len(val))
+			}
+			return val[idx], nil
+		default:
+			return nil, fmt.Errorf("expected array or map in array.get, got %T", mapping.Value())
+		}
 	case "ig.action.IsDarkModeEnabled":
 		return BloksLiteralOf(false), nil
 	case "bk.action.mins.InByVal":
@@ -689,9 +771,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		// other than looking them up using getvar, it should work the same.
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.ref.Read":
-		ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
+		ref, ok := call.Args[0].Content.(*BloksScriptFuncall)
 		if !ok {
-			return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].BloksScriptNodeContent)
+			return nil, fmt.Errorf("reading from non-ref %T", call.Args[0].Content)
 		}
 		if ref.Function != "bk.action.bloks.GetVariable2" && ref.Function != "bk.action.bloks.GetVariableWithScope" {
 			return nil, fmt.Errorf("reading from non-ref funcall %s", ref.Function)
@@ -706,9 +788,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return value, nil
 	case "bk.action.ref.Write":
-		ref, ok := call.Args[0].BloksScriptNodeContent.(*BloksScriptFuncall)
+		ref, ok := call.Args[0].Content.(*BloksScriptFuncall)
 		if !ok {
-			return nil, fmt.Errorf("reading from non-ref %T (for write)", call.Args[0].BloksScriptNodeContent)
+			return nil, fmt.Errorf("reading from non-ref %T (for write)", call.Args[0].Content)
 		}
 		if ref.Function != "bk.action.bloks.GetVariable2" && ref.Function != "bk.action.bloks.GetVariableWithScope" {
 			return nil, fmt.Errorf("reading from non-ref funcall %s (for write)", ref.Function)
@@ -744,18 +826,18 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
-		err = i.Bridge.DoRPC(ctx, name, flatParams, false, func(result *BloksScriptLiteral) error {
-			_, err := i.Evaluate(ctx, &BloksScriptNode{
-				BloksScriptNodeContent: &BloksScriptFuncall{
-					Function: "bk.action.core.Apply",
-					Args: []BloksScriptNode{{
-						BloksLiteralOf(callback),
-					}, {
-						result,
-					}},
-				},
-			})
-			return err
+		action, err := i.Bridge.DoActionRPC(ctx, name, flatParams)
+		if err != nil {
+			return nil, err
+		}
+		// Evaluate the action and also pass it to the callback
+		_, err = i.Evaluate(ctx, &BloksScriptNode{
+			Content: &BloksScriptFuncall{
+				Function: "bk.action.core.Apply",
+				Args: []BloksScriptNode{{
+					BloksLiteralOf(callback),
+				}, *action},
+			},
 		})
 		if err != nil {
 			return nil, err
@@ -817,12 +899,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "h9a":
 		// ignore second argument for now, use first & third
 		return i.Evaluate(ctx, &BloksScriptNode{
-			BloksScriptNodeContent: &BloksScriptFuncall{
+			Content: &BloksScriptFuncall{
 				Function: "bk.action.core.Apply",
 				Args: []BloksScriptNode{
 					call.Args[2],
 					{
-						BloksScriptNodeContent: &BloksScriptFuncall{
+						Content: &BloksScriptFuncall{
 							Function: "bk.action.string.EncryptPassword",
 							Args:     []BloksScriptNode{call.Args[0]},
 						},
@@ -893,20 +975,22 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return BloksLiteralOf(btype), nil
 	case "bk.action.mins.GetByValOr":
-		return i.Evaluate(ctx, &BloksScriptNode{
-			BloksScriptNodeContent: &BloksScriptFuncall{
-				Function: "bk.action.bool.Or",
-				Args: []BloksScriptNode{{
-					BloksScriptNodeContent: &BloksScriptFuncall{
-						Function: "bk.action.map.Get",
-						Args: []BloksScriptNode{
-							call.Args[0],
-							call.Args[1],
-						},
-					},
-				}, call.Args[2]},
+		lookup, err := i.Evaluate(ctx, &BloksScriptNode{
+			Content: &BloksScriptFuncall{
+				Function: "bk.action.map.Get",
+				Args: []BloksScriptNode{
+					call.Args[0],
+					call.Args[1],
+				},
 			},
 		})
+		if err != nil {
+			return nil, err
+		}
+		if lookup.Value() == nil {
+			return i.Evaluate(ctx, &call.Args[2])
+		}
+		return lookup, nil
 	case "bk.action.fx.OpenSyncScreen", "bk.action.fx.PushSyncScreen":
 		name, err := evalTreeProp35(ctx, i, &call.Args[0], "pushscreen")
 		if err != nil {
@@ -948,7 +1032,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 			flatParams[key] = str
 		}
-		err = i.Bridge.DoRPC(ctx, name, flatParams, true, nil)
+		page, err := i.Bridge.DoPageRPC(ctx, name, flatParams)
+		if err != nil {
+			return nil, err
+		}
+		err = i.Bridge.DisplayNewScreen(ctx, name, page)
 		if err != nil {
 			return nil, err
 		}
@@ -994,7 +1082,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		err = i.Bridge.StartTimer(name, time.Duration(interval)*time.Millisecond, func() error {
 			_, err := i.Evaluate(ctx, &BloksScriptNode{
-				BloksScriptNodeContent: &BloksScriptFuncall{
+				Content: &BloksScriptFuncall{
 					Function: "bk.action.core.Apply",
 					Args: []BloksScriptNode{{
 						BloksLiteralOf(cb),
