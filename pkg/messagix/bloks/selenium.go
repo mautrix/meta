@@ -468,7 +468,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			}
 			// Action payload doesn't include a new page, but it might include some
 			// extra payloads or scripts, we need to merge those in.
-			interp, err := NewInterpreter(ctx, bundle, b.Bridge, b.CurrentPage.GetInterpreter())
+			interp, err := NewInterpreter(ctx, bundle, b.Bridge, b.CurrentPage.GetInterpreter(), false)
 			if err != nil {
 				return nil, fmt.Errorf("merging interpreter with new action")
 			}
@@ -521,7 +521,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				return fmt.Errorf("can't handle new screen %s in state %s", name, b.State)
 			}
 
-			err := page.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter())
+			err := page.SetupInterpreter(ctx, b.Bridge, b.CurrentPage.GetInterpreter(), true)
 			if err != nil {
 				return err
 			}
@@ -677,7 +677,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		// not a page.
 		b.CurrentPage = action
 
-		err = action.SetupInterpreter(ctx, b.Bridge, nil)
+		err = action.SetupInterpreter(ctx, b.Bridge, nil, true)
 		if err != nil {
 			return nil, fmt.Errorf("setup %s interpreter: %w", b.State, err)
 		}

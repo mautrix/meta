@@ -46,7 +46,7 @@ type Interpreter struct {
 	GlobalVars map[BloksVariableID]*BloksScriptLiteral
 }
 
-func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *Interpreter) (*Interpreter, error) {
+func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *Interpreter, clearLocals bool) (*Interpreter, error) {
 	p := b.Layout.Payload
 	scripts := map[BloksScriptID]*BloksLambda{}
 	payloads := map[BloksPayloadID]*BloksBundleRef{}
@@ -83,6 +83,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 			globals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		case "ls":
 			// Local vars do not carry over between screens
+			if locals[id] != nil && !clearLocals {
+				break
+			}
 			locals[id] = BloksLiteralFromJavaScript(item.Info.Initial)
 		default:
 			return nil, fmt.Errorf("unexpected var type %s", item.Type)

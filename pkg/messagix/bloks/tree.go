@@ -39,8 +39,8 @@ func (bb *BloksBundle) Action() *BloksScriptNode {
 	return &bb.Layout.Payload.Action.AST
 }
 
-func (bb *BloksBundle) SetupInterpreter(ctx context.Context, br *InterpBridge, prev *Interpreter) error {
-	interp, err := NewInterpreter(ctx, bb, br, prev)
+func (bb *BloksBundle) SetupInterpreter(ctx context.Context, br *InterpBridge, prev *Interpreter, clearLocals bool) error {
+	interp, err := NewInterpreter(ctx, bb, br, prev, clearLocals)
 	if err != nil {
 		return err
 	}

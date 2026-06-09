@@ -221,7 +221,7 @@ func mainE() error {
 			return nil
 		},
 	}
-	interp, err := bloks.NewInterpreter(ctx, bundle, &bridge, nil)
+	interp, err := bloks.NewInterpreter(ctx, bundle, &bridge, nil, true)
 	if err != nil {
 		return err
 	}
@@ -263,7 +263,7 @@ func mainE() error {
 		if *doLogin {
 			interp.Bridge.DisplayNewScreen = func(ctx context.Context, name string, newBundle *bloks.BloksBundle) error {
 				bundle = newBundle
-				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge, interp)
+				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge, interp, true)
 				if err != nil {
 					return err
 				}
