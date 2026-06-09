@@ -354,7 +354,9 @@ func redactString(s string) string {
 			break
 		}
 	}
-	digest := sha256.New().Sum([]byte(s))
+	h := sha256.New()
+	h.Write([]byte(s))
+	digest := h.Sum(nil)
 	return fmt.Sprintf("%sredacted_%dchar_%s_%s", prefix, len(s), stringType, hex.EncodeToString(digest[:4]))
 }
 
