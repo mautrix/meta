@@ -209,6 +209,15 @@ func init() {
 	igCaps.MessageRequest = &event.MessageRequestFeatures{
 		AcceptWithButton: event.CapLevelFullySupported,
 	}
+	igCaps.File[event.CapMsgGIF] = &event.FileFeatures{
+		MimeTypes: map[string]event.CapabilitySupportLevel{
+			"image/gif": event.CapLevelFullySupported,
+			"video/mp4": event.CapLevelFullySupported,
+		},
+		Caption:          event.CapLevelDropped,
+		MaxCaptionLength: MaxTextLength,
+		MaxSize:          MaxImageSize,
+	}
 	igCaps.ID += "+instagram"
 	igCapsGroup = igCaps.Clone()
 	igCapsGroup.ID += "+instagram-group"
