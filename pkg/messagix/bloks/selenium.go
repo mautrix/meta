@@ -1023,6 +1023,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if strings.Contains(err.Error(), "Invalid username or password") {
 				return nil, ErrLoginUninformative
 			}
+			// Another kind of lie that we can get from Facebook.
+			if strings.Contains(err.Error(), "An unexpected error occurred") {
+				return nil, ErrLoginUninformative
+			}
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 
