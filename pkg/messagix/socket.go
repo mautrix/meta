@@ -101,8 +101,9 @@ func (c *Client) GetDialer() *websocket.DialOptions {
 		if contextDialer, ok := c.socksProxy.(proxy.ContextDialer); ok {
 			transport.DialContext = contextDialer.DialContext
 		} else {
-			//nolint:staticcheck // fallback path: socksProxy doesn't implement ContextDialer
-			transport.Dial = c.socksProxy.Dial
+			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return c.socksProxy.Dial(network, addr)
+			}
 		}
 	}
 	if DisableTLSVerification {
