@@ -592,16 +592,18 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 }
 
 func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg *table.LSDeleteThenInsertMessageRequest) bridgev2.RemoteEvent {
+	// Status 1 means the thread is in the pending/message request folder.
+	isMessageRequest := msg.MessageRequestStatus == 1
 	if tk.Sync != nil {
 		if tk.Sync.Raw != nil && tk.Sync.Raw.FolderName == folderSpam {
 			return nil
 		}
-		tk.Sync.Info.MessageRequest = ptr.Ptr(true)
+		tk.Sync.Info.MessageRequest = ptr.Ptr(isMessageRequest)
 		return nil
 	}
 	return m.wrapChatInfoChange(msg.ThreadKey, 0, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
-			MessageRequest: ptr.Ptr(true),
+			MessageRequest: ptr.Ptr(isMessageRequest),
 		},
 	}, "LSDeleteThenInsertMessageRequest")
 }
