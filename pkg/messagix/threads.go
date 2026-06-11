@@ -27,7 +27,7 @@ func (c *Client) ExecuteTasks(ctx context.Context, tasks ...socket.Task) (*table
 		return nil, fmt.Errorf("failed to finalize payload: %w", err)
 	}
 
-	resp, err := c.socket.makeLSRequest(ctx, payload, 3)
+	resp, err := c.makeRealtimeLSRequest(ctx, payload, 3)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +61,6 @@ func (c *Client) ExecuteStatelessTask(ctx context.Context, task socket.Task) err
 	if err != nil {
 		return fmt.Errorf("failed to marshal outer task %s payload: %w", label, err)
 	}
-	_, err = c.socket.makeLSRequest(ctx, outerPayloadMarshalled, 4)
+	_, err = c.makeRealtimeLSRequest(ctx, outerPayloadMarshalled, 4)
 	return err
 }

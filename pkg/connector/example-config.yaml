@@ -48,6 +48,11 @@ send_presence_on_typing: false
 # typing indicators; the existing connection(s) are sufficient to send
 # and receive typing indicators in all other cases.
 receive_instagram_typing_indicators: true
+# Experimental: for facebook.com/messenger.com logins, use the Messenger
+# Web DGW Lightspeed websocket instead of MQTT edge-chat for realtime
+# Lightspeed requests. Leave disabled unless testing browser-parity
+# realtime behavior.
+use_messenger_dgw_realtime: false
 # Should view-once messages be disabled entirely?
 disable_view_once: false
 # Should FB marketplace chats have a separate space inside the main Facebook space?

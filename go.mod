@@ -8,6 +8,7 @@ tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c
+	github.com/coder/websocket v1.8.14
 	github.com/gabriel-vasile/mimetype v1.4.13
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
@@ -31,7 +32,6 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/beeper/argo-go v1.1.2 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect

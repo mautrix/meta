@@ -43,6 +43,7 @@ type Config struct {
 	// Only affects E2EE chats right now.
 	SendPresenceOnTyping             bool `yaml:"send_presence_on_typing"`
 	ReceiveInstagramTypingIndicators bool `yaml:"receive_instagram_typing_indicators"`
+	UseMessengerDGWRealtime          bool `yaml:"use_messenger_dgw_realtime"`
 	DisableViewOnce                  bool `yaml:"disable_view_once"`
 	MarketplaceSpace                 bool `yaml:"marketplace_space"`
 	LogRedactedBloksPayloads         bool `yaml:"log_redacted_bloks_payloads"`
@@ -98,6 +99,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_xma_always")
 	helper.Copy(up.Bool, "send_presence_on_typing")
 	helper.Copy(up.Bool, "receive_instagram_typing_indicators")
+	helper.Copy(up.Bool, "use_messenger_dgw_realtime")
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Bool, "marketplace_space")
 	helper.Copy(up.Bool, "log_redacted_bloks_payloads")
