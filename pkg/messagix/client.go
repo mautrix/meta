@@ -47,15 +47,14 @@ type Client struct {
 	Logger        zerolog.Logger
 	Platform      types.Platform
 
-	http              *http.Client
-	httpSettings      exhttp.ClientSettings
-	loginHttpSettings exhttp.ClientSettings
-	proxyAddr         string
-	socket            *Socket
-	dgwSocket         *dgw.Socket
-	eventHandler      EventHandler
-	configs           *Configs
-	syncManager       *SyncManager
+	http         *http.Client
+	httpSettings exhttp.ClientSettings
+	proxyAddr    string
+	socket       *Socket
+	dgwSocket    *dgw.Socket
+	eventHandler EventHandler
+	configs      *Configs
+	syncManager  *SyncManager
 
 	cookies         *cookies.Cookies
 	httpProxy       func(*http.Request) (*url.URL, error)
