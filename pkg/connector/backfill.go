@@ -200,7 +200,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		// Shortcut: bundled data min TS <= anchor TS, meaning we have everything
 		if params.Forward && params.BundledData != nil && params.AnchorMessage != nil {
 			anchorTS := params.AnchorMessage.Timestamp.UnixMilli()
-			if upsert.Range.MinTimestampMs <= anchorTS {
+			if upsert != nil && upsert.Range.MinTimestampMs <= anchorTS {
 				zerolog.Ctx(ctx).Debug().
 					Int64("bundled_min_ts", upsert.Range.MinTimestampMs).
 					Int64("anchor_ts", anchorTS).
