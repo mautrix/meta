@@ -223,9 +223,9 @@ var (
 	ErrLoginUnknown          = bridgev2.RespError{ErrCode: "M_UNKNOWN", Err: "Internal error logging in", StatusCode: http.StatusInternalServerError}
 )
 
-func getMessagixClient(log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies) (*messagix.Client, error) {
+func getMessagixClient(log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies, useProxy bool) (*messagix.Client, error) {
 	client := messagix.NewClient(c, log, conn.getMessagixConfig())
-	if conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "" {
+	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
 		client.GetNewProxy = conn.getProxy
 		if !client.UpdateProxy("login") {
 			return nil, fmt.Errorf("failed to update proxy")
@@ -327,7 +327,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	}
 
 	log := m.User.Log.With().Str("component", "messagix").Logger()
-	client, err := getMessagixClient(log, m.Main, c)
+	client, err := getMessagixClient(log, m.Main, c, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-	client, err := getMessagixClient(log, m.Main, fakeCookies)
+	client, err := getMessagixClient(log, m.Main, fakeCookies, m.Main.Config.ProxyMessengerLite)
 	if err != nil {
 		return nil, err
 	}
@@ -383,11 +383,19 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		return step, nil
 	}
 
-	_ = newCookies
+	// Create a new messagix.Client here so that we can change
+	// proxy settings between the login and post-login.
+	fakeCookies := &cookies.Cookies{
+		Platform: m.Mode,
+	}
+	newClient, err := getMessagixClient(log, m.Main, fakeCookies, m.Main.Config.ProxyOther)
+	if err != nil {
+		return nil, err
+	}
 
-	m.SavedClient.GetCookies().UpdateValues(newCookies.GetAll())
+	newClient.GetCookies().UpdateValues(newCookies.GetAll())
 
-	step, err = loginWithCookies(ctx, log, m.SavedClient, m.User, m.Main, newCookies)
+	step, err = loginWithCookies(ctx, log, newClient, m.User, m.Main, newCookies)
 	if err != nil {
 		return nil, err
 	}

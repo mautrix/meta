@@ -227,7 +227,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 	} else {
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
-	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
+	if m.Main.Config.ProxyOther && (m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "") {
 		cli.GetNewProxy = m.Main.getProxy
 		if !cli.UpdateProxy("connect") {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
