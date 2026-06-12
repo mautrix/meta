@@ -23,20 +23,27 @@ import (
 
 var (
 	ErrLoginPhoneNumber = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
-
-	// This error is returned in cases where we have observed Meta returning an error that is
-	// not due to anything the bridge or user has done wrong, and will cause login to fail for
-	// this account even in the official Messenger iOS app.
-	//
-	// Using an IP address with a low reputation for Meta makes it more likely that Meta will
-	// block logins for an undisclosed reason, but such blocks are account-specific and other
-	// accounts can still be logged into.
-	//
-	// Account logins are still sometimes blocked even when using a high-reputation residential
-	// IP address. It's possible that account configuration plays a role, for example which MFA
-	// methods are enabled, but the details are not known.
-	ErrLoginUninformative = bridgev2.RespError{ErrCode: "FI.MAU.META_UNINFORMATIVE_ERROR", Err: "Facebook rejected the login without providing a reason, please try again", StatusCode: http.StatusBadRequest}
 )
+
+// This error is returned in cases where we have observed Meta returning an error that is
+// not due to anything the bridge or user has done wrong, and will cause login to fail for
+// this account even in the official Messenger iOS app.
+//
+// Using an IP address with a low reputation for Meta makes it more likely that Meta will
+// block logins for an undisclosed reason, but such blocks are account-specific and other
+// accounts can still be logged into.
+//
+// Account logins are still sometimes blocked even when using a high-reputation residential
+// IP address. It's possible that account configuration plays a role, for example which MFA
+// methods are enabled, but the details are not known.
+func ErrLoginUninformative(callsite string) bridgev2.RespError {
+	return bridgev2.RespError{
+		ErrCode:       "FI.MAU.META_UNINFORMATIVE_ERROR",
+		Err:           "Facebook rejected the login without providing a reason, please try again",
+		StatusCode:    http.StatusBadRequest,
+		InternalError: "Uninformative login rejection at callsite: " + callsite,
+	}
+}
 
 func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
 	return bb.Layout.Payload.Tree.FindDescendant(pred)
@@ -1013,7 +1020,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			// produces a different, non-error response - so we know there is nothing
 			// the user could do to cause this, it is purely Meta's fault.
 			if strings.Contains(err.Error(), "Query Error") {
-				return nil, ErrLoginUninformative
+				return nil, ErrLoginUninformative("captcha submit query error")
 			}
 			// Sometimes just for spice, they will throw you a "Wrong Credentials" /
 			// "Invalid username or password" error here, even though what you submitted
@@ -1022,11 +1029,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			// wrong password, it would have errored out at the password step, if we get
 			// the same error here, it means the Zuck says no.
 			if strings.Contains(err.Error(), "Invalid username or password") {
-				return nil, ErrLoginUninformative
+				return nil, ErrLoginUninformative("captcha submit invalid username/password")
 			}
 			// Another kind of lie that we can get from Facebook.
 			if strings.Contains(err.Error(), "An unexpected error occurred") {
-				return nil, ErrLoginUninformative
+				return nil, ErrLoginUninformative("captcha submit unexpected error")
 			}
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
