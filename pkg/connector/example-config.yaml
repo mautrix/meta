@@ -28,6 +28,10 @@ get_proxy_from:
 proxy_media: false
 # Should E2EE messages be proxied too?
 proxy_e2ee: false
+# Should Messenger Lite login traffic be proxied?
+proxy_messenger_lite: true
+# Should other traffic, not configured here, be proxied?
+proxy_other: true
 # Minimum interval between full reconnects in seconds, default is 1 hour
 min_full_reconnect_interval_seconds: 3600
 # Interval to force refresh the connection (full reconnect), default is 20 hours. Set 0 to disable force refreshes.
