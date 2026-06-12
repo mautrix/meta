@@ -718,6 +718,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, ErrLoginPhoneNumber
 		}
 
+		if username == "fail" {
+			return nil, fmt.Errorf("intentional unknown failure")
+		}
+
 		// Set up in case we don't navigate to a new page successfully
 		delete(userInput, "username")
 		delete(userInput, "password")
