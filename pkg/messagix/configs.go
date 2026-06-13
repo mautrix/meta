@@ -34,6 +34,9 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 	if c.client.socket != nil {
 		c.client.socket.previouslyConnected = false
 	}
+	if c.client.dgwLightSpeed != nil {
+		c.client.dgwLightSpeed.previouslyConnected = false
+	}
 	authenticated := c.client.IsAuthenticated()
 	c.WebSessionID = methods.GenerateWebsessionID(authenticated)
 	c.LSDToken = c.BrowserConfigTable.LSD.Token
@@ -58,7 +61,7 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 			936619743392459,
 		)
 	} else {
-		if c.BrowserConfigTable.MqttWebConfig.Endpoint == "" {
+		if c.BrowserConfigTable.MqttWebConfig.Endpoint == "" && !c.client.useDGWLightSpeedRealtime() {
 			return ls, fmt.Errorf("MQTT broker endpoint not found in page response (MqttWebConfig.Endpoint is empty)")
 		}
 		c.client.socket.broker = c.BrowserConfigTable.MqttWebConfig.Endpoint

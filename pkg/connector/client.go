@@ -76,6 +76,7 @@ type MetaClient struct {
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
 	return &messagix.Config{
 		MayConnectToDGW:          m.Config.ReceiveInstagramTypingIndicators,
+		UseMessengerDGWRealtime:  m.Config.UseMessengerDGWRealtime,
 		ClientSettings:           m.Bridge.GetHTTPClientSettings(),
 		LogRedactedBloksPayloads: m.Config.LogRedactedBloksPayloads,
 	}
@@ -335,7 +336,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 }
 
 func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.LSTable, currentUser types.UserInfo) {
-	zerolog.Ctx(ctx).Debug().Msg("Loaded messages page, connecting to MQTT with initial table")
+	zerolog.Ctx(ctx).Debug().Msg("Loaded messages page, connecting to Meta realtime with initial table")
 	go m.handleTableLoop(ctx)
 
 	var err error

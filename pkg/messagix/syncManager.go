@@ -117,7 +117,7 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 		RawJSON("payload", jsonPayload).
 		Int64("database_id", databaseID).
 		Msg("Syncing database via socket")
-	resp, err := sm.client.socket.makeLSRequest(ctx, jsonPayload, t)
+	resp, err := sm.client.makeRealtimeLSRequest(ctx, jsonPayload, t)
 	if err != nil {
 		return fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseID=%d): %w", databaseID, err)
 	}

@@ -36,6 +36,7 @@ type EventHandler func(ctx context.Context, evt any)
 
 type Config struct {
 	MayConnectToDGW          bool
+	UseMessengerDGWRealtime  bool
 	ClientSettings           exhttp.ClientSettings
 	LogRedactedBloksPayloads bool
 }
@@ -47,20 +48,22 @@ type Client struct {
 	Logger        zerolog.Logger
 	Platform      types.Platform
 
-	http         *http.Client
-	httpSettings exhttp.ClientSettings
-	proxyAddr    string
-	socket       *Socket
-	dgwSocket    *dgw.Socket
-	eventHandler EventHandler
-	configs      *Configs
-	syncManager  *SyncManager
+	http          *http.Client
+	httpSettings  exhttp.ClientSettings
+	proxyAddr     string
+	socket        *Socket
+	dgwSocket     *dgw.Socket
+	dgwLightSpeed *DGWLightSpeedSocket
+	eventHandler  EventHandler
+	configs       *Configs
+	syncManager   *SyncManager
 
-	cookies         *cookies.Cookies
-	httpProxy       func(*http.Request) (*url.URL, error)
-	socksProxy      proxy.Dialer
-	GetNewProxy     func(reason string) (string, error)
-	mayConnectToDGW bool
+	cookies                 *cookies.Cookies
+	httpProxy               func(*http.Request) (*url.URL, error)
+	socksProxy              proxy.Dialer
+	GetNewProxy             func(reason string) (string, error)
+	mayConnectToDGW         bool
+	useMessengerDGWRealtime bool
 
 	device *store.Device
 
@@ -114,7 +117,9 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Cl
 		CSRBitmap:          crypto.NewBitmap(),
 	}
 	cli.socket = cli.newSocketClient()
+	cli.dgwLightSpeed = cli.newDGWLightSpeedSocket()
 	cli.mayConnectToDGW = cfg.MayConnectToDGW
+	cli.useMessengerDGWRealtime = cfg.UseMessengerDGWRealtime
 
 	return cli
 }
@@ -124,15 +129,32 @@ func (c *Client) GetCookies() *cookies.Cookies {
 }
 
 type dumpedState struct {
-	Configs     *Configs
-	SyncStore   map[int64]*socket.QueryMetadata
-	PacketsSent uint16
-	SessionID   int64
-	Timestamp   time.Time
+	Configs        *Configs
+	SyncStore      map[int64]*socket.QueryMetadata
+	PacketsSent    uint16
+	DGWStreamsSent uint16
+	SessionID      int64
+	Timestamp      time.Time
 }
 
 func (c *Client) DumpState() (json.RawMessage, error) {
-	if c == nil || c.configs == nil || c.syncManager == nil || c.socket == nil || c.socket.packetsSent == 0 || !c.socket.previouslyConnected {
+	if c == nil || c.configs == nil || c.syncManager == nil {
+		return nil, nil
+	}
+	if c.useDGWLightSpeedRealtime() {
+		if c.dgwLightSpeed == nil || c.dgwLightSpeed.packetsSent == 0 || !c.dgwLightSpeed.previouslyConnected {
+			return nil, nil
+		}
+		return json.Marshal(&dumpedState{
+			Configs:        c.configs,
+			SyncStore:      c.syncManager.store,
+			PacketsSent:    c.dgwLightSpeed.packetsSent,
+			DGWStreamsSent: c.dgwLightSpeed.streamsSent,
+			SessionID:      c.socket.sessionID,
+			Timestamp:      time.Now(),
+		})
+	}
+	if c.socket == nil || c.socket.packetsSent == 0 || !c.socket.previouslyConnected {
 		return nil, nil
 	}
 	return json.Marshal(&dumpedState{
@@ -162,8 +184,17 @@ func (c *Client) LoadState(state json.RawMessage) error {
 	c.configs = dumped.Configs
 	c.syncManager = c.newSyncManager()
 	c.syncManager.store = dumped.SyncStore
+	if c.useDGWLightSpeedRealtime() {
+		c.dgwLightSpeed.packetsSent = dumped.PacketsSent
+		c.dgwLightSpeed.streamsSent = dumped.DGWStreamsSent
+		c.dgwLightSpeed.previouslyConnected = true
+		c.Logger.Info().Str("transport", "dgw_lightspeed").Msg("Loaded state")
+		return nil
+	}
 	c.socket.packetsSent = dumped.PacketsSent
-	c.socket.sessionID = dumped.SessionID
+	if dumped.SessionID != 0 {
+		c.socket.sessionID = dumped.SessionID
+	}
 	if c.Platform == types.Instagram {
 		c.socket.broker = "wss://edge-chat.instagram.com/chat?"
 	} else {
@@ -308,8 +339,15 @@ func (c *Client) UpdateProxy(reason string) bool {
 func (c *Client) Connect(ctx context.Context) error {
 	if c == nil {
 		return ErrClientIsNil
-	} else if err := c.socket.CanConnect(); err != nil {
-		return err
+	}
+	if c.useDGWLightSpeedRealtime() {
+		if err := c.dgwLightSpeed.CanConnect(); err != nil {
+			return err
+		}
+	} else {
+		if err := c.socket.CanConnect(); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	oldCancel := c.stopCurrentConnections.Swap(&cancel)
@@ -328,7 +366,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		for {
 			c.canSendMessages.Clear() // In case we're reconnecting from a normal network error
 			connectStart := time.Now()
-			err := c.socket.Connect(ctx)
+			err := c.connectMainRealtime(ctx)
 			c.canSendMessages.Clear()
 			if ctx.Err() != nil {
 				zerolog.Ctx(ctx).Warn().
@@ -382,6 +420,17 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
+func (c *Client) connectMainRealtime(ctx context.Context) error {
+	if c.useDGWLightSpeedRealtime() {
+		return c.dgwLightSpeed.Connect(ctx)
+	}
+	return c.socket.Connect(ctx)
+}
+
+func (c *Client) useDGWLightSpeedRealtime() bool {
+	return c != nil && c.useMessengerDGWRealtime && (c.Platform == types.Facebook || c.Platform == types.Messenger)
+}
+
 func (c *Client) connectDGW(ctx context.Context) error {
 	reconnectIn := 2 * time.Second
 	for {
@@ -431,7 +480,12 @@ func (c *Client) Disconnect() {
 	if fn := c.stopCurrentConnections.Load(); fn != nil {
 		(*fn)()
 	}
-	c.socket.Disconnect()
+	if c.socket != nil {
+		c.socket.Disconnect()
+	}
+	if c.dgwLightSpeed != nil {
+		c.dgwLightSpeed.Disconnect()
+	}
 	if c.dgwSocket != nil {
 		c.dgwSocket.Disconnect()
 	}
@@ -441,7 +495,13 @@ func (c *Client) Disconnect() {
 }
 
 func (c *Client) IsConnected() bool {
-	return c != nil && c.socket.conn != nil
+	if c == nil {
+		return false
+	}
+	if c.useDGWLightSpeedRealtime() {
+		return c.dgwLightSpeed != nil && c.dgwLightSpeed.conn != nil
+	}
+	return c.socket != nil && c.socket.conn != nil
 }
 
 func (c *Client) GetEndpoint(name string) string {
@@ -512,8 +572,15 @@ func (c *Client) ForceReconnect() {
 	if c == nil {
 		return
 	}
-	c.socket.Disconnect()
-	c.dgwSocket.Disconnect()
+	if c.socket != nil {
+		c.socket.Disconnect()
+	}
+	if c.dgwLightSpeed != nil {
+		c.dgwLightSpeed.Disconnect()
+	}
+	if c.dgwSocket != nil {
+		c.dgwSocket.Disconnect()
+	}
 }
 
 func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*socket.KeyStoreData, *table.LSTable, error) {
@@ -542,13 +609,13 @@ func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*socket
 		return nil, nil, err
 	}
 
-	resp, err := c.socket.makeLSRequest(ctx, payload, 3)
+	resp, err := c.makeRealtimeLSRequest(ctx, payload, 3)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	resp.Finish()
-	c.socket.postHandlePublishResponse(resp.Table)
+	c.PostHandlePublishResponse(resp.Table)
 
 	return keyStore, resp.Table, nil
 }
