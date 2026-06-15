@@ -35,11 +35,27 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 	}
 	zerolog.Ctx(ctx).Trace().Any("mediaInfo", mediaInfo).Any("err", err).Msg("download direct media")
 
+	lookupMessage := func() (*database.Message, error) {
+		if mediaInfo.PartID == "" {
+			return m.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
+		}
+		return m.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
+	}
+
 	var msg *database.Message
-	if mediaInfo.PartID == "" {
-		msg, err = m.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
-	} else {
-		msg, err = m.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
+	msg, err = lookupMessage()
+	// The client may request media for an event before the bridge has finished
+	// inserting the message row: bridgev2's sendConvertedMessage sends the Matrix
+	// event before persisting the message part, and with a local bridge the client
+	// auto-downloads within milliseconds. Retry the lookup briefly instead of
+	// failing hard so the race resolves itself once the insert lands.
+	for attempt := 0; err == nil && msg == nil && attempt < 10; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+		msg, err = lookupMessage()
 	}
 	if err != nil {
 		return nil, err
