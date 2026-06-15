@@ -128,6 +128,14 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 418 error")
 				go m.FullReconnect()
+			} else if e.Reason == events.ConnectFailureGeneric && m.canReconnect() {
+				// A connect-time 400 ("generic" failure) is usually transient Meta-side
+				// state (e.g. after an outage) rather than a permanent error. Re-issuing
+				// the same connect won't recover it, so do a full reconnect, which re-runs
+				// the Meta login flow and obtains a fresh CAT. canReconnect() applies the
+				// MinFullReconnectIntervalSeconds rate limiter so this can't hot-loop.
+				log.Debug().Msg("Doing full reconnect after WhatsApp 400 error")
+				go m.FullReconnect()
 			}
 		}
 
