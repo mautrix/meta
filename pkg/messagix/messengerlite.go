@@ -219,5 +219,11 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		return nil, nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
+	if len(loginRespPayload.SessionCookies) == 0 {
+		return nil, nil, fmt.Errorf(
+			"messenger-lite login returned no cookies after login",
+		)
+	}
+
 	return nil, convertCookies(&loginRespPayload), nil
 }
