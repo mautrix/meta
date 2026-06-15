@@ -128,6 +128,10 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 418 error")
 				go m.FullReconnect()
+			} else if e.Reason == events.ConnectFailureGeneric && m.canReconnect() {
+				// WhatsApp 400 errors have been observed after outages, likely caused by the CAT being somehow wrong, do a full reconnect to get a new one
+				log.Debug().Msg("Doing full reconnect after WhatsApp 400 error")
+				go m.FullReconnect()
 			}
 		}
 
