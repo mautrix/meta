@@ -1,3 +1,14 @@
+# v26.06
+
+* Fixed connecting to Instagram again.
+  * Note: a future update may split Facebook and Instagram into separate bridges
+    again, as it appears that Meta has abandoned their plans to unify their
+    messengers and are now moving to different protocols again.
+* Improved iOS Messenger login mode.
+* Fixed downloading videos in cases where the FB server doesn't allow `Range`
+  requests.
+* Fixed handling 400 disconnect code from WhatsApp socket.
+
 # v26.05.1
 
 * Fixed connecting to Instagram after an app ID change broke it.
