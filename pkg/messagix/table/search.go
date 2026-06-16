@@ -67,7 +67,10 @@ func (lsisr *LSInsertSearchResult) GetAvatarURL() string {
 }
 
 func (lsisr *LSInsertSearchResult) GetFBID() int64 {
-	if lsisr.ThreadType == ONE_TO_ONE {
+	if lsisr.OtherUserId != 0 {
+		return lsisr.OtherUserId
+	}
+	if lsisr.ThreadType.IsOneToOne() {
 		fbid, _ := strconv.ParseInt(lsisr.ResultId, 10, 64)
 		return fbid
 	}
