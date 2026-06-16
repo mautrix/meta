@@ -706,8 +706,9 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 		if cm.Disappear.Timer == 0 {
 			cm.Disappear.Type = event.DisappearingTypeNone
 		}
-		if evt.Message != nil && cm.Disappear != portal.Disappear && disappear.EphemeralSettingTimestamp != nil {
-			portal.Metadata.(*metaid.PortalMetadata).EphemeralSettingTimestamp = *disappear.EphemeralSettingTimestamp
+		meta := portal.Metadata.(*metaid.PortalMetadata)
+		if evt.Message != nil && cm.Disappear != portal.Disappear && disappear.EphemeralSettingTimestamp != nil && *disappear.EphemeralSettingTimestamp > meta.EphemeralSettingTimestamp {
+			meta.EphemeralSettingTimestamp = *disappear.EphemeralSettingTimestamp
 			portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
 				Sender:     intent,
 				Timestamp:  evt.Info.Timestamp,
