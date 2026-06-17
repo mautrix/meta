@@ -203,7 +203,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
 		step.CookiesParams.WaitForURLPattern = "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?(?:\\?.*)?$"
 	case types.Instagram:
-		step.CookiesParams.URL = "https://www.instagram.com/"
+		step.CookiesParams.URL = "https://www.instagram.com/accounts/login/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.IGRequiredCookies, "instagram.com")
 		step.CookiesParams.WaitForURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$"
 	default:
