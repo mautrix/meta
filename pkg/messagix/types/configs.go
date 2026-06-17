@@ -242,6 +242,7 @@ type SchedulerJSDefineConfig struct {
 	XIGSharedData                 XIGSharedData
 	RelayAPIConfigDefaults        RelayAPIConfigDefaults
 	PolarisViewer                 PolarisViewer
+	DGWWebConfig                  DGWWebConfig
 }
 
 type MqttWebConfig struct {
@@ -254,6 +255,15 @@ type MqttWebConfig struct {
 	HostNameOverride   string   `json:"hostNameOverride,omitempty"`
 	PollingEndpoint    string   `json:"pollingEndpoint,omitempty"`
 	SubscribedTopics   []string `json:"subscribedTopics,omitempty"`
+}
+
+type DGWWebConfig struct {
+	AppID      string `json:"appId,omitempty"`      // IG app ID
+	AppVersion string `json:"appVersion,omitempty"` // 0
+	DGWVersion string `json:"dgwVersion,omitempty"` // 2
+	Endpoint   string `json:"endpoint,omitempty"`   // empty string
+	FBID       string `json:"fbId,omitempty"`       // 0
+	AuthType   string `json:"authType,omitempty"`   // empty string
 }
 
 type SiteData struct {

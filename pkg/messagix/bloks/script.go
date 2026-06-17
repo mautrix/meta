@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 )
 
 type BloksScriptNode struct {
-	BloksScriptNodeContent
+	// Make this an explicit field because otherwise it becomes
+	// legal to put a BloksScriptNode as a BloksScriptNodeContent
+	// because the type checker doesn't care about your feelings
+	Content BloksScriptNodeContent
 }
 
 var ErrParseEndOfFuncall = errors.New("end of funcall")
@@ -20,13 +24,13 @@ func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 			continue
 		case '(':
 			funcall := BloksScriptFuncall{}
-			node.BloksScriptNodeContent = &funcall
+			node.Content = &funcall
 			return funcall.Parse(code, idx)
 		case ')':
 			return idx, ErrParseEndOfFuncall
 		default:
 			var literal BloksScriptLiteral
-			node.BloksScriptNodeContent = &literal
+			node.Content = &literal
 			return literal.Parse(code, idx)
 		}
 	}
@@ -36,7 +40,8 @@ func (node *BloksScriptNode) ParseAny(code string, start int) (int, error) {
 type BloksScriptNodeContent interface {
 	Parse(code string, start int) (int, error)
 	Unminify(m *Unminifier)
-	Print(indent string) error
+	Print(w io.Writer, indent string) error
+	Redact()
 }
 
 type BloksScriptFuncall struct {
@@ -111,30 +116,64 @@ func (call *BloksScriptFuncall) Unminify(m *Unminifier) {
 		call.Function = real
 	}
 	for _, arg := range call.Args {
-		arg.Unminify(m)
+		arg.Content.Unminify(m)
 	}
 }
 
-func (call *BloksScriptFuncall) Print(indent string) error {
-	fmt.Printf("%s(%s", indent, call.Function)
+func (call *BloksScriptFuncall) Print(w io.Writer, indent string) error {
+	fmt.Fprintf(w, "%s(%s", indent, call.Function)
 	if len(call.Args) >= 1 {
-		fmt.Printf("\n")
+		fmt.Fprintf(w, "\n")
 	}
 	for idx, arg := range call.Args {
 		if idx > 0 {
-			fmt.Printf("\n")
+			fmt.Fprintf(w, "\n")
 		}
-		arg.Print(indent + "  ")
+		arg.Content.Print(w, indent+"  ")
 	}
-	fmt.Printf(")")
+	fmt.Fprintf(w, ")")
 	return nil
 }
 
-type BloksScriptLiteral struct {
-	BloksJavascriptValue
+func (call *BloksScriptFuncall) Redact() {
+	nonsensitive := map[int]bool{}
+	switch call.Function {
+	case "bk.action.qpl.MarkerAnnotate", "bk.action.qpl.MarkerEndV2":
+		nonsensitive[0] = true
+	case "bk.action.qpl.MarkerPoint":
+		nonsensitive[0] = true
+		nonsensitive[2] = true
+	case "bk.action.LogFlytrapData":
+		nonsensitive[1] = true
+	case "bk.action.bloks.WriteGlobalConsistencyStore":
+		nonsensitive[0] = true
+	case "bk.action.bloks.GetVariable2":
+		nonsensitive[0] = true
+	case "bk.action.bloks.GetScript":
+		nonsensitive[0] = true
+	case "bk.action.bloks.GetPayload":
+		nonsensitive[0] = true
+	case "bk.action.template.Make":
+		nonsensitive[0] = true
+	}
+	for idx, arg := range call.Args {
+		if nonsensitive[idx] {
+			switch arg.Content.(type) {
+			case *BloksScriptLiteral:
+				continue
+			}
+		}
+		arg.Content.Redact()
+	}
 }
 
-func BloksLiteralFromJavaScript(j BloksJavascriptValue) *BloksScriptLiteral {
+type BloksScriptLiteralValue any
+
+type BloksScriptLiteral struct {
+	BloksScriptLiteralValue
+}
+
+func BloksLiteralFromJavaScript(j BloksJavaScriptValue) *BloksScriptLiteral {
 	switch j := j.(type) {
 	case []any:
 		arr := []*BloksScriptLiteral{}
@@ -186,13 +225,13 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 				if err != nil {
 					return idx, err
 				}
-				lit.BloksJavascriptValue = val
+				lit.BloksScriptLiteralValue = val
 			} else {
 				val, err := strconv.ParseInt(code[start:idx], 10, 64)
 				if err != nil {
 					return idx, err
 				}
-				lit.BloksJavascriptValue = val
+				lit.BloksScriptLiteralValue = val
 			}
 			return idx, nil
 		}
@@ -227,7 +266,7 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 				}
 				continue
 			case '"':
-				lit.BloksJavascriptValue = string(chars)
+				lit.BloksScriptLiteralValue = string(chars)
 				return idx + 1, nil
 			}
 			chars = append(chars, code[idx])
@@ -239,14 +278,13 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 		return start + 4, nil
 	}
 	if start+4 < len(code) && code[start:start+4] == "true" {
-		lit.BloksJavascriptValue = true
+		lit.BloksScriptLiteralValue = true
 		return start + 4, nil
 	}
 	if start+5 < len(code) && code[start:start+5] == "false" {
-		lit.BloksJavascriptValue = false
+		lit.BloksScriptLiteralValue = false
 		return start + 5, nil
 	}
-	fmt.Printf("context: %s\n", code)
 	return start, fmt.Errorf("unknown char %q", code[start])
 }
 
@@ -256,21 +294,27 @@ func (lit *BloksScriptLiteral) Unminify(m *Unminifier) {
 		return
 	}
 	if real, ok := m.Variables[BloksVariableID(str)]; ok && len(real) > 0 {
-		lit.BloksJavascriptValue = string(real)
+		lit.BloksScriptLiteralValue = string(real)
 	}
 }
 
-func (lit *BloksScriptLiteral) Print(indent string) error {
-	str, err := json.Marshal(lit.BloksJavascriptValue)
+func (lit *BloksScriptLiteral) Print(w io.Writer, indent string) error {
+	str, err := json.Marshal(lit.Flatten(false))
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s%s", indent, str)
+	fmt.Fprintf(w, "%s%s", indent, str)
 	return nil
 }
 
 func (lit *BloksScriptLiteral) Value() any {
-	return lit.BloksJavascriptValue
+	return lit.BloksScriptLiteralValue
+}
+
+func (lit *BloksScriptLiteral) Redact() {
+	val := lit.Flatten(false)
+	redactJavaScriptValue(&val)
+	*lit = *BloksLiteralOf(val)
 }
 
 func BloksLiteralOf(val any) *BloksScriptLiteral {
@@ -278,7 +322,7 @@ func BloksLiteralOf(val any) *BloksScriptLiteral {
 		panic("logic error, constructing nested literal")
 	}
 	return &BloksScriptLiteral{
-		BloksJavascriptValue(val),
+		BloksJavaScriptValue(val),
 	}
 }
 
@@ -289,7 +333,7 @@ type BloksIllegalValue struct{}
 var BloksNothing = BloksLiteralOf(&BloksIllegalValue{})
 
 func (lit *BloksScriptLiteral) IsTruthy() bool {
-	switch val := lit.BloksJavascriptValue.(type) {
+	switch val := lit.BloksScriptLiteralValue.(type) {
 	case bool:
 		return val
 	case string:
@@ -313,7 +357,7 @@ func (lit *BloksScriptLiteral) Flatten(facebookify bool) any {
 	case []*BloksScriptLiteral:
 		res := []any{}
 		for _, val := range lit {
-			res = append(res, val)
+			res = append(res, val.Flatten(facebookify))
 		}
 		return res
 	case bool:

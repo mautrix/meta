@@ -2,6 +2,7 @@ package messagix
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -117,6 +118,31 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
 	}
 
+	if c.logRedactedBloksPayloads {
+		var redactedRespInner bloks.BloksBundle
+		err = json.Unmarshal([]byte(innerData), &redactedRespInner)
+		if err != nil {
+			return nil, fmt.Errorf("second time parsing inner bloks payload: %w", err)
+		}
+		redactedRespInner.Redact()
+		redacted, err := json.Marshal(redactedRespInner)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling redacted bloks payload: %w", err)
+		}
+		compressed := bytes.Buffer{}
+		compressor := gzip.NewWriter(&compressed)
+		_, err = compressor.Write(redacted)
+		if err != nil {
+			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
+		}
+		err = compressor.Close()
+		if err != nil {
+			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
+		}
+		enc := base64.StdEncoding.AppendEncode(nil, compressed.Bytes())
+		c.Logger.Debug().Str("bloks_app", appID).Bytes("resp_gz", enc).Msg("Logging redacted Bloks response")
+	}
+
 	return &respInner, nil
 }
 
@@ -136,10 +162,10 @@ func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables 
 	payload.FbAPIReqFriendlyName = graphQLDoc.FriendlyName
 	payload.Variables = string(vBytes)
 	payload.ServerTimestamps = "true"
+	payload.DocID = graphQLDoc.DocID
 	if graphQLDoc.ClientDocID != "" {
 		payload.ClientDocID = graphQLDoc.ClientDocID
-	} else {
-		payload.DocID = graphQLDoc.DocId
+		payload.DocID = ""
 	}
 	payload.Jssesw = graphQLDoc.Jsessw
 

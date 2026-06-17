@@ -52,6 +52,7 @@ type MetaClient struct {
 
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	lastFullReconnect     time.Time
+	lastError24Reconnect  time.Time
 	connectWaiter         *exsync.Event
 	e2eeConnectWaiter     *exsync.Event
 	firstE2EEConnectDone  bool
@@ -74,8 +75,9 @@ type MetaClient struct {
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
 	return &messagix.Config{
-		MayConnectToDGW: m.Config.ReceiveInstagramTypingIndicators,
-		ClientSettings:  m.Bridge.GetHTTPClientSettings(),
+		MayConnectToDGW:          m.Config.ReceiveInstagramTypingIndicators,
+		ClientSettings:           m.Bridge.GetHTTPClientSettings(),
+		LogRedactedBloksPayloads: m.Config.LogRedactedBloksPayloads,
 	}
 }
 
@@ -225,7 +227,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 	} else {
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
-	if m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "" {
+	if m.Main.Config.ProxyOther && (m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "") {
 		cli.GetNewProxy = m.Main.getProxy
 		if !cli.UpdateProxy("connect") {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
@@ -593,6 +595,14 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 
 func (m *MetaClient) canReconnect() bool {
 	return time.Since(m.lastFullReconnect) > time.Duration(m.Main.Config.MinFullReconnectIntervalSeconds)*time.Second && m.LoginMeta.Cookies != nil
+}
+
+func (m *MetaClient) canReconnectError24() bool {
+	if !m.canReconnect() && time.Since(m.lastError24Reconnect) < 10*time.Minute {
+		return false
+	}
+	m.lastError24Reconnect = time.Now()
+	return true
 }
 
 func (m *MetaClient) FullReconnect() {

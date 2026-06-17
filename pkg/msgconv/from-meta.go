@@ -995,6 +995,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		}
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
+	defer reader.Close()
 	content.Info.Size = int(size)
 	needVoiceConvert := attachmentType == table.AttachmentTypeAudio && ffmpeg.Supported()
 	needMime := mimeType == ""

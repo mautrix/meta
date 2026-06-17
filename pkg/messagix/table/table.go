@@ -158,6 +158,10 @@ type LSTable struct {
 	LSUpsertCommunityMemberRanges                    []*LSUpsertCommunityMemberRanges                    `json:",omitempty"`
 	LSUpdateSubThreadXMA                             []*LSUpdateSubThreadXMA                             `json:",omitempty"`
 	LSSetNumUnreadSubthreads                         []*LSSetNumUnreadSubthreads                         `json:",omitempty"`
+	LSHybridThreadDelete                             []*LSHybridThreadDelete                             `json:",omitempty"`
+	LSResetGroupInvites                              []*LSResetGroupInvites                              `json:",omitempty"`
+	LSDeleteMessageRequest                           []*LSDeleteMessageRequest                           `json:",omitempty"`
+	LSFillDeanonCacheForE2EEThread                   []*LSFillDeanonCacheForE2EEThread                   `json:",omitempty"`
 }
 
 func (t *LSTable) NonNilFields() (fields []string) {
@@ -320,6 +324,10 @@ var SPTable = map[string]string{
 	"upsertCommunityMemberRanges":                    "LSUpsertCommunityMemberRanges",
 	"updateSubThreadXMA":                             "LSUpdateSubThreadXMA",
 	"setNumUnreadSubthreads":                         "LSSetNumUnreadSubthreads",
+	"hybridThreadDelete":                             "LSHybridThreadDelete",
+	"resetGroupInvites":                              "LSResetGroupInvites",
+	"deleteMessageRequest":                           "LSDeleteMessageRequest",
+	"fillDeanonCacheForE2EEThread":                   "LSFillDeanonCacheForE2EEThread",
 }
 
 func SPToDepMap(sp []string) map[string]string {

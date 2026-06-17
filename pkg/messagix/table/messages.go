@@ -603,6 +603,10 @@ type LSDeleteThenInsertMessageRequest struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (ls *LSDeleteThenInsertMessageRequest) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSMarkOptimisticMessageFailed struct {
 	OTID    string `index:"0" json:",omitempty"`
 	Message string `index:"1" json:",omitempty"`

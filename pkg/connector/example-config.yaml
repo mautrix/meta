@@ -28,6 +28,10 @@ get_proxy_from:
 proxy_media: false
 # Should E2EE messages be proxied too?
 proxy_e2ee: false
+# Should Messenger Lite login traffic be proxied?
+proxy_messenger_lite: true
+# Should other traffic, not configured here, be proxied?
+proxy_other: true
 # Minimum interval between full reconnects in seconds, default is 1 hour
 min_full_reconnect_interval_seconds: 3600
 # Interval to force refresh the connection (full reconnect), default is 20 hours. Set 0 to disable force refreshes.
@@ -52,6 +56,8 @@ receive_instagram_typing_indicators: true
 disable_view_once: false
 # Should FB marketplace chats have a separate space inside the main Facebook space?
 marketplace_space: true
+# Log raw Bloks payloads even at debug level, with any user identifiers or credentials redacted.
+log_redacted_bloks_payloads: false
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:

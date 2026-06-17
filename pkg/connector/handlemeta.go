@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmaps"
+	"go.mau.fi/util/ptr"
 	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -145,10 +146,12 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 				StateEvent: status.StateUnknownError,
 				Error:      MetaConnectError24,
 			}
-			if m.canReconnect() {
+			if m.canReconnectError24() {
 				m.metaState.StateEvent = status.StateTransientDisconnect
 				log.Debug().Msg("Doing full reconnect after ConnectionCode(24)")
 				go m.FullReconnect()
+			} else {
+				log.Warn().Msg("Last full reconnect was too recent, can't reconnect after ConnectionCode(24)")
 			}
 		} else {
 			m.metaState = status.BridgeState{
@@ -359,6 +362,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
 	folderResyncs := make(map[int64]*FBFolderResync, len(tbl.LSUpsertFolder))
+	waThreadMap := make(map[int64]int64, len(tbl.LSVerifyHybridThreadExists))
 	activeThreads := make(exmaps.Set[int64])
 	for _, vte := range tbl.LSVerifyThreadExists {
 		activeThreads.Add(vte.ThreadKey)
@@ -372,14 +376,32 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	for _, dit := range tbl.LSDeleteThenInsertThread {
 		activeThreads.Add(dit.ThreadKey)
 	}
+	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
+	for _, jid := range tbl.LSUpdateThreadAuthorityAndMappingWithOTIDFromJID {
+		waThreadMap[jid.ThreadKey] = jid.ThreadJID
+		activeThreads.Add(jid.ThreadJID)
+	}
+	for _, jid := range tbl.LSVerifyHybridThreadExists {
+		waThreadMap[jid.ThreadKey] = jid.ThreadJID
+		activeThreads.Add(jid.ThreadJID)
+		innerQueue = append(innerQueue, &simplevent.ChatDelete{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatDelete,
+				PortalKey: m.makeFBPortalKey(jid.ThreadKey, jid.ThreadType),
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.Str("delete_reason", "hybrid thread")
+				},
+			},
+		})
+	}
 	params := threadMaps{
 		ctx:           ctx,
 		m:             m,
 		vtes:          threadExists,
 		syncs:         threadResyncs,
 		activeThreads: activeThreads,
+		waThreadMap:   waThreadMap,
 	}
-	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
 
 	for _, thread := range tbl.LSVerifyThreadExists {
 		threadExists[thread.ThreadKey] = thread
@@ -394,6 +416,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		innerQueue = append(innerQueue, rs)
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
+		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
 			Info:      m.wrapChatInfo(thread),
@@ -404,7 +427,21 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			UncertainReceiver: thread.ThreadType == table.UNKNOWN_THREAD_TYPE,
 		}
 	}
-	// TODO resync threads with LSUpdateOrInsertThread?
+	for _, thread := range tbl.LSUpdateOrInsertThread {
+		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
+		if _, ok := threadResyncs[thread.ThreadKey]; ok {
+			continue
+		}
+		threadResyncs[thread.ThreadKey] = &FBChatResync{
+			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
+			Info:      m.wrapChatInfo(thread),
+			Update:    thread,
+			Members:   make(map[int64]bridgev2.ChatMember),
+			m:         m,
+
+			UncertainReceiver: thread.ThreadType == table.UNKNOWN_THREAD_TYPE,
+		}
+	}
 
 	// Deleting a thread will cancel all further events, so handle those first
 	collectPortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
@@ -444,6 +481,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSUpdateTypingIndicator, m.handleTypingIndicator, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteMessage, m.handleDeleteMessage, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteThenInsertMessage, m.handleDeleteThenInsertMessage, &innerQueue)
+	collectPortalEvents(params, tbl.LSDeleteThenInsertMessageRequest, m.handleDeleteThenInsertMessageRequest, &innerQueue)
 	collectPortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
@@ -551,6 +589,23 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 		return nil
 	}
 	return wrapMessageDelete(tk.Portal, tk.IsUncertainReceiver(), msg.MessageId)
+}
+
+func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg *table.LSDeleteThenInsertMessageRequest) bridgev2.RemoteEvent {
+	// Status 1 means the thread is in the pending/message request folder.
+	isMessageRequest := msg.MessageRequestStatus == 1
+	if tk.Sync != nil {
+		if tk.Sync.Raw != nil && tk.Sync.Raw.FolderName == folderSpam {
+			return nil
+		}
+		tk.Sync.Info.MessageRequest = ptr.Ptr(isMessageRequest)
+		return nil
+	}
+	return m.wrapChatInfoChange(msg.ThreadKey, 0, tk.Type, &bridgev2.ChatInfoChange{
+		ChatInfo: &bridgev2.ChatInfo{
+			MessageRequest: ptr.Ptr(isMessageRequest),
+		},
+	}, "LSDeleteThenInsertMessageRequest")
 }
 
 func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, onlyForMe bool) bridgev2.RemoteEvent {
@@ -674,7 +729,7 @@ func (m *MetaClient) handleAddParticipant(tk handlerParams, evt *table.LSAddPart
 		tk.Sync.Members[evt.ContactId] = m.wrapChatMember(evt)
 		return nil
 	}
-	return m.wrapChatInfoChange(evt.ThreadKey, evt.ContactId, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, evt.ContactId, tk.Type, &bridgev2.ChatInfoChange{
 		MemberChanges: &bridgev2.ChatMemberList{
 			Members: []bridgev2.ChatMember{
 				m.wrapChatMember(evt),
@@ -689,14 +744,14 @@ func (m *MetaClient) handleSelfLeaveThread(tk handlerParams, evt *table.LSRemove
 	}
 
 	zerolog.Ctx(tk.ctx).Info().
-		Int64("thread_key", evt.ThreadKey).
+		Int64("thread_key", tk.ID).
 		Msg("Left thread ourselves, deleting")
 
-	return m.handleDeleteThreadKey(tk, evt.ThreadKey, true /* OnlyForMe */)
+	return m.handleDeleteThreadKey(tk, tk.ID, true /* OnlyForMe */)
 }
 
 func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemoveParticipantFromThread) bridgev2.RemoteEvent {
-	return m.wrapChatInfoChange(evt.ThreadKey, evt.ParticipantId, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, evt.ParticipantId, tk.Type, &bridgev2.ChatInfoChange{
 		MemberChanges: &bridgev2.ChatMemberList{
 			Members: []bridgev2.ChatMember{{
 				EventSender:    m.makeEventSender(evt.ParticipantId),
@@ -787,6 +842,14 @@ type threadMaps struct {
 	vtes          map[int64]*table.LSVerifyThreadExists
 	syncs         map[int64]*FBChatResync
 	activeThreads exmaps.Set[int64]
+	waThreadMap   map[int64]int64
+}
+
+func (tm threadMaps) MapWhatsAppThreadKey(fbKey int64) int64 {
+	if waKey, ok := tm.waThreadMap[fbKey]; ok {
+		return waKey
+	}
+	return fbKey
 }
 
 type handlerParams struct {
@@ -815,14 +878,18 @@ func collectPortalEvents[T ThreadKeyable](
 	innerQueue *[]bridgev2.RemoteEvent,
 ) {
 	for _, msg := range msgs {
-		threadKey := msg.GetThreadKey()
+		threadKey := p.MapWhatsAppThreadKey(msg.GetThreadKey())
 		sync, syncOK := p.syncs[threadKey]
 		v, ok := p.vtes[threadKey]
 		var threadType table.ThreadType
 		if ok {
 			threadType = v.ThreadType
 		} else if syncOK {
-			threadType = sync.Raw.ThreadType
+			if sync.Raw != nil {
+				threadType = sync.Raw.ThreadType
+			} else {
+				threadType = sync.Update.ThreadType
+			}
 		}
 		// TODO this check isn't needed for all types
 		parentKey, threadMsgID, err := p.m.Main.DB.GetThreadByKey(p.ctx, threadKey)

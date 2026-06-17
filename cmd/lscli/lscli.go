@@ -123,7 +123,7 @@ func handleOutgoingRequest(data json.RawMessage) {
 			Label:        task.Label,
 			LabelName:    taskNames[task.Label],
 			QueueName:    task.QueueName,
-			TaskID:       task.TaskId,
+			TaskID:       task.TaskID,
 			Payload:      json.RawMessage(task.Payload.(string)),
 		}
 	}

@@ -25,10 +25,12 @@ type Config struct {
 
 	AllowMessengerComOnFB bool `yaml:"allow_messenger_com_on_fb"`
 
-	Proxy        string `yaml:"proxy"`
-	GetProxyFrom string `yaml:"get_proxy_from"`
-	ProxyMedia   bool   `yaml:"proxy_media"`
-	ProxyE2EE    bool   `yaml:"proxy_e2ee"`
+	Proxy              string `yaml:"proxy"`
+	GetProxyFrom       string `yaml:"get_proxy_from"`
+	ProxyMedia         bool   `yaml:"proxy_media"`
+	ProxyE2EE          bool   `yaml:"proxy_e2ee"`
+	ProxyMessengerLite bool   `yaml:"proxy_messenger_lite"`
+	ProxyOther         bool   `yaml:"proxy_other"`
 
 	DisableXMABackfill bool `yaml:"disable_xma_backfill"`
 	DisableXMAAlways   bool `yaml:"disable_xma_always"`
@@ -45,6 +47,7 @@ type Config struct {
 	ReceiveInstagramTypingIndicators bool `yaml:"receive_instagram_typing_indicators"`
 	DisableViewOnce                  bool `yaml:"disable_view_once"`
 	MarketplaceSpace                 bool `yaml:"marketplace_space"`
+	LogRedactedBloksPayloads         bool `yaml:"log_redacted_bloks_payloads"`
 
 	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
 }
@@ -90,6 +93,8 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str|up.Null, "get_proxy_from")
 	helper.Copy(up.Bool, "proxy_media")
 	helper.Copy(up.Bool, "proxy_e2ee")
+	helper.Copy(up.Bool, "proxy_messenger_lite")
+	helper.Copy(up.Bool, "proxy_other")
 	helper.Copy(up.Int, "min_full_reconnect_interval_seconds")
 	helper.Copy(up.Int, "force_refresh_interval_seconds")
 	helper.Copy(up.Bool, "cache_connection_state")
@@ -99,6 +104,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "receive_instagram_typing_indicators")
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Bool, "marketplace_space")
+	helper.Copy(up.Bool, "log_redacted_bloks_payloads")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
 }
