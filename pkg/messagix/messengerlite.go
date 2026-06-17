@@ -219,6 +219,15 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		return nil, nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
+	if loginRespPayload.CredentialType == "transient_token" {
+		// There is an extra step for getting cookies when the credential_type
+		// field is transient_token, which the bridge does not currently
+		// implement. Until then, add a warning log. Normally the credential_type
+		// is two_factor. It depends on the account, not on the MFA method
+		// selected.
+		m.client.Logger.Warn().Msg("Got credential_type transient_token, login will fail")
+	}
+
 	if len(loginRespPayload.SessionCookies) == 0 {
 		return nil, nil, fmt.Errorf(
 			"messenger-lite login returned no cookies after login",
