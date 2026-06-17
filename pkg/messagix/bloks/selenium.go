@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"maps"
 	"net/http"
 	"regexp"
 	"strings"
@@ -296,6 +297,7 @@ const (
 	StateSMSPage               BrowserState = "sms-page"
 	StateSMSPageAfterSend      BrowserState = "sms-page-after-send"
 	StateBackupCodePage        BrowserState = "backup-code-page"
+	StateChooseNumberPage      BrowserState = "choose-number-page"
 	StateWhatsAppPage          BrowserState = "whatsapp-page"
 	StateWhatsAppPageAfterSend BrowserState = "whatsapp-page-after-send"
 	StateSuccess               BrowserState = "success"
@@ -523,6 +525,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				newState = StateSMSPage
 			case "com.bloks.www.two_factor_login.enter_backup_code":
 				newState = StateBackupCodePage
+			case "com.bloks.www.ap.two_step_verification.contactpoint_chooser":
+				newState = StateChooseNumberPage
 			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
 				newState = StateWhatsAppPage
 			default:
@@ -608,6 +612,17 @@ func (b *Browser) getCodeInstructions() string {
 				}
 			}
 			return false
+		}).
+		GetAttribute("text")
+}
+
+func (b *Browser) getContactNumberInstructions() string {
+	return b.CurrentPage.
+		FindDescendant(func(comp *BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.data.TextSpan" {
+				return false
+			}
+			return strings.HasPrefix(comp.GetAttribute("text"), "Which number")
 		}).
 		GetAttribute("text")
 }
@@ -1259,6 +1274,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		smsCode := userInput["sms_code"]
 		if smsCode == "" {
 			instructions := b.getCodeInstructions()
+			if instructions == "" {
+				instructions = "Enter the SMS code sent to your phone number"
+			}
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
 					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
@@ -1302,6 +1320,67 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
+
+	case StateChooseNumberPage:
+		buttons := b.CurrentPage.
+			FindDescendants(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.AccessibilityExtension" {
+					return false
+				}
+				if !strings.HasPrefix(comp.GetAttribute("label"), "+") {
+					return false
+				}
+				return true
+			})
+
+		foundNumbers := map[string]*BloksTreeComponent{}
+		numberNames := []string{}
+		for _, btn := range buttons {
+			number := btn.GetAttribute("label")
+			foundNumbers[number] = btn
+			numberNames = append(numberNames, number)
+		}
+
+		contactNumber := userInput["contact_number"]
+		if contactNumber == "" && len(foundNumbers) == 1 {
+			contactNumber = numberNames[0]
+		}
+		if contactNumber == "" {
+			instructions := b.getContactNumberInstructions()
+			if instructions == "" {
+				instructions = "Choose the phone number to receive an MFA code"
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       "fi.mau.meta.messengerlite.choose_number",
+				Instructions: instructions,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{
+							ID: "contact_number", Name: "Phone number", Type: bridgev2.LoginInputFieldTypeSelect,
+							Options: numberNames,
+						},
+					},
+				},
+			}
+			break
+		}
+
+		if foundNumbers[contactNumber] == nil {
+			return nil, fmt.Errorf("not a valid contact number: %s", contactNumber)
+		}
+
+		err := foundNumbers[contactNumber].FindContainingButton().TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tap selected number: %w", err)
+		}
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue button: %w", err)
 		}
 
 	case StateWhatsAppPage:

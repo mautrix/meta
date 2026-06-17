@@ -1664,7 +1664,8 @@
     "㜍": "bk.cds.bottomsheet.Wrapper",
     "㐘": "bk.components.TextInput",
     "㐅": "bk.components.Collection",
-    "㐟": "action"
+    "㐟": "action",
+    "㚮": "buttonExtension"
   },
   "properties": {
     "bk.components.FoaTouchExtension": {
@@ -1817,6 +1818,10 @@
     },
     "action": {
       "3": "on_load"
+    },
+    "buttonExtension": {
+      "9": "label",
+      "10": "state"
     }
   }
 }
