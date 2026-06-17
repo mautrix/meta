@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 
@@ -27,7 +27,7 @@ import (
 // import cycle
 type MessagixClient interface {
 	IsAuthenticated() bool
-	GetDialer() *websocket.Dialer
+	GetDialer() *websocket.DialOptions
 	GetLogger() *zerolog.Logger
 	GetCookies() *cookies.Cookies
 	GetEndpoint(string) string
@@ -56,11 +56,11 @@ func (s *Socket) CanConnect() error {
 }
 
 func (s *Socket) Connect(ctx context.Context) (err error) {
-	dialer := s.client.GetDialer()
-	headers := s.getConnHeaders()
+	opts := s.client.GetDialer()
+	opts.HTTPHeader = s.getConnHeaders()
 	socketURL := s.getConnURL()
 
-	conn, resp, err := dialer.DialContext(ctx, socketURL, headers)
+	conn, resp, err := websocket.Dial(ctx, socketURL, opts)
 	if err != nil {
 		statusCode := 999
 		if resp != nil {
@@ -68,6 +68,7 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 		}
 		return fmt.Errorf("DGW: %w: %w (status code %d)", socket.ErrDial, err, statusCode)
 	}
+	conn.SetReadLimit(-1)
 	s.conn = conn
 
 	err = s.readLoop(ctx, conn)
@@ -81,6 +82,7 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 const AckTimeout = 5 * time.Second
 const PingInterval = 15 * time.Second
 const PongTimeout = 30 * time.Second // from web client
+const WriteTimeout = 20 * time.Second
 
 type XDTData struct {
 	Data struct {
@@ -130,7 +132,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		errorOnce.Do(func() {
 			s.err.Store(&err)
 			close(done)
-			closeErr := conn.Close()
+			closeErr := conn.CloseNow()
 			if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
 				s.client.GetLogger().Debug().Err(closeErr).Msg("Error closing DGW connection after " + err.Error())
 			}
@@ -150,16 +152,16 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		defer wg.Done()
 		defer close(incoming)
 		for {
-			msgtype, data, err := conn.ReadMessage()
+			msgtype, data, err := conn.Read(ctx)
 			if err != nil {
 				fatalError(fmt.Errorf("reading message: %w", err))
 				return
 			}
 			for len(data) > 0 {
 				switch msgtype {
-				case websocket.TextMessage:
+				case websocket.MessageText:
 					s.client.GetLogger().Warn().Bytes("bytes", data).Msg("Unexpected non-binary DGW message, dropping")
-				case websocket.BinaryMessage:
+				case websocket.MessageBinary:
 					frame := CheckFrameType(data)
 					data, err = frame.Unmarshal(data)
 					if err != nil {
@@ -187,7 +189,9 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 					s.client.GetLogger().Warn().Any("frame", frame).Msg("Failed to marshal outbound frame, dropping")
 					continue
 				}
-				err = conn.WriteMessage(websocket.BinaryMessage, b)
+				writeCtx, cancel := context.WithTimeout(ctx, WriteTimeout)
+				err = conn.Write(writeCtx, websocket.MessageBinary, b)
+				cancel()
 				if err != nil {
 					fatalError(fmt.Errorf("writing message: %w", err))
 				}
@@ -394,8 +398,7 @@ func (s *Socket) getConnURL() string {
 
 func (s *Socket) Disconnect() {
 	if s != nil && s.conn != nil {
-		_ = s.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(3*time.Second))
-		_ = s.conn.Close()
+		_ = s.conn.Close(websocket.StatusNormalClosure, "")
 	}
 }
 
