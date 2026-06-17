@@ -1203,7 +1203,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if comp.ComponentID != "bk.data.TextSpan" {
 				return false
 			}
-			return strings.HasPrefix(comp.GetAttribute("text"), "We sent a notification")
+			for _, prefix := range []string{
+				"We sent a notification",
+				"Open the notification",
+			} {
+				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
+					return true
+				}
+			}
+			return false
 		})
 		if notif == nil {
 			return nil, fmt.Errorf("couldn't find AFAD notification info")

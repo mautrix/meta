@@ -459,6 +459,24 @@ func mainE() error {
 			return fmt.Errorf("tap continue: %w", err)
 		}
 	} else if *afad {
+		notif := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+			if comp.ComponentID != "bk.data.TextSpan" {
+				return false
+			}
+			for _, prefix := range []string{
+				"We sent a notification",
+				"Open the notification",
+			} {
+				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
+					return true
+				}
+			}
+			return false
+		})
+		if notif == nil {
+			return fmt.Errorf("couldn't find AFAD notification info")
+		}
+		fmt.Println(notif.GetAttribute("text"))
 		for _, comp := range bundle.FindDescendants(func(comp *bloks.BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.components.VisibilityExtension" {
 				return false
