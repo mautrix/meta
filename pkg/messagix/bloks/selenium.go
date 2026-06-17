@@ -285,7 +285,7 @@ const (
 	StateTestCaptcha           BrowserState = "test-captcha"
 	StateInitial               BrowserState = "initial"
 	StateEmailPasswordPage     BrowserState = "enter-email-and-password-page"
-	StateEmailCodePage         BrowserState = "enter-code-from-email-page"
+	StateCodeEntryPage         BrowserState = "enter-code-page"
 	StateCaptchaPage           BrowserState = "captcha-page"
 	StateMFALandingPage        BrowserState = "mfa-landing-page"
 	StateChooseMFAPage         BrowserState = "choose-mfa-type-page"
@@ -495,7 +495,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				newState = StateEmailPasswordPage
 			case "com.bloks.www.caa.ar.code_entry",
 				"com.bloks.www.ap.two_step_verification.code_entry":
-				newState = StateEmailCodePage
+				newState = StateCodeEntryPage
 			case "com.bloks.www.two_step_verification.entrypoint":
 				newState = StateMFALandingPage
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
@@ -579,7 +579,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				}
 				b.LastError = msg
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
-				if b.State != StateEmailCodePage {
+				if b.State != StateCodeEntryPage {
 					break
 				}
 				msg, ok := value.Value().(string)
@@ -788,9 +788,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 		}
 
-	case StateEmailCodePage:
-		emailCode := userInput["email_code"]
-		if emailCode == "" {
+	case StateCodeEntryPage:
+		otpCode := userInput["otp_code"]
+		if otpCode == "" {
 			instructions := b.getCodeInstructions()
 			if b.LastError != "" {
 				instructions = fmt.Sprintf(
@@ -801,11 +801,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
-				StepID:       "fi.mau.meta.messengerlite.email_code",
+				StepID:       "fi.mau.meta.messengerlite.otp_code",
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "email_code", Name: "Code from email", Type: bridgev2.LoginInputFieldType2FACode},
+						{ID: "otp_code", Name: "One-time code sent to you", Type: bridgev2.LoginInputFieldType2FACode},
 					},
 				},
 			}
@@ -813,7 +813,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 		// Set up in case we don't navigate to a new page successfully
-		delete(userInput, "email_code")
+		delete(userInput, "otp_code")
 		b.LastError = "Facebook rejected that code"
 
 		err := b.CurrentPage.
@@ -825,9 +825,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					"bk.components.AccessibilityExtension", "label", "Enter code",
 				)) != nil
 			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, emailCode)
+			FillInput(ctx, b.CurrentPage.Interpreter, otpCode)
 		if err != nil {
-			return nil, fmt.Errorf("filling email code input: %w", err)
+			return nil, fmt.Errorf("filling otp code input: %w", err)
 		}
 
 		err = b.CurrentPage.
@@ -835,7 +835,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FindContainingButton().
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			log.Debug().Err(err).Msg("Got error from email code submission")
+			log.Debug().Err(err).Msg("Got error from OTP code submission")
 			if strings.Contains(err.Error(), "Please re-enter") {
 				// retry
 			} else {
