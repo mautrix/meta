@@ -229,7 +229,7 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 	users := make([]*bridgev2.ResolveIdentifierResponse, 0)
 
 	for _, result := range resp.LSInsertSearchResult {
-		if result.ThreadType == table.ONE_TO_ONE && result.CanViewerMessage && result.GetFBID() != 0 {
+		if result.ThreadType.IsOneToOne() && result.CanViewerMessage && result.GetFBID() != 0 {
 			userID := metaid.MakeUserID(result.GetFBID())
 			ghost, _ := m.Main.Bridge.GetGhostByID(ctx, userID)
 			users = append(users, &bridgev2.ResolveIdentifierResponse{
