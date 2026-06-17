@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"image"
 	"io"
-	"maps"
 	"net/http"
 	"regexp"
 	"strings"
