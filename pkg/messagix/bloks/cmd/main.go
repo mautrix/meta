@@ -46,6 +46,8 @@ var doEncrypt = flag.String("encrypt", "", "Encrypt a password")
 var deviceID = flag.String("device-id", "", "Device ID for password encryption")
 var doCaptcha = flag.String("captcha-code", "", "Captcha code to submit")
 var captchaResponse = flag.String("captcha-resp", "", "Bloks response for captcha submission")
+var doWhatsAppNumbers = flag.Bool("whatsapp-numbers", false, "Print the available WhatsApp numbers")
+var selectedWhatsAppNumber = flag.String("whatsapp-number", "", "Pick a WhatsApp number and submit")
 
 func main() {
 	err := mainE()
@@ -583,6 +585,38 @@ func mainE() error {
 			TapButton(ctx, interp)
 		if err != nil {
 			return fmt.Errorf("tapping continue: %w", err)
+		}
+	} else if *doWhatsAppNumbers {
+		buttons := bundle.
+			FindDescendants(func(comp *bloks.BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.components.AccessibilityExtension" {
+					return false
+				}
+				if !strings.HasPrefix(comp.GetAttribute("label"), "+") {
+					return false
+				}
+				return true
+			})
+		foundNumbers := map[string]*bloks.BloksTreeComponent{}
+		fmt.Printf("Found %d WhatsApp number(s):\n", len(buttons))
+		for _, btn := range buttons {
+			number := btn.GetAttribute("label")
+			foundNumbers[number] = btn
+			fmt.Printf("- %s\n", number)
+		}
+		if *selectedWhatsAppNumber == "" {
+			return nil
+		}
+		err := foundNumbers[*selectedWhatsAppNumber].FindContainingButton().TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tap selected number: %w", err)
+		}
+		err = bundle.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tap continue: %w", err)
 		}
 	}
 	return nil
