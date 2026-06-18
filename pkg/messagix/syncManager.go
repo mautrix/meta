@@ -236,6 +236,8 @@ func (sm *SyncManager) UpdateDatabaseSyncParams(dbs []*socket.QueryMetadata) err
 
 var dbID7Params = `{"mnet_rank_types":[44]}`
 
+var defaultContactParams = `{"locale":"en_US"}`
+
 func (sm *SyncManager) getSyncParams(dbID int64, ch socket.SyncChannel) *string {
 	if dbID == 7 {
 		return &dbID7Params
@@ -244,6 +246,9 @@ func (sm *SyncManager) getSyncParams(dbID int64, ch socket.SyncChannel) *string 
 	case socket.MailBox:
 		return &sm.syncParams.Mailbox
 	case socket.Contact:
+		if sm.syncParams.Contact == "" {
+			return &defaultContactParams
+		}
 		return &sm.syncParams.Contact
 	default:
 		return &sm.syncParams.E2Ee
