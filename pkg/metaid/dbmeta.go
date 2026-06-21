@@ -55,6 +55,10 @@ type PortalMetadata struct {
 	ThreadType     table.ThreadType `json:"thread_type"`
 	WhatsAppServer string           `json:"whatsapp_server,omitempty"`
 
+	// E2EEThreadKey is the WhatsApp/E2EE thread key for hybrid threads. The portal is keyed by the
+	// Facebook thread ID, but some tasks (e.g. accepting a message request) need this key instead.
+	E2EEThreadKey int64 `json:"e2ee_thread_key,omitempty"`
+
 	EphemeralSettingTimestamp int64 `json:"ephemeral_setting_timestamp,omitempty"`
 
 	FetchAttempted atomic.Bool `json:"-"`

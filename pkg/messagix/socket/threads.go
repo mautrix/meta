@@ -344,6 +344,20 @@ func (t *CreateGroupTask) Create() (interface{}, interface{}, bool) {
 	return t, strconv.FormatInt(t.SendPayload.ThreadID, 10), false
 }
 
+type AcceptMessageRequestTask struct {
+	ThreadKey int64  `json:"thread_key"`
+	SyncGroup int64  `json:"sync_group"`
+	IGFolder  *int64 `json:"ig_folder"`
+}
+
+func (t *AcceptMessageRequestTask) GetLabel() string {
+	return TaskLabels["AcceptMessageRequestTask"]
+}
+
+func (t *AcceptMessageRequestTask) Create() (interface{}, interface{}, bool) {
+	return t, "message_request", false
+}
+
 type DeleteThreadTask struct {
 	ThreadKey  int64 `json:"thread_key"`
 	RemoveType int64 `json:"remove_type"`
