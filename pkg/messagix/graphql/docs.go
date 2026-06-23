@@ -12,49 +12,60 @@ type GraphQLDoc struct {
 var GraphQLDocs = map[string]GraphQLDoc{
 	"LSGraphQLRequest": {
 		DocID:        "7357432314358409",
-		CallerClass:  "RelayModern",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestQuery",
 	},
 	"LSGraphQLRequestIG": {
 		DocID:        "6195354443842040",
-		CallerClass:  "RelayModern",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestForIGDQuery",
 	},
 	"MAWCatQuery": {
 		DocID:        "23999698219677129",
-		CallerClass:  "RelayModern",
 		FriendlyName: "MAWCatQuery",
 		Jsessw:       "1",
 	},
 	"IGDeleteThread": {
 		DocID:        "23915602751379354",
-		CallerClass:  "RelayModern",
 		FriendlyName: "IGDInboxInfoDeleteThreadDialogOffMsysMutation",
 	},
 	"IGEditGroupTitle": {
 		DocID:        "29088580780787855",
-		CallerClass:  "RelayModern",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
 	},
 	"IGAcceptMessageRequest": {
 		DocID:        "25093807760274522",
-		CallerClass:  "RelayModern",
 		FriendlyName: "useIGDirectAcceptMessageRequestMutation",
 	},
 	"IGListMessageRequests": {
 		DocID:        "25843909248644743",
-		CallerClass:  "RelayModern",
 		FriendlyName: "PolarisDirectMessageRequestQuery",
 	},
 	"IGUpdateGroupAvatar": {
 		ClientDocID:  "5576567352987267181917649770",
-		CallerClass:  "RelayModern",
 		FriendlyName: "IGDirectUpdateThreadImageMutation",
 	},
 	"IGRemoveGroupAvatar": {
 		ClientDocID:  "50027745118339199321503686240",
-		CallerClass:  "RelayModern",
 		FriendlyName: "IGDirectRemoveThreadImageMutation",
+	},
+	"PolarisDirectInboxQuery": {
+		DocID:        "27243523918640219",
+		FriendlyName: "PolarisDirectInboxQuery",
+	},
+	"useIGDSystemFolderUnreadThreadCountQuery": {
+		DocID:        "26619714737686638",
+		FriendlyName: "useIGDSystemFolderUnreadThreadCountQuery",
+	},
+	"IGDThreadDetailQuery": {
+		DocID:        "26795312723503786",
+		FriendlyName: "IGDThreadDetailQuery",
+	},
+	"IGDirectReactionSendMutation": {
+		DocID:        "24374451552236906",
+		FriendlyName: "IGDirectReactionSendMutation",
+	},
+	"IGDirectTextSendMutation": {
+		DocID:        "26911679871773184",
+		FriendlyName: "IGDirectTextSendMutation",
 	},
 }
 

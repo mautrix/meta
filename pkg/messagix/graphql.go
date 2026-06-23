@@ -159,6 +159,9 @@ func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables 
 
 	payload := c.newHTTPQuery()
 	payload.FbAPICallerClass = graphQLDoc.CallerClass
+	if payload.FbAPICallerClass == "" {
+		payload.FbAPICallerClass = "RelayModern"
+	}
 	payload.FbAPIReqFriendlyName = graphQLDoc.FriendlyName
 	payload.Variables = string(vBytes)
 	payload.ServerTimestamps = "true"

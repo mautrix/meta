@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
-	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -18,7 +17,6 @@ import (
 type Configs struct {
 	client             *Client
 	BrowserConfigTable *types.SchedulerJSDefineConfig
-	graphqlConfigTable *graphql.GraphQLTable
 	LSDToken           string
 	CometReq           string
 	VersionID          int64

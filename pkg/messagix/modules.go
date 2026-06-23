@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	badGlobalLog "github.com/rs/zerolog/log"
 	"github.com/tidwall/gjson"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
@@ -218,34 +217,6 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFun
 	decoder := lightspeed.NewLightSpeedDecoder(deps.ToMap(), m.LS)
 	decoder.Decode(payload.Steps)
 	return nil
-}
-
-//lint:ignore U1000 lots of unused code
-func (m *ModuleParser) handleGraphQLData(name string, data json.RawMessage) {
-	reflectedMs := reflect.ValueOf(m.client.configs.graphqlConfigTable).Elem()
-	dataField := reflectedMs.FieldByName(name)
-	if !dataField.IsValid() {
-		badGlobalLog.Error().Str("field_name", name).Msg("Not handling GraphQLData for operation")
-		return
-	}
-
-	definition := dataField.Type().Elem()
-	newDefinition := reflect.New(definition).Interface()
-
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		badGlobalLog.Err(err).Msg("failed to marshal GraphQL operation data")
-		return
-	}
-
-	err = json.Unmarshal(jsonBytes, newDefinition)
-	if err != nil {
-		badGlobalLog.Err(err).Msg("failed to unmarshal GraphQL operation data")
-		return
-	}
-
-	newSlice := reflect.Append(dataField, reflect.Indirect(reflect.ValueOf(newDefinition)))
-	dataField.Set(newSlice)
 }
 
 func (m *ModuleParser) parseGraphMethodName(name string) string {
