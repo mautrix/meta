@@ -92,7 +92,7 @@ func (c *Client) refreshCAT(ctx context.Context) error {
 		c.unnecessaryCATRequests = 0
 	}
 	c.Logger.Info().Time("prev_expiration", currentExpiration).Msg("Refreshing crypto auth token")
-	_, respData, err := c.makeGraphQLRequest(ctx, "MAWCatQuery", struct{}{})
+	_, respData, err := c.http.MakeGraphQLRequest(ctx, "MAWCatQuery", struct{}{})
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

@@ -323,7 +323,7 @@ func (mc *MessageConverter) reuploadVideoToMetaFallback(ctx context.Context, cli
 	h.Add("x-fb-server-cluster", "True")
 	h.Add("x-zero-balance", "INIT")
 	h.Add("x-zero-eh", "")
-	resp, body, err := client.MakeRequest(
+	resp, body, err := client.GetHTTP().MakeRequest(
 		ctx,
 		fmt.Sprintf("https://rupload.facebook.com/messenger_video/%s", uploadID),
 		"POST",

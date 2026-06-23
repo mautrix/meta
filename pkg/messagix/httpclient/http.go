@@ -1,22 +1,164 @@
-package messagix
+package httpclient
 
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/coder/websocket"
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/exhttp"
+	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-type HttpQuery struct {
+type HTTPClient struct {
+	parent          Client
+	log             *zerolog.Logger
+	graphQLRequests int
+	lsRequests      int
+	configs         *Configs
+
+	HTTP         *http.Client
+	HTTPSettings exhttp.ClientSettings
+	proxyAddr    string
+	httpProxy    func(*http.Request) (*url.URL, error)
+	socksProxy   proxy.Dialer
+	GetNewProxy  func(reason string) (string, error)
+
+	LogRedactedBloksPayloads bool
+}
+
+type Client interface {
+	GetPlatform() types.Platform
+	GetLogger() *zerolog.Logger
+	GetCookies() *cookies.Cookies
+	GetEndpoint(name string) string
+	IsAuthenticated() bool
+}
+
+func NewHTTPClient(cli Client, configs *Configs, settings exhttp.ClientSettings) *HTTPClient {
+	c := &HTTPClient{
+		parent:          cli,
+		log:             cli.GetLogger(),
+		graphQLRequests: 1,
+		lsRequests:      0,
+		configs:         configs,
+	}
+	c.SetConfig(settings)
+	return c
+}
+
+func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
+	if c == nil {
+		return
+	}
+	c.HTTPSettings = settings.
+		WithGlobalTimeout(60 * time.Second).
+		WithResponseHeaderTimeout(20 * time.Second)
+	if c.proxyAddr != "" {
+		c.HTTPSettings, _ = c.HTTPSettings.WithProxy(c.proxyAddr)
+	}
+	oldHTTP := c.HTTP
+	c.HTTP = c.HTTPSettings.Compile()
+	c.HTTP.CheckRedirect = c.checkHTTPRedirect
+	if oldHTTP != nil {
+		oldHTTP.CloseIdleConnections()
+	}
+	if DisableTLSVerification {
+		c.HTTP.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
+}
+
+func (c *HTTPClient) SetProxy(proxyAddr string) error {
+	if c == nil {
+		return nil
+	}
+	proxyParsed, err := url.Parse(proxyAddr)
+	if err != nil {
+		return err
+	}
+
+	if proxyParsed.Scheme == "http" || proxyParsed.Scheme == "https" {
+		c.httpProxy = http.ProxyURL(proxyParsed)
+		c.proxyAddr = proxyAddr
+	} else if proxyParsed.Scheme == "socks5" {
+		c.socksProxy, err = proxy.FromURL(proxyParsed, &net.Dialer{Timeout: 20 * time.Second})
+		if err != nil {
+			return err
+		}
+		c.proxyAddr = proxyAddr
+	}
+	c.SetConfig(c.HTTPSettings)
+
+	c.log.Debug().
+		Str("scheme", proxyParsed.Scheme).
+		Str("host", proxyParsed.Host).
+		Msg("Using proxy")
+	return nil
+}
+
+func (c *HTTPClient) UpdateProxy(reason string) bool {
+	if c == nil || c.GetNewProxy == nil {
+		return true
+	}
+	if proxyAddr, err := c.GetNewProxy(reason); err != nil {
+		c.log.Err(err).Str("reason", reason).Msg("Failed to get new proxy")
+		return false
+	} else if err = c.SetProxy(proxyAddr); err != nil {
+		c.log.Err(err).Str("reason", reason).Msg("Failed to set new proxy")
+		return false
+	}
+	return true
+}
+
+var DisableTLSVerification = false
+var WebsocketHandshakeTimeout = 20 * time.Second
+
+func (c *HTTPClient) GetWebsocketDialer() *websocket.DialOptions {
+	if c == nil {
+		return nil
+	}
+	transport := &http.Transport{}
+	if c.httpProxy != nil {
+		transport.Proxy = c.httpProxy
+	} else if c.socksProxy != nil {
+		if contextDialer, ok := c.socksProxy.(proxy.ContextDialer); ok {
+			transport.DialContext = contextDialer.DialContext
+		} else {
+			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return c.socksProxy.Dial(network, addr)
+			}
+		}
+	}
+	if DisableTLSVerification {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
+	return &websocket.DialOptions{
+		HTTPClient: &http.Client{
+			Timeout:   WebsocketHandshakeTimeout,
+			Transport: transport,
+		},
+	}
+}
+
+type HTTPQuery struct {
 	AcceptOnlyEssential  string `url:"accept_only_essential,omitempty"`
 	Av                   string `url:"av,omitempty"`          // not required
 	User                 string `url:"__user,omitempty"`      // not required
@@ -73,11 +215,11 @@ type HttpQuery struct {
 	// Variables
 }
 
-func (c *Client) newHTTPQuery() *HttpQuery {
+func (c *HTTPClient) NewHTTPQuery() *HTTPQuery {
 	c.graphQLRequests++
 	siteConfig := c.configs.BrowserConfigTable.SiteData
 	dpr := strconv.FormatFloat(siteConfig.Pr, 'g', 4, 64)
-	query := &HttpQuery{
+	query := &HTTPQuery{
 		User:     c.configs.BrowserConfigTable.CurrentUserInitialData.UserID,
 		A:        "1",
 		Req:      strconv.FormatInt(int64(c.graphQLRequests), 36),
@@ -100,7 +242,7 @@ func (c *Client) newHTTPQuery() *HttpQuery {
 	/*if c.configs.BrowserConfigTable.CurrentUserInitialData.UserID != "0" {
 		query.Av = c.configs.BrowserConfigTable.CurrentUserInitialData.UserID
 	}*/
-	if c.Platform == types.Instagram {
+	if c.parent.GetPlatform() == types.Instagram {
 		query.D = "www"
 		query.Jssesw = "1"
 	} else {
@@ -114,7 +256,6 @@ const MaxHTTPRetries = 5
 var (
 	ErrTokenInvalidated         = errors.New("access token is no longer valid")
 	ErrTokenInvalidatedRedirect = fmt.Errorf("%w: redirected", ErrTokenInvalidated)
-	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
 	ErrChallengeRequired        = errors.New("challenge required")
 	ErrCheckpointRequired       = errors.New("checkpoint required")
 	ErrConsentRequired          = errors.New("consent required")
@@ -124,10 +265,11 @@ var (
 	ErrServerError              = errors.New("server returned 5xx error")
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
+	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
 	ErrVersionIDNotFound        = errors.New("version ID not found")
 )
 
-func isPermanentRequestError(err error) bool {
+func IsPermanentRequestError(err error) bool {
 	return errors.Is(err, ErrTokenInvalidated) ||
 		errors.Is(err, ErrChallengeRequired) ||
 		errors.Is(err, ErrCheckpointRequired) ||
@@ -136,7 +278,7 @@ func isPermanentRequestError(err error) bool {
 		errors.Is(err, ErrTooManyRedirects)
 }
 
-func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error {
+func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) error {
 	if req.Response == nil {
 		return nil
 	}
@@ -148,7 +290,7 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 		if len(via) > 0 {
 			prevURL = via[len(via)-1].URL.String()
 		}
-		c.Logger.Warn().
+		c.log.Warn().
 			Stringer("url", req.URL).
 			Str("prev_url", prevURL).
 			Msg("HTTP request was redirected")
@@ -174,10 +316,7 @@ func (c *Client) checkHTTPRedirect(req *http.Request, via []*http.Request) error
 	return nil
 }
 
-func (c *Client) MakeRequest(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
-	if c == nil {
-		return nil, nil, ErrClientIsNil
-	}
+func (c *HTTPClient) MakeRequest(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
 	var attempts int
 	for {
 		attempts++
@@ -185,7 +324,7 @@ func (c *Client) MakeRequest(ctx context.Context, url string, method string, hea
 		resp, respDat, err := c.makeRequestDirect(ctx, url, method, headers, payload, contentType)
 		dur := time.Since(start)
 		if err == nil {
-			c.Logger.Debug().
+			c.log.Debug().
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
@@ -193,21 +332,21 @@ func (c *Client) MakeRequest(ctx context.Context, url string, method string, hea
 				Msg("Request successful")
 			return resp, respDat, nil
 		} else if attempts > MaxHTTPRetries {
-			c.Logger.Err(err).
+			c.log.Err(err).
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, giving up")
 			return nil, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
-		} else if isPermanentRequestError(err) || ctx.Err() != nil {
-			c.Logger.Err(err).
+		} else if IsPermanentRequestError(err) || ctx.Err() != nil {
+			c.log.Err(err).
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, cannot be retried")
 			return nil, nil, err
 		}
-		c.Logger.Err(err).
+		c.log.Err(err).
 			Str("url", url).
 			Str("method", method).
 			Dur("duration", dur).
@@ -216,7 +355,7 @@ func (c *Client) MakeRequest(ctx context.Context, url string, method string, hea
 	}
 }
 
-func (c *Client) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
 	newRequest, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, nil, err
@@ -228,7 +367,7 @@ func (c *Client) makeRequestDirect(ctx context.Context, url string, method strin
 
 	newRequest.Header = headers
 
-	response, err := c.http.Do(newRequest)
+	response, err := c.HTTP.Do(newRequest)
 	defer func() {
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
@@ -251,7 +390,14 @@ func (c *Client) makeRequestDirect(ctx context.Context, url string, method strin
 	return response, responseBody, nil
 }
 
-func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header {
+func (c *HTTPClient) FetchPageData(ctx context.Context, page string) ([]byte, error) {
+	headers := c.BuildHeaders(true, true)
+	//headers.Set("host", m.client.getEndpoint("host"))
+	_, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
+	return responseBody, err
+}
+
+func (c *HTTPClient) BuildHeaders(withCookies, isSecFetchDocument bool) http.Header {
 	headers := http.Header{}
 	headers.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 	headers.Set("accept-language", "en-US,en;q=0.9")
@@ -273,25 +419,24 @@ func (c *Client) buildHeaders(withCookies, isSecFetchDocument bool) http.Header 
 		headers.Set("upgrade-insecure-requests", "1")
 	} else {
 		c.addFacebookHeaders(&headers)
-		if !c.Platform.IsMessenger() {
+		if !c.parent.GetPlatform().IsMessenger() {
 			c.addInstagramHeaders(&headers)
 		}
 	}
 
-	if c.cookies != nil && withCookies {
-		if cookieStr := c.cookies.String(); cookieStr != "" {
+	if c.parent.GetCookies() != nil && withCookies {
+		if cookieStr := c.parent.GetCookies().String(); cookieStr != "" {
 			headers.Set("cookie", cookieStr)
 		}
-		w, _ := c.cookies.GetViewports()
+		w, _ := c.parent.GetCookies().GetViewports()
 		headers.Set("viewport-width", w)
 		headers.Set("x-asbd-id", "129477")
 	}
 	return headers
 }
 
-func (c *Client) buildMessengerLiteHeaders() (http.Header, error) {
-
-	analHdr, err := makeRequestAnalyticsHeader()
+func (c *HTTPClient) buildMessengerLiteHeaders() (http.Header, error) {
+	analHdr, err := MakeRequestAnalyticsHeader()
 	if err != nil {
 		return nil, err
 	}
@@ -308,25 +453,25 @@ func (c *Client) buildMessengerLiteHeaders() (http.Header, error) {
 	return headers, nil
 }
 
-func (c *Client) addFacebookHeaders(h *http.Header) {
+func (c *HTTPClient) addFacebookHeaders(h *http.Header) {
 	if c.configs != nil && c.configs.LSDToken != "" {
 		h.Set("x-fb-lsd", c.configs.LSDToken)
 	}
 }
 
-func (c *Client) addInstagramHeaders(h *http.Header) {
+func (c *HTTPClient) addInstagramHeaders(h *http.Header) {
 	if c.configs != nil {
-		if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
+		if csrfToken := c.parent.GetCookies().Get(cookies.IGCookieCSRFToken); csrfToken != "" {
 			h.Set("x-csrftoken", csrfToken)
 		}
 
-		if mid := c.cookies.Get(cookies.IGCookieMachineID); mid != "" {
+		if mid := c.parent.GetCookies().Get(cookies.IGCookieMachineID); mid != "" {
 			h.Set("x-mid", mid)
 		}
 
 		if c.configs.BrowserConfigTable != nil {
-			if c.cookies.IGWWWClaim != "" {
-				h.Set("x-ig-www-claim", c.cookies.IGWWWClaim)
+			if c.parent.GetCookies().IGWWWClaim != "" {
+				h.Set("x-ig-www-claim", c.parent.GetCookies().IGWWWClaim)
 			}
 			h.Set("x-ig-app-id", c.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
 		}

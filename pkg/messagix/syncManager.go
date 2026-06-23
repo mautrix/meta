@@ -184,7 +184,7 @@ func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table
 			variables.SyncParams = sm.getSyncParams(db, database.SyncChannel)
 		}
 
-		lsTable, err := sm.client.makeLSRequest(ctx, variables, 1)
+		lsTable, err := sm.client.http.MakeLSRequest(ctx, variables, 1)
 		if err != nil {
 			return nil, err
 		}

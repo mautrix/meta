@@ -23,6 +23,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -228,8 +229,8 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
 	if m.Main.Config.ProxyOther && (m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "") {
-		cli.GetNewProxy = m.Main.getProxy
-		if !cli.UpdateProxy("connect") {
+		cli.GetHTTP().GetNewProxy = m.Main.getProxy
+		if !cli.GetHTTP().UpdateProxy("connect") {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaProxyUpdateFail,
@@ -244,14 +245,14 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 			(*stopPeriodicReconnect)()
 		}
-		if errors.Is(err, messagix.ErrTokenInvalidated) {
+		if errors.Is(err, httpclient.ErrTokenInvalidated) || errors.Is(err, httpclient.ErrUserIDIsZero) {
 			state := status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      MetaCookieRemoved,
 			}
-			if errors.Is(err, messagix.ErrTokenInvalidatedRedirect) {
+			if errors.Is(err, httpclient.ErrTokenInvalidatedRedirect) {
 				state.Error = MetaRedirectedToLoginPage
-			} else if errors.Is(err, messagix.ErrUserIDIsZero) {
+			} else if errors.Is(err, httpclient.ErrUserIDIsZero) {
 				state.Error = MetaUserIDIsZero
 			}
 			m.UserLogin.BridgeState.Send(state)
@@ -261,24 +262,24 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after clearing cookies")
 			}
-		} else if errors.Is(err, messagix.ErrChallengeRequired) {
+		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      IGChallengeRequired,
 				UserAction: status.UserActionRestart,
 			})
-		} else if errors.Is(err, messagix.ErrAccountSuspended) {
+		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      IGAccountSuspended,
 			})
-		} else if errors.Is(err, messagix.ErrCheckpointRequired) {
+		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBCheckpointRequired,
 				UserAction: status.UserActionRestart,
 			})
-		} else if errors.Is(err, messagix.ErrConsentRequired) {
+		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			code := IGConsentRequired
 			if m.LoginMeta.Platform.IsMessenger() {
 				code = FBConsentRequired
@@ -310,7 +311,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Error:      MetaGraphQLError,
 				Message:    gqlErr.Message,
 			})
-		} else if attempts < MaxConnectRetries && !errors.Is(err, messagix.ErrVersionIDNotFound) {
+		} else if attempts < MaxConnectRetries && !errors.Is(err, httpclient.ErrVersionIDNotFound) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateTransientDisconnect,
 				Error:      MetaConnectError,

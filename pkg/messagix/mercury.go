@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -44,14 +45,14 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	var attempts int
 	for {
 		attempts += 1
-		urlQueries := c.newHTTPQuery()
+		urlQueries := c.http.NewHTTPQuery()
 		queryValues, err := query.Values(urlQueries)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %w", err)
 		}
 		url := c.GetEndpoint("media_upload") + queryValues.Encode()
 
-		h := c.buildHeaders(true, false)
+		h := c.http.BuildHeaders(true, false)
 		h.Set("accept", "*/*")
 		h.Set("content-type", contentType)
 		h.Set("origin", c.GetEndpoint("base_url"))
@@ -61,7 +62,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 		h.Set("sec-fetch-mode", "cors")
 		h.Set("sec-fetch-site", "same-origin") // header is required
 
-		_, respBody, err := c.MakeRequest(ctx, url, "POST", h, payload, types.NONE)
+		_, respBody, err := c.http.MakeRequest(ctx, url, "POST", h, payload, types.NONE)
 		if err != nil {
 			// MakeRequest retries itself, so bail immediately if that fails
 			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %w", err)
@@ -69,7 +70,7 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 		resp, err := c.parseMercuryResponse(ctx, respBody)
 		if err == nil {
 			return resp, nil
-		} else if attempts > MaxHTTPRetries || isPermanentRequestError(err) || errors.Is(err, types.ErrPleaseReloadPage) {
+		} else if attempts > httpclient.MaxHTTPRetries || httpclient.IsPermanentRequestError(err) || errors.Is(err, types.ErrPleaseReloadPage) {
 			return nil, err
 		}
 		c.Logger.Err(err).
@@ -99,7 +100,7 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 
 	if strings.Contains(mercuryResponse.Redirect, "/consent/") {
 		zerolog.Ctx(ctx).Warn().Str("redirect", mercuryResponse.Redirect).Msg("Mercury upload returned consent redirect")
-		return nil, fmt.Errorf("%w: mercury upload redirected to %s", ErrConsentRequired, mercuryResponse.Redirect)
+		return nil, fmt.Errorf("%w: mercury upload redirected to %s", httpclient.ErrConsentRequired, mercuryResponse.Redirect)
 	}
 
 	mercuryResponse.Raw = jsonData

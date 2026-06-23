@@ -1,4 +1,20 @@
-package messagix
+// mautrix-meta - A Matrix-Facebook Messenger and Instagram DM puppeting bridge.
+// Copyright (C) 2026 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+package httpclient
 
 import (
 	"bytes"
@@ -11,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"golang.org/x/net/html"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
@@ -18,7 +35,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-var jsDatrPattern = regexp.MustCompile(`"_js_datr","([^"]+)"`)
+// var jsDatrPattern = regexp.MustCompile(`"_js_datr","([^"]+)"`)
 var versionPattern = regexp.MustCompile(`__d\("LSVersion"[^)]+\)\{\w\.exports="(\d+)"\}`)
 
 type BBoxContainer struct {
@@ -65,29 +82,30 @@ type InputTag struct {
 }
 
 type ModuleParser struct {
-	client *Client
-	JSDatr string
+	log     *zerolog.Logger
+	client  Client
+	configs *Configs
+	http    *HTTPClient
 
 	LS *table.LSTable
 }
 
-func (m *ModuleParser) SetClientInstance(cli *Client) {
-	m.client = cli
-}
-
-func (m *ModuleParser) fetchPageData(ctx context.Context, page string) ([]byte, error) { // just log.fatal if theres an error because the library should not be able to continue then
-	headers := m.client.buildHeaders(true, true)
-	//headers.Set("host", m.client.getEndpoint("host"))
-	_, responseBody, err := m.client.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
-	return responseBody, err
+func NewModuleParser(client Client, http *HTTPClient, configs *Configs) *ModuleParser {
+	return &ModuleParser{
+		log:     client.GetLogger(),
+		client:  client,
+		configs: configs,
+		http:    http,
+		LS:      &table.LSTable{},
+	}
 }
 
 func (m *ModuleParser) Load(ctx context.Context, page string) error {
-	htmlData, err := m.fetchPageData(ctx, page)
+	htmlData, err := m.http.FetchPageData(ctx, page)
 	if err != nil {
 		return err
 	}
-	if m.client.Platform.IsMessenger() && !strings.Contains(page, "login") && bytes.Contains(htmlData, []byte(`"USER_ID":"0"`)) {
+	if m.client.GetPlatform().IsMessenger() && !strings.Contains(page, "login") && bytes.Contains(htmlData, []byte(`"USER_ID":"0"`)) {
 		return ErrUserIDIsZero
 	}
 
@@ -119,10 +137,10 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 					}
 					continue
 				}
-				m.client.Logger.Trace().
+				m.log.Trace().
 					Str("script_tag_content", base64.StdEncoding.EncodeToString([]byte(tag.Content))).
 					Msg("Errored script tag data")
-				m.client.Logger.Warn().Err(err).Msg("Failed to parse script tag into bbox")
+				m.log.Warn().Err(err).Msg("Failed to parse script tag into bbox")
 				continue
 			}
 
@@ -138,11 +156,11 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 	authenticated := m.client.IsAuthenticated()
 	// on certain occasions, the server does not return the lightspeed data or version
 	// when this is the case, the server "preloads" the js files in the link tags, so we need to loop through them until we can find the "LSVersion" module and extract the exported version string
-	if m.client.configs.VersionID == 0 && authenticated && m.client.Platform.IsInstagram() {
-		m.client.Logger.Warn().Msg("Version ID not found in index page, using hardcoded value")
-		m.client.configs.VersionID = 27518474497785688
-	} else if m.client.configs.VersionID == 0 && authenticated {
-		m.client.Logger.Warn().Msg("Version ID not found in index page")
+	if m.configs.VersionID == 0 && authenticated && m.client.GetPlatform().IsInstagram() {
+		m.log.Warn().Msg("Version ID not found in index page, using hardcoded value")
+		m.configs.VersionID = 27246847665007062
+	} else if m.configs.VersionID == 0 && authenticated {
+		m.log.Warn().Msg("Version ID not found in index page")
 		var doneCrawling bool
 		linkTags := m.findLinkTags(doc)
 		for _, tag := range linkTags {
@@ -216,12 +234,12 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 				}
 			}
 
-			if m.client.cookies == nil {
+			/*if m.client.cookies == nil {
 				jsDatrMatches := jsDatrPattern.FindStringSubmatch(handleData)
 				if len(jsDatrMatches) > 1 {
 					m.JSDatr = jsDatrMatches[1]
 				}
-			}
+			}*/
 		case "ServerJS":
 			handleData := "{" + strings.Split(strings.Split(data, ".handle({")[1], ");requireLazy")[0]
 			var moduleData *BBox
@@ -266,7 +284,7 @@ func (m *ModuleParser) requireLazyModule(data string) error {
 }
 
 func (m *ModuleParser) crawlJavascriptFile(ctx context.Context, href string) (bool, error) {
-	_, jsContent, err := m.client.MakeRequest(ctx, href, "GET", http.Header{}, nil, types.NONE)
+	_, jsContent, err := m.http.MakeRequest(ctx, href, "GET", http.Header{}, nil, types.NONE)
 	if err != nil {
 		return false, err
 	}
@@ -277,8 +295,8 @@ func (m *ModuleParser) crawlJavascriptFile(ctx context.Context, href string) (bo
 		if err != nil {
 			return false, err
 		}
-		m.client.Logger.Info().Int64("ls_version", versionInt).Msg("Found LSVersion in JS file")
-		m.client.configs.VersionID = versionInt
+		m.log.Info().Int64("ls_version", versionInt).Msg("Found LSVersion in JS file")
+		m.configs.VersionID = versionInt
 		return true, nil
 	}
 	return false, nil
@@ -308,12 +326,12 @@ func (m *ModuleParser) handleModule(data *ModuleEntry) error {
 		if string(data.Data[0]) != `"handlePayload"` {
 			return fmt.Errorf("unexpected Bootloader command %s", data.Data[0])
 		}
-		err := m.HandleBootloaderPayload(data.Data[2], &m.client.configs.BrowserConfigTable.BootloaderConfig)
+		err := m.HandleBootloaderPayload(data.Data[2], &m.configs.BrowserConfigTable.BootloaderConfig)
 		if err != nil {
 			return fmt.Errorf("failed to handle bootloader payload: %w", err)
 		}
 	case "HasteSupportData":
-		//m.client.Logger.Debug().Bytes("data", data.Data[2]).Msg("Got haste support data")
+		//m.log.Debug().Bytes("data", data.Data[2]).Msg("Got haste support data")
 	}
 	return nil
 }

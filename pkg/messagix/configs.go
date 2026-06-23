@@ -1,70 +1,36 @@
 package messagix
 
 import (
-	"cmp"
 	"context"
 	"fmt"
-	"reflect"
-	"strconv"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
-	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-type Configs struct {
-	client             *Client
-	BrowserConfigTable *types.SchedulerJSDefineConfig
-	LSDToken           string
-	CometReq           string
-	VersionID          int64
-	Jazoest            string
-	WebSessionID       string
-	RoutingNamespace   string
-	Bitmap             *crypto.Bitmap
-	CSRBitmap          *crypto.Bitmap
-	ParentThreadKeys   []int64
-}
-
-func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.LSTable, error) {
-	if c.client.socket != nil {
-		c.client.socket.previouslyConnected = false
+func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LSTable, error) {
+	if c.socket != nil {
+		c.socket.previouslyConnected = false
 	}
-	authenticated := c.client.IsAuthenticated()
-	c.WebSessionID = methods.GenerateWebsessionID(authenticated)
-	c.LSDToken = c.BrowserConfigTable.LSD.Token
-
-	c.Bitmap, c.CSRBitmap = c.LoadBitmaps()
-
-	if !authenticated {
-		if c.Bitmap.CompressedStr != "" {
-			c.client.Logger.Trace().Any("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
-			c.client.Logger.Trace().Any("value", c.CSRBitmap.CompressedStr).Msg("Loaded __csr bitmap")
-		}
-		c.client.Logger.Debug().Any("platform", c.client.Platform).Msg("Configs loaded, but not yet logged in.")
-		return ls, nil
+	authenticated := c.IsAuthenticated()
+	err := c.configs.Setup(authenticated)
+	if err != nil || !authenticated {
+		return ls, err
 	}
 
-	if c.client.Platform == types.Instagram {
-		c.client.socket.broker = "wss://edge-chat.instagram.com/chat?"
-		currentUserAppID, _ := strconv.ParseInt(c.BrowserConfigTable.CurrentUserInitialData.AppID, 10, 64)
-		c.BrowserConfigTable.MqttWebConfig.AppID = cmp.Or(
-			c.BrowserConfigTable.MessengerWebInitData.AppID,
-			currentUserAppID,
-			936619743392459,
-		)
+	if c.Platform == types.Instagram {
+		c.socket.broker = "wss://edge-chat.instagram.com/chat?"
 	} else {
-		if c.BrowserConfigTable.MqttWebConfig.Endpoint == "" {
+		if c.configs.BrowserConfigTable.MqttWebConfig.Endpoint == "" {
 			return ls, fmt.Errorf("MQTT broker endpoint not found in page response (MqttWebConfig.Endpoint is empty)")
 		}
-		c.client.socket.broker = c.BrowserConfigTable.MqttWebConfig.Endpoint
+		c.socket.broker = c.configs.BrowserConfigTable.MqttWebConfig.Endpoint
 	}
-	c.client.syncManager.syncParams = &c.BrowserConfigTable.LSPlatformMessengerSyncParams
+	c.syncManager.syncParams = &c.configs.BrowserConfigTable.LSPlatformMessengerSyncParams
 	if len(ls.LSExecuteFinallyBlockForSyncTransaction) == 0 {
-		c.client.Logger.Warn().Msg("Syncing initial data via graphql")
-		err := c.client.syncManager.UpdateDatabaseSyncParams(
+		c.Logger.Warn().Msg("Syncing initial data via graphql")
+		err := c.syncManager.UpdateDatabaseSyncParams(
 			[]*socket.QueryMetadata{
 				{DatabaseId: 1, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.MailBox},
 				{DatabaseId: 2, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
@@ -75,7 +41,7 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 			return ls, fmt.Errorf("failed to update sync params for databases: 1, 2, 95: %w", err)
 		}
 
-		ls, err = c.client.syncManager.SyncDataGraphQL(ctx, []int64{1, 2, 95})
+		ls, err = c.syncManager.SyncDataGraphQL(ctx, []int64{1, 2, 95})
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95: %w", err)
 		} else if ls == nil {
@@ -83,54 +49,23 @@ func (c *Configs) SetupConfigs(ctx context.Context, ls *table.LSTable) (*table.L
 		}
 	} else {
 		if len(ls.LSUpsertSyncGroupThreadsRange) > 0 {
-			err := c.client.syncManager.updateThreadRanges(ls.LSUpsertSyncGroupThreadsRange)
+			err := c.syncManager.updateThreadRanges(ls.LSUpsertSyncGroupThreadsRange)
 			if err != nil {
 				return ls, fmt.Errorf("failed to update thread ranges from js module data: %w", err)
 			}
 		}
-		err := c.client.syncManager.SyncTransactions(ls.LSExecuteFirstBlockForSyncTransaction)
+		err := c.syncManager.SyncTransactions(ls.LSExecuteFirstBlockForSyncTransaction)
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
 		}
 	}
 	var ptks []int64
 	for _, ptk := range ls.LSThreadsRangesQuery {
-		c.client.Logger.Trace().Any("data", ptk).Msg("Found parent thread key")
+		c.Logger.Trace().Any("data", ptk).Msg("Found parent thread key")
 		ptks = append(ptks, ptk.ParentThreadKey)
 	}
-	c.client.configs.ParentThreadKeys = ptks
-	c.client.Logger.Trace().Str("value", c.Bitmap.CompressedStr).Msg("Loaded __dyn bitmap")
-	c.client.Logger.Trace().Str("value", c.CSRBitmap.CompressedStr).Msg("Loaded __csr bitmap")
-	c.client.Logger.Trace().
-		Int64("versionId", c.VersionID).
-		Int64("appId", c.BrowserConfigTable.MessengerWebInitData.AppID).
-		Msg("Loaded versionId & appId")
-	c.client.Logger.Debug().Str("broker", c.client.socket.broker).Msg("Configs successfully setup!")
+	c.configs.ParentThreadKeys = ptks
+	c.Logger.Debug().Str("broker", c.socket.broker).Msg("Configs successfully setup!")
 
 	return ls, nil
-}
-
-func (c *Configs) ParseFormInputs(inputs []InputTag, reflectedMs reflect.Value) {
-	for _, input := range inputs {
-		attr := input.Attributes
-		key := attr["name"]
-		val := attr["value"]
-
-		field := reflectedMs.FieldByNameFunc(func(s string) bool {
-			field, _ := reflectedMs.Type().FieldByName(s)
-			return field.Tag.Get("name") == key
-		})
-
-		if field.IsValid() && field.CanSet() {
-			field.SetString(val)
-		}
-	}
-}
-
-// (bitmap, csrBitmap)
-func (c *Configs) LoadBitmaps() (*crypto.Bitmap, *crypto.Bitmap) {
-	bitmap := crypto.NewBitmap().Update(c.Bitmap.BMap).ToCompressedString()
-	csrBitmap := crypto.NewBitmap().Update(c.CSRBitmap.BMap).ToCompressedString()
-
-	return bitmap, csrBitmap
 }

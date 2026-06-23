@@ -14,6 +14,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -35,33 +36,6 @@ func (fb *MessengerLiteMethods) GetSuggestedDeviceID() uuid.UUID {
 	return fb.deviceID
 }
 
-type NetworkTags struct {
-	Product         string `json:"product"`
-	Purpose         string `json:"purpose,omitempty"`
-	RequestCategory string `json:"request_category,omitempty"`
-	RetryAttempt    string `json:"retry_attempt"`
-}
-
-type RequestAnalytics struct {
-	NetworkTags NetworkTags `json:"network_tags"`
-}
-
-func makeRequestAnalyticsHeader() (string, error) {
-	anal := RequestAnalytics{
-		NetworkTags: NetworkTags{
-			Product:         useragent.MessengerLiteAppId,
-			RequestCategory: "graphql",
-			Purpose:         "fetch",
-			RetryAttempt:    "0",
-		},
-	}
-	hdr, err := json.Marshal(anal)
-	if err != nil {
-		return "", fmt.Errorf("make analytics header: %w", err)
-	}
-	return string(hdr), nil
-}
-
 type LightspeedKeyResponse struct {
 	KeyID     int    `json:"key_id"`
 	PublicKey string `json:"public_key"`
@@ -81,7 +55,7 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 			}
 			return encryptedPW, nil
 		},
-		MakeBloksRequest: fb.client.MakeBloksRequest,
+		MakeBloksRequest: fb.client.http.MakeBloksRequest,
 	}
 }
 
@@ -101,7 +75,7 @@ func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 	}
 	fullURL := endpoint + "?" + query.Encode()
 
-	analHdr, err := makeRequestAnalyticsHeader()
+	analHdr, err := httpclient.MakeRequestAnalyticsHeader()
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +94,7 @@ func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 		httpHeaders.Set(k, v)
 	}
 
-	_, responseBytes, err := c.MakeRequest(ctx, fullURL, "GET", httpHeaders, nil, types.NONE)
+	_, responseBytes, err := c.http.MakeRequest(ctx, fullURL, "GET", httpHeaders, nil, types.NONE)
 	if err != nil {
 		return nil, err
 	}

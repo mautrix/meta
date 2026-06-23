@@ -2,7 +2,6 @@ package messagix
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +18,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exhttp"
 	"go.mau.fi/util/ptr"
-	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/packets"
@@ -94,32 +92,6 @@ func (s *Socket) CanConnect() error {
 	return nil
 }
 
-func (c *Client) GetDialer() *websocket.DialOptions {
-	transport := &http.Transport{}
-	if c.httpProxy != nil {
-		transport.Proxy = c.httpProxy
-	} else if c.socksProxy != nil {
-		if contextDialer, ok := c.socksProxy.(proxy.ContextDialer); ok {
-			transport.DialContext = contextDialer.DialContext
-		} else {
-			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return c.socksProxy.Dial(network, addr)
-			}
-		}
-	}
-	if DisableTLSVerification {
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-	}
-	return &websocket.DialOptions{
-		HTTPClient: &http.Client{
-			Timeout:   HandshakeTimeout,
-			Transport: transport,
-		},
-	}
-}
-
 func (s *Socket) Connect(ctx context.Context) error {
 	err := s.CanConnect()
 	if err != nil {
@@ -128,7 +100,7 @@ func (s *Socket) Connect(ctx context.Context) error {
 
 	brokerUrl := s.BuildBrokerURL()
 
-	opts := s.client.GetDialer()
+	opts := s.client.http.GetWebsocketDialer()
 	opts.HTTPHeader = s.getConnHeaders()
 	s.client.Logger.Debug().Str("broker", brokerUrl).Msg("Dialing socket")
 	conn, _, err := websocket.Dial(ctx, brokerUrl, opts)
@@ -167,11 +139,10 @@ func (s *Socket) BuildBrokerURL() string {
 }
 
 var (
-	PongTimeout      = 30 * time.Second
-	PacketTimeout    = 30 * time.Second
-	PingInterval     = 10 * time.Second
-	HandshakeTimeout = 20 * time.Second
-	WriteTimeout     = 20 * time.Second
+	PongTimeout   = 30 * time.Second
+	PacketTimeout = 30 * time.Second
+	PingInterval  = 10 * time.Second
+	WriteTimeout  = 20 * time.Second
 )
 
 func (s *Socket) Disconnect() {

@@ -92,7 +92,7 @@ func (c *Client) doE2EERequest(ctx context.Context, endpoint string, body url.Va
 		Str("url", addr).
 		Any("body", body).
 		Msg("ICDC request")
-	resp, err := c.http.Do(req)
+	resp, err := c.http.HTTP.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

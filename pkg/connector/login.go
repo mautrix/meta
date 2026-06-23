@@ -19,6 +19,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -226,8 +227,8 @@ var (
 func getMessagixClient(log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies, useProxy bool) (*messagix.Client, error) {
 	client := messagix.NewClient(c, log, conn.getMessagixConfig())
 	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
-		client.GetNewProxy = conn.getProxy
-		if !client.UpdateProxy("login") {
+		client.GetHTTP().GetNewProxy = conn.getProxy
+		if !client.GetHTTP().UpdateProxy("login") {
 			return nil, fmt.Errorf("failed to update proxy")
 		}
 	}
@@ -249,13 +250,13 @@ func loginWithCookies(
 	user, tbl, err := client.LoadMessagesPage(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to load messages page for login")
-		if errors.Is(err, messagix.ErrChallengeRequired) {
+		if errors.Is(err, httpclient.ErrChallengeRequired) {
 			return nil, ErrLoginChallenge
-		} else if errors.Is(err, messagix.ErrCheckpointRequired) {
+		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
 			return nil, ErrLoginCheckpoint
-		} else if errors.Is(err, messagix.ErrConsentRequired) {
+		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			return nil, ErrLoginConsent
-		} else if errors.Is(err, messagix.ErrTokenInvalidated) {
+		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
 			return nil, ErrLoginTokenInvalidated
 		} else {
 			return nil, fmt.Errorf("%w: %w", ErrLoginUnknown, err)

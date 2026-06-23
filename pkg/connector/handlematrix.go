@@ -22,6 +22,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -117,12 +118,12 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
 			)
 		}
-		if errors.Is(err, messagix.ErrTokenInvalidated) {
+		if errors.Is(err, httpclient.ErrTokenInvalidated) {
 			if m.canReconnect() {
 				go m.FullReconnect()
 			}
 			return nil, err
-		} else if errors.Is(err, messagix.ErrConsentRequired) {
+		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			code := IGConsentRequired
 			if m.LoginMeta.Platform.IsMessenger() {
 				code = FBConsentRequired

@@ -136,7 +136,7 @@ func mainE() error {
 		mcl := messagix.NewClient(&cookies.Cookies{
 			Platform: types.MessengerLite,
 		}, log, &messagix.Config{})
-		mcl.MakeBloksRequest(ctx, &bloks.BloksAppDoc, bloks.NewBloksRequest(*doRPC, paramsInner))
+		mcl.GetHTTP().MakeBloksRequest(ctx, &bloks.BloksAppDoc, bloks.NewBloksRequest(*doRPC, paramsInner))
 
 		return nil
 	}

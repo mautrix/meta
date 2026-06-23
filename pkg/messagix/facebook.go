@@ -30,7 +30,7 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 		return err
 	}
 
-	payload := c.newHTTPQuery()
+	payload := c.http.NewHTTPQuery()
 	payload.AppID = "1443096165982425"
 	payload.PushEndpoint = endpoint
 	payload.SubscriptionKeys = string(jsonKeys)
@@ -42,14 +42,14 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 
 	payloadBytes := []byte(form.Encode())
 
-	headers := c.buildHeaders(true, false)
+	headers := c.http.BuildHeaders(true, false)
 	headers.Set("Referer", c.GetEndpoint("base_url"))
 	headers.Set("Sec-fetch-site", "same-origin")
 	headers.Set("Accept", "*/*")
 
 	url := c.GetEndpoint("web_push")
 
-	resp, body, err := c.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
+	resp, body, err := c.http.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
 	if err != nil {
 		return err
 	}

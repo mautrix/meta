@@ -94,7 +94,7 @@ func (m *MetaConnector) ResetHTTPTransport() {
 		msgconv.SetProxy(m.Config.Proxy)
 	}
 	for _, login := range m.Bridge.GetAllCachedUserLogins() {
-		login.Client.(*MetaClient).Client.SetHTTP(cfg)
+		login.Client.(*MetaClient).Client.GetHTTP().SetConfig(cfg)
 	}
 }
 

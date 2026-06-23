@@ -1,4 +1,4 @@
-package messagix
+package httpclient
 
 import (
 	"bytes"
@@ -27,17 +27,17 @@ import (
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
+func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
 	appID := variables.Params.AppID
-	c.Logger.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
+	c.log.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
 
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bloks variables to json string: %w", err)
 	}
-	c.Logger.Trace().Str("bloks_app", appID).Bytes("req", vBytes).Msg("Logging raw Bloks request")
+	c.log.Trace().Str("bloks_app", appID).Bytes("req", vBytes).Msg("Logging raw Bloks request")
 
-	payload := &HttpQuery{}
+	payload := &HTTPQuery{}
 	payload.Method = "post"
 	payload.Pretty = "false"
 	payload.Format = "json"
@@ -75,14 +75,14 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 
 	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
 
-	reqUrl := c.GetEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
+	reqUrl := c.parent.GetEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
 	_, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 
 	if err != nil {
 		return nil, err
 	}
 
-	c.Logger.Trace().Str("bloks_app", appID).Bytes("resp", respData).Msg("Logging raw Bloks response")
+	c.log.Trace().Str("bloks_app", appID).Bytes("resp", respData).Msg("Logging raw Bloks response")
 
 	var respOuter bloks.BloksResponse
 	err = json.Unmarshal(respData, &respOuter)
@@ -107,18 +107,18 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 	}
 
 	if innerData == "" {
-		c.Logger.Trace().Bytes("response", respData).Msg("failed to find inner bloks payload")
+		c.log.Trace().Bytes("response", respData).Msg("failed to find inner bloks payload")
 		return nil, fmt.Errorf("couldn't find inner bloks payload")
 	}
 
 	var respInner bloks.BloksBundle
 	err = json.Unmarshal([]byte(innerData), &respInner)
 	if err != nil {
-		c.Logger.Trace().Bytes("response", respData).Msg("failed to parse inner bloks payload")
+		c.log.Trace().Bytes("response", respData).Msg("failed to parse inner bloks payload")
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
 	}
 
-	if c.logRedactedBloksPayloads {
+	if c.LogRedactedBloksPayloads {
 		var redactedRespInner bloks.BloksBundle
 		err = json.Unmarshal([]byte(innerData), &redactedRespInner)
 		if err != nil {
@@ -140,13 +140,15 @@ func (c *Client) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, vari
 			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
 		}
 		enc := base64.StdEncoding.AppendEncode(nil, compressed.Bytes())
-		c.Logger.Debug().Str("bloks_app", appID).Bytes("resp_gz", enc).Msg("Logging redacted Bloks response")
+		c.log.Debug().Str("bloks_app", appID).Bytes("resp_gz", enc).Msg("Logging redacted Bloks response")
 	}
 
 	return &respInner, nil
 }
 
-func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {
+var antiJSPrefix = []byte("for (;;);")
+
+func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {
 	graphQLDoc, ok := graphql.GraphQLDocs[name]
 	if !ok {
 		return nil, nil, fmt.Errorf("could not find graphql doc by the name of: %s", name)
@@ -157,7 +159,7 @@ func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables 
 		return nil, nil, fmt.Errorf("failed to marshal graphql variables to json string: %w", err)
 	}
 
-	payload := c.newHTTPQuery()
+	payload := c.NewHTTPQuery()
 	payload.FbAPICallerClass = graphQLDoc.CallerClass
 	if payload.FbAPICallerClass == "" {
 		payload.FbAPICallerClass = "RelayModern"
@@ -179,25 +181,25 @@ func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables 
 
 	payloadBytes := []byte(form.Encode())
 
-	headers := c.buildHeaders(true, false)
+	headers := c.BuildHeaders(true, false)
 	headers.Set("x-fb-friendly-name", graphQLDoc.FriendlyName)
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
-	headers.Set("origin", c.GetEndpoint("base_url"))
-	headers.Set("referer", c.GetEndpoint("messages")+"/")
+	headers.Set("origin", c.parent.GetEndpoint("base_url"))
+	headers.Set("referer", c.parent.GetEndpoint("messages")+"/")
 
-	reqUrl := c.GetEndpoint("graphql")
+	reqUrl := c.parent.GetEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
 	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 	if err == nil && resp != nil {
-		c.cookies.UpdateFromResponse(resp)
+		c.parent.GetCookies().UpdateFromResponse(resp)
 	}
 	respData = bytes.TrimPrefix(respData, antiJSPrefix)
 	return resp, respData, err
 }
 
-func (c *Client) makeLSRequest(ctx context.Context, variables *graphql.LSPlatformGraphQLLightspeedVariables, reqType int) (*table.LSTable, error) {
+func (c *HTTPClient) MakeLSRequest(ctx context.Context, variables *graphql.LSPlatformGraphQLLightspeedVariables, reqType int) (*table.LSTable, error) {
 	strPayload, err := json.Marshal(&variables)
 	if err != nil {
 		return nil, err
@@ -213,12 +215,12 @@ func (c *Client) makeLSRequest(ctx context.Context, variables *graphql.LSPlatfor
 	c.lsRequests++
 
 	var lsRequestQueryName string
-	if c.Platform.IsMessenger() {
+	if c.parent.GetPlatform().IsMessenger() {
 		lsRequestQueryName = "LSGraphQLRequest"
 	} else {
 		lsRequestQueryName = "LSGraphQLRequestIG"
 	}
-	_, respBody, err := c.makeGraphQLRequest(ctx, lsRequestQueryName, &lsVariables)
+	_, respBody, err := c.MakeGraphQLRequest(ctx, lsRequestQueryName, &lsVariables)
 	if err != nil {
 		return nil, err
 	}
@@ -227,14 +229,14 @@ func (c *Client) makeLSRequest(ctx context.Context, variables *graphql.LSPlatfor
 	err = json.Unmarshal(respBody, &graphQLData)
 	if err != nil {
 		if len(respBody) < 4096 {
-			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored LS response bytes")
+			c.log.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody)).Msg("Errored LS response bytes")
 		} else {
-			c.Logger.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
+			c.log.Debug().Str("respBody", base64.StdEncoding.EncodeToString(respBody[:4096])).Msg("Errored LS response bytes (truncated)")
 		}
 		return nil, fmt.Errorf("failed to unmarshal LSRequest response bytes into LSPlatformGraphQLLightspeedRequestQuery struct: %w", err)
 	}
 	if graphQLData.ErrorCode != 0 {
-		c.Logger.Warn().
+		c.log.Warn().
 			Str("error_description", graphQLData.ErrorDescription).
 			Str("error_summary", graphQLData.ErrorSummary).
 			Int("error_code", graphQLData.ErrorCode).
@@ -243,7 +245,7 @@ func (c *Client) makeLSRequest(ctx context.Context, variables *graphql.LSPlatfor
 			return nil, fmt.Errorf("graphql error %w", &graphQLData.ErrorResponse)
 		}
 	} else if graphQLData.Data == nil {
-		c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no data and no error")
+		c.log.Debug().RawJSON("respBody", respBody).Msg("LS response with no data and no error")
 		return nil, fmt.Errorf("graphql request didn't return data")
 	}
 	var lightSpeedRes []byte
@@ -260,13 +262,13 @@ func (c *Client) makeLSRequest(ctx context.Context, variables *graphql.LSPlatfor
 				return &from
 			})...)
 		}
-		c.Logger.Debug().RawJSON("respBody", respBody).Msg("LS response with no lightspeed response data and no error")
+		c.log.Debug().RawJSON("respBody", respBody).Msg("LS response with no lightspeed response data and no error")
 		return nil, fmt.Errorf("graphql request didn't return LS data")
 	}
 	var lsData *lightspeed.LightSpeedData
 	err = json.Unmarshal(lightSpeedRes, &lsData)
 	if err != nil {
-		c.Logger.Debug().RawJSON("respBody", respBody).Msg("Response data for errored inner response")
+		c.log.Debug().RawJSON("respBody", respBody).Msg("Response data for errored inner response")
 		return nil, fmt.Errorf("failed to unmarshal LSRequest lightspeed payload into lightspeed.LightSpeedData: %w", err)
 	}
 

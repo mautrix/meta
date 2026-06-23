@@ -1,4 +1,4 @@
-package messagix
+package httpclient
 
 import (
 	"encoding/base64"
@@ -24,7 +24,7 @@ func (m *ModuleParser) HandleRawJSON(data []byte, id string) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse data from types.EnvJSON: %w", err)
 		}
-		m.client.configs.RoutingNamespace = d.RoutingNamespace
+		m.configs.RoutingNamespace = d.RoutingNamespace
 	case "__eqmc":
 		var d types.Eqmc
 		err = json.Unmarshal(data, &d)
@@ -35,8 +35,8 @@ func (m *ModuleParser) HandleRawJSON(data []byte, id string) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse ajax url data from types.Eqmc: %w", err)
 		}
-		m.client.configs.Jazoest = ajaxData.Jazoest
-		m.client.configs.CometReq = ajaxData.CometReq
+		m.configs.Jazoest = ajaxData.Jazoest
+		m.configs.CometReq = ajaxData.CometReq
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func (m *ModuleParser) handleConfigData(configData *ModuleEntry, reflectedMs ref
 		return nil
 	}
 
-	m.client.configs.Bitmap.BMap = append(m.client.configs.Bitmap.BMap, configID)
+	m.configs.Bitmap.BMap = append(m.configs.Bitmap.BMap, configID)
 	field := reflectedMs.FieldByName(configData.Name)
 	if !field.IsValid() || !field.CanSet() {
 		return nil
@@ -121,7 +121,7 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 		} else if cometType == "initialize" {
 			expectedPreloadersRes := gjson.GetBytes(data.Data[2], "0.expectedPreloaders")
 			if !expectedPreloadersRes.IsArray() {
-				m.client.Logger.Trace().
+				m.log.Trace().
 					Str("comet_type", cometType).
 					Bytes("comet_data", data.Data[2]).
 					Msg("Unsupported comet data: expectedPreloaders not found in CometPlatformRootClient initialize")
@@ -133,7 +133,7 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 				expectedPreloaders = json.RawMessage(expectedPreloadersRes.Raw)
 			}
 		} else {
-			m.client.Logger.Trace().
+			m.log.Trace().
 				Str("comet_type", cometType).
 				Bytes("comet_data", data.Data[2]).
 				Msg("Unsupported comet data")
@@ -156,8 +156,8 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 			if err != nil {
 				return fmt.Errorf("failed to parse graphql lightspeed preload request payload: %w", err)
 			}
-			m.client.configs.VersionID = syncData.Version
-			m.client.Logger.Debug().Int64("ls_version", m.client.configs.VersionID).Msg("Found LSVersion in SSJS")
+			m.configs.VersionID = syncData.Version
+			m.log.Debug().Int64("ls_version", m.configs.VersionID).Msg("Found LSVersion in SSJS")
 			break
 		}
 	case "RelayPrefetchedStreamCache":
@@ -236,7 +236,7 @@ func (m *ModuleParser) SSJSHandle(data json.RawMessage) error {
 			}
 			return fmt.Errorf("failed to unmarshal ssjs data into default_define module entries: %w", err)
 		}
-		reflectedConfigTable := reflect.ValueOf(m.client.configs.BrowserConfigTable).Elem()
+		reflectedConfigTable := reflect.ValueOf(m.configs.BrowserConfigTable).Elem()
 		for _, entry := range entries {
 			err = m.handleConfigData(entry, reflectedConfigTable)
 			if err != nil {
@@ -248,14 +248,14 @@ func (m *ModuleParser) SSJSHandle(data json.RawMessage) error {
 	var bboxContainer BBoxContainer
 	err := json.Unmarshal(data, &bboxContainer)
 	if err != nil {
-		m.client.Logger.Trace().
+		m.log.Trace().
 			Str("ssjs_content", base64.StdEncoding.EncodeToString(data)).
 			Msg("Errored ssjs data")
 		return fmt.Errorf("failed to unmarshal ssjs data into bbox container: %w", err)
 	} else if bboxContainer.BBox == nil {
 		return nil
 	}
-	reflectedConfigTable := reflect.ValueOf(m.client.configs.BrowserConfigTable).Elem()
+	reflectedConfigTable := reflect.ValueOf(m.configs.BrowserConfigTable).Elem()
 	for _, req := range bboxContainer.BBox.Require {
 		err = m.handleRequire(req)
 		if err != nil {
@@ -284,7 +284,7 @@ func (m *ModuleParser) HandleBootloaderPayload(payload json.RawMessage, bootload
 			if err != nil {
 				return err
 			}
-			m.client.configs.CSRBitmap.BMap = append(m.client.configs.CSRBitmap.BMap, newBits...)
+			m.configs.CSRBitmap.BMap = append(m.configs.CSRBitmap.BMap, newBits...)
 		}
 
 		if len(data.RsrcMap) > 0 {
@@ -295,7 +295,7 @@ func (m *ModuleParser) HandleBootloaderPayload(payload json.RawMessage, bootload
 					if err != nil {
 						return err
 					}
-					m.client.configs.CSRBitmap.BMap = append(m.client.configs.CSRBitmap.BMap, newBits...)
+					m.configs.CSRBitmap.BMap = append(m.configs.CSRBitmap.BMap, newBits...)
 				}
 			}
 		}
