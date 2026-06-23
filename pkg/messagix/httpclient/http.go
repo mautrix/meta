@@ -390,7 +390,7 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 	return response, responseBody, nil
 }
 
-func (c *HTTPClient) FetchPageData(ctx context.Context, page string) ([]byte, error) {
+func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, error) {
 	headers := c.BuildHeaders(true, true)
 	//headers.Set("host", m.client.getEndpoint("host"))
 	_, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
@@ -436,7 +436,7 @@ func (c *HTTPClient) BuildHeaders(withCookies, isSecFetchDocument bool) http.Hea
 }
 
 func (c *HTTPClient) buildMessengerLiteHeaders() (http.Header, error) {
-	analHdr, err := MakeRequestAnalyticsHeader()
+	analyticsTags, err := MakeRequestAnalyticsHeader()
 	if err != nil {
 		return nil, err
 	}
@@ -448,32 +448,33 @@ func (c *HTTPClient) buildMessengerLiteHeaders() (http.Header, error) {
 	headers.Set("accept", "*/*")
 	headers.Set("priority", "u=3, i")
 	headers.Set("accept-language", "en-US,en;q=0.9")
-	headers.Set("x-fb-request-analytics-tags", analHdr)
+	headers.Set("x-fb-request-analytics-tags", analyticsTags)
 
 	return headers, nil
 }
 
 func (c *HTTPClient) addFacebookHeaders(h *http.Header) {
-	if c.configs != nil && c.configs.LSDToken != "" {
+	if c != nil && c.configs != nil && c.configs.LSDToken != "" {
 		h.Set("x-fb-lsd", c.configs.LSDToken)
 	}
 }
 
 func (c *HTTPClient) addInstagramHeaders(h *http.Header) {
-	if c.configs != nil {
-		if csrfToken := c.parent.GetCookies().Get(cookies.IGCookieCSRFToken); csrfToken != "" {
-			h.Set("x-csrftoken", csrfToken)
-		}
+	if c == nil || c.configs == nil {
+		return
+	}
+	if csrfToken := c.parent.GetCookies().Get(cookies.IGCookieCSRFToken); csrfToken != "" {
+		h.Set("x-csrftoken", csrfToken)
+	}
 
-		if mid := c.parent.GetCookies().Get(cookies.IGCookieMachineID); mid != "" {
-			h.Set("x-mid", mid)
-		}
+	if mid := c.parent.GetCookies().Get(cookies.IGCookieMachineID); mid != "" {
+		h.Set("x-mid", mid)
+	}
 
-		if c.configs.BrowserConfigTable != nil {
-			if c.parent.GetCookies().IGWWWClaim != "" {
-				h.Set("x-ig-www-claim", c.parent.GetCookies().IGWWWClaim)
-			}
-			h.Set("x-ig-app-id", c.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
+	if c.configs.BrowserConfigTable != nil {
+		if c.parent.GetCookies().IGWWWClaim != "" {
+			h.Set("x-ig-www-claim", c.parent.GetCookies().IGWWWClaim)
 		}
+		h.Set("x-ig-app-id", c.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
 	}
 }

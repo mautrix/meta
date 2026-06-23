@@ -101,7 +101,7 @@ func NewModuleParser(client Client, http *HTTPClient, configs *Configs) *ModuleP
 }
 
 func (m *ModuleParser) Load(ctx context.Context, page string) error {
-	htmlData, err := m.http.FetchPageData(ctx, page)
+	htmlData, err := m.http.fetchPageData(ctx, page)
 	if err != nil {
 		return err
 	}

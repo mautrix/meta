@@ -21,7 +21,7 @@ type RequestAnalytics struct {
 func MakeRequestAnalyticsHeader() (string, error) {
 	anal := RequestAnalytics{
 		NetworkTags: NetworkTags{
-			Product:         useragent.MessengerLiteAppId,
+			Product:         useragent.MessengerLiteAppID,
 			RequestCategory: "graphql",
 			Purpose:         "fetch",
 			RetryAttempt:    "0",

@@ -75,15 +75,15 @@ func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 	}
 	fullURL := endpoint + "?" + query.Encode()
 
-	analHdr, err := httpclient.MakeRequestAnalyticsHeader()
+	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader()
 	if err != nil {
 		return nil, err
 	}
 
 	headers := map[string]string{
 		"accept":                      "*/*",
-		"x-fb-appid":                  useragent.MessengerLiteAppId,
-		"x-fb-request-analytics-tags": analHdr,
+		"x-fb-appid":                  useragent.MessengerLiteAppID,
+		"x-fb-request-analytics-tags": analyticsTags,
 		"user-agent":                  useragent.MessengerLiteUserAgent,
 		"accept-language":             "en-US,en;q=0.9",
 		"request_token":               uuid.New().String(),
