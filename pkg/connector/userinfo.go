@@ -17,6 +17,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 )
 
+//lint:ignore U1000 -
 func (m *MetaClient) getFBIDForIGUser(ctx context.Context, igid string) (int64, error) {
 	if fbid := m.igUserIDs[igid]; fbid != 0 {
 		return fbid, nil
@@ -30,6 +31,7 @@ func (m *MetaClient) getFBIDForIGUser(ctx context.Context, igid string) (int64, 
 	return fbid, nil
 }
 
+//lint:ignore U1000 -
 func (m *MetaClient) getIGUserForFBID(ctx context.Context, fbid int64) (string, error) {
 	if igid := m.igUserIDsReverse[fbid]; igid != "" {
 		return igid, nil
@@ -43,6 +45,7 @@ func (m *MetaClient) getIGUserForFBID(ctx context.Context, fbid int64) (string, 
 	return igid, nil
 }
 
+//lint:ignore U1000 -
 func (m *MetaClient) getFBIDForIGThread(ctx context.Context, igid string) (int64, error) {
 	if fbid := m.igThreadIDs[igid]; fbid != 0 {
 		return fbid, nil

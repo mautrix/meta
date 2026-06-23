@@ -24,7 +24,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/data/endpoints"
-	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -51,7 +50,6 @@ type Client struct {
 	httpSettings exhttp.ClientSettings
 	proxyAddr    string
 	socket       *Socket
-	dgwSocket    *dgw.Socket
 	eventHandler EventHandler
 	configs      *Configs
 	syncManager  *SyncManager
@@ -376,51 +374,6 @@ func (c *Client) Connect(ctx context.Context) error {
 			c.UpdateProxy("reconnect")
 		}
 	}()
-	if c.Platform == types.Instagram && c.mayConnectToDGW {
-		go c.connectDGW(ctx)
-	}
-	return nil
-}
-
-func (c *Client) connectDGW(ctx context.Context) error {
-	reconnectIn := 2 * time.Second
-	for {
-		connectStart := time.Now()
-		err := c.connectDGWOnce(ctx)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if time.Since(connectStart) > 2*time.Minute {
-			reconnectIn = 2 * time.Second
-		} else {
-			reconnectIn *= 2
-			if reconnectIn > MaxConnectBackoff {
-				reconnectIn = MaxConnectBackoff
-			}
-		}
-		if err != nil {
-			c.Logger.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in DGW connection, reconnecting")
-		} else {
-			c.Logger.Warn().Dur("reconnect_in", reconnectIn).Msg("DGW connection closed without error, reconnecting")
-		}
-		select {
-		case <-time.After(reconnectIn):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-}
-
-func (c *Client) connectDGWOnce(ctx context.Context) error {
-	c.dgwSocket = dgw.NewSocketClient(c)
-	err := c.dgwSocket.CanConnect()
-	if err != nil {
-		return err
-	}
-	err = c.dgwSocket.Connect(ctx)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -432,9 +385,6 @@ func (c *Client) Disconnect() {
 		(*fn)()
 	}
 	c.socket.Disconnect()
-	if c.dgwSocket != nil {
-		c.dgwSocket.Disconnect()
-	}
 	if !c.connectionLoopStopped.WaitTimeout(5 * time.Second) {
 		c.Logger.Warn().Msg("Connection loop didn't stop in time")
 	}
@@ -513,7 +463,6 @@ func (c *Client) ForceReconnect() {
 		return
 	}
 	c.socket.Disconnect()
-	c.dgwSocket.Disconnect()
 }
 
 func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*socket.KeyStoreData, *table.LSTable, error) {

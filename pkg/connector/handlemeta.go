@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/url"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
-	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -163,45 +161,6 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		m.UserLogin.BridgeState.Send(m.metaState)
 		if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 			(*stopPeriodicReconnect)()
-		}
-	case *dgw.DGWEvent:
-		switch evt := evt.Event.(type) {
-		case dgw.DGWTypingActivityIndicator:
-			threadKey, err := m.getFBIDForIGThread(ctx, evt.InstagramThreadID)
-			if err != nil {
-				log.Warn().Any("event", evt).Err(err).Msg("Error getting FBID for IG thread ID")
-				return
-			}
-			if threadKey == 0 {
-				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown thread ID")
-				return
-			}
-			userID, err := m.getFBIDForIGUser(ctx, fmt.Sprintf("%d", evt.InstagramUserID))
-			if err != nil {
-				log.Warn().Any("event", evt).Err(err).Msg("Error getting FBID for IG user ID")
-				return
-			}
-			if userID == 0 {
-				log.Warn().Any("event", evt).Msg("Got activity indicator for unknown user ID")
-				return
-			}
-			timeout := 6 * time.Second
-			if !evt.IsTyping {
-				timeout = 0
-			}
-			m.UserLogin.QueueRemoteEvent(&simplevent.Typing{
-				EventMeta: simplevent.EventMeta{
-					Type:              bridgev2.RemoteEventTyping,
-					PortalKey:         m.makeFBPortalKey(threadKey, table.UNKNOWN_THREAD_TYPE),
-					UncertainReceiver: true,
-					Sender:            m.makeEventSender(userID),
-					Timestamp:         evt.Timestamp,
-				},
-				Timeout: timeout,
-				Type:    bridgev2.TypingTypeText,
-			})
-		default:
-			log.Warn().Type("event_type", evt).Msg("Unrecognized DGW event type from messagix")
 		}
 	default:
 		log.Warn().Type("event_type", evt).Msg("Unrecognized event type from messagix")
