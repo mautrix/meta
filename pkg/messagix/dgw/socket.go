@@ -39,7 +39,7 @@ import (
 
 type SocketOptions struct {
 	GetCookies func() string
-	OnConnect  func()
+	OnConnect  func(context.Context)
 	Origin     string
 	WSURL      string
 	DialOpts   websocket.DialOptions
@@ -103,11 +103,10 @@ func (s *Socket) sendFatalError(err error) {
 }
 
 type StreamInit struct {
-	Parameters        json.RawMessage
-	InitPayload       []byte
-	LogName           string
-	FrameHandler      func([]byte) error
-	SingleFrameStream bool
+	Parameters   json.RawMessage
+	InitPayload  []byte
+	LogName      string
+	FrameHandler func([]byte) error
 }
 
 func (s *Socket) DoOneOffStream(ctx context.Context, payload []byte) ([]byte, error) {
@@ -184,8 +183,9 @@ type wrappedDataFrame struct {
 func (s *Socket) Connect(ctx context.Context) (err error) {
 	if s.conn.Load() != nil {
 		return ErrSocketAlreadyOpen
+	} else if s.stopping.Load() {
+		return nil
 	}
-	s.stopping.Store(false)
 	s.DialOpts.HTTPHeader = s.getConnHeaders()
 
 	conn, resp, err := websocket.Dial(ctx, s.getConnURL(), &s.DialOpts)
@@ -198,15 +198,11 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 	conn.SetReadLimit(-1)
 	s.conn.Store(conn)
 	if s.stopping.Load() {
+		s.conn.Store(nil)
 		_ = conn.CloseNow()
-		return fmt.Errorf("socket was stopped while connecting")
+		return nil
 	}
-	err = s.readLoop(ctx, conn)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return s.readLoop(ctx, conn)
 }
 
 func (s *Socket) Disconnect() {
@@ -393,7 +389,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		}
 	}()
 
-	s.OnConnect()
+	s.OnConnect(ctx)
 
 	s.Log.Debug().Msg("DGW socket initialized")
 
