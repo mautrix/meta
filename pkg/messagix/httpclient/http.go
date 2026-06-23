@@ -262,7 +262,7 @@ var (
 	ErrAccountSuspended         = errors.New("account suspended")
 	ErrRequestFailed            = errors.New("failed to send request")
 	ErrResponseReadFailed       = errors.New("failed to read response body")
-	ErrServerError              = errors.New("server returned 5xx error")
+	ErrUnexpectedError          = errors.New("server returned unexpected HTTP status")
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
 	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
@@ -383,8 +383,8 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 		return nil, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, err)
 	}
 
-	if response.StatusCode >= 500 {
-		return nil, nil, fmt.Errorf("%w: %d", ErrServerError, response.StatusCode)
+	if response.StatusCode >= 400 {
+		return nil, nil, fmt.Errorf("%w %d", ErrUnexpectedError, response.StatusCode)
 	}
 
 	return response, responseBody, nil

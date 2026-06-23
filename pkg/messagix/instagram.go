@@ -151,13 +151,9 @@ func (ig *InstagramMethods) RegisterPushNotifications(ctx context.Context, endpo
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
 	url := c.GetEndpoint("web_push")
-	resp, body, err := c.http.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
+	_, body, err := c.http.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
 	if err != nil {
 		return err
-	}
-
-	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-		return fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
 	resBody := &struct {

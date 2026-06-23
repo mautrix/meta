@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
@@ -49,13 +48,9 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 
 	url := c.GetEndpoint("web_push")
 
-	resp, body, err := c.http.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
+	_, body, err := c.http.MakeRequest(ctx, url, "POST", headers, payloadBytes, types.FORM)
 	if err != nil {
 		return err
-	}
-
-	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-		return fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
 	body = bytes.TrimPrefix(body, antiJSPrefix)
