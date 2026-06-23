@@ -42,10 +42,11 @@ var (
 	//lint:ignore U1000 - alternatives for minimal*Sync
 	fbInitialSync = []int64{1, 2 /*5,*/, 16, 26, 28, 89, 95, 104, 120, 140, 141, 142, 143, 145, 196, 197, 198, 202}
 
-	minimalReconnectSync   = []int64{1, 2}
-	minimalInitialSync     = []int64{1}
-	minimalFBInitialSync   = []int64{1, 104}
-	minimalFBReconnectSync = []int64{1, 2, 104}
+	minimalReconnectSync = []int64{1, 2}
+	minimalInitialSync   = []int64{1}
+	// DB 95 carries message-request threads.
+	minimalFBInitialSync   = []int64{1, 95, 104}
+	minimalFBReconnectSync = []int64{1, 2, 95, 104}
 
 	shouldRecurseDatabase = map[int64]bool{
 		1:   true,

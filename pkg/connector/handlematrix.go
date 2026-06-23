@@ -703,6 +703,19 @@ func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *
 
 	if platform.IsInstagram() {
 		return m.Client.Instagram.AcceptMessageRequest(ctx, strconv.FormatInt(threadID, 10))
+	} else if platform.IsMessenger() {
+		// Message-request threads live in sync group 95, and hybrid (E2EE) threads must be accepted
+		// using their original Facebook thread key rather than the WhatsApp thread JID the portal is
+		// keyed by.
+		threadKey := threadID
+		if fbKey := msg.Portal.Metadata.(*metaid.PortalMetadata).FBThreadKey; fbKey != 0 {
+			threadKey = fbKey
+		}
+		_, err := m.Client.ExecuteTasks(ctx, &socket.AcceptMessageRequestTask{
+			ThreadKey: threadKey,
+			SyncGroup: 95,
+		})
+		return err
 	}
 
 	return bridgev2.WrapErrorInStatus(fmt.Errorf("accepting message requests is not implemented for %v", platform)).

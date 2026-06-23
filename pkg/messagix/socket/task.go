@@ -7,6 +7,7 @@ package socket
 var TaskLabels = map[string]string{
 	"UpdatePresence":               "3",
 	"ThreadMarkRead":               "21",
+	"AcceptMessageRequestTask":     "66",
 	"AddParticipantsTask":          "23",
 	"UpdateAdminTask":              "25",
 	"SendReactionTask":             "29",

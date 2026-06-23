@@ -66,6 +66,10 @@ func (mc *MessageConverter) ToMeta(
 		SendType:         table.TEXT,
 		SyncGroup:        1,
 	}
+	// On Messenger, replying from the pending inbox accepts the message request.
+	if portal.MessageRequest && client.Platform.IsMessenger() {
+		task.Source = table.MESSENGER_INBOX_PENDING_REQUESTS
+	}
 	if portal.Metadata.(*metaid.PortalMetadata).ThreadType == table.COMMUNITY_GROUP {
 		task.SyncGroup = 104
 		if threadRoot != nil {

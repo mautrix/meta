@@ -416,10 +416,15 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		innerQueue = append(innerQueue, rs)
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
+		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
+		info := m.wrapChatInfo(thread)
+		if fbKey != thread.ThreadKey {
+			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbKey))
+		}
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
-			Info:      m.wrapChatInfo(thread),
+			Info:      info,
 			Raw:       thread,
 			Members:   make(map[int64]bridgev2.ChatMember, thread.MemberCount),
 			m:         m,
@@ -428,13 +433,18 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		}
 	}
 	for _, thread := range tbl.LSUpdateOrInsertThread {
+		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
 		if _, ok := threadResyncs[thread.ThreadKey]; ok {
 			continue
 		}
+		info := m.wrapChatInfo(thread)
+		if fbKey != thread.ThreadKey {
+			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbKey))
+		}
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
-			Info:      m.wrapChatInfo(thread),
+			Info:      info,
 			Update:    thread,
 			Members:   make(map[int64]bridgev2.ChatMember),
 			m:         m,
@@ -639,6 +649,19 @@ func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
 		return true
 	}
 	return false
+}
+
+// setFBThreadKey persists the original Facebook thread key on the portal (which is otherwise keyed
+// by the WhatsApp thread JID). Tasks like accepting a message request need this key.
+func setFBThreadKey(fbKey int64) func(context.Context, *bridgev2.Portal) bool {
+	return func(_ context.Context, portal *bridgev2.Portal) bool {
+		meta := portal.Metadata.(*metaid.PortalMetadata)
+		if meta.FBThreadKey != fbKey {
+			meta.FBThreadKey = fbKey
+			return true
+		}
+		return false
+	}
 }
 
 func (m *MetaClient) handleMoveThreadToE2EE(tk handlerParams, msg *table.LSMoveThreadToE2EECutoverFolder) bridgev2.RemoteEvent {
