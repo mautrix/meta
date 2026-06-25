@@ -174,6 +174,9 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 }
 
 func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFunc string) error {
+	if m.LS == nil {
+		return nil
+	}
 	var lsPayloadStr string
 	var deps lightspeed.DependencyList
 	switch parserFunc {

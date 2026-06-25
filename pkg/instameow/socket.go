@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"go.mau.fi/util/exerrors"
@@ -119,7 +118,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 		DialOpts:   *c.http.GetWebsocketDialer(),
 		Log:        c.log.With().Str("socket", "dgw").Logger(),
 		Facebook:   false,
-		AppID:      strconv.FormatInt(c.configs.BrowserConfigTable.MqttWebConfig.AppID, 10),
+		AppID:      c.configs.BrowserConfigTable.DGWWebConfig.AppID,
 		UserID:     c.configs.BrowserConfigTable.PolarisViewer.ID,
 		DeviceID:   c.configs.BrowserConfigTable.MqttWebDeviceID.ClientID,
 		OnConnect: func(ctx context.Context) {
@@ -180,7 +179,7 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 		return nil, err
 	}
 	return json.Marshal(&connectPayload{
-		AppID:     strconv.FormatInt(c.configs.BrowserConfigTable.MqttWebConfig.AppID, 10),
+		AppID:     c.configs.BrowserConfigTable.DGWWebConfig.AppID,
 		DeviceID:  c.socket.DeviceID,
 		Payload:   string(marshaledDatabaseQuery),
 		RequestID: 4 + retryCount,

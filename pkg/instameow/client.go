@@ -101,6 +101,7 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 	}
 
 	moduleLoader := httpclient.NewModuleParser(c, c.http, c.configs)
+	moduleLoader.LS = nil
 	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
