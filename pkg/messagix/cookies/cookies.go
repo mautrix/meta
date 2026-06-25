@@ -105,6 +105,9 @@ func (c *Cookies) GetMissingCookieNames() []MetaCookieName {
 }
 
 func (c *Cookies) IsLoggedIn() bool {
+	if c == nil {
+		return false
+	}
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	var cookieKey MetaCookieName

@@ -165,9 +165,6 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 	moduleLoader := httpclient.NewModuleParser(c, c.http, c.configs)
 	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
 	if err != nil {
-		if errors.Is(err, httpclient.ErrUserIDIsZero) {
-			err = fmt.Errorf("%w: %w", httpclient.ErrTokenInvalidated, err)
-		}
 		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
 	}
 

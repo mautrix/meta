@@ -56,8 +56,12 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "useIGDSystemFolderUnreadThreadCountQuery",
 	},
 	"IGDThreadDetailQuery": {
-		DocID:        "26795312723503786",
+		DocID:        "27285304037801080",
 		FriendlyName: "IGDThreadDetailQuery",
+	},
+	"IGDSlideAsyncFetchAndInsertIGDViewerThreadQuery": {
+		DocID:        "27257464393915989",
+		FriendlyName: "IGDSlideAsyncFetchAndInsertIGDViewerThreadQuery",
 	},
 	"IGDirectReactionSendMutation": {
 		DocID:        "24374451552236906",
@@ -66,6 +70,50 @@ var GraphQLDocs = map[string]GraphQLDoc{
 	"IGDirectTextSendMutation": {
 		DocID:        "26911679871773184",
 		FriendlyName: "IGDirectTextSendMutation",
+	},
+	"IGDirectMediaSendMutation": {
+		DocID:        "25766288509716264",
+		FriendlyName: "IGDirectMediaSendMutation",
+	},
+	"IGDirectEditMessageMutation": {
+		DocID:        "32480262318254796",
+		FriendlyName: "IGDirectEditMessageMutation",
+	},
+	"IGDMessageListOffMsysQuery": {
+		DocID:        "27615933491426376",
+		FriendlyName: "IGDMessageListOffMsysQuery",
+	},
+	"IGDMessageUnsendDialogOffMsysMutation": {
+		DocID:        "26948700068153789",
+		FriendlyName: "IGDMessageUnsendDialogOffMsysMutation",
+	},
+	"IGDRemoveFromGroupDialogItemOffMsysMutation": {
+		DocID:        "26749775594683932",
+		FriendlyName: "IGDRemoveFromGroupDialogItemOffMsysMutation",
+	},
+	"IGDAddAdminDialogItemOffMsysMutation": {
+		DocID:        "35563011113312213",
+		FriendlyName: "IGDAddAdminDialogItemOffMsysMutation",
+	},
+	"IGDRemoveAdminDialogItemOffMsysMutation": {
+		DocID:        "26688907887428172",
+		FriendlyName: "IGDRemoveAdminDialogItemOffMsysMutation",
+	},
+	"IGDInboxInfoDeleteThreadDialogOffMsysMutation": {
+		DocID:        "35352443081068612",
+		FriendlyName: "IGDInboxInfoDeleteThreadDialogOffMsysMutation",
+	},
+	"useIGDMarkThreadAsReadMutation": {
+		DocID:        "27356881703909995",
+		FriendlyName: "useIGDMarkThreadAsReadMutation",
+	},
+	"useIGDMarkThreadAsReadValidationMutation": {
+		DocID:        "35211594988486314",
+		FriendlyName: "useIGDMarkThreadAsReadValidationMutation",
+	},
+	"PolarisProfilePageContentQuery": {
+		DocID:        "26672929172408668",
+		FriendlyName: "PolarisProfilePageContentQuery",
 	},
 }
 

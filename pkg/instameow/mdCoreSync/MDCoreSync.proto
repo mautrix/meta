@@ -1,0 +1,57 @@
+syntax = "proto2";
+package mdCoreSync;
+option go_package = "go.mau.fi/mautrix-meta/pkg/instameow/mdCoreSync";
+
+message LSResponse {
+	optional bytes controlHeader = 1;
+	repeated Operation operations = 2;
+	optional TransactionParams transactionParams = 3;
+}
+
+message Operation {
+	oneof operation {
+		OnIrisSubscribe subscribe = 1;
+		OnResnapshot resnapshot = 2;
+		OnMailboxDelta delta = 3;
+		Noop noop = 4;
+		HandleSyncFailure failure = 5;
+	}
+}
+
+message OnIrisSubscribe {
+	optional int32 groupID = 1;
+	optional int64 subscribedSeqID = 2;
+	optional int64 latestSeqID = 3;
+}
+
+message OnResnapshot {
+	optional int32 groupID = 1;
+	optional string errorMessage = 2;
+	optional int32 errorType = 3;
+	optional bytes snapshotPayload = 4;
+}
+
+message OnMailboxDelta {
+	optional int32 groupID = 1;
+	optional string delta = 2;
+}
+
+message Noop {
+}
+
+message HandleSyncFailure {
+	required int32 groupID = 1;
+	required string errorMessage = 2;
+}
+
+message TransactionParams {
+	optional bool useTransactionLogic = 1;
+	optional int32 groupID = 2;
+	optional int64 syncEpochID = 3;
+	optional string previousCursor = 4;
+	optional string nextCursor = 5;
+	optional int32 syncStatus = 6;
+	optional int32 syncChannel = 7;
+	optional int64 userID = 8;
+	optional bool skipMismatchLog = 9;
+}
