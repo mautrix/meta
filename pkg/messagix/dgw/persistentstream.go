@@ -30,16 +30,18 @@ import (
 	"go.mau.fi/util/ptr"
 )
 
+type FrameHandler func(context.Context, []byte) error
+
 type PersistentStream struct {
 	baseStream
 	lock         sync.Mutex
 	closed       *exsync.Event
 	nextAckID    uint16
 	pendingAcks  map[uint16]chan bool
-	frameHandler func([]byte) error
+	frameHandler FrameHandler
 }
 
-func newStream(conn *websocket.Conn, id StreamID, frameHandler func([]byte) error, log zerolog.Logger) *PersistentStream {
+func newStream(conn *websocket.Conn, id StreamID, frameHandler FrameHandler, log zerolog.Logger) *PersistentStream {
 	return &PersistentStream{
 		baseStream:   newBaseStream(conn, id, &log),
 		pendingAcks:  make(map[uint16]chan bool),
@@ -100,7 +102,7 @@ func (s *PersistentStream) establish(ctx context.Context, parameters json.RawMes
 }
 
 func (s *PersistentStream) receiveFrame(ctx context.Context, f *DataFrame) error {
-	err := s.frameHandler(f.Payload)
+	err := s.frameHandler(ctx, f.Payload)
 	if err != nil {
 		s.log.Err(err).Msg("Failed to handle frame")
 		return err

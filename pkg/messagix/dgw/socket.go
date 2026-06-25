@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -106,7 +107,7 @@ type StreamInit struct {
 	Parameters   json.RawMessage
 	InitPayload  []byte
 	LogName      string
-	FrameHandler func([]byte) error
+	FrameHandler FrameHandler
 }
 
 func (s *Socket) DoOneOffStream(ctx context.Context, payload []byte) ([]byte, error) {
@@ -205,6 +206,15 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 	return s.readLoop(ctx, conn)
 }
 
+func (s *Socket) ForceReconnect() {
+	if s == nil {
+		return
+	}
+	if conn := s.conn.Load(); conn != nil {
+		_ = conn.CloseNow()
+	}
+}
+
 func (s *Socket) Disconnect() {
 	if s == nil {
 		return
@@ -253,12 +263,28 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		}
 	}
 
+	catchPanics := func(thing string) {
+		v := recover()
+		if v != nil {
+			err, ok := v.(error)
+			if !ok {
+				err = fmt.Errorf("%v", v)
+			}
+			zerolog.Ctx(ctx).Err(err).
+				Str("loop_name", thing).
+				Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+				Msg("Panic in DGW socket loop")
+			fatalError(fmt.Errorf("dgw: panic in %s: %w", thing, err))
+		}
+	}
+
 	pongTimeoutTimer := time.NewTimer(PongTimeout)
 	defer pongTimeoutTimer.Stop()
 
 	incoming := make(chan wrappedDataFrame, 64)
 	wg.Add(1)
 	go func() {
+		defer catchPanics("frame handler")
 		defer wg.Done()
 		for {
 			select {
@@ -333,6 +359,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
 	wg.Add(1)
 	go func() {
+		defer catchPanics("read loop")
 		defer wg.Done()
 		defer close(incoming)
 		for {
@@ -362,6 +389,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
 	wg.Add(1)
 	go func() {
+		defer catchPanics("pong timeout loop")
 		defer wg.Done()
 		for {
 			select {
@@ -376,6 +404,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 
 	wg.Add(1)
 	go func() {
+		defer catchPanics("ping loop")
 		pingTicker := time.NewTicker(PingInterval)
 		defer wg.Done()
 		defer pingTicker.Stop()

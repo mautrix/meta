@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"go.mau.fi/util/exerrors"
 
@@ -17,6 +18,13 @@ func main() {
 	for len(input) > 0 {
 		frame := dgw.CheckFrameType(input)
 		input = exerrors.Must(frame.Unmarshal(input))
-		fmt.Printf("%s\n", frame)
+		if slices.Contains(os.Args, "-r") {
+			df, ok := frame.(*dgw.DataFrame)
+			if ok {
+				_, _ = os.Stdout.Write(df.Payload)
+			}
+		} else {
+			fmt.Printf("%s\n", frame)
+		}
 	}
 }
