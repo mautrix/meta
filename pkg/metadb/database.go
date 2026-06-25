@@ -27,6 +27,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
+	"go.mau.fi/util/exsync"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
@@ -34,6 +35,10 @@ type MetaDB struct {
 	*dbutil.Database
 
 	BridgeID networkid.BridgeID
+
+	igUserMap   *exsync.Map[string, int64]
+	igChatMap   *exsync.Map[string, int64]
+	igThreadMap *exsync.Map[string, int64]
 }
 
 func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *MetaDB {
@@ -41,6 +46,10 @@ func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *
 	return &MetaDB{
 		BridgeID: bridgeID,
 		Database: db,
+
+		igUserMap:   exsync.NewMap[string, int64](),
+		igChatMap:   exsync.NewMap[string, int64](),
+		igThreadMap: exsync.NewMap[string, int64](),
 	}
 }
 
@@ -145,7 +154,20 @@ func (db *MetaDB) GetFBIDForIGThread(ctx context.Context, igid string) (fbid int
 	return
 }
 
+func (db *MetaDB) GetFBIDForIGChat(ctx context.Context, igid string) (fbid int64, err error) {
+	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_chat_id WHERE igid = $1", igid).Scan(&fbid)
+	if errors.Is(err, sql.ErrNoRows) {
+		// return 0 if not cached
+		err = nil
+	}
+	return
+}
+
 func (db *MetaDB) PutFBIDForIGUser(ctx context.Context, igid string, fbid int64) error {
+	_, exists := db.igUserMap.GetOrSet(igid, fbid)
+	if exists {
+		return nil
+	}
 	// If the fbid gets set to a new value for an existing row,
 	// that would be surprising. We don't currently expect these
 	// values ever to change.
@@ -154,6 +176,19 @@ func (db *MetaDB) PutFBIDForIGUser(ctx context.Context, igid string, fbid int64)
 }
 
 func (db *MetaDB) PutFBIDForIGThread(ctx context.Context, igid string, fbid int64) error {
+	_, exists := db.igThreadMap.GetOrSet(igid, fbid)
+	if exists {
+		return nil
+	}
 	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_thread_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO NOTHING", igid, fbid)
+	return err
+}
+
+func (db *MetaDB) PutFBIDForIGChat(ctx context.Context, igid string, fbid int64) error {
+	_, exists := db.igChatMap.GetOrSet(igid, fbid)
+	if exists {
+		return nil
+	}
+	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_chat_id (igid, fbid) VALUES ($1, $2) ON CONFLICT DO NOTHING", igid, fbid)
 	return err
 }

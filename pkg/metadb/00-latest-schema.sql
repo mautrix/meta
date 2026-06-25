@@ -1,4 +1,4 @@
--- v0 -> v6 (compatible with v1+): Latest schema
+-- v0 -> v7 (compatible with v1+): Latest schema
 CREATE TABLE meta_thread (
     parent_key BIGINT NOT NULL,
     thread_key BIGINT NOT NULL,
@@ -9,9 +9,9 @@ CREATE TABLE meta_thread (
 );
 
 CREATE TABLE meta_reconnection_state (
-    bridge_id TEXT   NOT NULL,
-    login_id  TEXT   NOT NULL,
-    state     jsonb  NOT NULL,
+    bridge_id TEXT  NOT NULL,
+    login_id  TEXT  NOT NULL,
+    state     jsonb NOT NULL,
     last_used BIGINT,
 
     PRIMARY KEY (bridge_id, login_id),
@@ -37,12 +37,22 @@ CREATE TABLE meta_reconnection_state (
 -- Index on the fbid because occasionally we have to go the other way,
 -- for example looking up FB contacts on Instagram
 
+-- Short IG user ID <-> FB user ID (also known as interop user ID)
 CREATE TABLE meta_instagram_user_id (
-  igid TEXT PRIMARY KEY,
-  fbid BIGINT NOT NULL UNIQUE
+    igid TEXT PRIMARY KEY,
+    fbid BIGINT NOT NULL UNIQUE
 );
 
+-- Long IG thread ID <-> FB thread key
 CREATE TABLE meta_instagram_thread_id (
-  igid TEXT PRIMARY KEY,
-  fbid BIGINT NOT NULL UNIQUE
+    igid TEXT PRIMARY KEY,
+    fbid BIGINT NOT NULL UNIQUE
+);
+
+-- Short IG chat ID <-> FB thread key.
+-- For groups, these two are usually the same value
+-- For DMs, the fbid is the recipient user ID, but the igid is a different short ID
+CREATE TABLE meta_instagram_chat_id (
+    igid TEXT PRIMARY KEY,
+    fbid BIGINT NOT NULL UNIQUE
 );

@@ -23,6 +23,7 @@ type MessageMetadata struct {
 
 type GhostMetadata struct {
 	Username string `json:"username,omitempty"`
+	IGID     string `json:"igid,omitempty"`
 }
 
 type UserLoginMetadata struct {
@@ -59,6 +60,9 @@ type PortalMetadata struct {
 	// WhatsApp thread JID (the result of MapWhatsAppThreadKey), but some tasks (e.g. accepting a
 	// message request) need the original Facebook key instead.
 	FBThreadKey int64 `json:"fb_thread_key,omitempty"`
+
+	IGID       string `json:"igid,omitempty"`
+	IGThreadID string `json:"ig_thread_id,omitempty"`
 
 	EphemeralSettingTimestamp int64 `json:"ephemeral_setting_timestamp,omitempty"`
 
