@@ -2,8 +2,8 @@ package useragent
 
 const DPR = "1"
 const BrowserName = "Chrome"
-const ChromeVersion = "150"
-const ChromeVersionFull = ChromeVersion + ".0.7871.34"
+const ChromeVersion = "141"
+const ChromeVersionFull = ChromeVersion + ".0.7390.122"
 const UserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + ChromeVersion + ".0.0.0 Safari/537.36"
 const SecCHUserAgent = `"Chromium";v="` + ChromeVersion + `", "Google Chrome";v="` + ChromeVersion + `", "Not-A.Brand";v="99"`
 const SecCHFullVersionList = `"Chromium";v="` + ChromeVersionFull + `", "Google Chrome";v="` + ChromeVersionFull + `", "Not-A.Brand";v="99.0.0.0"`

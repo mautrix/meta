@@ -15,9 +15,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/imroc/req/v3"
+	utls "github.com/refraction-networking/utls"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exhttp"
-	"golang.org/x/net/proxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -31,12 +32,11 @@ type HTTPClient struct {
 	lsRequests      int
 	configs         *Configs
 
-	HTTP         *http.Client
-	HTTPSettings exhttp.ClientSettings
-	proxyAddr    string
-	httpProxy    func(*http.Request) (*url.URL, error)
-	socksProxy   proxy.Dialer
-	GetNewProxy  func(reason string) (string, error)
+	HTTP            *http.Client
+	HTTPSettings    exhttp.ClientSettings
+	websocketClient *http.Client
+	proxyAddr       string
+	GetNewProxy     func(reason string) (string, error)
 
 	LogRedactedBloksPayloads bool
 }
@@ -71,17 +71,86 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	if c.proxyAddr != "" {
 		c.HTTPSettings, _ = c.HTTPSettings.WithProxy(c.proxyAddr)
 	}
+	reqClient := req.C().ImpersonateChrome()
+	wsClient := req.C().ImpersonateChrome()
+	forceHTTP1ChromeFingerprint(wsClient)
+	if DisableTLSVerification {
+		reqClient.SetTLSClientConfig(&tls.Config{
+			InsecureSkipVerify: true,
+		})
+		wsClient.SetTLSClientConfig(&tls.Config{
+			InsecureSkipVerify: true,
+		})
+	}
+
 	oldHTTP := c.HTTP
-	c.HTTP = c.HTTPSettings.Compile()
+	c.websocketClient = req.WithTransportOverride(c.HTTPSettings.WithGlobalTimeout(WebsocketHandshakeTimeout), wsClient).Compile()
+	c.HTTP = req.WithTransportOverride(c.HTTPSettings, reqClient).Compile()
 	c.HTTP.CheckRedirect = c.checkHTTPRedirect
 	if oldHTTP != nil {
 		oldHTTP.CloseIdleConnections()
 	}
+
 	if DisableTLSVerification {
 		c.HTTP.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true,
 		}
 	}
+}
+
+// TODO deduplicate this with mautrix-discord (and maybe shorten it, looks to be duplicating too much of req)
+func forceHTTP1ChromeFingerprint(c *req.Client) {
+	c.SetTLSHandshake(func(ctx context.Context, addr string, plainConn net.Conn) (net.Conn, *tls.ConnectionState, error) {
+		hostname := addr
+		if i := strings.LastIndex(addr, ":"); i != -1 {
+			hostname = addr[:i]
+		}
+
+		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_120)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to build Chrome uTLS spec: %w", err)
+		}
+
+		// The actual changes we're making here:
+		exts := spec.Extensions[:0]
+		for _, ext := range spec.Extensions {
+			switch e := ext.(type) {
+			case *utls.ApplicationSettingsExtension:
+				continue
+			case *utls.ALPNExtension:
+				e.AlpnProtocols = []string{"http/1.1"}
+			}
+			exts = append(exts, ext)
+		}
+		spec.Extensions = exts
+
+		tlsConfig := c.GetTLSClientConfig()
+		uconn := utls.UClient(plainConn, &utls.Config{
+			ServerName:         hostname,
+			NextProtos:         []string{"http/1.1"},
+			RootCAs:            tlsConfig.RootCAs,
+			InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
+			KeyLogWriter:       tlsConfig.KeyLogWriter,
+		}, utls.HelloCustom)
+		if err := uconn.ApplyPreset(&spec); err != nil {
+			return nil, nil, fmt.Errorf("failed to apply Chrome uTLS spec: %w", err)
+		}
+		if err := uconn.HandshakeContext(ctx); err != nil {
+			return nil, nil, err
+		}
+
+		cs := uconn.ConnectionState()
+		return uconn, &tls.ConnectionState{
+			Version:            cs.Version,
+			HandshakeComplete:  cs.HandshakeComplete,
+			DidResume:          cs.DidResume,
+			CipherSuite:        cs.CipherSuite,
+			NegotiatedProtocol: cs.NegotiatedProtocol,
+			ServerName:         cs.ServerName,
+			PeerCertificates:   cs.PeerCertificates,
+			VerifiedChains:     cs.VerifiedChains,
+		}, nil
+	})
 }
 
 func (c *HTTPClient) SetProxy(proxyAddr string) error {
@@ -93,16 +162,7 @@ func (c *HTTPClient) SetProxy(proxyAddr string) error {
 		return err
 	}
 
-	if proxyParsed.Scheme == "http" || proxyParsed.Scheme == "https" {
-		c.httpProxy = http.ProxyURL(proxyParsed)
-		c.proxyAddr = proxyAddr
-	} else if proxyParsed.Scheme == "socks5" {
-		c.socksProxy, err = proxy.FromURL(proxyParsed, &net.Dialer{Timeout: 20 * time.Second})
-		if err != nil {
-			return err
-		}
-		c.proxyAddr = proxyAddr
-	}
+	c.proxyAddr = proxyAddr
 	c.SetConfig(c.HTTPSettings)
 
 	c.log.Debug().
@@ -133,29 +193,7 @@ func (c *HTTPClient) GetWebsocketDialer() *websocket.DialOptions {
 	if c == nil {
 		return nil
 	}
-	transport := &http.Transport{}
-	if c.httpProxy != nil {
-		transport.Proxy = c.httpProxy
-	} else if c.socksProxy != nil {
-		if contextDialer, ok := c.socksProxy.(proxy.ContextDialer); ok {
-			transport.DialContext = contextDialer.DialContext
-		} else {
-			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return c.socksProxy.Dial(network, addr)
-			}
-		}
-	}
-	if DisableTLSVerification {
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-	}
-	return &websocket.DialOptions{
-		HTTPClient: &http.Client{
-			Timeout:   WebsocketHandshakeTimeout,
-			Transport: transport,
-		},
-	}
+	return &websocket.DialOptions{HTTPClient: c.websocketClient}
 }
 
 type HTTPQuery struct {
