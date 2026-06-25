@@ -220,7 +220,7 @@ manifest:
     docker manifest create $MANIFEST_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
     docker manifest create $IG_MANIFEST_NAME $CI_REGISTRY_IMAGE:ig-$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:ig-$CI_COMMIT_SHA-arm64
     docker manifest push $MANIFEST_NAME
-    docker manifest push IG_$MANIFEST_NAME
+    docker manifest push $IG_MANIFEST_NAME
   - |
     if echo "$CI_COMMIT_TAG" | grep -Eq '^v[0-9]{1}\.[0-9]{4}\.[0-9]+$'; then
       YYMM=$(echo "$CI_COMMIT_TAG" | cut -d. -f2)
