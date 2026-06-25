@@ -182,7 +182,7 @@ func loginWithCookies(
 
 	backgroundCtx := ul.Log.WithContext(conn.Bridge.BackgroundCtx)
 	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
-	go igClient.connectWithMailbox(backgroundCtx, user, mailbox)
+	go igClient.connectWithMailbox(backgroundCtx, backgroundCtx, user, mailbox)
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,

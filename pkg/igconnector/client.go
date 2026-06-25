@@ -266,10 +266,10 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		return
 	}
 
-	ic.connectWithMailbox(ctx, currentUser, mailbox)
+	ic.connectWithMailbox(ctx, retryCtx, currentUser, mailbox)
 }
 
-func (ic *IGClient) connectWithMailbox(ctx context.Context, currentUser *types.PolarisViewer, mailbox *slidetypes.Mailbox) {
+func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUser *types.PolarisViewer, mailbox *slidetypes.Mailbox) {
 	var err error
 	ic.Ghost, err = ic.Main.Bridge.GetGhostByID(ctx, networkid.UserID(ic.UserLogin.ID))
 	if err != nil {
@@ -288,8 +288,8 @@ func (ic *IGClient) connectWithMailbox(ctx context.Context, currentUser *types.P
 	ic.UserLogin.RemoteProfile.Avatar = ic.Ghost.AvatarMXC
 
 	zerolog.Ctx(ctx).Debug().Msg("Processing inbox")
-	ic.processMailbox(ctx, mailbox)
-	if ctx.Err() != nil {
+	ic.processMailbox(ctx, retryCtx, mailbox)
+	if retryCtx.Err() != nil {
 		return
 	}
 	zerolog.Ctx(ctx).Debug().Msg("Processed index, connecting to DGW")

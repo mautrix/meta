@@ -25,13 +25,18 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 )
 
-func (ic *IGClient) processMailbox(ctx context.Context, mailbox *slidetypes.Mailbox) {
+func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slidetypes.Mailbox) {
 	ic.waitMailboxProcessed = make(chan struct{})
 	ic.mailboxProcessed.Store(false)
+	done := func() {
+		ic.mailboxProcessed.Store(true)
+		close(ic.waitMailboxProcessed)
+	}
 
 	events := make([]bridgev2.RemoteEvent, 0, len(mailbox.ThreadsByFolder.Edges))
 	for _, node := range mailbox.ThreadsByFolder.Edges {
-		if ctx.Err() != nil {
+		if retryCtx.Err() != nil {
+			done()
 			return
 		}
 		err := ic.saveThreadMappings(ctx, node.Node.AsIGDirectThread)
@@ -40,7 +45,13 @@ func (ic *IGClient) processMailbox(ctx context.Context, mailbox *slidetypes.Mail
 		}
 		events = append(events, ic.wrapChatResync(node.Node.AsIGDirectThread))
 	}
+	if retryCtx.Err() != nil {
+		done()
+		return
+	}
 	go func() {
+		defer done()
+
 		for _, evt := range events {
 			if ctx.Err() != nil {
 				return
@@ -58,8 +69,5 @@ func (ic *IGClient) processMailbox(ctx context.Context, mailbox *slidetypes.Mail
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save reconnection state after mailbox processing")
 		}
-
-		ic.mailboxProcessed.Store(true)
-		close(ic.waitMailboxProcessed)
 	}()
 }

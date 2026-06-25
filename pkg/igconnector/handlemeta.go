@@ -77,7 +77,7 @@ func (ic *IGClient) saveReconnectionState(ctx context.Context) error {
 	return nil
 }
 
-func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientEvent) error {
+func (ic *IGClient) doWaitMailboxProcessed(ctx context.Context) error {
 	if !ic.mailboxProcessed.Load() {
 		zerolog.Ctx(ctx).Warn().Msg("Blocking new event handling until mailbox is processed")
 		select {
@@ -87,6 +87,10 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			return ctx.Err()
 		}
 	}
+	return nil
+}
+
+func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientEvent) error {
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
@@ -101,11 +105,16 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		})
 		return nil
 	case *slidetypes.SeqIDUpdate:
+		_ = ic.doWaitMailboxProcessed(ctx)
 		return ic.saveReconnectionState(ctx)
 	case *slidetypes.ResnapshotRequired:
+		_ = ic.doWaitMailboxProcessed(ctx)
 		go ic.FullReconnect()
 		return nil
 	case *slidetypes.Delta:
+		if err := ic.doWaitMailboxProcessed(ctx); err != nil {
+			return err
+		}
 		return ic.handleDelta(ctx, evt)
 	default:
 		return fmt.Errorf("unrecognized event type: %T", rawEvt)
