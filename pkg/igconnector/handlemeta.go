@@ -176,13 +176,14 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 			})
 		}
 	}()
+	log := zerolog.Ctx(ctx)
+	log.Trace().Any("event_data", d.Data).Msg("Handling delta")
 
 	portalKey, err := ic.ensurePortal(ctx, d.ThreadFBID)
 	if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadFBID, err)
 	}
 
-	log := zerolog.Ctx(ctx)
 	var res bridgev2.EventHandlingResult
 	switch evt := d.Data.(type) {
 	case *slidetypes.NewMessageEvent:
@@ -226,14 +227,10 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 			ReadUpTo: evt.ReadTimestampMS.Time,
 		})
 	case slidetypes.UnknownEvent:
-		if log.GetLevel() == zerolog.TraceLevel {
-			log.Trace().Any("event_data", evt).Msg("Unrecognized event type in socket (full data)")
-		} else {
-			log.Warn().
-				Str("typename", d.TypeName).
-				Str("thread_fbid", d.ThreadFBID).
-				Msg("Unrecognized event type in socket")
-		}
+		log.Warn().
+			Str("typename", d.TypeName).
+			Str("thread_fbid", d.ThreadFBID).
+			Msg("Unrecognized event type in socket")
 		return nil
 	default:
 		return nil
