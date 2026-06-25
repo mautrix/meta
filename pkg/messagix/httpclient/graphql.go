@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
@@ -191,7 +192,9 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 
 	reqUrl := c.parent.GetEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
-	resp, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
+	resp, respData, err := c.makeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM, func(e *zerolog.Event) *zerolog.Event {
+		return e.Str("graphql_method", name)
+	})
 	if err == nil && resp != nil {
 		c.parent.GetCookies().UpdateFromResponse(resp)
 	}

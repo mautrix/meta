@@ -316,7 +316,28 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 	return nil
 }
 
-func (c *HTTPClient) MakeRequest(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+func (c *HTTPClient) MakeRequest(
+	ctx context.Context,
+	url string,
+	method string,
+	headers http.Header,
+	payload []byte,
+	contentType types.ContentType,
+) (*http.Response, []byte, error) {
+	return c.makeRequest(ctx, url, method, headers, payload, contentType, func(e *zerolog.Event) *zerolog.Event {
+		return e
+	})
+}
+
+func (c *HTTPClient) makeRequest(
+	ctx context.Context,
+	url string,
+	method string,
+	headers http.Header,
+	payload []byte,
+	contentType types.ContentType,
+	logContext func(e *zerolog.Event) *zerolog.Event,
+) (*http.Response, []byte, error) {
 	var attempts int
 	for {
 		attempts++
@@ -324,7 +345,7 @@ func (c *HTTPClient) MakeRequest(ctx context.Context, url string, method string,
 		resp, respDat, err := c.makeRequestDirect(ctx, url, method, headers, payload, contentType)
 		dur := time.Since(start)
 		if err == nil {
-			c.log.Debug().
+			logContext(c.log.Debug()).
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
@@ -332,26 +353,35 @@ func (c *HTTPClient) MakeRequest(ctx context.Context, url string, method string,
 				Msg("Request successful")
 			return resp, respDat, nil
 		} else if attempts > MaxHTTPRetries {
-			c.log.Err(err).
+			logContext(c.log.Err(err)).
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, giving up")
 			return nil, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
-		} else if IsPermanentRequestError(err) || ctx.Err() != nil {
-			c.log.Err(err).
+		} else if IsPermanentRequestError(err) || (resp != nil && resp.StatusCode < 500 && resp.StatusCode != 429) || ctx.Err() != nil {
+			logContext(c.log.Err(err)).
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, cannot be retried")
 			return nil, nil, err
 		}
-		c.log.Err(err).
+		backoff := time.Duration(attempts) * 3 * time.Second
+		if resp.StatusCode == 429 {
+			backoff *= 2
+		}
+		logContext(c.log.Err(err)).
 			Str("url", url).
 			Str("method", method).
 			Dur("duration", dur).
+			Dur("backoff", backoff).
 			Msg("Request failed, retrying")
-		time.Sleep(time.Duration(attempts) * 3 * time.Second)
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
 	}
 }
 
@@ -380,11 +410,11 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, err)
+		return response, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, err)
 	}
 
 	if response.StatusCode >= 400 {
-		return nil, nil, fmt.Errorf("%w %d", ErrUnexpectedError, response.StatusCode)
+		return response, nil, fmt.Errorf("%w %d", ErrUnexpectedError, response.StatusCode)
 	}
 
 	return response, responseBody, nil
