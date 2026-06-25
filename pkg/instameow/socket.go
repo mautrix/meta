@@ -32,6 +32,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/mdCoreSync"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
+	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -156,7 +157,7 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 	marshaledSyncParams, err := json.Marshal(&syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
-		PrevalidatedGraphQLDocID: useragent.IGDSlideDeltaProcessorQueryInstagramRelayOperation,
+		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQueryInstagramRelayOperation,
 	})
 	if err != nil {
 		return nil, err

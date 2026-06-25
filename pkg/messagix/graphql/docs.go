@@ -9,6 +9,8 @@ type GraphQLDoc struct {
 	Jsessw string
 }
 
+const IGDSlideDeltaProcessorQueryInstagramRelayOperation = "27603408612621900"
+
 var GraphQLDocs = map[string]GraphQLDoc{
 	"LSGraphQLRequest": {
 		DocID:        "7357432314358409",
