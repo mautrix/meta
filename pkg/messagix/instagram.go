@@ -242,7 +242,7 @@ func (ig *InstagramMethods) fetchRouteDefinition(ctx context.Context, threadID s
 		return "", fmt.Errorf("invalid route definition response for thread %s", threadID)
 	}
 
-	responseBody := bytes.TrimPrefix(parts[0], antiJSPrefix)
+	responseBody := bytes.TrimPrefix(parts[0], httpclient.AntiJSPrefix)
 
 	var routeDefResp fetchRouteDefinitionResponse
 	err = json.Unmarshal(responseBody, &routeDefResp)

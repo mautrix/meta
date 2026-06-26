@@ -147,7 +147,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	return &respInner, nil
 }
 
-var antiJSPrefix = []byte("for (;;);")
+var AntiJSPrefix = []byte("for (;;);")
 
 func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variables interface{}) (*http.Response, []byte, error) {
 	graphQLDoc, ok := graphql.GraphQLDocs[name]
@@ -198,7 +198,7 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 	if err == nil && resp != nil {
 		c.parent.GetCookies().UpdateFromResponse(resp)
 	}
-	respData = bytes.TrimPrefix(respData, antiJSPrefix)
+	respData = bytes.TrimPrefix(respData, AntiJSPrefix)
 	return resp, respData, err
 }
 

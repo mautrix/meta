@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -322,10 +321,6 @@ func (c *Client) GetEndpoint(name string) string {
 		return endpoint
 	}
 	panic(fmt.Sprintf("messagix-client: endpoint %s not found", name))
-}
-
-func (c *Client) getEndpointForThreadID(threadID int64) string {
-	return c.GetEndpoint("thread") + strconv.FormatInt(threadID, 10) + "/"
 }
 
 func (c *Client) IsAuthenticated() bool {

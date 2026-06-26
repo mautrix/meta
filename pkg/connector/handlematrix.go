@@ -21,7 +21,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
@@ -785,7 +784,7 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 			return false, fmt.Errorf("failed to download avatar: %w", err)
 		}
 		mimeType := http.DetectContentType(data)
-		resp, err := m.Client.SendMercuryUploadRequest(ctx, threadID, &messagix.MercuryUploadMedia{
+		resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
 			Filename:  "avatar.jpg",
 			MimeType:  mimeType,
 			MediaData: data,

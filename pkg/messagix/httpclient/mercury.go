@@ -1,13 +1,16 @@
-package messagix
+package httpclient
 
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"mime/multipart"
+	"net/http"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,9 +18,35 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
+
+type RUploadToken struct {
+	DSUserID  string `json:"ds_user_id"`
+	SessionID string `json:"sessionid"`
+}
+
+type RUploadResponse struct {
+	ID      int   `json:"id"`
+	MediaID int64 `json:"media_id"`
+}
+
+func (c *HTTPClient) GetCookies() *cookies.Cookies {
+	return c.parent.GetCookies()
+}
+
+func (c *HTTPClient) GetPlatform() types.Platform {
+	return c.parent.GetPlatform()
+}
+
+func (c *HTTPClient) GetRUploadToken() string {
+	token, _ := json.Marshal(RUploadToken{
+		DSUserID:  c.parent.GetCookies().Get(cookies.IGCookieDSUserID),
+		SessionID: c.parent.GetCookies().Get(cookies.IGCookieSessionID),
+	})
+	return "Bearer IGT:2:" + base64.StdEncoding.EncodeToString(token)
+}
 
 type MercuryUploadMedia struct {
 	Filename  string
@@ -33,9 +62,9 @@ type WaveformData struct {
 	SamplingFrequency int       `json:"sampling_frequency"`
 }
 
-func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, media *MercuryUploadMedia) (*types.MercuryUploadResponse, error) {
+func (c *HTTPClient) SendMercuryUploadRequest(ctx context.Context, threadID int64, media *MercuryUploadMedia) (*types.MercuryUploadResponse, error) {
 	if c == nil {
-		return nil, ErrClientIsNil
+		return nil, fmt.Errorf("client is nil")
 	}
 	payload, contentType, err := c.newMercuryMediaPayload(media)
 	if err != nil {
@@ -45,24 +74,24 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 	var attempts int
 	for {
 		attempts += 1
-		urlQueries := c.http.NewHTTPQuery()
+		urlQueries := c.NewHTTPQuery()
 		queryValues, err := query.Values(urlQueries)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert HttpQuery into query.Values for mercury upload: %w", err)
 		}
-		url := c.GetEndpoint("media_upload") + queryValues.Encode()
+		url := c.parent.GetEndpoint("media_upload") + queryValues.Encode()
 
-		h := c.http.BuildHeaders(true, false)
+		h := c.BuildHeaders(true, false)
 		h.Set("accept", "*/*")
 		h.Set("content-type", contentType)
-		h.Set("origin", c.GetEndpoint("base_url"))
-		h.Set("referer", c.getEndpointForThreadID(threadID))
+		h.Set("origin", c.parent.GetEndpoint("base_url"))
+		h.Set("referer", c.parent.GetEndpoint("thread")+strconv.FormatInt(threadID, 10)+"/")
 		h.Set("priority", "u=1, i")
 		h.Set("sec-fetch-dest", "empty")
 		h.Set("sec-fetch-mode", "cors")
 		h.Set("sec-fetch-site", "same-origin") // header is required
 
-		_, respBody, err := c.http.MakeRequest(ctx, url, "POST", h, payload, types.NONE)
+		_, respBody, err := c.MakeRequest(ctx, url, http.MethodPost, h, payload, types.NONE)
 		if err != nil {
 			// MakeRequest retries itself, so bail immediately if that fails
 			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %w", err)
@@ -70,20 +99,18 @@ func (c *Client) SendMercuryUploadRequest(ctx context.Context, threadID int64, m
 		resp, err := c.parseMercuryResponse(ctx, respBody)
 		if err == nil {
 			return resp, nil
-		} else if attempts > httpclient.MaxHTTPRetries || httpclient.IsPermanentRequestError(err) || errors.Is(err, types.ErrPleaseReloadPage) {
+		} else if attempts > MaxHTTPRetries || IsPermanentRequestError(err) || errors.Is(err, types.ErrPleaseReloadPage) {
 			return nil, err
 		}
-		c.Logger.Err(err).
+		c.log.Err(err).
 			Str("url", url).
 			Msg("Mercury response parsing failed, retrying")
 		time.Sleep(time.Duration(attempts) * 3 * time.Second)
 	}
 }
 
-var antiJSPrefix = []byte("for (;;);")
-
-func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*types.MercuryUploadResponse, error) {
-	jsonData := bytes.TrimPrefix(respBody, antiJSPrefix)
+func (c *HTTPClient) parseMercuryResponse(ctx context.Context, respBody []byte) (*types.MercuryUploadResponse, error) {
+	jsonData := bytes.TrimPrefix(respBody, AntiJSPrefix)
 
 	if json.Valid(jsonData) {
 		zerolog.Ctx(ctx).Trace().RawJSON("response_body", jsonData).Msg("Mercury upload response")
@@ -100,7 +127,7 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 
 	if strings.Contains(mercuryResponse.Redirect, "/consent/") {
 		zerolog.Ctx(ctx).Warn().Str("redirect", mercuryResponse.Redirect).Msg("Mercury upload returned consent redirect")
-		return nil, fmt.Errorf("%w: mercury upload redirected to %s", httpclient.ErrConsentRequired, mercuryResponse.Redirect)
+		return nil, fmt.Errorf("%w: mercury upload redirected to %s", ErrConsentRequired, mercuryResponse.Redirect)
 	}
 
 	mercuryResponse.Raw = jsonData
@@ -114,7 +141,7 @@ func (c *Client) parseMercuryResponse(ctx context.Context, respBody []byte) (*ty
 	return mercuryResponse, nil
 }
 
-func (c *Client) parseMetadata(response *types.MercuryUploadResponse) error {
+func (c *HTTPClient) parseMetadata(response *types.MercuryUploadResponse) error {
 	if len(response.Payload.Metadata) == 0 {
 		return fmt.Errorf("no metadata in upload response")
 	}
@@ -143,7 +170,7 @@ func (c *Client) parseMetadata(response *types.MercuryUploadResponse) error {
 }
 
 // returns payloadBytes, multipart content-type header
-func (c *Client) newMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, string, error) {
+func (c *HTTPClient) newMercuryMediaPayload(media *MercuryUploadMedia) ([]byte, string, error) {
 	var mercuryPayload bytes.Buffer
 	writer := multipart.NewWriter(&mercuryPayload)
 

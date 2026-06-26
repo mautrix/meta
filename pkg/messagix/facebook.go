@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -53,7 +54,7 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 		return err
 	}
 
-	body = bytes.TrimPrefix(body, antiJSPrefix)
+	body = bytes.TrimPrefix(body, httpclient.AntiJSPrefix)
 
 	var r pushNotificationsResponse
 	err = json.Unmarshal(body, &r)
