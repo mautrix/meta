@@ -1349,6 +1349,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			numberNames = append(numberNames, number)
 		}
 
+		if len(numberNames) == 0 {
+			return nil, fmt.Errorf("failed to find any numbers on contact select page")
+		}
+
 		contactNumber := userInput["contact_number"]
 		if contactNumber == "" && len(foundNumbers) == 1 {
 			contactNumber = numberNames[0]
