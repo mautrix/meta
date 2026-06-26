@@ -120,9 +120,9 @@ deploy config:
       fi
     fi
     ./$BINARY_NAME -ec example-config.yaml
-    ./$IG_BINARY_NAME -ec example-config.yaml
+    ./$IG_BINARY_NAME -ec ig-example-config.yaml
     mv -f example-config.yaml /srv/web/docs.mau.fi/configs/$BINARY_NAME/$FILENAME
-    mv -f example-config.yaml /srv/web/docs.mau.fi/configs/$IG_BINARY_NAME/$FILENAME
+    mv -f ig-example-config.yaml /srv/web/docs.mau.fi/configs/$IG_BINARY_NAME/$FILENAME
     cd /srv/web/docs.mau.fi/configs/
     chmod 644 $BINARY_NAME/$FILENAME
     chmod 644 $IG_BINARY_NAME/$FILENAME
