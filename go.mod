@@ -7,6 +7,7 @@ toolchain go1.26.4
 tool go.mau.fi/util/cmd/maubuild
 
 require (
+	github.com/apache/thrift v0.23.1-0.20260429145742-d2acd3c49e58
 	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c
 	github.com/coder/websocket v1.8.15
 	github.com/gabriel-vasile/mimetype v1.4.13
@@ -14,6 +15,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/imroc/req/v3 v3.56.0
 	github.com/mattn/go-colorable v0.1.15
+	github.com/refraction-networking/utls v1.8.1
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.19.0
 	github.com/zyedidia/clipboard v1.0.4
@@ -44,7 +46,6 @@ require (
 	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.57.1 // indirect
-	github.com/refraction-networking/utls v1.8.1 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tidwall/match v1.1.1 // indirect

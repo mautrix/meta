@@ -8,6 +8,8 @@ github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883 h1:bvNMNQO63//z+xNg
 github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883/go.mod h1:rCTlJbsFo29Kk6CurOXKm700vrz8f0KW0JNfpkRJY/8=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
+github.com/apache/thrift v0.23.1-0.20260429145742-d2acd3c49e58 h1:rDLE+tSW60VzRD7v5I+DU22Mjhmm+mfLc5Xl5dHkx6w=
+github.com/apache/thrift v0.23.1-0.20260429145742-d2acd3c49e58/go.mod h1:zPt6WxgvTOM6hF92y8C+MkEM5LMxZuk4JcQOiU4Esvs=
 github.com/beeper/argo-go v1.1.2 h1:UQI2G8F+NLfGTOmTUI0254pGKx/HUU/etbUGTJv91Fs=
 github.com/beeper/argo-go v1.1.2/go.mod h1:M+LJAnyowKVQ6Rdj6XYGEn+qcVFkb3R/MUpqkGR0hM4=
 github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c h1:Axyrzr6L42CLNJIQq0S87UhgK0Hq+4hCed4rc6sDdao=
