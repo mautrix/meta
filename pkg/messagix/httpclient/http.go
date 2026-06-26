@@ -61,6 +61,13 @@ func NewHTTPClient(cli Client, configs *Configs, settings exhttp.ClientSettings)
 	return c
 }
 
+func (c *HTTPClient) SetConfigs(configs *Configs) {
+	if c == nil {
+		return
+	}
+	c.configs = configs
+}
+
 func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	if c == nil {
 		return
@@ -498,7 +505,7 @@ func (c *HTTPClient) BuildHeaders(withCookies, isSecFetchDocument bool) http.Hea
 		}
 		w, _ := c.parent.GetCookies().GetViewports()
 		headers.Set("viewport-width", w)
-		headers.Set("x-asbd-id", "129477")
+		headers.Set("x-asbd-id", "359341")
 	}
 	return headers
 }

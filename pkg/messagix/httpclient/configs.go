@@ -33,6 +33,10 @@ func NewConfigs(client Client) *Configs {
 	}
 }
 
+func (c *Configs) SetClient(client Client) {
+	c.client = client
+}
+
 func (c *Configs) Setup(authenticated bool) error {
 	c.WebSessionID = methods.GenerateWebsessionID(authenticated)
 	c.LSDToken = c.BrowserConfigTable.LSD.Token

@@ -100,6 +100,8 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 		return nil, nil, httpclient.ErrTokenInvalidated
 	}
 
+	c.configs = httpclient.NewConfigs(c)
+	c.http.SetConfigs(c.configs)
 	moduleLoader := httpclient.NewModuleParser(c, c.http, c.configs)
 	moduleLoader.LS = nil
 	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
@@ -180,6 +182,8 @@ func (c *Client) LoadState(state json.RawMessage) error {
 	}
 
 	c.configs = dumped.Configs
+	c.configs.SetClient(c)
+	c.http.SetConfigs(c.configs)
 	c.seqID = dumped.SeqID
 	c.seqIDTS = dumped.SeqIDTS
 	c.socket = dgw.NewSocket(c.getSocketOptions())
