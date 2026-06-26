@@ -26,7 +26,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/bridgev2/status"
-	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -215,6 +214,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	var res bridgev2.EventHandlingResult
 	switch evt := d.Data.(type) {
 	case *slidetypes.NewMessageEvent:
+		msgID := metaid.MakeFBMessageID(evt.Message.ID)
 		res = ic.UserLogin.QueueRemoteEvent(&simplevent.Message[*slidetypes.Message]{
 			EventMeta: simplevent.EventMeta{
 				Type:         bridgev2.RemoteEventMessage,
@@ -226,17 +226,9 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 			},
 			//TransactionID:      evt.Message.OfflineThreadingID,
 			Data: &evt.Message,
-			ID:   metaid.MakeFBMessageID(evt.Message.ID),
+			ID:   msgID,
 			ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data *slidetypes.Message) (*bridgev2.ConvertedMessage, error) {
-				return &bridgev2.ConvertedMessage{
-					Parts: []*bridgev2.ConvertedMessagePart{{
-						Type: event.EventMessage,
-						Content: &event.MessageEventContent{
-							MsgType: event.MsgText,
-							Body:    data.TextBody,
-						},
-					}},
-				}, nil
+				return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, intent, msgID, data, ic.Main.Config.DisableXMAAlways)
 			},
 		})
 	case *slidetypes.CreateReactionEvent:
