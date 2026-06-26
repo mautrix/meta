@@ -37,7 +37,6 @@ func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flo
 	}
 
 	return &MetaCookieLogin{
-		Mode: types.Instagram,
 		User: user,
 		Main: ic,
 	}, nil
@@ -56,7 +55,6 @@ func (ic *IGConnector) GetLoginFlows() []bridgev2.LoginFlow {
 }
 
 type MetaCookieLogin struct {
-	Mode types.Platform
 	User *bridgev2.User
 	Main *IGConnector
 }
@@ -195,7 +193,7 @@ func loginWithCookies(
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	c := &cookies.Cookies{Platform: m.Mode}
+	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
 		strCookiesCopy[cookies.MetaCookieName(key)] = val
@@ -207,7 +205,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
 	}
 
-	log := m.User.Log.With().Str("component", "messagix").Logger()
+	log := m.User.Log.With().Str("component", "instameow").Logger()
 	client, err := getInstaClient(log, m.Main, c, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err

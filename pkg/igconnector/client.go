@@ -130,6 +130,10 @@ func (ic *IGClient) ExportCredentials(ctx context.Context) any {
 }
 
 func (ic *IGClient) Connect(ctx context.Context) {
+	if ic.LoginMeta.Platform != types.Instagram {
+		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: MetaNotInstagram})
+		return
+	}
 	ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	mailboxCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

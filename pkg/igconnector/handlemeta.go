@@ -45,6 +45,7 @@ const (
 	IGConsentRequired          status.BridgeStateErrorCode = "ig-consent-required"
 	FBCheckpointRequired       status.BridgeStateErrorCode = "fb-checkpoint-required"
 	MetaProxyUpdateFail        status.BridgeStateErrorCode = "meta-proxy-update-fail"
+	MetaNotInstagram           status.BridgeStateErrorCode = "meta-not-instagram-account"
 )
 
 func init() {
@@ -61,6 +62,7 @@ func init() {
 		FBCheckpointRequired:       "Checkpoint required, please check the Facebook website to continue",
 		MetaConnectError:           "Unknown connection error",
 		MetaProxyUpdateFail:        "Failed to update proxy",
+		MetaNotInstagram:           "Non-Instagram login present on Instagram-only bridge",
 	})
 }
 
