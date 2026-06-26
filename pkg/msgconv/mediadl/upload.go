@@ -30,7 +30,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
@@ -147,7 +146,7 @@ func reuploadVideoToMetaFallback(ctx context.Context, client *httpclient.HTTPCli
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("bad status: %d", resp.StatusCode)
 	}
-	var respData messagix.RUploadResponse
+	var respData httpclient.RUploadResponse
 	err = json.Unmarshal(body, &respData)
 	if err != nil {
 		return 0, err

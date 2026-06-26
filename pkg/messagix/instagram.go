@@ -390,7 +390,7 @@ func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string
 		return fmt.Errorf("failed to upload group avatar: %w", err)
 	}
 
-	var uploadResp RUploadResponse
+	var uploadResp httpclient.RUploadResponse
 	err = json.Unmarshal(respBody, &uploadResp)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal upload response: %w", err)
@@ -492,7 +492,7 @@ func (ig *InstagramMethods) RemoveGroupAvatar(ctx context.Context, threadID stri
 
 func (ig *InstagramMethods) buildAndroidHeaders() http.Header {
 	h := http.Header{}
-	h.Set("authorization", ig.client.GetRUploadToken())
+	h.Set("authorization", ig.client.GetHTTP().GetRUploadToken())
 	h.Set("user-agent", useragent.AndroidUserAgent)
 	h.Set("ig-intended-user-id", strconv.FormatInt(ig.client.cookies.GetUserID(), 10))
 	h.Set("ig-u-ds-user-id", strconv.FormatInt(ig.client.cookies.GetUserID(), 10))
