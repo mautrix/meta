@@ -34,7 +34,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
-	"go.mau.fi/mautrix-meta/pkg/msgconv"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 func (ic *IGClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
@@ -91,7 +91,7 @@ func wrapAvatar(avatarURL string) *bridgev2.Avatar {
 	return &bridgev2.Avatar{
 		ID: networkid.AvatarID(avatarID),
 		Get: func(ctx context.Context) ([]byte, error) {
-			return msgconv.DownloadAvatar(ctx, avatarURL)
+			return mediadl.DownloadAvatar(ctx, avatarURL)
 		},
 	}
 }

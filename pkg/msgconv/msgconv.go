@@ -18,10 +18,10 @@ package msgconv
 
 import (
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/format"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metadb"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
 
 type MessageConverter struct {
@@ -30,7 +30,7 @@ type MessageConverter struct {
 	AsyncFiles      bool
 	DisableViewOnce bool
 	BridgeMode      types.Platform
-	HTMLParser      *format.HTMLParser
+	HTMLParser      *textfmt.MatrixHTMLParser
 	DB              *metadb.MetaDB
 	DirectMedia     bool
 }
@@ -40,27 +40,7 @@ func New(br *bridgev2.Bridge, db *metadb.MetaDB) *MessageConverter {
 		Bridge:      br,
 		MaxFileSize: 50 * 1024 * 1024,
 		DB:          db,
-	}
-	mc.HTMLParser = &format.HTMLParser{
-		TabsToSpaces:   4,
-		Newline:        "\n",
-		HorizontalLine: "\n---\n",
-		PillConverter:  mc.convertPill,
-		BoldConverter: func(text string, ctx format.Context) string {
-			return "*" + text + "*"
-		},
-		ItalicConverter: func(text string, ctx format.Context) string {
-			return "_" + text + "_"
-		},
-		StrikethroughConverter: func(text string, ctx format.Context) string {
-			return "~" + text + "~"
-		},
-		MonospaceConverter: func(text string, ctx format.Context) string {
-			return "`" + text + "`"
-		},
-		MonospaceBlockConverter: func(code, language string, ctx format.Context) string {
-			return "```\n" + code + "\n```"
-		},
+		HTMLParser:  textfmt.NewMatrixParser(br),
 	}
 	return mc
 }

@@ -1,5 +1,5 @@
 // mautrix-meta - A Matrix-Facebook Messenger and Instagram DM puppeting bridge.
-// Copyright (C) 2024 Tulir Asokan
+// Copyright (C) 2026 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package msgconv
+package textfmt
 
 import (
 	"context"
@@ -22,11 +22,9 @@ import (
 	"unicode/utf16"
 
 	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
+	"go.mau.fi/util/random"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
-	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 type UTF16String []uint16
@@ -39,20 +37,18 @@ func (u UTF16String) String() string {
 	return string(utf16.Decode(u))
 }
 
-func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, rawMentions *socket.MentionData, portal *bridgev2.Portal) (content *event.MessageEventContent) {
-	content = &event.MessageEventContent{
-		MsgType:  event.MsgText,
-		Body:     text,
-		Mentions: &event.Mentions{},
-	}
-	mentions, err := rawMentions.Parse()
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to parse mentions")
-	}
-	if mentions == nil {
-		return
+type wrappedMention struct {
+	socket.Mention
+	Placeholder string
+	OrigText    string
+}
+
+func parseMetaMentions(ctx context.Context, text string, mentions []socket.Mention) (string, []*wrappedMention) {
+	if len(mentions) == 0 {
+		return text, nil
 	}
 	utf16Text := NewUTF16String(text)
+	outList := make([]*wrappedMention, 0, len(mentions))
 	prevEnd := 0
 	var output strings.Builder
 	for _, mention := range mentions {
@@ -67,32 +63,16 @@ func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, r
 		if end > len(utf16Text) {
 			end = len(utf16Text)
 		}
-		var mentionLink string
-		switch mention.Type {
-		case socket.MentionTypePerson:
-			mxid, _, err := mc.getBasicUserInfo(ctx, metaid.MakeUserID(mention.ID))
-			if err != nil {
-				zerolog.Ctx(ctx).Err(err).Msg("Failed to get user info for mention")
-				continue
-			}
-			content.Mentions.Add(mxid)
-			mentionLink = mxid.URI().MatrixToURL()
-		case socket.MentionTypeThread:
-			// TODO: how does one send thread mentions?
-		}
-		if mentionLink == "" {
-			continue
-		}
-		output.WriteString(event.TextToHTML(utf16Text[prevEnd:mention.Offset].String()))
-		output.WriteString(`<a href="`)
-		output.WriteString(mentionLink)
-		output.WriteString(`">`)
-		output.WriteString(event.TextToHTML(utf16Text[mention.Offset:end].String()))
-		output.WriteString(`</a>`)
+		placeholder := random.String(10)
+		output.WriteString(utf16Text[prevEnd:mention.Offset].String())
+		output.WriteString(placeholder)
+		outList = append(outList, &wrappedMention{
+			Mention:     mention,
+			Placeholder: placeholder,
+			OrigText:    utf16Text[mention.Offset:end].String(),
+		})
 		prevEnd = end
 	}
-	output.WriteString(event.TextToHTML(utf16Text[prevEnd:].String()))
-	content.Format = event.FormatHTML
-	content.FormattedBody = output.String()
-	return content
+	output.WriteString(utf16Text[prevEnd:].String())
+	return output.String(), outList
 }

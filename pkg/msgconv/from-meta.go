@@ -49,6 +49,8 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
 
 func (mc *MessageConverter) ShouldFetchXMA(ctx context.Context) bool {
@@ -85,6 +87,10 @@ const (
 	facebookThumbsUpMediumStickerID = 369239343222814
 	facebookThumbsUpLargeStickerID  = 369239383222810
 )
+
+func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, mentions []socket.Mention) *event.MessageEventContent {
+	return textfmt.MetaToMatrixText(ctx, text, mentions, mc.getBasicUserInfo)
+}
 
 func (mc *MessageConverter) ToMatrix(
 	ctx context.Context,
@@ -173,13 +179,13 @@ func (mc *MessageConverter) ToMatrix(
 	}
 	hasRelationSnippet := msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews)
 	if msg.Text != "" || hasRelationSnippet || len(urlPreviews) > 0 {
-		mentions := &socket.MentionData{
+		mentions, _ := (&socket.MentionData{
 			MentionIDs:     msg.MentionIds,
 			MentionOffsets: msg.MentionOffsets,
 			MentionLengths: msg.MentionLengths,
 			MentionTypes:   msg.MentionTypes,
-		}
-		content := mc.MetaToMatrixText(ctx, msg.Text, mentions, portal)
+		}).Parse()
+		content := mc.MetaToMatrixText(ctx, msg.Text, mentions)
 		if msg.IsAdminMessage {
 			content.MsgType = event.MsgNotice
 		}
@@ -307,7 +313,7 @@ func errorToNotice(err error, attachmentContainerType string) *bridgev2.Converte
 	errMsg := "Failed to transfer attachment"
 	if errors.Is(err, ErrURLNotFound) {
 		errMsg = fmt.Sprintf("Unrecognized %s attachment type", attachmentContainerType)
-	} else if errors.Is(err, ErrTooLargeFile) {
+	} else if errors.Is(err, mediadl.ErrTooLargeFile) {
 		errMsg = "Too large attachment"
 	}
 	return &bridgev2.ConvertedMessagePart{
@@ -958,7 +964,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		if err != nil {
 			return nil, err
 		}
-		dmm := DirectMediaMeta{
+		dmm := mediadl.DirectMediaMeta{
 			MimeType: mimeType,
 			URL:      url,
 		}
@@ -988,9 +994,9 @@ func (mc *MessageConverter) reuploadAttachment(
 		}, nil
 	}
 
-	size, reader, err := DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
+	size, reader, err := mediadl.DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
 	if err != nil {
-		if errors.Is(err, ErrTooLargeFile) {
+		if errors.Is(err, mediadl.ErrTooLargeFile) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)

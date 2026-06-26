@@ -223,7 +223,7 @@ func (evt *FBEditEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal
 			{
 				Part:    textPart,
 				Type:    event.EventMessage,
-				Content: evt.m.Main.MsgConv.MetaToMatrixText(ctx, evt.Text, nil, portal),
+				Content: evt.m.Main.MsgConv.MetaToMatrixText(ctx, evt.Text, nil),
 			},
 		},
 	}, nil

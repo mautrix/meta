@@ -22,14 +22,14 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/metadb"
-	"go.mau.fi/mautrix-meta/pkg/msgconv"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 type IGConnector struct {
-	Bridge  *bridgev2.Bridge
-	Config  Config
-	MsgConv *msgconv.MessageConverter
-	DB      *metadb.MetaDB
+	Bridge *bridgev2.Bridge
+	Config Config
+	//MsgConv *msgconv.MessageConverter
+	DB *metadb.MetaDB
 }
 
 var (
@@ -41,8 +41,8 @@ var (
 func (ic *IGConnector) Init(bridge *bridgev2.Bridge) {
 	ic.Bridge = bridge
 	ic.DB = metadb.New(bridge.ID, bridge.DB.Database, ic.Bridge.Log.With().Str("db_section", "meta").Logger())
-	ic.MsgConv = msgconv.New(bridge, ic.DB)
-	ic.MsgConv.DisableViewOnce = ic.Config.DisableViewOnce
+	//ic.MsgConv = msgconv.New(bridge, ic.DB)
+	//ic.MsgConv.DisableViewOnce = ic.Config.DisableViewOnce
 }
 
 func (ic *IGConnector) Start(ctx context.Context) error {
@@ -55,7 +55,7 @@ func (ic *IGConnector) Start(ctx context.Context) error {
 }
 
 func (ic *IGConnector) SetMaxFileSize(maxSize int64) {
-	ic.MsgConv.MaxFileSize = maxSize
+	//ic.MsgConv.MaxFileSize = maxSize
 }
 
 func (ic *IGConnector) GetName() bridgev2.BridgeName {
@@ -71,9 +71,9 @@ func (ic *IGConnector) GetName() bridgev2.BridgeName {
 
 func (ic *IGConnector) ResetHTTPTransport() {
 	cfg := ic.Bridge.GetHTTPClientSettings()
-	msgconv.SetHTTP(cfg)
+	mediadl.SetHTTP(cfg)
 	if ic.Config.ProxyMedia && ic.Config.Proxy != "" {
-		msgconv.SetProxy(ic.Config.Proxy)
+		mediadl.SetProxy(ic.Config.Proxy)
 	}
 	for _, login := range ic.Bridge.GetAllCachedUserLogins() {
 		login.Client.(*IGClient).Client.GetHTTP().SetConfig(cfg)

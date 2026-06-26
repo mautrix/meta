@@ -14,7 +14,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
-	"go.mau.fi/mautrix-meta/pkg/msgconv"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 //lint:ignore U1000 -
@@ -139,7 +139,7 @@ func wrapAvatar(avatarURL string) *bridgev2.Avatar {
 	return &bridgev2.Avatar{
 		ID: networkid.AvatarID(avatarID),
 		Get: func(ctx context.Context) ([]byte, error) {
-			return msgconv.DownloadAvatar(ctx, avatarURL)
+			return mediadl.DownloadAvatar(ctx, avatarURL)
 		},
 	}
 }

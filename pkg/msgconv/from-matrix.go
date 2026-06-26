@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -31,8 +30,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
@@ -114,11 +111,9 @@ func (mc *MessageConverter) ToMeta(
 	}
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
-		if content.Format == event.FormatHTML {
-			mc.parseFormattedBody(ctx, content, task, portal)
-		} else {
-			task.Text = content.Body
-		}
+		text, mentions := mc.HTMLParser.Parse(ctx, content, portal)
+		task.MentionData = mentions.ToData()
+		task.Text = text
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
 		attachmentID, err := mc.reuploadFileToMeta(ctx, client, portal, content)
 		if err != nil {
@@ -143,93 +138,6 @@ func (mc *MessageConverter) ToMeta(
 		LastReadWatermarkTs: time.Now().UnixMilli(),
 	}
 	return []socket.Task{task, readTask}, nil
-}
-
-const mentionLocator = "meta_mention_"
-
-type MetaMention struct {
-	Locator string
-	Name    string
-	UserID  int64
-}
-
-func NewMetaMention(userID int64, name string) *MetaMention {
-	return &MetaMention{
-		Locator: mentionLocator + random.String(16),
-		Name:    name,
-		UserID:  userID,
-	}
-}
-
-func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx format.Context) string {
-	if len(mxid) == 0 || mxid[0] != '@' {
-		return format.DefaultPillConverter(displayname, mxid, eventID, ctx)
-	}
-	var userID int64
-	var username string
-	ghost, err := mc.Bridge.GetGhostByMXID(ctx.Ctx, id.UserID(mxid))
-	if err != nil {
-		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
-		return displayname
-	} else if ghost != nil {
-		username = ghost.Metadata.(*metaid.GhostMetadata).Username
-		if username == "" {
-			username = ghost.Name
-		}
-		userID = metaid.ParseUserID(ghost.ID)
-	} else if user, err := mc.Bridge.GetExistingUserByMXID(ctx.Ctx, id.UserID(mxid)); err != nil {
-		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
-		return displayname
-	} else if user != nil {
-		portal := ctx.ReturnData["portal"].(*bridgev2.Portal)
-		login, _, _ := portal.FindPreferredLogin(ctx.Ctx, user, false)
-		if login == nil {
-			return displayname
-		}
-		userID = metaid.ParseUserLoginID(login.ID)
-		if login.Metadata.(*metaid.UserLoginMetadata).Platform.IsMessenger() || login.RemoteProfile.Username == "" {
-			username = login.RemoteProfile.Name
-		} else {
-			username = login.RemoteProfile.Username
-		}
-	} else {
-		return displayname
-	}
-	mention := NewMetaMention(userID, username)
-	mentions := ctx.ReturnData["mentions"].(*[]*MetaMention)
-	*mentions = append(*mentions, mention)
-	return mention.Locator
-}
-
-func (mc *MessageConverter) parseFormattedBody(ctx context.Context, content *event.MessageEventContent, task *socket.SendMessageTask, portal *bridgev2.Portal) {
-	mentions := make([]*MetaMention, 0)
-
-	parseCtx := format.NewContext(ctx)
-	parseCtx.ReturnData["mentions"] = &mentions
-	parseCtx.ReturnData["portal"] = portal
-	parsed := mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
-
-	var socketMentions socket.Mentions
-
-	for _, mention := range mentions {
-		mentionIndex := strings.Index(parsed, mention.Locator)
-		if mentionIndex == -1 {
-			zerolog.Ctx(ctx).Warn().Any("mention", mention).Msg("Mention not found in parsed body")
-			continue
-		}
-
-		parsed = parsed[:mentionIndex] + "@" + mention.Name + parsed[mentionIndex+len(mention.Locator):]
-
-		socketMentions = append(socketMentions, socket.Mention{
-			ID:     mention.UserID,
-			Offset: mentionIndex,
-			Length: len("@" + mention.Name),
-			Type:   socket.MentionTypePerson,
-		})
-	}
-
-	task.MentionData = socketMentions.ToData()
-	task.Text = parsed
 }
 
 func (mc *MessageConverter) reuploadFileToMeta(ctx context.Context, client *messagix.Client, portal *bridgev2.Portal, content *event.MessageEventContent) (int64, error) {

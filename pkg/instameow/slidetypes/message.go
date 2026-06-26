@@ -17,7 +17,10 @@
 package slidetypes
 
 import (
+	"go.mau.fi/util/exslices"
 	"go.mau.fi/util/jsontime"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 )
 
 type Message struct {
@@ -34,7 +37,7 @@ type Message struct {
 	BotResponseID               any                       `json:"bot_response_id"`
 	IsAIGenerated               bool                      `json:"is_ai_generated"`
 	TextBody                    string                    `json:"text_body"`
-	Mentions                    []any                     `json:"mentions"`
+	Mentions                    MentionList               `json:"mentions"`
 	IGDIsForwarded              bool                      `json:"igd_is_forwarded"`
 	RepliedToMessageId          any                       `json:"replied_to_message_id"`
 	RepliedToMessage            any                       `json:"replied_to_message"`
@@ -65,6 +68,61 @@ type Reaction struct {
 	Reaction            string                   `json:"reaction"`
 	ReactionTimestampMS jsontime.UnixMilliString `json:"reaction_timestamp_ms"`
 	SenderFBID          string                   `json:"sender_fbid"`
+}
+
+type MentionList []*Mention
+
+func (ml MentionList) ToSocket() []socket.Mention {
+	return exslices.CastFunc(ml, (*Mention).ToSocket)
+}
+
+type ProfileRangeType string
+
+func (t ProfileRangeType) ToSocket() socket.MentionType {
+	switch t {
+	case ProfileRangeTypeProfile:
+		return socket.MentionTypePerson
+	case ProfileRangeTypeThread:
+		return socket.MentionTypeThread
+	case ProfileRangeTypeSilent:
+		return socket.MentionTypeSilent
+	case ProfileRangeTypeThreadActive:
+		return socket.MentionTypeThreadActive
+	case ProfileRangeTypeCommunityChannel:
+		return socket.MentionTypeCommunityChannel
+	case ProfileRangeTypeCustom:
+		return socket.MentionTypeCustomCommand
+	case ProfileRangeTypeAI:
+		return socket.MentionTypeAI
+	default:
+		return socket.MentionTypeUnknown
+	}
+}
+
+const (
+	ProfileRangeTypeProfile          ProfileRangeType = "PROFILE"
+	ProfileRangeTypeThread           ProfileRangeType = "THREAD" // @everyone
+	ProfileRangeTypeThreadActive     ProfileRangeType = "THREAD_ACTIVE"
+	ProfileRangeTypeCommunityChannel ProfileRangeType = "COMMUNITY_CHANNEL"
+	ProfileRangeTypeSilent           ProfileRangeType = "SILENT"
+	ProfileRangeTypeCustom           ProfileRangeType = "CUSTOM"
+	ProfileRangeTypeAI               ProfileRangeType = "AI"
+)
+
+type Mention struct {
+	Offset           int              `json:"offset"`
+	Length           int              `json:"length"`
+	ProfileRangeType ProfileRangeType `json:"profile_range_type"`
+	UserFBID         int64            `json:"user_fbid,string"` // when @everyone is mentioned, this is the chat id
+}
+
+func (m *Mention) ToSocket() socket.Mention {
+	return socket.Mention{
+		ID:     m.UserFBID,
+		Offset: m.Offset,
+		Length: m.Length,
+		Type:   m.ProfileRangeType.ToSocket(),
+	}
 }
 
 type MessageEditHistoryEntry struct {

@@ -10,6 +10,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 type MetaConnector struct {
@@ -89,9 +90,9 @@ func (m *MetaConnector) GetName() bridgev2.BridgeName {
 
 func (m *MetaConnector) ResetHTTPTransport() {
 	cfg := m.Bridge.GetHTTPClientSettings()
-	msgconv.SetHTTP(cfg)
+	mediadl.SetHTTP(cfg)
 	if m.Config.ProxyMedia && m.Config.Proxy != "" {
-		msgconv.SetProxy(m.Config.Proxy)
+		mediadl.SetProxy(m.Config.Proxy)
 	}
 	for _, login := range m.Bridge.GetAllCachedUserLogins() {
 		login.Client.(*MetaClient).Client.GetHTTP().SetConfig(cfg)

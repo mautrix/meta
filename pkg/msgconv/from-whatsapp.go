@@ -49,6 +49,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCommon.MessageText) *bridgev2.ConvertedMessagePart {
@@ -190,7 +191,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		if err != nil {
 			return nil, err
 		}
-		directMediaMeta, err := json.Marshal(DirectMediaWhatsApp{
+		directMediaMeta, err := json.Marshal(mediadl.DirectMediaWhatsApp{
 			Key:        transport.Integral.MediaKey,
 			Type:       mediaType,
 			SHA256:     transport.Integral.FileSHA256,

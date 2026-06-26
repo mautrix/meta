@@ -91,9 +91,14 @@ func (md *MentionData) Parse() (Mentions, error) {
 type MentionType string
 
 const (
-	MentionTypePerson MentionType = "p"
-	MentionTypeSilent MentionType = "s"
-	MentionTypeThread MentionType = "t"
+	MentionTypePerson           MentionType = "p"
+	MentionTypeSilent           MentionType = "s"
+	MentionTypeThread           MentionType = "t"
+	MentionTypeThreadActive     MentionType = "a"
+	MentionTypeCommunityChannel MentionType = "c"
+	MentionTypeCustomCommand    MentionType = "cu"
+	MentionTypeAI               MentionType = "ai"
+	MentionTypeUnknown          MentionType = "n"
 )
 
 type Mention struct {
@@ -118,6 +123,9 @@ func (m Mentions) Swap(i, j int) {
 }
 
 func (m Mentions) ToData() *MentionData {
+	if m == nil {
+		return nil
+	}
 	mentionIDs := make([]string, len(m))
 	mentionOffsets := make([]string, len(m))
 	mentionLengths := make([]string, len(m))
