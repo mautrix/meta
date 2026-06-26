@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -45,9 +46,15 @@ type Client struct {
 
 	socket        atomic.Pointer[dgw.Socket]
 	cancelSocket  atomic.Pointer[context.CancelFunc]
+	connectionCtx atomic.Pointer[context.Context]
 	socketStopped *exsync.Event
 	connected     *exsync.Event
 	socketRetries int
+
+	mqttBypassSocket      *dgw.Socket
+	mqttBypassConnectLock sync.Mutex
+	mqttBypassStream      atomic.Pointer[dgw.PersistentStream]
+	mqttBypassConnected   *exsync.Event
 
 	eventHandler EventHandler
 
@@ -76,6 +83,8 @@ func NewClient(params ClientParams) *Client {
 		seqIDTS:       params.SeqIDTS,
 		socketStopped: exsync.NewEvent(),
 		connected:     exsync.NewEvent(),
+
+		mqttBypassConnected: exsync.NewEvent(),
 	}
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)

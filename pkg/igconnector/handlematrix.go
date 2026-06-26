@@ -43,7 +43,7 @@ var (
 	_ bridgev2.RedactionHandlingNetworkAPI   = (*IGClient)(nil)
 	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*IGClient)(nil)
 	//_ bridgev2.ChatViewingNetworkAPI             = (*IGClient)(nil)
-	//_ bridgev2.TypingHandlingNetworkAPI          = (*IGClient)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI          = (*IGClient)(nil)
 	_ bridgev2.MessageRequestAcceptingNetworkAPI = (*IGClient)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI      = (*IGClient)(nil)
 	_ bridgev2.RoomNameHandlingNetworkAPI        = (*IGClient)(nil)
@@ -388,4 +388,12 @@ func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Ma
 		return nil, err
 	}*/
 	return &bridgev2.MatrixMembershipResult{}, fmt.Errorf("not implemented")
+}
+
+func (ic *IGClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
+	igid := msg.Portal.Metadata.(*metaid.PortalMetadata).IGID
+	if igid == "" {
+		return fmt.Errorf("portal metadata missing IGID")
+	}
+	return ic.Client.SetTyping(ctx, igid, msg.IsTyping)
 }

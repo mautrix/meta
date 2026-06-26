@@ -44,6 +44,7 @@ func (c *Client) makeNewSocket() {
 	if old != nil {
 		old.Disconnect()
 	}
+	c.disconnectMQTTBypass()
 }
 
 func (c *Client) Connect(ctx context.Context) {
@@ -54,6 +55,7 @@ func (c *Client) Connect(ctx context.Context) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	c.connectionCtx.Store(&ctx)
 	if oldCancel := c.cancelSocket.Swap(&cancel); oldCancel != nil {
 		(*oldCancel)()
 		if !c.socketStopped.IsSet() {
@@ -286,6 +288,8 @@ func (c *Client) Disconnect() {
 	if sock := c.socket.Load(); sock != nil {
 		sock.Disconnect()
 	}
+	c.disconnectMQTTBypass()
+	c.connectionCtx.Store(nil)
 	cancel := c.cancelSocket.Swap(nil)
 	if cancel != nil {
 		(*cancel)()
