@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,16 +38,18 @@ import (
 )
 
 type SocketOptions struct {
-	GetCookies func() string
-	OnConnect  func(context.Context)
-	Origin     string
-	WSURL      string
-	DialOpts   websocket.DialOptions
-	Log        zerolog.Logger
-	Facebook   bool
-	AppID      string
-	UserID     string
-	DeviceID   string
+	GetCookies     func() string
+	OnConnect      func(context.Context) error
+	Origin         string
+	WSURL          string
+	DialOpts       websocket.DialOptions
+	Log            zerolog.Logger
+	Facebook       bool
+	LoggingID      bool
+	AppStreamGroup string
+	AppID          string
+	UserID         string
+	DeviceID       string
 }
 
 type Socket struct {
@@ -418,9 +419,12 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		}
 	}()
 
-	s.OnConnect(ctx)
-
-	s.Log.Debug().Msg("DGW socket initialized")
+	err := s.OnConnect(ctx)
+	if err != nil {
+		fatalError(fmt.Errorf("dgw: OnConnect error: %w", err))
+	} else {
+		s.Log.Debug().Msg("DGW socket initialized")
+	}
 
 	select {
 	case <-done:
@@ -464,20 +468,19 @@ func (s *Socket) getConnURL() string {
 	query.Add("x-dgw-appversion", "0")
 	if s.Facebook {
 		query.Add("x-dgw-authtype", "1:0")
+		//query.Add("x-dgw-regionhint", "TODO")
 	} else {
 		query.Add("x-dgw-authtype", "6:0")
 	}
 	query.Add("x-dgw-version", "5")
 	query.Add("x-dgw-uuid", s.UserID)
 	query.Add("x-dgw-tier", "prod")
-	if s.Facebook {
+	if s.LoggingID {
 		query.Add("x-dgw-loggingid", uuid.NewString())
-		//query.Add("x-dgw-regionhint", "TODO")
 	}
 	query.Add("x-dgw-deviceid", s.DeviceID)
-	// TODO less hacky check?
-	if !strings.HasSuffix(s.WSURL, "/lightspeed") {
-		query.Add("x-dgw-app-stream-group", "group1")
+	if s.AppStreamGroup != "" {
+		query.Add("x-dgw-app-stream-group", s.AppStreamGroup)
 	}
 
 	encodedQuery := query.Encode()

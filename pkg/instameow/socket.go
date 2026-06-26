@@ -39,8 +39,16 @@ import (
 
 var MaxConnectionRetryInterval = 60 * time.Second
 
+func (c *Client) makeNewSocket() {
+	old := c.socket.Swap(dgw.NewSocket(c.getSocketOptions()))
+	if old != nil {
+		old.Disconnect()
+	}
+}
+
 func (c *Client) Connect(ctx context.Context) {
-	if c.socket == nil {
+	sock := c.socket.Load()
+	if sock == nil {
 		c.log.Error().Msg("Connect() called without initializing socket")
 		return
 	}
@@ -63,7 +71,7 @@ func (c *Client) Connect(ctx context.Context) {
 	c.socketRetries = 0
 	sequentialFailures := 0
 	for {
-		err := c.socket.Connect(ctx)
+		err := sock.Connect(ctx)
 		wasConnected := c.connected.IsSet()
 		c.connected.Clear()
 		if err == nil {
@@ -105,10 +113,13 @@ func (c *Client) Connect(ctx context.Context) {
 }
 
 func (c *Client) ForceReconnect() {
-	if c == nil || c.socket == nil {
+	if c == nil {
 		return
 	}
-	c.socket.ForceReconnect()
+	sock := c.socket.Load()
+	if sock != nil {
+		sock.ForceReconnect()
+	}
 }
 
 func (c *Client) getSocketOptions() dgw.SocketOptions {
@@ -121,16 +132,16 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 		Facebook:   false,
 		AppID:      c.configs.BrowserConfigTable.DGWWebConfig.AppID,
 		UserID:     c.configs.BrowserConfigTable.PolarisViewer.ID,
-		DeviceID:   c.configs.BrowserConfigTable.MqttWebDeviceID.ClientID,
-		OnConnect: func(ctx context.Context) {
-			_, err := c.socket.EstablishStream(ctx, dgw.StreamInit{
+		DeviceID:   c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
+		OnConnect: func(ctx context.Context) error {
+			_, err := c.socket.Load().EstablishStream(ctx, dgw.StreamInit{
 				InitPayload:  exerrors.Must(c.makeStreamInitPayload(c.socketRetries)),
-				LogName:      "main",
 				FrameHandler: c.handleDataFrame,
 			})
 			if err != nil {
 				c.log.Err(err).Msg("Failed to establish main stream")
 			}
+			return err
 		},
 	}
 }
@@ -181,7 +192,7 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 	}
 	return json.Marshal(&connectPayload{
 		AppID:     c.configs.BrowserConfigTable.DGWWebConfig.AppID,
-		DeviceID:  c.socket.DeviceID,
+		DeviceID:  c.socket.Load().DeviceID,
 		Payload:   string(marshaledDatabaseQuery),
 		RequestID: 4 + retryCount,
 		Type:      2,
@@ -272,8 +283,8 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 }
 
 func (c *Client) Disconnect() {
-	if c.socket != nil {
-		c.socket.Disconnect()
+	if sock := c.socket.Load(); sock != nil {
+		sock.Disconnect()
 	}
 	cancel := c.cancelSocket.Swap(nil)
 	if cancel != nil {

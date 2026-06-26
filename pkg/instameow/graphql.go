@@ -64,7 +64,7 @@ func (c *Client) DeleteThread(ctx context.Context, req *slidetypes.DeleteThreadR
 func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, error) {
 	return makeGraphQLRequest[*slidetypes.MailboxResponse](
 		ctx, c, "PolarisDirectInboxQuery",
-		slidetypes.MakeMailboxRequest(c.configs.BrowserConfigTable.MqttWebDeviceID.ClientID),
+		slidetypes.MakeMailboxRequest(c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID),
 	)
 }
 

@@ -13,6 +13,10 @@ type MqttWebDeviceID struct {
 	ClientID string `json:"clientID,omitempty"`
 }
 
+type IGDMqttWebDeviceID struct {
+	ClientID string `json:"clientId,omitempty"`
+}
+
 type MQTTWebConfig struct {
 	Fbid               string `json:"fbid,omitempty"`
 	AppID              int64  `json:"appID,omitempty"`
@@ -220,6 +224,7 @@ type SchedulerJSDefineConfig struct {
 
 	MqttWebConfig                 MqttWebConfig
 	MqttWebDeviceID               MqttWebDeviceID
+	IGDMqttWebDeviceID            IGDMqttWebDeviceID
 	WebDevicePerfClassData        WebDevicePerfClassData
 	BootloaderConfig              BootLoaderConfig
 	CurrentBusinessUser           CurrentBusinessAccount

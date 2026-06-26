@@ -43,7 +43,7 @@ type Client struct {
 	cookies *cookies.Cookies
 	log     *zerolog.Logger
 
-	socket        *dgw.Socket
+	socket        atomic.Pointer[dgw.Socket]
 	cancelSocket  atomic.Pointer[context.CancelFunc]
 	socketStopped *exsync.Event
 	connected     *exsync.Event
@@ -112,7 +112,7 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 	if err != nil {
 		return nil, nil, err
 	}
-	c.socket = dgw.NewSocket(c.getSocketOptions())
+	c.makeNewSocket()
 	mailbox, err := c.GetMailbox(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get mailbox: %w", err)
@@ -186,7 +186,7 @@ func (c *Client) LoadState(state json.RawMessage) error {
 	c.http.SetConfigs(c.configs)
 	c.seqID = dumped.SeqID
 	c.seqIDTS = dumped.SeqIDTS
-	c.socket = dgw.NewSocket(c.getSocketOptions())
+	c.makeNewSocket()
 	return nil
 }
 
