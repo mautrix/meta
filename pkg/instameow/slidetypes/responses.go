@@ -36,8 +36,20 @@ type FetchMessagesResponse struct {
 	ThreadInfo *WrappedThreadInfo `json:"fetch__SlideThread"`
 }
 
-type SendMessageResponse struct {
+type SendTextResponse struct {
 	Message SentMessage `json:"xig_direct_text_send_with_slide_messaging_response"`
+}
+
+func (str *SendTextResponse) GetMessage() SentMessage {
+	return str.Message
+}
+
+type SendMediaResponse struct {
+	Message SentMessage `json:"xig_direct_media_send_with_slide_messaging_response"`
+}
+
+func (smr *SendMediaResponse) GetMessage() SentMessage {
+	return smr.Message
 }
 
 type EditMessageResponse struct {

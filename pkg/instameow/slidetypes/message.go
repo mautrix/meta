@@ -17,6 +17,8 @@
 package slidetypes
 
 import (
+	"strconv"
+
 	"go.mau.fi/util/exslices"
 	"go.mau.fi/util/jsontime"
 
@@ -116,6 +118,19 @@ type Mention struct {
 	UserFBID         int64            `json:"user_fbid,string"` // when @everyone is mentioned, this is the chat id
 }
 
+type InputMention struct {
+	Offset int   `json:"offset"`
+	Length int   `json:"length"`
+	FBID   int64 `json:"fbid,string"`
+}
+
+type InputCommand struct {
+	Offset           int    `json:"offset"`
+	Length           int    `json:"length"`
+	Type             string `json:"type"` // EVERYONE for @everyone
+	UserOrThreadFBID int64  `json:"user_or_thread_fbid,string"`
+}
+
 func (m *Mention) ToSocket() socket.Mention {
 	return socket.Mention{
 		ID:     m.UserFBID,
@@ -123,6 +138,29 @@ func (m *Mention) ToSocket() socket.Mention {
 		Length: m.Length,
 		Type:   m.ProfileRangeType.ToSocket(),
 	}
+}
+
+func SocketMentionsToInput(s socket.Mentions) (mentions []InputMention, mentionedUserIDs []string, commands []InputCommand) {
+	for _, m := range s {
+		switch m.Type {
+		case socket.MentionTypePerson:
+			mentions = append(mentions, InputMention{
+				Offset: m.Offset,
+				Length: m.Length,
+				FBID:   m.ID,
+			})
+			mentionedUserIDs = append(mentionedUserIDs, strconv.FormatInt(m.ID, 10))
+		case socket.MentionTypeThread:
+			commands = append(commands, InputCommand{
+				Offset:           m.Offset,
+				Length:           m.Length,
+				Type:             "EVERYONE",
+				UserOrThreadFBID: m.ID,
+			})
+			// TODO other types?
+		}
+	}
+	return
 }
 
 type MessageEditHistoryEntry struct {

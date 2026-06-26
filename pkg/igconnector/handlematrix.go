@@ -83,34 +83,34 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return c.Int64("otid", otid)
 	})
 	log.Debug().Msg("Sending Matrix message to Meta")
-
-	resp, err := ic.Client.SendMessage(ctx, &slidetypes.SendMessageRequest{
-		IGThreadIGID:              meta.IGID,
-		OfflineThreadingID:        strconv.FormatInt(otid, 10),
-		RecipientIGIDs:            nil,
-		RepliedToClientContext:    nil,
-		RepliedToItemID:           nil,
-		ReplyToMessageID:          nil,
-		Sampled:                   nil,
-		Text:                      slidetypes.SensitiveString{Value: msg.Content.Body},
-		Mentions:                  nil,
-		MentionedUserIDs:          nil,
-		Commands:                  nil,
-		ForwardedFromThreadID:     nil,
-		IsForwardedFromOwnMessage: nil,
-		SendAttribution:           "",
-	})
+	converted, err := ic.Main.MsgConv.ToInstagram(ctx, ic.Client, msg.Event, msg.Content, msg.ReplyTo, otid, msg.OrigSender != nil, msg.Portal)
 	if err != nil {
 		return nil, err
 	}
 
+	var resp interface {
+		GetMessage() slidetypes.SentMessage
+	}
+	switch req := converted.(type) {
+	case *slidetypes.SendTextRequest:
+		resp, err = ic.Client.SendMessage(ctx, req)
+	case *slidetypes.SendMediaRequest:
+		resp, err = ic.Client.SendMedia(ctx, req)
+	default:
+		return nil, fmt.Errorf("unexpected converted request type %T", converted)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	respMsg := resp.GetMessage()
 	return &bridgev2.MatrixMessageResponse{
 		DB: &database.Message{
-			ID:        metaid.MakeFBMessageID(resp.Message.ID),
+			ID:        metaid.MakeFBMessageID(respMsg.ID),
 			SenderID:  networkid.UserID(ic.UserLogin.ID),
-			Timestamp: resp.Message.TimestampMS.Time,
+			Timestamp: respMsg.TimestampMS.Time,
 		},
-		StreamOrder: resp.Message.TimestampMS.UnixMilli(),
+		StreamOrder: respMsg.TimestampMS.UnixMilli(),
 	}, nil
 }
 

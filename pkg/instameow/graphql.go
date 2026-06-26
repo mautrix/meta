@@ -29,8 +29,12 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-func (c *Client) SendMessage(ctx context.Context, req *slidetypes.SendMessageRequest) (*slidetypes.SendMessageResponse, error) {
-	return makeGraphQLRequest[*slidetypes.SendMessageResponse](ctx, c, "IGDirectTextSendMutation", req)
+func (c *Client) SendMessage(ctx context.Context, req *slidetypes.SendTextRequest) (*slidetypes.SendTextResponse, error) {
+	return makeGraphQLRequest[*slidetypes.SendTextResponse](ctx, c, "IGDirectTextSendMutation", req)
+}
+
+func (c *Client) SendMedia(ctx context.Context, req *slidetypes.SendMediaRequest) (*slidetypes.SendMediaResponse, error) {
+	return makeGraphQLRequest[*slidetypes.SendMediaResponse](ctx, c, "IGDirectMediaSendMutation", req)
 }
 
 func (c *Client) EditMessage(ctx context.Context, req *slidetypes.EditMessageRequest) (*slidetypes.EditMessageResponse, error) {

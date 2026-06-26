@@ -24,21 +24,30 @@ type SensitiveString struct {
 	Value string `json:"sensitive_string_value"`
 }
 
-type SendMessageRequest struct {
-	IGThreadIGID              string          `json:"ig_thread_igid"`
+type SendTextRequest struct {
+	IGThreadIGID              *string         `json:"ig_thread_igid"`
 	OfflineThreadingID        string          `json:"offline_threading_id"`
-	RecipientIGIDs            any             `json:"recipient_igids"`
-	RepliedToClientContext    any             `json:"replied_to_client_context"`
-	RepliedToItemID           any             `json:"replied_to_item_id"`
-	ReplyToMessageID          any             `json:"reply_to_message_id"`
+	RecipientIGIDs            []string        `json:"recipient_igids"`
+	RepliedToClientContext    *string         `json:"replied_to_client_context"`
+	RepliedToItemID           *string         `json:"replied_to_item_id"`
+	ReplyToMessageID          *string         `json:"reply_to_message_id"`
 	Sampled                   any             `json:"sampled"`
 	Text                      SensitiveString `json:"text"`
-	Mentions                  []any           `json:"mentions"`
-	MentionedUserIDs          []any           `json:"mentioned_user_ids"`
-	Commands                  any             `json:"commands"`
-	ForwardedFromThreadID     any             `json:"forwarded_from_thread_id"`
-	IsForwardedFromOwnMessage any             `json:"is_forwarded_from_own_message"`
-	SendAttribution           string          `json:"send_attribution"`
+	Mentions                  []InputMention  `json:"mentions"`
+	MentionedUserIDs          []string        `json:"mentioned_user_ids"`
+	Commands                  []InputCommand  `json:"commands"`
+	ForwardedFromThreadID     *string         `json:"forwarded_from_thread_id"` // Note: this is the long thread ID
+	IsForwardedFromOwnMessage *bool           `json:"is_forwarded_from_own_message"`
+	SendAttribution           *string         `json:"send_attribution"`
+}
+
+type SendMediaRequest struct {
+	AttachmentFBID            string  `json:"attachment_fbid"`
+	ThreadID                  string  `json:"thread_id"`
+	OfflineThreadingID        string  `json:"offline_threading_id"`
+	ReplyToMessageID          *string `json:"reply_to_message_id"`
+	ForwardedFromThreadID     *string `json:"forwarded_from_thread_id"`
+	IsForwardedFromOwnMessage *bool   `json:"is_forwarded_from_own_message"`
 }
 
 type EditMessageRequest struct {
