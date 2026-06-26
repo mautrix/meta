@@ -19,7 +19,7 @@ package slidetypes
 type Mailbox struct {
 	UQSeqID         int64                          `json:"iris_inactive_subscription_uq_seq_id,string"`
 	ThreadsByFolder Edged[Node[WrappedThreadInfo]] `json:"threads_by_folder"`
-	PinnedThreadsV2 any                            `json:"pinned_threads_v2"` // TODO find correct type
+	PinnedThreadsV2 []WrappedThreadInfo            `json:"pinned_threads_v2"`
 	ID              string                         `json:"id"`
 	Token           string                         `json:"__token"`
 

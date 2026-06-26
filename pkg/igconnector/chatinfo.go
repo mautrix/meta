@@ -146,12 +146,16 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 		avatar = wrapAvatar(info.ThreadImageURL)
 	}
 	var mutedUntil *time.Time
-	if info.IsMuted {
+	if ptr.Val(info.IsMuted) {
 		mutedUntil = &event.MutedForever
+	} else if info.IsMuted != nil {
+		mutedUntil = &bridgev2.Unmuted
 	}
-	var tag event.RoomTag
-	if info.IsPin {
-		tag = event.RoomTagFavourite
+	var tag *event.RoomTag
+	if ptr.Val(info.IsPin) {
+		tag = ptr.Ptr(event.RoomTagFavourite)
+	} else if info.IsPin != nil {
+		tag = ptr.Ptr(event.RoomTag(""))
 	}
 	members := &bridgev2.ChatMemberList{
 		IsFull:                     true,
@@ -205,7 +209,7 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 		Disappear: nil, // TODO
 		UserLocal: &bridgev2.UserLocalPortalInfo{
 			MutedUntil: mutedUntil,
-			Tag:        &tag,
+			Tag:        tag,
 		},
 		MessageRequest: ptr.Ptr(info.SystemFolder == "PENDING" || info.SystemFolder == "SPAM"),
 		CanBackfill:    false, // TODO

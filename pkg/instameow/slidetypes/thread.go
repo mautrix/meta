@@ -55,8 +55,8 @@ type ThreadInfo struct {
 	InputMode               int                      `json:"input_mode"`
 
 	// Only present when listing threads
-	IsMuted            bool       `json:"is_muted"`
-	IsPin              bool       `json:"is_pin"`
+	IsMuted            *bool      `json:"is_muted"`
+	IsPin              *bool      `json:"is_pin"`
 	Folder             string     `json:"folder"`
 	MessagingFolderTag string     `json:"messaging_folder_tag"`
 	UsersWithoutViewer []TinyUser `json:"usersWithoutViewer"`
