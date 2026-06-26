@@ -964,7 +964,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		if err != nil {
 			return nil, err
 		}
-		dmm := mediadl.DirectMediaMeta{
+		dmm := DirectMediaMeta{
 			MimeType: mimeType,
 			URL:      url,
 		}

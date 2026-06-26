@@ -19,6 +19,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
@@ -54,7 +55,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 
 	switch mediaInfo.Type {
 	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2:
-		var info *mediadl.DirectMediaMeta
+		var info *msgconv.DirectMediaMeta
 		err = json.Unmarshal(dmm, &info)
 		if err != nil {
 			return nil, err
@@ -97,7 +98,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 			ContentLength: size,
 		}, nil
 	case metaid.DirectMediaTypeWhatsAppV1, metaid.DirectMediaTypeWhatsAppV2:
-		var info *mediadl.DirectMediaWhatsApp
+		var info *msgconv.DirectMediaWhatsApp
 		err = json.Unmarshal(dmm, &info)
 		if err != nil {
 			return nil, err
@@ -123,7 +124,7 @@ func (m *MetaConnector) refreshMediaURL(
 	ctx context.Context,
 	mediaInfo *metaid.MediaInfo,
 	msg *database.Message,
-	info *mediadl.DirectMediaMeta,
+	info *msgconv.DirectMediaMeta,
 ) (string, error) {
 	ul := m.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 	if ul == nil || !ul.Client.IsLoggedIn() {
@@ -146,7 +147,7 @@ func (m *MetaConnector) refreshMediaURL(
 func (m *MetaConnector) refreshXMAMedia(
 	ctx context.Context,
 	client *MetaClient,
-	info *mediadl.DirectMediaMeta,
+	info *msgconv.DirectMediaMeta,
 ) (string, error) {
 	ig := client.Client.Instagram
 	if ig == nil {
@@ -219,7 +220,7 @@ func (m *MetaConnector) refreshBlobMedia(
 	ctx context.Context,
 	client *MetaClient,
 	msg *database.Message,
-	info *mediadl.DirectMediaMeta,
+	info *msgconv.DirectMediaMeta,
 ) (string, error) {
 	log := zerolog.Ctx(ctx)
 
@@ -323,7 +324,7 @@ func (m *MetaConnector) refreshBlobMedia(
 				continue
 			}
 
-			var dmm mediadl.DirectMediaMeta
+			var dmm msgconv.DirectMediaMeta
 			if err := json.Unmarshal(meta.DirectMediaMeta, &dmm); err != nil {
 				continue
 			}
