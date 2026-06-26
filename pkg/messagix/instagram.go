@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/go-querystring/query"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -131,9 +130,8 @@ func (ig *InstagramMethods) RegisterPushNotifications(ctx context.Context, endpo
 		return err
 	}
 
-	u := uuid.New()
 	payload := c.http.NewHTTPQuery()
-	payload.Mid = u.String()
+	payload.Mid = ig.client.GetCookies().Get(cookies.IGCookieMachineID)
 	payload.DeviceType = "web_vapid"
 	payload.DeviceToken = endpoint
 	payload.SubscriptionKeys = string(jsonKeys)

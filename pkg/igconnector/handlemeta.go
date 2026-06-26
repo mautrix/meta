@@ -94,6 +94,15 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		if evt.SubscribedSeqID >= evt.LatestSeqID {
+			ic.catchingUpTo = 0
+			go func() {
+				_ = ic.doWaitMailboxProcessed(ctx)
+				ic.caughtUp.Set()
+			}()
+		} else {
+			ic.catchingUpTo = evt.LatestSeqID
+		}
 		return nil
 	case *slidetypes.Disconnected:
 		ic.UserLogin.BridgeState.Send(status.BridgeState{
@@ -106,7 +115,14 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		return nil
 	case *slidetypes.SeqIDUpdate:
 		_ = ic.doWaitMailboxProcessed(ctx)
-		return ic.saveReconnectionState(ctx)
+		err := ic.saveReconnectionState(ctx)
+		if err != nil {
+			return err
+		}
+		if c := ic.catchingUpTo; c > 0 && evt.SeqID >= c {
+			ic.caughtUp.Set()
+		}
+		return nil
 	case *slidetypes.ResnapshotRequired:
 		_ = ic.doWaitMailboxProcessed(ctx)
 		go ic.FullReconnect()
@@ -146,7 +162,10 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 		return networkid.PortalKey{}, fmt.Errorf("failed to save FBID for IG thread %s: %w", threadIGID, err)
 	}
 	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread)
-	ic.UserLogin.QueueRemoteEvent(evt)
+	res := ic.UserLogin.QueueRemoteEvent(evt)
+	if !res.Success {
+		return evt.PortalKey, res.Error
+	}
 	return evt.PortalKey, nil
 }
 

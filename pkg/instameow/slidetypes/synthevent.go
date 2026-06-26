@@ -32,7 +32,10 @@ func (*Delta) isClientEvent()              {}
 
 type ResnapshotRequired struct{}
 
-type Connected struct{}
+type Connected struct {
+	SubscribedSeqID int64
+	LatestSeqID     int64
+}
 
 type Disconnected struct {
 	Error error

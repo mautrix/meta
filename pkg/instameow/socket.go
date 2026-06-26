@@ -220,7 +220,10 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 	case *mdCoreSync.Operation_Subscribe:
 		c.connected.Set()
 		c.log.Info().Any("subscribe_payload", op.Subscribe).Msg("Successfully subscribed to iris socket")
-		err := c.eventHandler(ctx, &slidetypes.Connected{})
+		err := c.eventHandler(ctx, &slidetypes.Connected{
+			LatestSeqID:     op.Subscribe.GetLatestSeqID(),
+			SubscribedSeqID: op.Subscribe.GetSubscribedSeqID(),
+		})
 		if err != nil {
 			return fmt.Errorf("failed to handle connected event: %w", err)
 		}

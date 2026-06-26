@@ -32,6 +32,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
+	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -125,7 +126,7 @@ type connectBackgroundEvent struct {
 	isProcessing bool
 }
 
-func (m *MetaClient) igPushToMessageID(pd *decryptedPushData) (*methods.MetaMessageID, error) {
+func (m *MetaClient) igPushToMessageID(pd *pushcrypto.DecryptedPushData) (*methods.MetaMessageID, error) {
 	ts, err := strconv.ParseInt(pd.Params["ts"], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ts param: %w", err)
@@ -154,7 +155,7 @@ func (m *MetaClient) igPushToMessageID(pd *decryptedPushData) (*methods.MetaMess
 	}, nil
 }
 
-func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *decryptedPushData, parsed *methods.MetaMessageID) {
+func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypto.DecryptedPushData, parsed *methods.MetaMessageID) {
 	if pd == nil || parsed == nil {
 		return
 	}
@@ -216,7 +217,7 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *decrypte
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	log := zerolog.Ctx(ctx)
 	var parsedMsgID *methods.MetaMessageID
-	data, err := m.decryptPush(params.RawData)
+	data, err := m.UserLogin.Metadata.(*metaid.UserLoginMetadata).PushKeys.Decrypt(ctx, params.RawData)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {

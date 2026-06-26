@@ -145,6 +145,15 @@ func (db *MetaDB) GetIGUserForFBID(ctx context.Context, fbid int64) (igid string
 	return
 }
 
+func (db *MetaDB) GetIGChatForFBID(ctx context.Context, fbid int64) (igid string, err error) {
+	err = db.QueryRow(ctx, "SELECT igid FROM meta_instagram_chat_id WHERE fbid = $1", fbid).Scan(&igid)
+	if errors.Is(err, sql.ErrNoRows) {
+		// return "" if not cached
+		err = nil
+	}
+	return
+}
+
 func (db *MetaDB) GetFBIDForIGThread(ctx context.Context, igid string) (fbid int64, err error) {
 	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_thread_id WHERE igid = $1", igid).Scan(&fbid)
 	if errors.Is(err, sql.ErrNoRows) {

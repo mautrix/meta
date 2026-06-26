@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exsync"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -47,6 +48,9 @@ type IGClient struct {
 	UserLogin *bridgev2.UserLogin
 	Ghost     *bridgev2.Ghost
 
+	caughtUp     *exsync.Event
+	catchingUpTo int64
+
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
 	mailboxProcessed     atomic.Bool
 	waitMailboxProcessed chan struct{}
@@ -58,6 +62,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		Main:      ic,
 		LoginMeta: loginMetadata,
 		UserLogin: login,
+		caughtUp:  exsync.NewEvent(),
 	}
 	c.mailboxProcessed.Store(true)
 	login.Client = c

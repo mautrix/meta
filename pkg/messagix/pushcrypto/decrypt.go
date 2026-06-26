@@ -1,5 +1,5 @@
 // mautrix-meta - A Matrix-Facebook Messenger and Instagram DM puppeting bridge.
-// Copyright (C) 2025 Tulir Asokan
+// Copyright (C) 2026 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -14,10 +14,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package connector
+package pushcrypto
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
@@ -30,19 +31,24 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/jsontime"
-
-	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
-type webPushData struct {
+type PushKeys struct {
+	P256DH  []byte `json:"p256dh"`
+	Auth    []byte `json:"auth"`
+	Private []byte `json:"private"`
+}
+
+type WebPushData struct {
 	Data            []byte `json:"data"`
 	ContentEncoding string `json:"content-encoding"`
 	CryptoKey       string `json:"crypto-key"`
 	Encryption      string `json:"encryption"`
 }
 
-type decryptedPushData struct {
+type DecryptedPushData struct {
 	Type              string            `json:"type"`
 	Time              jsontime.Unix     `json:"time"`
 	Message           string            `json:"message"`
@@ -53,8 +59,8 @@ type decryptedPushData struct {
 	Params            map[string]string `json:"params"`
 }
 
-func (m *MetaClient) decryptPush(push json.RawMessage) (*decryptedPushData, error) {
-	var wpd webPushData
+func (keys *PushKeys) Decrypt(ctx context.Context, push json.RawMessage) (*DecryptedPushData, error) {
+	var wpd WebPushData
 	err := json.Unmarshal(push, &wpd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal web push data: %w", err)
@@ -66,7 +72,6 @@ func (m *MetaClient) decryptPush(push json.RawMessage) (*decryptedPushData, erro
 	if cryptoKey["dh"] == nil || encryption["salt"] == nil {
 		return nil, fmt.Errorf("missing dh or salt in push headers")
 	}
-	keys := m.UserLogin.Metadata.(*metaid.UserLoginMetadata).PushKeys
 	if keys == nil {
 		return nil, fmt.Errorf("no push keys available")
 	}
@@ -110,11 +115,11 @@ func (m *MetaClient) decryptPush(push json.RawMessage) (*decryptedPushData, erro
 		return nil, errors.New("invalid padding length")
 	}
 	if json.Valid(decrypted[2+padLen:]) {
-		m.UserLogin.Log.Trace().RawJSON("push_data", decrypted[2+padLen:]).Msg("Decrypted push data")
+		zerolog.Ctx(ctx).Trace().RawJSON("push_data", decrypted[2+padLen:]).Msg("Decrypted push data")
 	} else {
-		m.UserLogin.Log.Trace().Bytes("raw_push_data", decrypted).Msg("Decrypted push data (not JSON?)")
+		zerolog.Ctx(ctx).Trace().Bytes("raw_push_data", decrypted).Msg("Decrypted push data (not JSON?)")
 	}
-	var dpd decryptedPushData
+	var dpd DecryptedPushData
 	err = json.Unmarshal(decrypted[2+padLen:], &dpd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal decrypted push data: %w", err)
