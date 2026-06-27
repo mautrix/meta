@@ -17,32 +17,28 @@
 package slidetypes
 
 import (
-	"time"
+	"go.mau.fi/util/jsontime"
 )
 
-type ClientEvent interface {
-	isClientEvent()
+type StreamControllerPayload struct {
+	Data struct {
+		XDTDirectRealtimeEvent struct {
+			Event string `json:"event"` // usually "patch"
+			Data  []struct {
+				Op    string `json:"op"` // usually "add"
+				Path  string `json:"path"`
+				Value string `json:"value"` // json-encoded TypingNotification
+			} `json:"data"`
+		} `json:"xdt_direct_realtime_event"`
+	} `json:"data"`
 }
 
-func (*ResnapshotRequired) isClientEvent() {}
-func (*Connected) isClientEvent()          {}
-func (*Disconnected) isClientEvent()       {}
-func (*SeqIDUpdate) isClientEvent()        {}
-func (*Delta) isClientEvent()              {}
-func (*TypingNotification) isClientEvent() {}
+type TypingNotification struct {
+	ThreadID string `json:"-"` // This is parsed from the path above
 
-type ResnapshotRequired struct{}
-
-type Connected struct {
-	SubscribedSeqID int64
-	LatestSeqID     int64
-}
-
-type Disconnected struct {
-	Error error
-}
-
-type SeqIDUpdate struct {
-	SeqID     int64
-	Timestamp time.Time
+	Timestamp      jsontime.UnixMicro `json:"timestamp"`
+	SenderID       int64              `json:"sender_id"`
+	TTL            int                `json:"ttl"`
+	ActivityStatus int                `json:"activity_status"`
+	Attribution    any                `json:"attribution"`
 }

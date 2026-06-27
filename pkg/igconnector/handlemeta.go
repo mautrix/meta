@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strconv"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -133,6 +135,8 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			return err
 		}
 		return ic.handleDelta(ctx, evt)
+	case *slidetypes.TypingNotification:
+		return ic.handleTyping(ctx, evt)
 	default:
 		return fmt.Errorf("unrecognized event type: %T", rawEvt)
 	}
@@ -258,6 +262,40 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		return nil
 		//return fmt.Errorf("unrecognized event type: %T", d.Data)
 	}
+	if !res.Success {
+		return res.Error
+	}
+	return nil
+}
+
+func (ic *IGClient) handleTyping(ctx context.Context, evt *slidetypes.TypingNotification) error {
+	threadKey, err := ic.Main.DB.GetFBIDForIGThread(ctx, evt.ThreadID)
+	if err != nil {
+		return fmt.Errorf("failed to get FBID for IG thread %s: %w", evt.ThreadID, err)
+	} else if threadKey == 0 {
+		return nil
+	}
+	userID, err := ic.Main.DB.GetFBIDForIGUser(ctx, strconv.FormatInt(evt.SenderID, 10))
+	if err != nil {
+		return fmt.Errorf("failed to get FBID for IG user %d: %w", evt.SenderID, err)
+	} else if userID == 0 {
+		return nil
+	}
+	timeout := 6 * time.Second
+	if evt.ActivityStatus == 0 {
+		timeout = 0
+	}
+	res := ic.UserLogin.QueueRemoteEvent(&simplevent.Typing{
+		EventMeta: simplevent.EventMeta{
+			Type:              bridgev2.RemoteEventTyping,
+			PortalKey:         ic.makeUncertainPortalKey(threadKey),
+			UncertainReceiver: true,
+			Sender:            ic.makeEventSender(userID),
+			Timestamp:         evt.Timestamp.Time,
+		},
+		Timeout: timeout,
+		Type:    bridgev2.TypingTypeText,
+	})
 	if !res.Success {
 		return res.Error
 	}

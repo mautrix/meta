@@ -56,6 +56,12 @@ type Client struct {
 	mqttBypassStream      atomic.Pointer[dgw.PersistentStream]
 	mqttBypassConnected   *exsync.Event
 
+	streamControllerSocket    atomic.Pointer[dgw.Socket]
+	streamControllerStopped   *exsync.Event
+	streamControllerConnected atomic.Bool
+
+	enableTyping bool
+
 	eventHandler EventHandler
 
 	seqID   int64
@@ -67,12 +73,13 @@ type EventHandler func(context.Context, slidetypes.ClientEvent) error
 var _ httpclient.Client = (*Client)(nil)
 
 type ClientParams struct {
-	Cookies      *cookies.Cookies
-	Log          zerolog.Logger
-	Settings     exhttp.ClientSettings
-	SeqID        int64
-	SeqIDTS      time.Time
-	EventHandler EventHandler
+	Cookies       *cookies.Cookies
+	Log           zerolog.Logger
+	Settings      exhttp.ClientSettings
+	SeqID         int64
+	SeqIDTS       time.Time
+	EventHandler  EventHandler
+	DisableTyping bool
 }
 
 func NewClient(params ClientParams) *Client {
@@ -84,12 +91,16 @@ func NewClient(params ClientParams) *Client {
 		socketStopped: exsync.NewEvent(),
 		connected:     exsync.NewEvent(),
 
-		mqttBypassConnected: exsync.NewEvent(),
+		mqttBypassConnected:     exsync.NewEvent(),
+		streamControllerStopped: exsync.NewEvent(),
+
+		enableTyping: !params.DisableTyping,
 	}
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)
 	c.http = httpclient.NewHTTPClient(c, c.configs, params.Settings)
 	c.socketStopped.Set()
+	c.streamControllerStopped.Set()
 	return c
 }
 

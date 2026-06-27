@@ -44,6 +44,14 @@ func (c *Client) makeNewSocket() {
 	if old != nil {
 		old.Disconnect()
 	}
+	var newSC *dgw.Socket
+	if c.enableTyping {
+		newSC = dgw.NewSocket(c.getStreamControllerSocketOptions())
+	}
+	oldSC := c.streamControllerSocket.Swap(newSC)
+	if oldSC != nil {
+		oldSC.Disconnect()
+	}
 	c.disconnectMQTTBypass()
 }
 
@@ -64,49 +72,56 @@ func (c *Client) Connect(ctx context.Context) {
 			if err != nil {
 				return
 			}
+			err = c.streamControllerStopped.Wait(ctx)
+			if err != nil {
+				return
+			}
 		}
 	}
 
 	c.connected.Clear()
 	c.socketStopped.Clear()
 	defer c.socketStopped.Set()
+	c.streamControllerStopped.Clear()
+	go c.connectStreamController(ctx)
 	c.socketRetries = 0
 	sequentialFailures := 0
+	ctx = sock.Log.WithContext(ctx)
 	for {
 		err := sock.Connect(ctx)
 		wasConnected := c.connected.IsSet()
 		c.connected.Clear()
 		if err == nil {
-			c.log.Debug().Msg("Socket closed cleanly")
+			sock.Log.Debug().Msg("Socket closed cleanly")
 			return
 		} else if ctx.Err() != nil {
-			c.log.Debug().Err(err).Msg("Context canceled, stopping socket reconnect attempts")
+			sock.Log.Debug().Err(err).Msg("Context canceled, stopping socket reconnect attempts")
 			return
 		} else if errors.Is(err, errResnapshotRequired) {
-			c.log.Debug().Msg("Socket closed due to resnapshot requirement, dispatching event")
+			sock.Log.Debug().Msg("Socket closed due to resnapshot requirement, dispatching event")
 			_ = c.eventHandler(ctx, &slidetypes.ResnapshotRequired{})
 			return
 		}
 		if dispatchErr := c.eventHandler(ctx, &slidetypes.Disconnected{Error: err}); dispatchErr != nil {
-			c.log.Err(dispatchErr).Msg("Failed to dispatch disconnected event, not reconnecting")
+			sock.Log.Err(dispatchErr).Msg("Failed to dispatch disconnected event, not reconnecting")
 			return
 		}
 		c.socketRetries++
 		if !wasConnected {
 			sequentialFailures++
-			c.log.Warn().Err(err).
+			sock.Log.Warn().Err(err).
 				Int("connection_num", c.socketRetries).
 				Int("sequential_failures", sequentialFailures).
 				Msg("Connection failed, reconnecting...")
 			select {
 			case <-ctx.Done():
-				c.log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
+				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
 				return
 			case <-time.After(min(time.Duration(1<<sequentialFailures)*time.Second, MaxConnectionRetryInterval)):
 				continue
 			}
 		} else {
-			c.log.Debug().Err(err).
+			sock.Log.Debug().Err(err).
 				Int("connection_num", c.socketRetries).
 				Msg("Socket disconnected, reconnecting immediately")
 			sequentialFailures = 0
@@ -288,13 +303,21 @@ func (c *Client) Disconnect() {
 	if sock := c.socket.Load(); sock != nil {
 		sock.Disconnect()
 	}
+	if scSock := c.streamControllerSocket.Load(); scSock != nil {
+		scSock.Disconnect()
+	}
 	c.disconnectMQTTBypass()
 	c.connectionCtx.Store(nil)
 	cancel := c.cancelSocket.Swap(nil)
 	if cancel != nil {
 		(*cancel)()
 	}
-	if !c.socketStopped.WaitTimeout(5 * time.Second) {
-		c.log.Warn().Msg("Connection loop didn't exit in time")
+	timeoutCtx, cancelTimeout := context.WithTimeout(context.Background(), 5*time.Second)
+	err := c.socketStopped.Wait(timeoutCtx)
+	if err != nil {
+		c.log.Warn().Err(err).Msg("Connection loop didn't exit in time")
+	} else if err = c.streamControllerStopped.Wait(timeoutCtx); err != nil {
+		c.log.Warn().Err(err).Msg("Stream controller socket didn't exit in time")
 	}
+	cancelTimeout()
 }

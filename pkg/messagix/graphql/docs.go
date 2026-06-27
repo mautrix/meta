@@ -10,6 +10,7 @@ type GraphQLDoc struct {
 }
 
 const IGDSlideDeltaProcessorQueryInstagramRelayOperation = "27603408612621900"
+const IGDTypingIndicatorClientSubscription = "27563068933278040"
 
 var GraphQLDocs = map[string]GraphQLDoc{
 	"LSGraphQLRequest": {
