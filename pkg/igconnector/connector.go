@@ -66,7 +66,7 @@ func (ic *IGConnector) GetName() bridgev2.BridgeName {
 		NetworkIcon:      "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv",
 		NetworkID:        "instagram",
 		BeeperBridgeType: "instagramgo",
-		DefaultPort:      29319,
+		DefaultPort:      29330,
 	}
 }
 
