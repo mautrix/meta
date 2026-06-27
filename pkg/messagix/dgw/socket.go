@@ -290,6 +290,9 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		for {
 			select {
 			case frame := <-incoming:
+				if frame.f == nil {
+					return
+				}
 				err := frame.s.receiveFrame(ctx, frame.f)
 				if err != nil {
 					fatalError(fmt.Errorf("dgw: frame handler error: %w", err))
