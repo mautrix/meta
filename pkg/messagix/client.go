@@ -16,7 +16,7 @@ import (
 	"go.mau.fi/whatsmeow/store"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
-	"go.mau.fi/mautrix-meta/pkg/messagix/data/endpoints"
+	"go.mau.fi/mautrix-meta/pkg/messagix/endpoints"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
