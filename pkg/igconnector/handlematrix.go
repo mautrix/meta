@@ -324,27 +324,26 @@ func (ic *IGClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Matr
 }
 
 func (ic *IGClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
-	/*if msg.Portal.RoomType == database.RoomTypeDM {
+	if msg.Portal.RoomType == database.RoomTypeDM {
 		return false, fmt.Errorf("changing avatar not supported in DMs")
 	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
 	if msg.Content.URL == "" {
-		err := m.Client.RemoveGroupAvatar(ctx, strconv.FormatInt(threadID, 10))
+		err := ic.Client.RemoveGroupAvatar(ctx, strconv.FormatInt(threadID, 10))
 		if err != nil {
 			return false, fmt.Errorf("failed to remove Instagram avatar: %w", err)
 		}
 		return true, nil
 	}
-	data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
+	data, err := ic.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to download avatar: %w", err)
 	}
-	err = m.Client.EditGroupAvatar(ctx, strconv.FormatInt(threadID, 10), data)
+	err = ic.Client.EditGroupAvatar(ctx, strconv.FormatInt(threadID, 10), data)
 	if err != nil {
 		return false, fmt.Errorf("failed to set Instagram avatar: %w", err)
 	}
-	return true, nil*/
-	return false, fmt.Errorf("not implemented")
+	return true, nil
 }
 
 func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
