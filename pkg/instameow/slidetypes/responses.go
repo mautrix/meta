@@ -85,5 +85,13 @@ type ProfilePageResponse struct {
 type DeleteThreadResponse struct {
 	HideThread struct {
 		ID string `json:"id"`
-	}
+	} `json:"ig_direct_hide_thread"`
+}
+
+type MuteThreadResponse struct {
+	Data struct {
+		IsMuted   bool   `json:"ig_direct_mute_thread"`
+		MuteUntil *int64 `json:"mute_until"` // null if unmuted, -1 if permanent
+		ThreadID  string `json:"id"`
+	} `json:"xig_direct_mute_thread_with_fbid"`
 }

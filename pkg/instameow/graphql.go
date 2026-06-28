@@ -57,6 +57,10 @@ func (c *Client) DeleteThread(ctx context.Context, req *slidetypes.DeleteThreadR
 	return makeGraphQLRequest[*slidetypes.DeleteThreadResponse](ctx, c, "IGDInboxInfoDeleteThreadDialogOffMsysMutation", req)
 }
 
+func (c *Client) MuteThread(ctx context.Context, req *slidetypes.MuteThreadRequest) (*slidetypes.MuteThreadResponse, error) {
+	return makeGraphQLRequest[*slidetypes.MuteThreadResponse](ctx, c, "IGDInboxInfoMuteToggleOffMsysMutation", req)
+}
+
 func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, error) {
 	return makeGraphQLRequest[*slidetypes.MailboxResponse](
 		ctx, c, "PolarisDirectInboxQuery",

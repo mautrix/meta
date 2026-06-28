@@ -81,6 +81,12 @@ type DeleteThreadRequest struct {
 	MarkAsSpam bool   `json:"should_move_future_requests_to_spam"`
 }
 
+type MuteThreadRequest struct {
+	ThreadID           string `json:"thread_fbid"`
+	MuteSeconds        int    `json:"mute_seconds"` // -1 for infinite, 0 to unmute
+	OfflineThreadingID string `json:"offline_threading_id"`
+}
+
 type CreateReactionRequest struct {
 	Input ReactionInput `json:"input"`
 }

@@ -118,6 +118,10 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "26672929172408668",
 		FriendlyName: "PolarisProfilePageContentQuery",
 	},
+	"IGDInboxInfoMuteToggleOffMsysMutation": {
+		DocID:        "26360506043651125",
+		FriendlyName: "IGDInboxInfoMuteToggleOffMsysMutation",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {

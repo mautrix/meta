@@ -46,6 +46,7 @@ var (
 	_ bridgev2.TypingHandlingNetworkAPI          = (*IGClient)(nil)
 	_ bridgev2.MessageRequestAcceptingNetworkAPI = (*IGClient)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI      = (*IGClient)(nil)
+	_ bridgev2.MuteHandlingNetworkAPI            = (*IGClient)(nil)
 	_ bridgev2.RoomNameHandlingNetworkAPI        = (*IGClient)(nil)
 	_ bridgev2.RoomAvatarHandlingNetworkAPI      = (*IGClient)(nil)
 )
@@ -395,4 +396,24 @@ func (ic *IGClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.Matrix
 		return fmt.Errorf("portal metadata missing IGID")
 	}
 	return ic.Client.SetTyping(ctx, igid, msg.IsTyping)
+}
+
+func (ic *IGClient) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) error {
+	igid := msg.Portal.Metadata.(*metaid.PortalMetadata).IGID
+	if igid == "" {
+		return fmt.Errorf("portal metadata missing IGID")
+	}
+	var muteSeconds int
+	dur := msg.Content.GetMuteDuration()
+	if dur <= 0 {
+		muteSeconds = int(dur)
+	} else {
+		muteSeconds = int(dur.Seconds())
+	}
+	_, err := ic.Client.MuteThread(ctx, &slidetypes.MuteThreadRequest{
+		ThreadID:           igid,
+		MuteSeconds:        muteSeconds,
+		OfflineThreadingID: strconv.FormatInt(getOTID(msg.InputTransactionID), 10),
+	})
+	return err
 }
