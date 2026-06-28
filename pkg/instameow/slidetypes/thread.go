@@ -20,8 +20,10 @@ import (
 	"go.mau.fi/util/jsontime"
 )
 
-type WrappedThreadInfo struct {
-	AsIGDirectThread *ThreadInfo `json:"as_ig_direct_thread"`
+type WrappedThreadInfo = AsThread[ThreadInfo]
+
+type AsThread[T any] struct {
+	AsIGDirectThread *T `json:"as_ig_direct_thread"`
 }
 
 type ThreadSubtype string
@@ -71,6 +73,22 @@ type ThreadInfo struct {
 	GroupCreator               *GroupCreator      `json:"group_creator"`
 	CreatorBroadcastThreadData any                `json:"creator_broadcast_thread_data"`
 	HiddenChatInfo             any                `json:"hidden_chat_info"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
+type TinyThread struct {
+	ID          string `json:"id"`
+	ThreadTitle string `json:"thread_title"`
+	InputMode   int    `json:"input_mode"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
+type ParticipantsOnlyThread struct {
+	ID          string `json:"id"`
+	ThreadTitle string `json:"thread_title"`
+	Users       []User `json:"users"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }

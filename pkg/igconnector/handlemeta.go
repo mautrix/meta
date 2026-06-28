@@ -212,9 +212,9 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	log := zerolog.Ctx(ctx)
 	log.Trace().Any("event_data", d.Data).Msg("Handling delta")
 
-	portalKey, err := ic.ensurePortal(ctx, d.ThreadFBID)
+	portalKey, err := ic.ensurePortal(ctx, d.ThreadIGID)
 	if err != nil {
-		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadFBID, err)
+		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	}
 
 	var res bridgev2.EventHandlingResult
@@ -231,15 +231,20 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 				StreamOrder:  evt.Message.TimestampMS.UnixMilli(),
 			},
 			//TransactionID:      evt.Message.OfflineThreadingID,
-			Data: &evt.Message,
+			Data: evt.Message,
 			ID:   msgID,
 			ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data *slidetypes.Message) (*bridgev2.ConvertedMessage, error) {
 				return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, intent, msgID, data, ic.Main.Config.DisableXMAAlways)
 			},
 		})
-	case *slidetypes.CreateReactionEvent:
-		// TODO implement
-		return nil
+	//case *slidetypes.AdminMessageEvent:
+	//case *slidetypes.EditMessageEvent:
+	//case *slidetypes.CreateReactionEvent:
+	//case *slidetypes.DeleteMessageEvent:
+	//case *slidetypes.DeleteThreadEvent:
+	//case *slidetypes.ParticipantLeaveEvent:
+	//case *slidetypes.ParticipantJoinEvent:
+	//case *slidetypes.AdminChangeEvent:
 	case *slidetypes.MarkReadEvent:
 		res = ic.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
 			EventMeta: simplevent.EventMeta{
@@ -252,13 +257,21 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 			},
 			ReadUpTo: evt.ReadTimestampMS.Time,
 		})
+	//case *slidetypes.MarkUnreadEvent:
+	//case *slidetypes.ReadReceiptEvent:
+	//case *slidetypes.MuteThreadEvent:
 	case slidetypes.UnknownEvent:
 		log.Warn().
 			Str("typename", d.TypeName).
-			Str("thread_fbid", d.ThreadFBID).
+			Str("thread_fbid", d.ThreadIGID).
 			Msg("Unrecognized event type in socket")
 		return nil
 	default:
+		log.Warn().
+			Type("event_data", d.Data).
+			Str("typename", d.TypeName).
+			Str("thread_fbid", d.ThreadIGID).
+			Msg("Unrecognized event struct")
 		return nil
 		//return fmt.Errorf("unrecognized event type: %T", d.Data)
 	}

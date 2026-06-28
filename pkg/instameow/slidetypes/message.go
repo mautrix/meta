@@ -30,7 +30,7 @@ type Message struct {
 	MessageID                   string                    `json:"message_id"`
 	SenderFBID                  string                    `json:"sender_fbid"`
 	ThreadFBID                  string                    `json:"thread_fbid"`
-	Content                     MessageContent            `json:"content"`
+	Content                     MessageContentWrapper     `json:"content"`
 	ContentType                 string                    `json:"content_type"`
 	OfflineThreadingID          string                    `json:"offline_threading_id"`
 	TimestampMS                 jsontime.UnixMilliString  `json:"timestamp_ms"`
@@ -167,76 +167,6 @@ type MessageEditHistoryEntry struct {
 	Typename    string                   `json:"__typename"`
 	Body        string                   `json:"body"`
 	TimestampMS jsontime.UnixMilliString `json:"timestamp_ms"`
-
-	Unrecognized map[string]any `json:",unknown"`
-}
-
-type MessageContent struct {
-	Typename              string        `json:"__typename"`
-	IsSlideMessageContent string        `json:"__isSlideMessageContent"`
-	TextBody              string        `json:"text_body,omitempty"`
-	Videos                []*Attachment `json:"videos,omitempty"`
-	Attachments           []*Attachment `json:"attachments,omitempty"`
-	XMA                   *XMAContent   `json:"xma,omitempty"`
-	XMATextBody           string        `json:"xma_text_body,omitempty"`
-
-	Unrecognized map[string]any `json:",unknown"`
-}
-
-type Attachment struct {
-	Typename                        string `json:"__typename"`
-	IsSlideMessagingMediaAttachment string `json:"__isSlideMessagingMediaAttachment"`
-
-	PreviewCDNURL            string `json:"preview_cdn_url"`
-	AttachmentFBID           string `json:"attachment_fbid"`
-	AttachmentType           int    `json:"attachment_type"`
-	PreviewCDNFallbackURL    string `json:"preview_cdn_fallback_url"`
-	PreviewHeight            int    `json:"preview_height"`
-	PreviewWidth             int    `json:"preview_width"`
-	AttachmentCDNURL         string `json:"attachment_cdn_url"`
-	AttachmentCDNFallbackURL string `json:"attachment_cdn_fallback_url"`
-
-	// Only for videos
-	DashManifest any `json:"dash_manifest"`
-
-	Unrecognized map[string]any `json:",unknown"`
-}
-
-type XMAPreviewImage struct {
-	URL                        string `json:"url"`
-	FallbackURL                string `json:"fallback_url"`
-	Width                      int    `json:"width"`
-	Height                     int    `json:"height"`
-	PreviewImageDecorationType any    `json:"preview_image_decoration_type"`
-
-	Unrecognized map[string]any `json:",unknown"`
-}
-
-type XMAContent struct {
-	Typename               string           `json:"__typename"`
-	XMAHeaderTitle         any              `json:"xmaHeaderTitle"`
-	XMATitle               string           `json:"xmaTitle"`
-	XMAPreviewImage        *XMAPreviewImage `json:"xmaPreviewImage"`
-	TitleText              string           `json:"title_text"`
-	HeaderTitleText        any              `json:"header_title_text"`
-	PreviewImage           *XMAPreviewImage `json:"preview_image"`
-	TargetID               any              `json:"target_id"`
-	TargetURL              string           `json:"target_url"`
-	HeaderIcon             any              `json:"header_icon"`
-	HeaderSubtitleText     any              `json:"header_subtitle_text"`
-	VerifiedType           any              `json:"verified_type"`
-	CaptionBodyText        any              `json:"caption_body_text"`
-	SubtitleText           any              `json:"subtitle_text"`
-	SubtitleDecorationType any              `json:"subtitle_decoration_type"`
-	CtaButtons             []any            `json:"cta_buttons"`
-	PreviewLayoutType      string           `json:"preview_layout_type"`
-	PreviewExtraURLsInfo   []any            `json:"preview_extra_urls_info"`
-	OverlayTitle           any              `json:"overlay_title"`
-	OverlayDescription     any              `json:"overlay_description"`
-	OverlayIconGlyph       any              `json:"overlay_icon_glyph"`
-	Favicon                any              `json:"favicon"`
-	EyebrowText            any              `json:"eyebrow_text"`
-	CollapsibleID          any              `json:"collapsible_id"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
