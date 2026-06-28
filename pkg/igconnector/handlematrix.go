@@ -47,6 +47,7 @@ var (
 	_ bridgev2.MessageRequestAcceptingNetworkAPI = (*IGClient)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI      = (*IGClient)(nil)
 	_ bridgev2.MuteHandlingNetworkAPI            = (*IGClient)(nil)
+	_ bridgev2.TagHandlingNetworkAPI             = (*IGClient)(nil)
 	_ bridgev2.RoomNameHandlingNetworkAPI        = (*IGClient)(nil)
 	_ bridgev2.RoomAvatarHandlingNetworkAPI      = (*IGClient)(nil)
 )
@@ -414,6 +415,19 @@ func (ic *IGClient) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) er
 		ThreadID:           igid,
 		MuteSeconds:        muteSeconds,
 		OfflineThreadingID: strconv.FormatInt(getOTID(msg.InputTransactionID), 10),
+	})
+	return err
+}
+
+func (ic *IGClient) HandleRoomTag(ctx context.Context, msg *bridgev2.MatrixRoomTag) error {
+	igid := msg.Portal.Metadata.(*metaid.PortalMetadata).IGID
+	if igid == "" {
+		return fmt.Errorf("portal metadata missing IGID")
+	}
+	_, pinned := msg.Content.Tags[event.RoomTagFavourite]
+	_, err := ic.Client.PinThread(ctx, &slidetypes.PinThreadRequest{
+		ThreadID: igid,
+		Pin:      pinned,
 	})
 	return err
 }

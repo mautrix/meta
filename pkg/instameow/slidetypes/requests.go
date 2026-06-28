@@ -87,6 +87,11 @@ type MuteThreadRequest struct {
 	OfflineThreadingID string `json:"offline_threading_id"`
 }
 
+type PinThreadRequest struct {
+	ThreadID string `json:"thread_fbid"`
+	Pin      bool   `json:"pin"`
+}
+
 type CreateReactionRequest struct {
 	Input ReactionInput `json:"input"`
 }

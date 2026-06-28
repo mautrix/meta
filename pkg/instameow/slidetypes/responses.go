@@ -95,3 +95,9 @@ type MuteThreadResponse struct {
 		ThreadID  string `json:"id"`
 	} `json:"xig_direct_mute_thread_with_fbid"`
 }
+type PinThreadResponse struct {
+	Data struct {
+		IsPin    bool   `json:"is_pin"`
+		ThreadID string `json:"id"`
+	} `json:"xig_direct_pin_thread"`
+}
