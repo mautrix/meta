@@ -321,7 +321,29 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 	if anchor != nil {
 		if forward {
 			upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
-				return message.TimestampMs <= anchor.Timestamp.UnixMilli()
+				if message.TimestampMs > anchor.Timestamp.UnixMilli() {
+					return false
+				}
+				// This message is older than the portal's latest bridged message, so it would
+				// normally be assumed to already exist. However, Meta can skip threads in a
+				// reconnect snapshot while advancing the sync cursor past their messages (see
+				// PLAT-36990), which leaves permanent mid-timeline gaps. Only drop the message
+				// if it actually exists in the bridge database, otherwise recover it.
+				existing, err := m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(message.MessageId))
+				if err != nil {
+					zerolog.Ctx(ctx).Err(err).
+						Str("message_id", message.MessageId).
+						Msg("Failed to check message existence during forward backfill dedup, dropping")
+					return true
+				}
+				if existing == nil {
+					zerolog.Ctx(ctx).Warn().
+						Str("message_id", message.MessageId).
+						Int64("timestamp_ms", message.TimestampMs).
+						Msg("Recovering pre-anchor message missing from database in forward backfill")
+					return false
+				}
+				return true
 			})
 		} else {
 			upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
