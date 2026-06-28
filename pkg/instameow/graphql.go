@@ -19,14 +19,10 @@ package instameow
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-
-	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 func (c *Client) SendMessage(ctx context.Context, req *slidetypes.SendTextRequest) (*slidetypes.SendTextResponse, error) {
@@ -99,14 +95,7 @@ func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req 
 	err = json.Unmarshal(respData, &wrappedResp)
 	if err != nil {
 		err = fmt.Errorf("failed to unmarshal %T: %w", resp, err)
-	} else if wrappedResp.ErrorCode != 0 {
-		err = &wrappedResp
-	} else if len(wrappedResp.Errors) > 0 {
-		err = errors.Join(exslices.CastFunc(wrappedResp.Errors, func(from types.GraphQLError) error {
-			return &from
-		})...)
-	} else {
-		return wrappedResp.Data, nil
+		return
 	}
-	return
+	return wrappedResp.Data, wrappedResp.AsError()
 }

@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
@@ -261,9 +259,7 @@ func (c *HTTPClient) MakeLSRequest(ctx context.Context, variables *graphql.LSPla
 		deps = graphQLData.Data.Viewer.LightspeedWebRequest.Dependencies
 	} else {
 		if graphQLData.Errors != nil {
-			return nil, errors.Join(exslices.CastFunc(graphQLData.Errors, func(from types.GraphQLError) error {
-				return &from
-			})...)
+			return nil, graphQLData.WrapGQLErrors()
 		}
 		c.log.Debug().RawJSON("respBody", respBody).Msg("LS response with no lightspeed response data and no error")
 		return nil, fmt.Errorf("graphql request didn't return LS data")
