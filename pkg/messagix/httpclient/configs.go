@@ -37,7 +37,7 @@ func (c *Configs) SetClient(client Client) {
 	c.client = client
 }
 
-func (c *Configs) Setup(authenticated bool) error {
+func (c *Configs) Setup(authenticated bool) {
 	c.WebSessionID = methods.GenerateWebsessionID(authenticated)
 	c.LSDToken = c.BrowserConfigTable.LSD.Token
 	c.Bitmap, c.CSRBitmap = c.LoadBitmaps()
@@ -48,7 +48,7 @@ func (c *Configs) Setup(authenticated bool) error {
 			c.client.GetLogger().Trace().Any("value", c.CSRBitmap.CompressedStr).Msg("Loaded __csr bitmap")
 		}
 		c.client.GetLogger().Debug().Any("platform", c.client.GetPlatform()).Msg("Configs loaded, but not yet logged in.")
-		return nil
+		return
 	}
 
 	if c.client.GetPlatform() == types.Instagram {
@@ -65,8 +65,6 @@ func (c *Configs) Setup(authenticated bool) error {
 		Int64("versionId", c.VersionID).
 		Int64("appId", c.BrowserConfigTable.MessengerWebInitData.AppID).
 		Msg("Loaded versionId & appId")
-
-	return nil
 }
 
 func (c *Configs) ParseFormInputs(inputs []InputTag, reflectedMs reflect.Value) {

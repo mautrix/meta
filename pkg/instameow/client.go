@@ -60,6 +60,9 @@ type Client struct {
 	streamControllerStopped   *exsync.Event
 	streamControllerConnected atomic.Bool
 
+	loadIndexLock sync.Mutex
+	lastReload    time.Time
+
 	enableTyping bool
 
 	eventHandler EventHandler
@@ -113,24 +116,65 @@ func (c *Client) SetEventHandler(handler func(context.Context, slidetypes.Client
 	c.eventHandler = handler
 }
 
-func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetypes.Mailbox, error) {
-	if c == nil {
-		return nil, nil, ErrClientIsNil
-	} else if !c.cookies.IsLoggedIn() {
-		return nil, nil, httpclient.ErrTokenInvalidated
-	}
-
+func (c *Client) loadIndex(ctx context.Context) error {
 	c.configs = httpclient.NewConfigs(c)
 	c.http.SetConfigs(c.configs)
 	moduleLoader := httpclient.NewModuleParser(c, c.http, c.configs)
 	moduleLoader.LS = nil
 	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load inbox: %w", err)
+		return fmt.Errorf("failed to load inbox: %w", err)
 	}
-	err = c.configs.Setup(c.IsAuthenticated())
+	c.configs.Setup(c.IsAuthenticated())
+	c.lastReload = time.Now()
+	return nil
+}
+
+func (c *Client) ReloadIndex(ctx context.Context) error {
+	c.loadIndexLock.Lock()
+	defer c.loadIndexLock.Unlock()
+	if time.Since(c.lastReload) < 15*time.Minute {
+		zerolog.Ctx(ctx).Debug().
+			Time("last_reload", c.lastReload).
+			Msg("Not reloading again as last reload was recent")
+		return nil
+	}
+	err := c.loadIndex(ctx)
 	if err != nil {
-		return nil, nil, err
+		return err
+	}
+	if s := c.socket.Load(); s != nil {
+		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+	}
+	if s := c.streamControllerSocket.Load(); s != nil {
+		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+	}
+	c.mqttBypassConnectLock.Lock()
+	if s := c.mqttBypassSocket; s != nil {
+		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+	}
+	c.mqttBypassConnectLock.Unlock()
+	return nil
+}
+
+func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetypes.Mailbox, error) {
+	if c == nil {
+		return nil, nil, ErrClientIsNil
+	} else if !c.cookies.IsLoggedIn() {
+		return nil, nil, httpclient.ErrTokenInvalidated
+	}
+	c.loadIndexLock.Lock()
+	defer c.loadIndexLock.Unlock()
+
+	if time.Since(c.lastReload) < 1*time.Minute {
+		zerolog.Ctx(ctx).Debug().
+			Time("last_reload", c.lastReload).
+			Msg("Not reloading again as last reload was recent")
+	} else {
+		err := c.loadIndex(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	c.makeNewSocket()
 	mailbox, err := c.GetMailbox(ctx)

@@ -21,76 +21,80 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/rs/zerolog"
+
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 func (c *Client) SendMessage(ctx context.Context, req *slidetypes.SendTextRequest) (*slidetypes.SendTextResponse, error) {
-	return makeGraphQLRequest[*slidetypes.SendTextResponse](ctx, c, "IGDirectTextSendMutation", req)
+	return makeGraphQLRequest[*slidetypes.SendTextResponse](ctx, c, "IGDirectTextSendMutation", req, true)
 }
 
 func (c *Client) SendMedia(ctx context.Context, req *slidetypes.SendMediaRequest) (*slidetypes.SendMediaResponse, error) {
-	return makeGraphQLRequest[*slidetypes.SendMediaResponse](ctx, c, "IGDirectMediaSendMutation", req)
+	return makeGraphQLRequest[*slidetypes.SendMediaResponse](ctx, c, "IGDirectMediaSendMutation", req, true)
 }
 
 func (c *Client) EditMessage(ctx context.Context, req *slidetypes.EditMessageRequest) (*slidetypes.EditMessageResponse, error) {
-	return makeGraphQLRequest[*slidetypes.EditMessageResponse](ctx, c, "IGDirectEditMessageMutation", req)
+	return makeGraphQLRequest[*slidetypes.EditMessageResponse](ctx, c, "IGDirectEditMessageMutation", req, true)
 }
 
 func (c *Client) UnsendMessage(ctx context.Context, req *slidetypes.UnsendMessageRequest) (*slidetypes.UnsendMessageResponse, error) {
-	return makeGraphQLRequest[*slidetypes.UnsendMessageResponse](ctx, c, "IGDMessageUnsendDialogOffMsysMutation", req)
+	return makeGraphQLRequest[*slidetypes.UnsendMessageResponse](ctx, c, "IGDMessageUnsendDialogOffMsysMutation", req, true)
 }
 
 func (c *Client) SendReaction(ctx context.Context, req *slidetypes.CreateReactionRequest) (*slidetypes.SendReactionResponse, error) {
-	return makeGraphQLRequest[*slidetypes.SendReactionResponse](ctx, c, "IGDirectReactionSendMutation", req)
+	return makeGraphQLRequest[*slidetypes.SendReactionResponse](ctx, c, "IGDirectReactionSendMutation", req, true)
 }
 
 func (c *Client) MarkRead(ctx context.Context, req *slidetypes.MarkReadRequest) (*slidetypes.MarkReadResponse, error) {
-	return makeGraphQLRequest[*slidetypes.MarkReadResponse](ctx, c, "useIGDMarkThreadAsReadMutation", req)
+	return makeGraphQLRequest[*slidetypes.MarkReadResponse](ctx, c, "useIGDMarkThreadAsReadMutation", req, true)
 }
 
 func (c *Client) MarkReadValidation(ctx context.Context, req *slidetypes.MarkReadRequest) (*slidetypes.MarkReadValidationResponse, error) {
-	return makeGraphQLRequest[*slidetypes.MarkReadValidationResponse](ctx, c, "useIGDMarkThreadAsReadValidationMutation", req)
+	return makeGraphQLRequest[*slidetypes.MarkReadValidationResponse](ctx, c, "useIGDMarkThreadAsReadValidationMutation", req, false)
 }
 
 func (c *Client) DeleteThread(ctx context.Context, req *slidetypes.DeleteThreadRequest) (*slidetypes.DeleteThreadResponse, error) {
-	return makeGraphQLRequest[*slidetypes.DeleteThreadResponse](ctx, c, "IGDInboxInfoDeleteThreadDialogOffMsysMutation", req)
+	return makeGraphQLRequest[*slidetypes.DeleteThreadResponse](ctx, c, "IGDInboxInfoDeleteThreadDialogOffMsysMutation", req, true)
 }
 
 func (c *Client) MuteThread(ctx context.Context, req *slidetypes.MuteThreadRequest) (*slidetypes.MuteThreadResponse, error) {
-	return makeGraphQLRequest[*slidetypes.MuteThreadResponse](ctx, c, "IGDInboxInfoMuteToggleOffMsysMutation", req)
+	return makeGraphQLRequest[*slidetypes.MuteThreadResponse](ctx, c, "IGDInboxInfoMuteToggleOffMsysMutation", req, true)
 }
 
 func (c *Client) PinThread(ctx context.Context, req *slidetypes.PinThreadRequest) (*slidetypes.PinThreadResponse, error) {
-	return makeGraphQLRequest[*slidetypes.PinThreadResponse](ctx, c, "useIGDPinThreadMutation", req)
+	return makeGraphQLRequest[*slidetypes.PinThreadResponse](ctx, c, "useIGDPinThreadMutation", req, true)
 }
 
 func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, error) {
 	return makeGraphQLRequest[*slidetypes.MailboxResponse](
 		ctx, c, "PolarisDirectInboxQuery",
 		slidetypes.MakeMailboxRequest(c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID),
+		false,
 	)
 }
 
 func (c *Client) GetThread(ctx context.Context, req *slidetypes.GetThreadInfoRequest) (*slidetypes.ThreadInfoResponse, error) {
-	return makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req)
+	return makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req, true)
 }
 
 func (c *Client) GetProfile(ctx context.Context, igid string) (*slidetypes.ProfilePageResponse, error) {
-	return makeGraphQLRequest[*slidetypes.ProfilePageResponse](ctx, c, "PolarisProfilePageContentQuery", slidetypes.MakeProfilePageRequest(igid))
+	return makeGraphQLRequest[*slidetypes.ProfilePageResponse](ctx, c, "PolarisProfilePageContentQuery", slidetypes.MakeProfilePageRequest(igid), true)
 }
 
 func (c *Client) EditGroupTitle(ctx context.Context, threadID, newTitle string) error {
 	_, err := makeGraphQLRequest[noResp](ctx, c, "IGEditGroupTitle", &graphql.IGEditGroupTitleGraphQLRequestPayload{
 		ThreadID: threadID,
 		NewTitle: newTitle,
-	})
+	}, true)
 	return err
 }
 
 type noResp = json.RawMessage
 
-func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req any) (resp T, err error) {
+func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req any, allowReload bool) (resp T, err error) {
 	if c == nil {
 		err = ErrClientIsNil
 		return
@@ -104,6 +108,16 @@ func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req 
 	if err != nil {
 		err = fmt.Errorf("failed to unmarshal %T: %w", resp, err)
 		return
+	} else if allowReload && wrappedResp.ErrorCode == types.ErrPleaseReloadPage.ErrorCode {
+		zerolog.Ctx(ctx).Warn().Err(wrappedResp.AsError()).
+			Msg("Got please reload page error, reloading index and retrying")
+		reloadErr := c.ReloadIndex(ctx)
+		if reloadErr != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to reload page to retry GraphQL request")
+		} else {
+			zerolog.Ctx(ctx).Debug().Msg("Successfully reloaded index, retrying GraphQL request")
+			return makeGraphQLRequest[T](ctx, c, name, req, false)
+		}
 	}
 	return wrappedResp.Data, wrappedResp.AsError()
 }

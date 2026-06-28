@@ -18,9 +18,11 @@ package igconv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -28,6 +30,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
@@ -102,6 +105,17 @@ func (mc *MessageConverter) ToInstagram(
 			return nil, fmt.Errorf("no IGID for thread saved")
 		}
 		attachmentID, err := mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), portal, content)
+		if errors.Is(err, types.ErrPleaseReloadPage) {
+			zerolog.Ctx(ctx).Warn().Err(err).
+				Msg("Got please reload page error while reuploading media, reloading index and retrying")
+			reloadErr := client.ReloadIndex(ctx)
+			if reloadErr != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to reload page to retry media upload")
+			} else {
+				zerolog.Ctx(ctx).Debug().Msg("Successfully reloaded index, retrying media upload")
+				attachmentID, err = mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), portal, content)
+			}
+		}
 		if err != nil {
 			return nil, err
 		}

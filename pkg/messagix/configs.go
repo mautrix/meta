@@ -14,9 +14,9 @@ func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LS
 		c.socket.previouslyConnected = false
 	}
 	authenticated := c.IsAuthenticated()
-	err := c.configs.Setup(authenticated)
-	if err != nil || !authenticated {
-		return ls, err
+	c.configs.Setup(authenticated)
+	if !authenticated {
+		return ls, nil
 	}
 
 	if c.Platform == types.Instagram {
