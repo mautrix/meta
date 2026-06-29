@@ -88,6 +88,14 @@ type DeleteThreadResponse struct {
 	} `json:"ig_direct_hide_thread"`
 }
 
+type AcceptMessageRequestResponse struct {
+	Data struct {
+		Folder       string `json:"folder"`
+		ThreadID     string `json:"id"`
+		SystemFolder string `json:"system_folder"`
+	} `json:"ig_direct_accept_message_request"`
+}
+
 type MuteThreadResponse struct {
 	Data struct {
 		IsMuted   bool   `json:"ig_direct_mute_thread"`

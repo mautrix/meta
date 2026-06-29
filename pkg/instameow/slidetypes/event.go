@@ -27,20 +27,21 @@ type DeltaEvent interface {
 	isDeltaEvent()
 }
 
-func (*NewMessageEvent) isDeltaEvent()       {}
-func (*AdminMessageEvent) isDeltaEvent()     {}
-func (*CreateReactionEvent) isDeltaEvent()   {}
-func (*MarkReadEvent) isDeltaEvent()         {}
-func (*MarkUnreadEvent) isDeltaEvent()       {}
-func (*ReadReceiptEvent) isDeltaEvent()      {}
-func (*EditMessageEvent) isDeltaEvent()      {}
-func (*DeleteMessageEvent) isDeltaEvent()    {}
-func (*DeleteThreadEvent) isDeltaEvent()     {}
-func (*ParticipantLeaveEvent) isDeltaEvent() {}
-func (*ParticipantJoinEvent) isDeltaEvent()  {}
-func (*AdminChangeEvent) isDeltaEvent()      {}
-func (*MuteThreadEvent) isDeltaEvent()       {}
-func (UnknownEvent) isDeltaEvent()           {}
+func (*NewMessageEvent) isDeltaEvent()         {}
+func (*AdminMessageEvent) isDeltaEvent()       {}
+func (*CreateReactionEvent) isDeltaEvent()     {}
+func (*MarkReadEvent) isDeltaEvent()           {}
+func (*MarkUnreadEvent) isDeltaEvent()         {}
+func (*ReadReceiptEvent) isDeltaEvent()        {}
+func (*EditMessageEvent) isDeltaEvent()        {}
+func (*DeleteMessageEvent) isDeltaEvent()      {}
+func (*DeleteThreadEvent) isDeltaEvent()       {}
+func (*UpdateThreadFolderEvent) isDeltaEvent() {}
+func (*ParticipantLeaveEvent) isDeltaEvent()   {}
+func (*ParticipantJoinEvent) isDeltaEvent()    {}
+func (*AdminChangeEvent) isDeltaEvent()        {}
+func (*MuteThreadEvent) isDeltaEvent()         {}
+func (UnknownEvent) isDeltaEvent()             {}
 
 type NewMessageEvent struct {
 	ThreadReadStateEffect string   `json:"thread_read_state_effect"`
@@ -101,6 +102,11 @@ type DeleteMessageEvent struct {
 
 type DeleteThreadEvent struct {
 	Unrecognized map[string]any `json:",unknown"`
+}
+
+type UpdateThreadFolderEvent struct {
+	Folder        string `json:"folder"`
+	IGInboxFolder string `json:"ig_inbox_folder"`
 }
 
 type ParticipantLeaveEvent struct {
@@ -173,6 +179,8 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 		d.Data = &DeleteMessageEvent{}
 	case "SlideUQPPDeleteThread":
 		d.Data = &DeleteThreadEvent{}
+	case "SlideUQPPUpdateThreadFolder":
+		d.Data = &UpdateThreadFolderEvent{}
 	case "SlideUQPPParticipantLeftGroupThread":
 		d.Data = &ParticipantLeaveEvent{}
 	case "SlideUQPPParticipantsAddedToGroupThread":

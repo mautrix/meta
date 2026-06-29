@@ -340,17 +340,18 @@ func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.M
 }
 
 func (ic *IGClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *bridgev2.MatrixAcceptMessageRequest) error {
-	/*threadID := metaid.ParseFBPortalID(msg.Portal.ID)
-	platform := m.LoginMeta.Platform
+	meta, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		// TODO treat 404 as success? (thread already deleted)
+		return err
+	}
 
-	zerolog.Ctx(ctx).Info().
-		Int64("thread_id", threadID).
-		Any("platform", platform).
-		Bool("implicit", msg.Content != nil && msg.Content.IsImplicit).
-		Msg("Accepting message request")
-
-	return m.Client.AcceptMessageRequest(ctx, strconv.FormatInt(threadID, 10))*/
-	return fmt.Errorf("not implemented")
+	_, err = ic.Client.AcceptMessageRequest(ctx, &slidetypes.AcceptMessageRequestRequest{
+		ThreadID:           meta.IGID,
+		IGInboxFolder:      nil,
+		OfflineThreadingID: strconv.FormatInt(getOTID(msg.InputTransactionID), 10),
+	})
+	return err
 }
 
 func (ic *IGClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {

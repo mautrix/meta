@@ -34,8 +34,8 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "29088580780787855",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
 	},
-	"IGAcceptMessageRequest": {
-		DocID:        "25093807760274522",
+	"useIGDirectAcceptMessageRequestMutation": {
+		DocID:        "36571001125823973",
 		FriendlyName: "useIGDirectAcceptMessageRequestMutation",
 	},
 	"IGListMessageRequests": {

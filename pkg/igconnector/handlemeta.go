@@ -232,6 +232,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	//case *slidetypes.CreateReactionEvent:
 	//case *slidetypes.DeleteMessageEvent:
 	//case *slidetypes.DeleteThreadEvent:
+	//case *slidetypes.UpdateThreadFolderEvent:
 	//case *slidetypes.ParticipantLeaveEvent:
 	//case *slidetypes.ParticipantJoinEvent:
 	//case *slidetypes.AdminChangeEvent:

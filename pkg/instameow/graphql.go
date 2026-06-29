@@ -60,6 +60,10 @@ func (c *Client) DeleteThread(ctx context.Context, req *slidetypes.DeleteThreadR
 	return makeGraphQLRequest[*slidetypes.DeleteThreadResponse](ctx, c, "IGDInboxInfoDeleteThreadDialogOffMsysMutation", req, true)
 }
 
+func (c *Client) AcceptMessageRequest(ctx context.Context, req *slidetypes.AcceptMessageRequestRequest) (*slidetypes.AcceptMessageRequestResponse, error) {
+	return makeGraphQLRequest[*slidetypes.AcceptMessageRequestResponse](ctx, c, "useIGDirectAcceptMessageRequestMutation", req, true)
+}
+
 func (c *Client) MuteThread(ctx context.Context, req *slidetypes.MuteThreadRequest) (*slidetypes.MuteThreadResponse, error) {
 	return makeGraphQLRequest[*slidetypes.MuteThreadResponse](ctx, c, "IGDInboxInfoMuteToggleOffMsysMutation", req, true)
 }

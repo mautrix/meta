@@ -332,7 +332,7 @@ func (ig *InstagramMethods) AcceptMessageRequest(ctx context.Context, threadID s
 		IGInboxFolder:      nil,
 		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),
 	}
-	resp, respBody, err := ig.client.http.MakeGraphQLRequest(ctx, "IGAcceptMessageRequest", &igVariables)
+	resp, respBody, err := ig.client.http.MakeGraphQLRequest(ctx, "useIGDirectAcceptMessageRequestMutation", &igVariables)
 	if err != nil {
 		return fmt.Errorf("failed to accept message request for thread %s: %w", threadID, err)
 	}
