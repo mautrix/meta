@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -53,19 +52,22 @@ func ReuploadFileToMeta(
 		mime = http.DetectContentType(data)
 	}
 	isVoice := content.MSC3245Voice != nil
-	if isVoice && ffmpeg.Supported() {
-		data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mime)
-		if err != nil {
-			return 0, fmt.Errorf("%w (ogg to m4a): %w", bridgev2.ErrMediaConvertFailed, err)
+	var waveformData *httpclient.WaveformData
+	if isVoice && content.MSC1767Audio != nil {
+		waveformData = &httpclient.WaveformData{
+			Amplitudes:        make([]float64, len(content.MSC1767Audio.Waveform)),
+			SamplingFrequency: 9,
 		}
-		mime = "audio/mp4"
-		fileName += ".m4a"
+		for i, amp := range content.MSC1767Audio.Waveform {
+			waveformData.Amplitudes[i] = max(min(float64(amp)/256.0, 1.0), 0.0)
+		}
 	}
 	resp, err := client.SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
-		Filename:    fileName,
-		MimeType:    mime,
-		MediaData:   data,
-		IsVoiceClip: isVoice,
+		Filename:     fileName,
+		MimeType:     mime,
+		MediaData:    data,
+		IsVoiceClip:  isVoice,
+		WaveformData: waveformData,
 	})
 	if err != nil {
 		zerolog.Ctx(ctx).Debug().
