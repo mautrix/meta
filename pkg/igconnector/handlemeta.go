@@ -166,7 +166,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 	return evt.PortalKey, nil
 }
 
-func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string) (networkid.PortalKey, bool, error) {
+func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool) (networkid.PortalKey, bool, error) {
 	if threadIGID == "" {
 		return networkid.PortalKey{}, false, nil
 	} else if fbid, err := ic.Main.DB.GetFBIDForIGChat(ctx, threadIGID, ic.UserLogin.ID); err != nil {
@@ -179,6 +179,9 @@ func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string) (networ
 		// resync
 	} else {
 		return portal.PortalKey, false, nil
+	}
+	if !allowCreate {
+		return networkid.PortalKey{}, false, nil
 	}
 	key, err := ic.getAndResyncThread(ctx, threadIGID)
 	return key, true, err
@@ -209,9 +212,22 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		RawJSON("event_data", d.Raw).
 		Msg("Handling delta")
 
-	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID)
+	allowCreate := true
+	switch d.Data.(type) {
+	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
+		*slidetypes.ParticipantLeaveEvent:
+		allowCreate = false
+	}
+
+	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate)
 	if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
+	} else if portalKey.IsEmpty() {
+		log.Warn().
+			Str("typename", d.TypeName).
+			Str("thread_fbid", d.ThreadIGID).
+			Msg("Ignoring event with no portal")
+		return nil
 	}
 
 	var res bridgev2.EventHandlingResult
