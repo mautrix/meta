@@ -72,6 +72,10 @@ func (c *Client) PinThread(ctx context.Context, req *slidetypes.PinThreadRequest
 	return makeGraphQLRequest[*slidetypes.PinThreadResponse](ctx, c, "useIGDPinThreadMutation", req, true)
 }
 
+func (c *Client) PinMessage(ctx context.Context, req *slidetypes.PinMessageRequest) (*slidetypes.PinMessageResponse, error) {
+	return makeGraphQLRequest[*slidetypes.PinMessageResponse](ctx, c, "useIGDPinMessageOffMsysMutation", req, true)
+}
+
 func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, error) {
 	return makeGraphQLRequest[*slidetypes.MailboxResponse](
 		ctx, c, "PolarisDirectInboxQuery",

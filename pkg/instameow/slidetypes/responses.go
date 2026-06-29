@@ -109,3 +109,15 @@ type PinThreadResponse struct {
 		ThreadID string `json:"id"`
 	} `json:"xig_direct_pin_thread"`
 }
+
+type PinMessageResponse struct {
+	Data struct {
+		ID             string          `json:"id"`
+		PinnedMessages []PinnedMessage `json:"pinned_messages"`
+	} `json:"xig_direct_pin_message"`
+}
+
+type PinnedMessage struct {
+	ID        string `json:"id"`
+	MessageID string `json:"message_id"`
+}

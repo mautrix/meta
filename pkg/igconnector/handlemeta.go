@@ -251,6 +251,8 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		res = ic.dispatchRead(portalKey, ic.makeEventSender(evt.ReadReceipt.ParticipantFBID), evt.ReadReceipt.WatermarkTimestampMS.Time)
 	case *slidetypes.MuteThreadEvent:
 		res = ic.handleMuteThread(portalKey, evt.IsMutedNow)
+	case *slidetypes.PinMessageEvent:
+		res = ic.handlePinMessages(portalKey, evt)
 	case slidetypes.UnknownEvent:
 		log.Warn().
 			Str("typename", d.TypeName).
@@ -478,6 +480,11 @@ func (ic *IGClient) handleMuteThread(portalKey networkid.PortalKey, isMuted bool
 			},
 		},
 	})
+}
+
+func (ic *IGClient) handlePinMessages(key networkid.PortalKey, evt *slidetypes.PinMessageEvent) bridgev2.EventHandlingResult {
+	// TODO pinned messages aren't plumbed through bridgev2 yet
+	return bridgev2.EventHandlingResultIgnored
 }
 
 func (ic *IGClient) handleTyping(ctx context.Context, evt *slidetypes.TypingNotification) error {
