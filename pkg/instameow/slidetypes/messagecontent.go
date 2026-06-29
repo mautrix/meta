@@ -29,7 +29,8 @@ func (*MessageContentAdminText) isMessageContent()        {}
 func (*MessageContentImage) isMessageContent()            {}
 func (*MessageContentVideo) isMessageContent()            {}
 func (*MessageContentAudio) isMessageContent()            {}
-func (*MessageContentRavenMedia) isMessageContent()       {}
+func (*MessageContentRavenImage) isMessageContent()       {}
+func (*MessageContentRavenVideo) isMessageContent()       {}
 func (*MessageContentAnimatedMedia) isMessageContent()    {}
 func (*MessageContentMultiMedia) isMessageContent()       {}
 func (*MessageContentSticker) isMessageContent()          {}
@@ -71,28 +72,30 @@ const (
 	RavenViewModeKeepInChat RavenViewMode = 2
 )
 
-type MessageContentRavenMedia struct {
+type MessageContentRavenImage struct {
 	ViewMode   RavenViewMode `json:"view_mode"`
 	Attachment *Attachment   `json:"attachment"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
 
+type MessageContentRavenVideo MessageContentRavenImage
+
 type Attachment struct {
 	Typename                        string `json:"__typename"`
 	IsSlideMessagingMediaAttachment string `json:"__isSlideMessagingMediaAttachment"`
 
-	PreviewCDNURL            string `json:"preview_cdn_url"`
 	AttachmentFBID           string `json:"attachment_fbid"`
 	AttachmentType           int    `json:"attachment_type"` // Not present for raven attachments
+	AttachmentCDNURL         string `json:"attachment_cdn_url"`
+	AttachmentCDNFallbackURL string `json:"attachment_cdn_fallback_url"`
+	PreviewCDNURL            string `json:"preview_cdn_url"`
 	PreviewCDNFallbackURL    string `json:"preview_cdn_fallback_url"`
 	PreviewHeight            int    `json:"preview_height"`
 	PreviewWidth             int    `json:"preview_width"`
-	AttachmentCDNURL         string `json:"attachment_cdn_url"`
-	AttachmentCDNFallbackURL string `json:"attachment_cdn_fallback_url"`
 
 	// Only for videos
-	DashManifest any `json:"dash_manifest"`
+	DashManifest string `json:"dash_manifest"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
@@ -278,9 +281,9 @@ func (mc *MessageContentWrapper) UnmarshalJSON(data []byte) (err error) {
 	case "SlideMessageAnimatedMediaContent":
 		mc.Content = &MessageContentAnimatedMedia{}
 	case "SlideMessageRavenImageContent":
-		mc.Content = &MessageContentRavenMedia{}
+		mc.Content = &MessageContentRavenImage{}
 	case "SlideMessageRavenVideoContent":
-		mc.Content = &MessageContentRavenMedia{}
+		mc.Content = &MessageContentRavenVideo{}
 	case "SlideMessageMultiMediaContent":
 		mc.Content = &MessageContentMultiMedia{}
 	case "SlideMessageStoreStickerContent",

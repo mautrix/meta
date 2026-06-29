@@ -44,10 +44,7 @@ func ReuploadFileToMeta(
 ) (int64, error) {
 	threadID := metaid.ParseFBPortalID(portal.ID)
 	mime := content.Info.MimeType
-	fileName := content.Body
-	if content.FileName != "" {
-		fileName = content.FileName
-	}
+	fileName := content.GetFileName()
 	data, err := portal.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)

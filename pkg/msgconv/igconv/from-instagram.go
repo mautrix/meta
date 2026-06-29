@@ -18,15 +18,23 @@ package igconv
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"html"
+	"strings"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
@@ -41,10 +49,6 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid
 		return login.UserMXID, ghost.Name, nil
 	}
 	return ghost.Intent.GetMXID(), ghost.Name, nil
-}
-
-func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, mentions slidetypes.MentionList) *event.MessageEventContent {
-	return textfmt.MetaToMatrixText(ctx, text, mentions.ToSocket(), mc.getBasicUserInfo)
 }
 
 func (mc *MessageConverter) ToMatrix(
@@ -64,11 +68,211 @@ func (mc *MessageConverter) ToMatrix(
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
-	if msg.TextBody != "" {
-		cm.Parts = append(cm.Parts, &bridgev2.ConvertedMessagePart{
-			Type:    event.EventMessage,
-			Content: mc.MetaToMatrixText(ctx, msg.TextBody, msg.Mentions),
-		})
+	if msg.RepliedToMessageID != "" {
+		cm.ReplyTo = &networkid.MessageOptionalPartID{
+			MessageID: metaid.MakeFBMessageID(msg.RepliedToMessageID),
+		}
+		cm.ReplyToUser = metaid.MakeUserID(msg.RepliedToMessage.SenderFBID)
+		cm.ReplyToLogin = metaid.MakeUserLoginID(msg.RepliedToMessage.SenderFBID)
+	}
+	switch content := msg.Content.Content.(type) {
+	case *slidetypes.MessageContentText:
+		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.TextBody, msg.Mentions))
+	case *slidetypes.MessageContentAdminText:
+		cm.Parts = append(cm.Parts, mc.wrapAdminText(content.TextFragments))
+	case *slidetypes.MessageContentImage:
+		for i, att := range content.Attachments {
+			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "image", i, mc.attachmentReuploadParams(att, table.AttachmentTypeImage)))
+		}
+	case *slidetypes.MessageContentVideo:
+		for i, att := range content.Videos {
+			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "video", i, mc.attachmentReuploadParams(att, table.AttachmentTypeVideo)))
+		}
+	case *slidetypes.MessageContentAudio:
+		for i, att := range content.AudioAttachments {
+			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "audio", i, mc.audioReuploadParams(att)))
+		}
+	case *slidetypes.MessageContentMultiMedia:
+		for i, att := range content.Attachments {
+			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "multimedia", i, mc.attachmentReuploadParams(att, table.AttachmentTypeNone)))
+		}
+	case *slidetypes.MessageContentAnimatedMedia:
+		for i, att := range content.AnimatedMedia {
+			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "animated media", i, mc.animatedMediaReuploadParams(att)))
+		}
+	case *slidetypes.MessageContentRavenImage:
+		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven image", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeImage)))
+	case *slidetypes.MessageContentRavenVideo:
+		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven video", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeVideo)))
+	case *slidetypes.MessageContentSticker:
+		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "sticker", 0, mc.stickerReuploadParams(content)))
+	case *slidetypes.MessageContentMusicSticker:
+		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "music sticker", 0, mc.musicStickerReuploadParams(content)))
+	case *slidetypes.MessageContentXMA:
+		// TODO implement
+		cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
+	case *slidetypes.MessageContentAIRichResponse:
+		// TODO the AI types haven't been observed in the wild to confirm the schema
+		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.UnifiedResponse, nil))
+	case *slidetypes.MessageContentAISearchResponse:
+		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.MessageTextBody, nil))
+	case slidetypes.MessageContentUnknown:
+		cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
+	default:
+		return nil, fmt.Errorf("unrecognized message content struct: %T", content)
 	}
 	return cm, nil
+}
+
+func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, mentions slidetypes.MentionList) *event.MessageEventContent {
+	return textfmt.MetaToMatrixText(ctx, text, mentions.ToSocket(), mc.getBasicUserInfo)
+}
+
+func (mc *MessageConverter) wrapText(ctx context.Context, text string, mentions slidetypes.MentionList) *bridgev2.ConvertedMessagePart {
+	return &bridgev2.ConvertedMessagePart{
+		Type:    event.EventMessage,
+		Content: mc.MetaToMatrixText(ctx, text, mentions),
+	}
+}
+
+func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment) *bridgev2.ConvertedMessagePart {
+	var buf strings.Builder
+	for _, f := range fragments {
+		htmlText := event.TextToHTML(f.Plaintext)
+		if f.LinkFragment != nil {
+			_, _ = buf.WriteString(fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(f.LinkFragment.URI), htmlText))
+		} else {
+			buf.WriteString(htmlText)
+		}
+	}
+	content := format.HTMLToContent(buf.String())
+	content.MsgType = event.MsgNotice
+	return &bridgev2.ConvertedMessagePart{
+		Type:    event.EventMessage,
+		Content: &content,
+	}
+}
+
+func (mc *MessageConverter) wrapMedia(
+	ctx context.Context,
+	typeName string,
+	index int,
+	params mediadl.ReuploadParams,
+) *bridgev2.ConvertedMessagePart {
+	params.DirectMedia = mc.DirectMedia
+	params.MaxFileSize = mc.MaxFileSize
+	if params.RefreshMeta == nil {
+		params.RefreshMeta = &mediadl.MediaRefreshMeta{}
+	}
+	params.RefreshMeta.PartIndex = index
+
+	partID := networkid.PartID(fmt.Sprintf("%s-%d", strings.ReplaceAll(typeName, " ", ""), index))
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
+
+	res, err := mediadl.ReuploadFileToMatrix(ctx, params)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload attachment")
+		return errorToNotice(err, typeName, params)
+	}
+	res.ID = partID
+	return res
+}
+
+func (mc *MessageConverter) attachmentReuploadParams(att *slidetypes.Attachment, typ table.AttachmentType) mediadl.ReuploadParams {
+	return mediadl.ReuploadParams{
+		AttachmentType: typ,
+		URL:            att.AttachmentCDNURL,
+		PreviewWidth:   att.PreviewWidth,
+		PreviewHeight:  att.PreviewHeight,
+		RefreshMeta:    &mediadl.MediaRefreshMeta{AttachmentFBID: att.AttachmentFBID},
+	}
+}
+
+func (mc *MessageConverter) audioReuploadParams(att *slidetypes.AudioAttachment) mediadl.ReuploadParams {
+	return mediadl.ReuploadParams{
+		AttachmentType: table.AttachmentTypeAudio,
+		URL:            att.AttachmentCDNURL,
+		Duration:       att.PlayableDurationMS,
+		RefreshMeta:    &mediadl.MediaRefreshMeta{AttachmentFBID: att.AttachmentFBID},
+	}
+}
+
+func (mc *MessageConverter) animatedMediaReuploadParams(att *slidetypes.AnimatedAttachment) mediadl.ReuploadParams {
+	var typ table.AttachmentType
+	var filename, url, mimeType string
+	if att.AttachmentWebpURL != "" && (att.IsSticker || att.AttachmentMP4URL == "") {
+		typ = table.AttachmentTypeSticker
+		filename = att.AltText
+		url = att.AttachmentWebpURL
+		mimeType = "image/webp"
+	} else if att.AttachmentMP4URL != "" {
+		typ = table.AttachmentTypeAnimatedImage
+		url = att.AttachmentMP4URL
+		mimeType = "video/mp4"
+	}
+	return mediadl.ReuploadParams{
+		AttachmentType: typ,
+		URL:            url,
+		PreviewWidth:   att.PreviewWidth,
+		PreviewHeight:  att.PreviewHeight,
+		MimeType:       mimeType,
+		FileName:       filename,
+	}
+}
+
+func (mc *MessageConverter) stickerReuploadParams(att *slidetypes.MessageContentSticker) mediadl.ReuploadParams {
+	return mediadl.ReuploadParams{
+		AttachmentType: table.AttachmentTypeSticker,
+		URL:            att.PreviewURL,
+		FileName:       att.AltText,
+		PreviewWidth:   att.PreviewWidth,
+		PreviewHeight:  att.PreviewHeight,
+	}
+}
+
+func (mc *MessageConverter) musicStickerReuploadParams(att *slidetypes.MessageContentMusicSticker) mediadl.ReuploadParams {
+	return mediadl.ReuploadParams{
+		AttachmentType: table.AttachmentTypeSticker,
+		URL:            att.AudioTrack.Web30SPreviewDownloadURL,
+		RefreshMeta:    &mediadl.MediaRefreshMeta{AttachmentFBID: att.MediaContentFBID},
+	}
+}
+
+func errorToNotice(err error, attachmentContainerType string, content any) *bridgev2.ConvertedMessagePart {
+	errMsg := "Failed to transfer attachment"
+	if errors.Is(err, mediadl.ErrURLNotFound) {
+		errMsg = fmt.Sprintf("Unrecognized %s attachment type", attachmentContainerType)
+	} else if errors.Is(err, mediadl.ErrTooLargeFile) {
+		errMsg = "Too large attachment"
+	}
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    errMsg,
+		},
+		Extra: unsupportedContentToExtra(content),
+	}
+}
+
+func unsupportedContentToExtra(content any) map[string]any {
+	if marshaled, _ := json.Marshal(content); len(marshaled) > 50000 {
+		return map[string]any{
+			"fi.mau.meta.unsupported_slide_content_too_long": true,
+		}
+	}
+	return map[string]any{
+		"fi.mau.meta.unsupported_slide_content": content,
+	}
+}
+
+func (mc *MessageConverter) wrapUnsupportedContent(content any) *bridgev2.ConvertedMessagePart {
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    "Unsupported message. Use the native Instagram app to view.",
+		},
+		Extra: unsupportedContentToExtra(content),
+	}
 }

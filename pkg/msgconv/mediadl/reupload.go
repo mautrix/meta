@@ -17,13 +17,18 @@
 package mediadl
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
 	"io"
+	"mime"
+	"net/url"
 	"os"
+	"path"
+	"strconv"
 	"strings"
 
 	"github.com/gabriel-vasile/mimetype"
@@ -57,21 +62,48 @@ type MediaRefreshMeta struct {
 
 type DirectMediaMeta struct {
 	MediaRefreshMeta
-	MimeType string `json:"mime_type"`
+	MimeType string `json:"mime_type,omitempty"`
 	URL      string `json:"url"`
 }
 
 var ErrURLNotFound = errors.New("url not found")
 
-func ReuploadAttachment(
-	ctx context.Context, attachmentType table.AttachmentType,
-	url, fileName, mimeType string,
-	fileSize, width, height, duration int,
-	refreshMeta *MediaRefreshMeta,
-	directMedia bool, maxFileSize int64,
-) (*bridgev2.ConvertedMessagePart, error) {
-	if url == "" {
+type ReuploadParams struct {
+	AttachmentType table.AttachmentType
+	URL            string
+	FileName       string
+	MimeType       string
+
+	FileSize int
+	Width    int
+	Height   int
+	Duration int
+
+	PreviewWidth  int
+	PreviewHeight int
+
+	RefreshMeta *MediaRefreshMeta
+
+	DirectMedia bool
+	MaxFileSize int64
+}
+
+func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2.ConvertedMessagePart, error) {
+	if params.URL == "" {
 		return nil, ErrURLNotFound
+	}
+	needMime := params.MimeType == ""
+	parsedURL, _ := url.Parse(params.URL)
+	if params.MimeType == "" && parsedURL != nil {
+		ext := path.Ext(parsedURL.Path)
+		if ext == ".webm" {
+			params.MimeType = "video/webm"
+		} else {
+			params.MimeType = mime.TypeByExtension(ext)
+		}
+	}
+	if params.FileName == "" && parsedURL != nil {
+		params.FileName = path.Base(parsedURL.Path)
 	}
 
 	portal := ctx.Value(ContextKeyPortal).(*bridgev2.Portal)
@@ -79,18 +111,18 @@ func ReuploadAttachment(
 		Info: &event.FileInfo{},
 	}
 	extra := map[string]any{}
-	if attachmentType == table.AttachmentTypeAnimatedImage && mimeType == "video/mp4" {
-		extra["info"] = map[string]any{
-			"fi.mau.gif":           true,
-			"fi.mau.loop":          true,
-			"fi.mau.autoplay":      true,
-			"fi.mau.hide_controls": true,
-			"fi.mau.no_audio":      true,
-		}
-	}
 	eventType := event.EventMessage
 	fillMetadata := func() {
-		switch attachmentType {
+		if params.AttachmentType == table.AttachmentTypeAnimatedImage && params.MimeType == "video/mp4" {
+			content.Info.MauGIF = true
+			extra["info"] = map[string]any{
+				"fi.mau.loop":          true,
+				"fi.mau.autoplay":      true,
+				"fi.mau.hide_controls": true,
+				"fi.mau.no_audio":      true,
+			}
+		}
+		switch params.AttachmentType {
 		case table.AttachmentTypeSticker:
 			eventType = event.EventSticker
 		case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
@@ -103,11 +135,11 @@ func ReuploadAttachment(
 			content.MsgType = event.MsgAudio
 			content.MSC3245Voice = &event.MSC3245Voice{}
 			content.MSC1767Audio = &event.MSC1767Audio{
-				Duration: duration,
+				Duration: params.Duration,
 				Waveform: []int{},
 			}
 		default:
-			switch strings.Split(mimeType, "/")[0] {
+			switch strings.Split(params.MimeType, "/")[0] {
 			case "image":
 				content.MsgType = event.MsgImage
 			case "video":
@@ -118,20 +150,20 @@ func ReuploadAttachment(
 				content.MsgType = event.MsgFile
 			}
 		}
-		content.Body = fileName
-		content.Info.MimeType = mimeType
-		content.Info.Duration = duration
-		content.Info.Width = width
-		content.Info.Height = height
+		content.Body = params.FileName
+		content.Info.MimeType = params.MimeType
+		content.Info.Duration = params.Duration
+		content.Info.Width = cmp.Or(params.Width, params.PreviewWidth)
+		content.Info.Height = cmp.Or(params.Height, params.PreviewHeight)
 
 		if content.Body == "" {
-			content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
+			content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(params.MimeType)
 		} else if content.MsgType != "" && !strings.ContainsRune(content.Body, '.') {
-			content.Body += exmime.ExtensionFromMimetype(mimeType)
+			content.Body += exmime.ExtensionFromMimetype(params.MimeType)
 		}
 	}
 
-	if directMedia {
+	if params.DirectMedia {
 		msgID := ctx.Value(ContextKeyMsgID).(networkid.MessageID)
 		var partID networkid.PartID
 		if ctx.Value(ContextKeyPartID) != nil {
@@ -143,15 +175,18 @@ func ReuploadAttachment(
 		if err != nil {
 			return nil, err
 		}
+		if params.RefreshMeta != nil && params.RefreshMeta.ExpiresAt == 0 && parsedURL != nil {
+			params.RefreshMeta.ExpiresAt, _ = strconv.ParseInt(parsedURL.Query().Get("oe"), 16, 64)
+		}
 		directMediaMeta, err := json.Marshal(&DirectMediaMeta{
-			MimeType:         mimeType,
-			URL:              url,
-			MediaRefreshMeta: ptr.Val(refreshMeta),
+			MimeType:         params.MimeType,
+			URL:              params.URL,
+			MediaRefreshMeta: ptr.Val(params.RefreshMeta),
 		})
 		if err != nil {
 			return nil, err
 		}
-		content.Info.Size = fileSize
+		content.Info.Size = params.FileSize
 		fillMetadata()
 		return &bridgev2.ConvertedMessagePart{
 			ID:      partID,
@@ -164,7 +199,7 @@ func ReuploadAttachment(
 		}, nil
 	}
 
-	size, reader, err := DownloadMedia(ctx, mimeType, url, maxFileSize)
+	size, reader, err := DownloadMedia(ctx, params.MimeType, params.URL, params.MaxFileSize)
 	if err != nil {
 		if errors.Is(err, ErrTooLargeFile) {
 			return nil, err
@@ -173,9 +208,12 @@ func ReuploadAttachment(
 	}
 	defer reader.Close()
 	content.Info.Size = int(size)
-	needVoiceConvert := attachmentType == table.AttachmentTypeAudio && ffmpeg.Supported()
-	needMime := mimeType == ""
-	needImageSize := (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0)
+	needVoiceConvert := params.AttachmentType == table.AttachmentTypeAudio && params.MimeType != "audio/ogg" && ffmpeg.Supported()
+	needImageSize := (params.Width == 0 || params.Height == 0) &&
+		(params.AttachmentType == table.AttachmentTypeImage ||
+			params.AttachmentType == table.AttachmentTypeEphemeralImage ||
+			params.AttachmentType == table.AttachmentTypeSticker ||
+			(params.AttachmentType == table.AttachmentTypeNone && strings.HasPrefix(params.MimeType, "image/")))
 	requireFile := needVoiceConvert || needMime || needImageSize
 	intent := ctx.Value(ContextKeyIntent).(bridgev2.MatrixAPI)
 	content.URL, content.File, err = intent.UploadMediaStream(ctx, portal.MXID, size, requireFile, func(dest io.Writer) (*bridgev2.FileStreamResult, error) {
@@ -189,12 +227,11 @@ func ReuploadAttachment(
 			if err != nil {
 				return nil, err
 			}
-			var mime *mimetype.MIME
-			mime, err = mimetype.DetectReader(destRS)
+			m, err := mimetype.DetectReader(destRS)
 			if err != nil {
 				return nil, err
 			}
-			mimeType = mime.String()
+			params.MimeType = m.String()
 		}
 		var replPath string
 		if needVoiceConvert {
@@ -204,7 +241,7 @@ func ReuploadAttachment(
 				return nil, err
 			}
 			_ = destFile.Close()
-			sourceFileName := destFile.Name() + exmime.ExtensionFromMimetype(mimeType)
+			sourceFileName := destFile.Name() + exmime.ExtensionFromMimetype(params.MimeType)
 			err = os.Rename(destFile.Name(), sourceFileName)
 			if err != nil {
 				return nil, err
@@ -213,8 +250,8 @@ func ReuploadAttachment(
 			if err != nil {
 				return nil, fmt.Errorf("%w (audio to ogg/opus): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
-			fileName += ".ogg"
-			mimeType = "audio/ogg"
+			params.FileName += ".ogg"
+			params.MimeType = "audio/ogg"
 		} else if needImageSize {
 			destRS := dest.(io.ReadSeeker)
 			_, err = destRS.Seek(0, io.SeekStart)
@@ -223,13 +260,13 @@ func ReuploadAttachment(
 			}
 			config, _, err := image.DecodeConfig(destRS)
 			if err == nil {
-				width, height = config.Width, config.Height
+				params.Width, params.Height = config.Width, config.Height
 			}
 		}
 		return &bridgev2.FileStreamResult{
 			ReplacementFile: replPath,
-			FileName:        fileName,
-			MimeType:        mimeType,
+			FileName:        params.FileName,
+			MimeType:        params.MimeType,
 		}, nil
 	})
 	if err != nil {

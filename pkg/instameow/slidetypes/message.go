@@ -28,7 +28,7 @@ import (
 type Message struct {
 	IsReported                  bool                      `json:"is_reported"`
 	MessageID                   string                    `json:"message_id"`
-	SenderFBID                  string                    `json:"sender_fbid"`
+	SenderFBID                  int64                     `json:"sender_fbid,string"`
 	ThreadFBID                  string                    `json:"thread_fbid"`
 	Content                     MessageContentWrapper     `json:"content"`
 	ContentType                 string                    `json:"content_type"`
@@ -41,8 +41,8 @@ type Message struct {
 	TextBody                    string                    `json:"text_body"`
 	Mentions                    MentionList               `json:"mentions"`
 	IGDIsForwarded              bool                      `json:"igd_is_forwarded"`
-	RepliedToMessageId          any                       `json:"replied_to_message_id"`
-	RepliedToMessage            any                       `json:"replied_to_message"`
+	RepliedToMessageID          string                    `json:"replied_to_message_id"`
+	RepliedToMessage            *Message                  `json:"replied_to_message"`
 	Sender                      *MessageSender            `json:"sender"`
 	SlideEditHistory            []MessageEditHistoryEntry `json:"slide_edit_history"`
 	IsPinned                    bool                      `json:"is_pinned"`

@@ -871,8 +871,17 @@ func (mc *MessageConverter) reuploadAttachment(
 	fileSize, width, height, duration int,
 	refreshMeta *mediadl.MediaRefreshMeta,
 ) (*bridgev2.ConvertedMessagePart, error) {
-	return mediadl.ReuploadAttachment(
-		ctx, attachmentType, url, fileName, mimeType, fileSize, width, height, duration, refreshMeta,
-		mc.DirectMedia, mc.MaxFileSize,
-	)
+	return mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
+		AttachmentType: attachmentType,
+		URL:            url,
+		FileName:       fileName,
+		MimeType:       mimeType,
+		FileSize:       fileSize,
+		Width:          width,
+		Height:         height,
+		Duration:       duration,
+		RefreshMeta:    refreshMeta,
+		DirectMedia:    mc.DirectMedia,
+		MaxFileSize:    mc.MaxFileSize,
+	})
 }
