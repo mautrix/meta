@@ -101,7 +101,7 @@ type PinThreadRequest struct {
 type PinMessageRequest struct {
 	ThreadID               string `json:"thread_fbid"`
 	MessageID              string `json:"message_id"`
-	ShouldReplaceOldestPin bool   `json:"should_replace_oldest_pin"`
+	ShouldReplaceOldestPin *bool  `json:"should_replace_oldest_pin,omitempty"`
 }
 
 type CreateReactionRequest struct {

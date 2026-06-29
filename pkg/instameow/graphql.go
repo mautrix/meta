@@ -76,6 +76,10 @@ func (c *Client) PinMessage(ctx context.Context, req *slidetypes.PinMessageReque
 	return makeGraphQLRequest[*slidetypes.PinMessageResponse](ctx, c, "useIGDPinMessageOffMsysMutation", req, true)
 }
 
+func (c *Client) UnpinMessage(ctx context.Context, req *slidetypes.PinMessageRequest) (*slidetypes.UnpinMessageResponse, error) {
+	return makeGraphQLRequest[*slidetypes.UnpinMessageResponse](ctx, c, "useIGDUnpinMessageOffMsysMutation", req, true)
+}
+
 func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, error) {
 	return makeGraphQLRequest[*slidetypes.MailboxResponse](
 		ctx, c, "PolarisDirectInboxQuery",

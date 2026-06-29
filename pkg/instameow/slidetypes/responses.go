@@ -110,11 +110,17 @@ type PinThreadResponse struct {
 	} `json:"xig_direct_pin_thread"`
 }
 
+type PinMessageResponseData struct {
+	ID             string          `json:"id"`
+	PinnedMessages []PinnedMessage `json:"pinned_messages"`
+}
+
 type PinMessageResponse struct {
-	Data struct {
-		ID             string          `json:"id"`
-		PinnedMessages []PinnedMessage `json:"pinned_messages"`
-	} `json:"xig_direct_pin_message"`
+	Data PinMessageResponseData `json:"xig_direct_pin_message"`
+}
+
+type UnpinMessageResponse struct {
+	Data PinMessageResponseData `json:"xig_direct_unpin_message"`
 }
 
 type PinnedMessage struct {
