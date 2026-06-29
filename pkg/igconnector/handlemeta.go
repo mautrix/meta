@@ -227,6 +227,8 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		res = ic.handleMessageDelete(portalKey, evt.MessageID)
 	case *slidetypes.DeleteThreadEvent:
 		res = ic.handleThreadDelete(portalKey)
+	case *slidetypes.PinThreadEvent:
+		res = ic.handleThreadPin(portalKey, evt.IsPinned)
 	case *slidetypes.UpdateThreadFolderEvent:
 		res = ic.handleThreadFolder(portalKey, evt.Folder)
 	case *slidetypes.UpdateThreadNameEvent:
@@ -372,6 +374,27 @@ func (ic *IGClient) handleThreadFolder(portalKey networkid.PortalKey, folder str
 		},
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo: &bridgev2.ChatInfo{MessageRequest: &isRequest},
+		},
+	})
+}
+
+func (ic *IGClient) handleThreadPin(portalKey networkid.PortalKey, isPinned bool) bridgev2.EventHandlingResult {
+	var tag event.RoomTag
+	if isPinned {
+		tag = event.RoomTagFavourite
+	}
+	return ic.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventChatInfoChange,
+			PortalKey:    portalKey,
+			CreatePortal: true,
+		},
+		ChatInfoChange: &bridgev2.ChatInfoChange{
+			ChatInfo: &bridgev2.ChatInfo{
+				UserLocal: &bridgev2.UserLocalPortalInfo{
+					Tag: &tag,
+				},
+			},
 		},
 	})
 }

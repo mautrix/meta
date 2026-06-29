@@ -38,6 +38,7 @@ func (*EditMessageEvent) isDeltaEvent()        {}
 func (*DeleteMessageEvent) isDeltaEvent()      {}
 func (*DeleteThreadEvent) isDeltaEvent()       {}
 func (*UpdateThreadFolderEvent) isDeltaEvent() {}
+func (*PinThreadEvent) isDeltaEvent()          {}
 func (*PinMessageEvent) isDeltaEvent()         {}
 func (*UpdateThreadNameEvent) isDeltaEvent()   {}
 func (*UpdateThreadImageEvent) isDeltaEvent()  {}
@@ -140,6 +141,12 @@ type UpdateThreadFolderEvent struct {
 	Unrecognized map[string]any `json:",unknown"`
 }
 
+type PinThreadEvent struct {
+	IsPinned bool `json:"is_pinned"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
 type PinMessageEvent struct {
 	PinnedMessages   []string `json:"pinned_messages"`
 	UnpinnedMessages []string `json:"unpinned_messages"`
@@ -233,6 +240,8 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 		d.Data = &AdminChangeEvent{}
 	case "SlideUQPPChangeMuteSettings":
 		d.Data = &MuteThreadEvent{}
+	case "SlideUQPPPinnedThread":
+		d.Data = &PinThreadEvent{}
 	case "SlideUQPPPinUnpinMessage":
 		d.Data = &PinMessageEvent{}
 	default:
