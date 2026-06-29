@@ -127,6 +127,15 @@ func (c *Client) loadIndex(ctx context.Context) error {
 	}
 	c.configs.Setup(c.IsAuthenticated())
 	c.lastReload = time.Now()
+
+	state, err := c.DumpState()
+	if err != nil {
+		return fmt.Errorf("failed to dump state: %w", err)
+	}
+	err = c.eventHandler(ctx, &slidetypes.ReconnectionStateUpdate{State: state})
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to send reconnection state update")
+	}
 	return nil
 }
 
@@ -166,7 +175,7 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 	c.loadIndexLock.Lock()
 	defer c.loadIndexLock.Unlock()
 
-	if time.Since(c.lastReload) < 1*time.Minute {
+	if time.Since(c.lastReload) < 5*time.Minute {
 		zerolog.Ctx(ctx).Debug().
 			Time("last_reload", c.lastReload).
 			Msg("Not reloading again as last reload was recent")
@@ -224,8 +233,6 @@ func (c *Client) GetHTTP() *httpclient.HTTPClient {
 
 type dumpedState struct {
 	Configs   *httpclient.Configs
-	SeqID     int64
-	SeqIDTS   time.Time
 	Timestamp time.Time
 }
 
@@ -248,20 +255,26 @@ func (c *Client) LoadState(state json.RawMessage) error {
 	c.configs = dumped.Configs
 	c.configs.SetClient(c)
 	c.http.SetConfigs(c.configs)
-	c.seqID = dumped.SeqID
-	c.seqIDTS = dumped.SeqIDTS
+	c.lastReload = dumped.Timestamp
 	c.makeNewSocket()
 	return nil
 }
 
+func (c *Client) SetSeqID(seqID int64, ts time.Time) {
+	c.seqID = seqID
+	c.seqIDTS = ts
+}
+
+func (c *Client) HasSeqID() bool {
+	return c.seqID != 0
+}
+
 func (c *Client) DumpState() (json.RawMessage, error) {
-	if c == nil || c.configs == nil || c.seqID == 0 {
+	if c == nil || c.configs == nil {
 		return nil, nil
 	}
 	return json.Marshal(&dumpedState{
 		Configs:   c.configs,
-		SeqID:     c.seqID,
-		SeqIDTS:   c.seqIDTS,
-		Timestamp: time.Now(),
+		Timestamp: c.lastReload,
 	})
 }

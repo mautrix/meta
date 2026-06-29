@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -32,6 +33,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		ic.mailboxProcessed.Store(true)
 		close(ic.waitMailboxProcessed)
 	}
+	startTS := time.Now()
 
 	events := make([]bridgev2.RemoteEvent, 0, len(mailbox.ThreadsByFolder.Edges))
 	for _, node := range mailbox.ThreadsByFolder.Edges {
@@ -65,7 +67,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		if ctx.Err() != nil {
 			return
 		}
-		err := ic.saveReconnectionState(ctx)
+		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, mailbox.UQSeqID, startTS)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save reconnection state after mailbox processing")
 		}

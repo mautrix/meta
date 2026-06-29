@@ -68,18 +68,6 @@ func init() {
 	})
 }
 
-func (ic *IGClient) saveReconnectionState(ctx context.Context) error {
-	state, err := ic.Client.DumpState()
-	if err != nil {
-		return fmt.Errorf("failed to dump state for seqid update: %w", err)
-	}
-	err = ic.Main.DB.PutReconnectionState(ctx, ic.UserLogin.ID, state)
-	if err != nil {
-		return fmt.Errorf("failed to save reconnection state for seqid update: %w", err)
-	}
-	return nil
-}
-
 func (ic *IGClient) doWaitMailboxProcessed(ctx context.Context) error {
 	if !ic.mailboxProcessed.Load() {
 		zerolog.Ctx(ctx).Warn().Msg("Blocking new event handling until mailbox is processed")
@@ -118,7 +106,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		return nil
 	case *slidetypes.SeqIDUpdate:
 		_ = ic.doWaitMailboxProcessed(ctx)
-		err := ic.saveReconnectionState(ctx)
+		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, evt.SeqID, evt.Timestamp)
 		if err != nil {
 			return err
 		}
@@ -126,9 +114,11 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			ic.caughtUp.Set()
 		}
 		return nil
+	case *slidetypes.ReconnectionStateUpdate:
+		return ic.Main.DB.PutReconnectionState(ctx, ic.UserLogin.ID, evt.State)
 	case *slidetypes.ResnapshotRequired:
 		_ = ic.doWaitMailboxProcessed(ctx)
-		go ic.FullReconnect()
+		go ic.FullReconnect(true)
 		return nil
 	case *slidetypes.Delta:
 		if err := ic.doWaitMailboxProcessed(ctx); err != nil {

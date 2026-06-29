@@ -94,6 +94,28 @@ func (db *MetaDB) GetThreadByMessage(ctx context.Context, messageID string) (thr
 	return
 }
 
+func (db *MetaDB) GetIGSeqID(ctx context.Context, loginID networkid.UserLoginID) (int64, time.Time, error) {
+	var seqID, ts int64
+	err := db.QueryRow(ctx, "SELECT seq_id, timestamp FROM meta_instagram_seq_id WHERE bridge_id = $1 AND login_id = $2", db.BridgeID, loginID).Scan(&seqID, &ts)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+		}
+		return 0, time.Time{}, err
+	}
+	return seqID, time.UnixMilli(ts), nil
+}
+
+func (db *MetaDB) PutIGSeqID(ctx context.Context, loginID networkid.UserLoginID, seqID int64, ts time.Time) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_instagram_seq_id (bridge_id, login_id, seq_id, timestamp)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (bridge_id, login_id) DO UPDATE SET seq_id = excluded.seq_id, timestamp = excluded.timestamp
+		WHERE meta_instagram_seq_id.seq_id <= excluded.seq_id
+	`, db.BridgeID, loginID, seqID, ts.UnixMilli())
+	return err
+}
+
 func (db *MetaDB) PutReconnectionState(ctx context.Context, loginID networkid.UserLoginID, state json.RawMessage) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO meta_reconnection_state (bridge_id, login_id, state)
@@ -106,6 +128,16 @@ func (db *MetaDB) PutReconnectionState(ctx context.Context, loginID networkid.Us
 func (db *MetaDB) DeleteReconnectionState(ctx context.Context, loginID networkid.UserLoginID) error {
 	_, err := db.Exec(ctx, `
 		DELETE FROM meta_reconnection_state WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID)
+	if err != nil {
+		return err
+	}
+	return db.DeleteIGSeqID(ctx, loginID)
+}
+
+func (db *MetaDB) DeleteIGSeqID(ctx context.Context, loginID networkid.UserLoginID) error {
+	_, err := db.Exec(ctx, `
+		DELETE FROM meta_instagram_seq_id WHERE bridge_id = $1 AND login_id = $2
 	`, db.BridgeID, loginID)
 	return err
 }
@@ -190,6 +222,9 @@ func (db *MetaDB) GetFBIDForIGChat(ctx context.Context, igid string, login netwo
 }
 
 func (db *MetaDB) PutFBIDForIGUser(ctx context.Context, igid string, fbid int64) error {
+	if igid == "" || igid == "0" || fbid == 0 {
+		return nil
+	}
 	_, exists := db.igUserMap.GetOrSet(igid, fbid)
 	if exists {
 		return nil
@@ -202,6 +237,9 @@ func (db *MetaDB) PutFBIDForIGUser(ctx context.Context, igid string, fbid int64)
 }
 
 func (db *MetaDB) PutFBIDForIGThread(ctx context.Context, igid string, fbid int64, login networkid.UserLoginID) error {
+	if igid == "" || igid == "0" || fbid == 0 {
+		return nil
+	}
 	_, exists := db.igThreadMap.GetOrSet(keyWithLogin{igid, login}, fbid)
 	if exists {
 		return nil
@@ -211,6 +249,9 @@ func (db *MetaDB) PutFBIDForIGThread(ctx context.Context, igid string, fbid int6
 }
 
 func (db *MetaDB) PutFBIDForIGChat(ctx context.Context, igid string, fbid int64, login networkid.UserLoginID) error {
+	if igid == "" || igid == "0" || fbid == 0 {
+		return nil
+	}
 	_, exists := db.igChatMap.GetOrSet(keyWithLogin{igid, login}, fbid)
 	if exists {
 		return nil

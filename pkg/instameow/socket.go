@@ -99,6 +99,8 @@ func (c *Client) Connect(ctx context.Context) {
 			return
 		} else if errors.Is(err, errResnapshotRequired) {
 			sock.Log.Debug().Msg("Socket closed due to resnapshot requirement, dispatching event")
+			c.seqID = 0
+			c.seqIDTS = time.Time{}
 			_ = c.eventHandler(ctx, &slidetypes.ResnapshotRequired{})
 			return
 		}

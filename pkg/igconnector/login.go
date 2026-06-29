@@ -181,7 +181,11 @@ func loginWithCookies(
 
 	backgroundCtx := ul.Log.WithContext(conn.Bridge.BackgroundCtx)
 	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
-	go igClient.connectWithMailbox(backgroundCtx, backgroundCtx, user, mailbox)
+	go func() {
+		igClient.connectWithMailbox(backgroundCtx, backgroundCtx, user, mailbox)
+		zerolog.Ctx(ctx).Debug().Msg("Processed mailbox after login, connecting to DGW")
+		go igClient.Client.Connect(backgroundCtx)
+	}()
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,

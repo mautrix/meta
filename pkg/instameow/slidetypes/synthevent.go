@@ -17,6 +17,7 @@
 package slidetypes
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -24,12 +25,13 @@ type ClientEvent interface {
 	isClientEvent()
 }
 
-func (*ResnapshotRequired) isClientEvent() {}
-func (*Connected) isClientEvent()          {}
-func (*Disconnected) isClientEvent()       {}
-func (*SeqIDUpdate) isClientEvent()        {}
-func (*Delta) isClientEvent()              {}
-func (*TypingNotification) isClientEvent() {}
+func (*ResnapshotRequired) isClientEvent()      {}
+func (*Connected) isClientEvent()               {}
+func (*Disconnected) isClientEvent()            {}
+func (*SeqIDUpdate) isClientEvent()             {}
+func (*ReconnectionStateUpdate) isClientEvent() {}
+func (*Delta) isClientEvent()                   {}
+func (*TypingNotification) isClientEvent()      {}
 
 type ResnapshotRequired struct{}
 
@@ -45,4 +47,8 @@ type Disconnected struct {
 type SeqIDUpdate struct {
 	SeqID     int64
 	Timestamp time.Time
+}
+
+type ReconnectionStateUpdate struct {
+	State json.RawMessage
 }

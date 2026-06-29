@@ -138,6 +138,21 @@ func (ic *IGClient) Connect(ctx context.Context) {
 	mailboxCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ic.stopConnectAttempt.Store(&cancel)
+	ic.ensureIGClient()
+	seqID, seqTS, err := ic.Main.DB.GetIGSeqID(ctx, ic.UserLogin.ID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get seq ID")
+	} else if seqID != 0 {
+		if ic.Client != nil && ic.Main.Config.CacheConnectionState {
+			zerolog.Ctx(ctx).Debug().
+				Int64("seq_id", seqID).
+				Time("seq_ts", seqTS).
+				Msg("Using saved seq ID")
+			ic.Client.SetSeqID(seqID, seqTS)
+		}
+	} else {
+		zerolog.Ctx(ctx).Debug().Msg("No saved seq ID")
+	}
 	ic.connectWithRetry(mailboxCtx, ctx, 0)
 }
 
@@ -156,6 +171,16 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		})
 		return
 	}
+	if ic.Main.Config.ProxyOther && (ic.Main.Config.GetProxyFrom != "" || ic.Main.Config.Proxy != "") {
+		cli.GetHTTP().GetNewProxy = ic.Main.getProxy
+		if !cli.GetHTTP().UpdateProxy("connect") {
+			ic.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      MetaProxyUpdateFail,
+			})
+			return
+		}
+	}
 	if attempts > 0 {
 		retryIn := time.Duration(1<<attempts) * time.Second
 		zerolog.Ctx(ctx).Debug().Stringer("retry_in", retryIn).Msg("Sleeping before retrying connection")
@@ -167,34 +192,30 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		}
 	} else if state, lastUsed, err := ic.Main.DB.GetReconnectionState(ctx, ic.UserLogin.ID); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get reconnection state")
-	} else if state != nil {
-		if !ic.Main.Config.CacheConnectionState {
-			zerolog.Ctx(ctx).Debug().Msg("Not using saved reconnection state as it's disabled in the config")
-		} else if err = cli.LoadState(state); err != nil {
-			zerolog.Ctx(ctx).Err(err).
-				Time("last_used", lastUsed).
-				Msg("Failed to load reconnection state")
-		} else {
-			zerolog.Ctx(ctx).Debug().
-				Time("last_used", lastUsed).
-				Msg("Reconnecting with cached state")
-			go cli.Connect(ctx)
-			return
-		}
-	} else {
+	} else if state == nil {
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
+	} else if !ic.Main.Config.CacheConnectionState {
+		zerolog.Ctx(ctx).Debug().Msg("Not using saved reconnection state as it's disabled in the config")
+	} else if err = cli.LoadState(state); err != nil {
+		zerolog.Ctx(ctx).Err(err).
+			Time("last_used", lastUsed).
+			Msg("Failed to load reconnection state")
+	} else if cli.HasSeqID() {
+		zerolog.Ctx(ctx).Debug().
+			Time("last_used", lastUsed).
+			Msg("Reconnecting with cached state")
+		go cli.Connect(ctx)
+		return
 	}
-	if ic.Main.Config.ProxyOther && (ic.Main.Config.GetProxyFrom != "" || ic.Main.Config.Proxy != "") {
-		cli.GetHTTP().GetNewProxy = ic.Main.getProxy
-		if !cli.GetHTTP().UpdateProxy("connect") {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateUnknownError,
-				Error:      MetaProxyUpdateFail,
-			})
-			return
-		}
+	var currentUser *types.PolarisViewer
+	var mailbox *slidetypes.Mailbox
+	var err error
+	if cli.HasSeqID() {
+		zerolog.Ctx(ctx).Debug().Msg("Seq ID already stored, only reloading index")
+		err = cli.ReloadIndex(ctx)
+	} else {
+		currentUser, mailbox, err = cli.LoadIndex(ctx)
 	}
-	currentUser, mailbox, err := cli.LoadIndex(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load index")
 		if errors.Is(err, httpclient.ErrTokenInvalidated) {
@@ -275,7 +296,15 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		return
 	}
 
-	ic.connectWithMailbox(ctx, retryCtx, currentUser, mailbox)
+	if mailbox != nil {
+		ic.connectWithMailbox(ctx, retryCtx, currentUser, mailbox)
+	}
+	if retryCtx.Err() != nil {
+		zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled")
+		return
+	}
+	zerolog.Ctx(ctx).Debug().Msg("Processed index, connecting to DGW")
+	go ic.Client.Connect(ctx)
 }
 
 func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUser *types.PolarisViewer, mailbox *slidetypes.Mailbox) {
@@ -306,11 +335,6 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 
 	zerolog.Ctx(ctx).Debug().Msg("Processing inbox")
 	ic.processMailbox(ctx, retryCtx, mailbox)
-	if retryCtx.Err() != nil {
-		return
-	}
-	zerolog.Ctx(ctx).Debug().Msg("Processed index, connecting to DGW")
-	go ic.Client.Connect(ctx)
 }
 
 func (ic *IGClient) Disconnect() {
@@ -337,13 +361,18 @@ func (ic *IGClient) LogoutRemote(ctx context.Context) {
 	ic.LoginMeta.Cookies = nil
 }
 
-func (ic *IGClient) FullReconnect() {
+func (ic *IGClient) FullReconnect(seqIDOnly bool) {
 	if ic.LoginMeta.Cookies == nil {
 		return
 	}
 	ctx := ic.UserLogin.Log.WithContext(ic.Main.Bridge.BackgroundCtx)
 	ic.Disconnect()
-	err := ic.Main.DB.DeleteReconnectionState(ctx, ic.UserLogin.ID)
+	var err error
+	if seqIDOnly {
+		err = ic.Main.DB.DeleteIGSeqID(ctx, ic.UserLogin.ID)
+	} else {
+		err = ic.Main.DB.DeleteReconnectionState(ctx, ic.UserLogin.ID)
+	}
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to delete reconnection state")
 	}
