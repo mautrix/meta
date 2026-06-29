@@ -18,25 +18,18 @@ package msgconv
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
-	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"io"
 	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/gabriel-vasile/mimetype"
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exmime"
-	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/ptr"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
@@ -54,7 +47,7 @@ import (
 )
 
 func (mc *MessageConverter) ShouldFetchXMA(ctx context.Context) bool {
-	return ctx.Value(contextKeyFetchXMA).(bool)
+	return ctx.Value(mediadl.ContextKeyFetchXMA).(bool)
 }
 
 func isProbablyURLPreview(xma *table.WrappedXMA) bool {
@@ -101,11 +94,12 @@ func (mc *MessageConverter) ToMatrix(
 	msg *table.WrappedMessage,
 	disableXMA bool,
 ) *bridgev2.ConvertedMessage {
-	ctx = context.WithValue(ctx, contextKeyFBClient, client)
-	ctx = context.WithValue(ctx, contextKeyIntent, intent)
-	ctx = context.WithValue(ctx, contextKeyPortal, portal)
-	ctx = context.WithValue(ctx, contextKeyFetchXMA, !disableXMA)
-	ctx = context.WithValue(ctx, contextKeyMsgID, messageID)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyFBClient, client)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyIGClient, client.Instagram)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, intent)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyFetchXMA, !disableXMA)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyMsgID, messageID)
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
@@ -146,20 +140,20 @@ func (mc *MessageConverter) ToMatrix(
 			seenBlobFBIDs[blobAtt.AttachmentFbid] = true
 		}
 		partID := networkid.PartID(fmt.Sprintf("blob_attachment_%d", i))
-		ctx := context.WithValue(ctx, contextKeyPartID, partID)
+		ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.blobAttachmentToMatrix(ctx, blobAtt, i))
 		importantPartIDs = append(importantPartIDs, partID)
 	}
 	for i, legacyAtt := range msg.Attachments {
 		partID := networkid.PartID(fmt.Sprintf("attachment_%d", i))
-		ctx := context.WithValue(ctx, contextKeyPartID, partID)
+		ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.legacyAttachmentToMatrix(ctx, legacyAtt, i))
 		importantPartIDs = append(importantPartIDs, partID)
 	}
 	var urlPreviews []*table.WrappedXMA
 	for i, xmaAtt := range msg.XMAAttachments {
 		partID := networkid.PartID(fmt.Sprintf("xma_attachment_%d", i))
-		ctx := context.WithValue(ctx, contextKeyPartID, partID)
+		ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 		if isProbablyURLPreview(xmaAtt) {
 			// URL previews are handled in the text section
 			urlPreviews = append(urlPreviews, xmaAtt)
@@ -173,7 +167,7 @@ func (mc *MessageConverter) ToMatrix(
 	}
 	for i, sticker := range msg.Stickers {
 		partID := networkid.PartID(fmt.Sprintf("sticker_%d", i))
-		ctx := context.WithValue(ctx, contextKeyPartID, partID)
+		ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
 		importantPartIDs = append(importantPartIDs, partID)
 	}
@@ -194,7 +188,7 @@ func (mc *MessageConverter) ToMatrix(
 			previewLinks := make([]string, len(urlPreviews))
 			for i, preview := range urlPreviews {
 				partID := networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i))
-				ctx := context.WithValue(ctx, contextKeyPartID, partID)
+				ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 				content.BeeperLinkPreviews[i] = mc.urlPreviewToBeeper(ctx, preview)
 				previewLinks[i] = content.BeeperLinkPreviews[i].CanonicalURL
 				importantPartIDs = append(importantPartIDs, partID)
@@ -311,7 +305,7 @@ func (mc *MessageConverter) ToMatrix(
 
 func errorToNotice(err error, attachmentContainerType string) *bridgev2.ConvertedMessagePart {
 	errMsg := "Failed to transfer attachment"
-	if errors.Is(err, ErrURLNotFound) {
+	if errors.Is(err, mediadl.ErrURLNotFound) {
 		errMsg = fmt.Sprintf("Unrecognized %s attachment type", attachmentContainerType)
 	} else if errors.Is(err, mediadl.ErrTooLargeFile) {
 		errMsg = "Too large attachment"
@@ -344,9 +338,9 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 		expiresAt = att.PreviewUrlExpirationTimestampMs
 	}
 
-	refreshMeta := &MediaRefreshMeta{
+	refreshMeta := &mediadl.MediaRefreshMeta{
 		ExpiresAt:      expiresAt,
-		AttachmentFbid: att.AttachmentFbid,
+		AttachmentFBID: att.AttachmentFbid,
 		PartIndex:      partIndex,
 	}
 
@@ -362,7 +356,7 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 }
 
 func appName(ctx context.Context) string {
-	if ctx.Value(contextKeyFBClient).(*messagix.Client).GetPlatform().IsInstagram() {
+	if ctx.Value(mediadl.ContextKeyFBClient).(*messagix.Client).GetPlatform().IsInstagram() {
 		return "Instagram app"
 	}
 	return "Messenger app"
@@ -406,9 +400,9 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 		expiresAt = att.PreviewUrlExpirationTimestampMs
 	}
 
-	refreshMeta := &MediaRefreshMeta{
+	refreshMeta := &mediadl.MediaRefreshMeta{
 		ExpiresAt:      expiresAt,
-		AttachmentFbid: att.AttachmentFbid,
+		AttachmentFBID: att.AttachmentFbid,
 		PartIndex:      partIndex,
 	}
 
@@ -448,7 +442,7 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 	return converted
 }
 
-func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, att *table.WrappedXMA, resp *responses.Items, xmaRefresh *MediaRefreshMeta) (*bridgev2.ConvertedMessagePart, error) {
+func (mc *MessageConverter) instagramFetchedMediaToMatrix(ctx context.Context, att *table.WrappedXMA, resp *responses.Items, xmaRefresh *mediadl.MediaRefreshMeta) (*bridgev2.ConvertedMessagePart, error) {
 	var url, mime string
 	var width, height int
 	var found bool
@@ -504,7 +498,6 @@ func (mc *MessageConverter) xmaLocationToMatrix(ctx context.Context, att *table.
 var reelActionURLRegex = regexp.MustCompile(`^/stories/direct/(\d+)_(\d+)$`)
 var reelActionURLRegex2 = regexp.MustCompile(`^https://instagram\.com/stories/([a-z0-9.-_]{3,32})/(\d+)$`)
 var usernameRegex = regexp.MustCompile(`^[a-z0-9.-_]{3,32}$`)
-var ErrURLNotFound = errors.New("url not found")
 
 func removeLPHP(addr string) string {
 	parsed, _ := url.Parse(addr)
@@ -528,7 +521,7 @@ func addExternalURLCaption(content *event.MessageEventContent, externalURL strin
 }
 
 func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.WrappedXMA, minimalConverted *bridgev2.ConvertedMessagePart) *bridgev2.ConvertedMessagePart {
-	ig := ctx.Value(contextKeyFBClient).(*messagix.Client).Instagram
+	ig := ctx.Value(mediadl.ContextKeyFBClient).(*messagix.Client).Instagram
 	if att.CTA == nil || ig == nil {
 		minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "unsupported"
 		return minimalConverted
@@ -575,7 +568,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 					}
 				}
 			}
-			xmaRefresh := &MediaRefreshMeta{
+			xmaRefresh := &mediadl.MediaRefreshMeta{
 				XMATargetID:  att.CTA.TargetId,
 				XMAShortcode: mediaShortcode,
 			}
@@ -670,7 +663,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				return minimalConverted
 			}
 			log.Debug().Msg("Fetched XMA story and found exact item")
-			xmaRefresh := &MediaRefreshMeta{
+			xmaRefresh := &mediadl.MediaRefreshMeta{
 				StoryMediaID: match[1],
 				StoryReelID:  match[2],
 			}
@@ -737,7 +730,7 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 				Msg("Fetched XMA story (type 2)")
 			minimalConverted.Extra["com.beeper.instagram_item_username"] = relevantItem.User.Username
 			log.Debug().Int("item_count", len(resp.Items)).Msg("Fetched XMA story (type 2)")
-			xmaRefresh := &MediaRefreshMeta{
+			xmaRefresh := &mediadl.MediaRefreshMeta{
 				StoryMediaID: match[2],
 			}
 			secondConverted, err := mc.instagramFetchedMediaToMatrix(ctx, att, relevantItem, xmaRefresh)
@@ -844,7 +837,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), 0,
 		nil,
 	)
-	if err == ErrURLNotFound && att.TitleText != "" {
+	if errors.Is(err, mediadl.ErrURLNotFound) && att.TitleText != "" {
 		return []*bridgev2.ConvertedMessagePart{{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
@@ -872,203 +865,14 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	return parts
 }
 
-// MediaRefreshMeta contains identifiers needed to refresh expired media URLs
-type MediaRefreshMeta struct {
-	ExpiresAt      int64  // Unix ms timestamp when URL expires
-	AttachmentFbid string // For blob attachments
-	PartIndex      int    // For blob attachments (fallback matching)
-	XMATargetID    int64  // For XMA attachments (Instagram API)
-	XMAShortcode   string // For XMA attachments (Instagram API)
-
-	// For XMA story attachments (pre-parsed from action URL):
-	StoryMediaID string // story pk
-	StoryReelID  string // user pk (for /stories/direct/ type)
-}
-
 func (mc *MessageConverter) reuploadAttachment(
 	ctx context.Context, attachmentType table.AttachmentType,
 	url, fileName, mimeType string,
 	fileSize, width, height, duration int,
-	refreshMeta *MediaRefreshMeta,
+	refreshMeta *mediadl.MediaRefreshMeta,
 ) (*bridgev2.ConvertedMessagePart, error) {
-	if url == "" {
-		return nil, ErrURLNotFound
-	}
-
-	portal := ctx.Value(contextKeyPortal).(*bridgev2.Portal)
-	content := &event.MessageEventContent{
-		Info: &event.FileInfo{},
-	}
-	extra := map[string]any{}
-	if attachmentType == table.AttachmentTypeAnimatedImage && mimeType == "video/mp4" {
-		extra["info"] = map[string]any{
-			"fi.mau.gif":           true,
-			"fi.mau.loop":          true,
-			"fi.mau.autoplay":      true,
-			"fi.mau.hide_controls": true,
-			"fi.mau.no_audio":      true,
-		}
-	}
-	eventType := event.EventMessage
-	fillMetadata := func() {
-		switch attachmentType {
-		case table.AttachmentTypeSticker:
-			eventType = event.EventSticker
-		case table.AttachmentTypeImage, table.AttachmentTypeEphemeralImage:
-			content.MsgType = event.MsgImage
-		case table.AttachmentTypeVideo, table.AttachmentTypeEphemeralVideo:
-			content.MsgType = event.MsgVideo
-		case table.AttachmentTypeFile:
-			content.MsgType = event.MsgFile
-		case table.AttachmentTypeAudio:
-			content.MsgType = event.MsgAudio
-			content.MSC3245Voice = &event.MSC3245Voice{}
-			content.MSC1767Audio = &event.MSC1767Audio{
-				Duration: duration,
-				Waveform: []int{},
-			}
-		default:
-			switch strings.Split(mimeType, "/")[0] {
-			case "image":
-				content.MsgType = event.MsgImage
-			case "video":
-				content.MsgType = event.MsgVideo
-			case "audio":
-				content.MsgType = event.MsgAudio
-			default:
-				content.MsgType = event.MsgFile
-			}
-		}
-		content.Body = fileName
-		content.Info.MimeType = mimeType
-		content.Info.Duration = duration
-		content.Info.Width = width
-		content.Info.Height = height
-
-		if content.Body == "" {
-			content.Body = strings.TrimPrefix(string(content.MsgType), "m.") + exmime.ExtensionFromMimetype(mimeType)
-		} else if content.MsgType != "" && !strings.ContainsRune(content.Body, '.') {
-			content.Body += exmime.ExtensionFromMimetype(mimeType)
-		}
-	}
-
-	if mc.DirectMedia {
-		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
-		var partID networkid.PartID
-		if ctx.Value(contextKeyPartID) != nil {
-			partID = ctx.Value(contextKeyPartID).(networkid.PartID)
-		}
-		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeMetaV2, portal.Receiver, msgID, partID)
-		var err error
-		content.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
-		if err != nil {
-			return nil, err
-		}
-		dmm := DirectMediaMeta{
-			MimeType: mimeType,
-			URL:      url,
-		}
-		if refreshMeta != nil {
-			dmm.ExpiresAt = refreshMeta.ExpiresAt
-			dmm.AttachmentFbid = refreshMeta.AttachmentFbid
-			dmm.PartIndex = refreshMeta.PartIndex
-			dmm.XMATargetID = refreshMeta.XMATargetID
-			dmm.XMAShortcode = refreshMeta.XMAShortcode
-			dmm.StoryMediaID = refreshMeta.StoryMediaID
-			dmm.StoryReelID = refreshMeta.StoryReelID
-		}
-		directMediaMeta, err := json.Marshal(dmm)
-		if err != nil {
-			return nil, err
-		}
-		content.Info.Size = fileSize
-		fillMetadata()
-		return &bridgev2.ConvertedMessagePart{
-			ID:      partID,
-			Type:    eventType,
-			Content: content,
-			Extra:   extra,
-			DBMetadata: &metaid.MessageMetadata{
-				DirectMediaMeta: directMediaMeta,
-			},
-		}, nil
-	}
-
-	size, reader, err := mediadl.DownloadMedia(ctx, mimeType, url, mc.MaxFileSize)
-	if err != nil {
-		if errors.Is(err, mediadl.ErrTooLargeFile) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
-	}
-	defer reader.Close()
-	content.Info.Size = int(size)
-	needVoiceConvert := attachmentType == table.AttachmentTypeAudio && ffmpeg.Supported()
-	needMime := mimeType == ""
-	needImageSize := (attachmentType == table.AttachmentTypeImage || attachmentType == table.AttachmentTypeEphemeralImage) && (width == 0 || height == 0)
-	requireFile := needVoiceConvert || needMime || needImageSize
-	intent := ctx.Value(contextKeyIntent).(bridgev2.MatrixAPI)
-	content.URL, content.File, err = intent.UploadMediaStream(ctx, portal.MXID, size, requireFile, func(dest io.Writer) (*bridgev2.FileStreamResult, error) {
-		_, err := io.Copy(dest, reader)
-		if err != nil {
-			return nil, err
-		}
-		if needMime {
-			destRS := dest.(io.ReadSeeker)
-			_, err = destRS.Seek(0, io.SeekStart)
-			if err != nil {
-				return nil, err
-			}
-			var mime *mimetype.MIME
-			mime, err = mimetype.DetectReader(destRS)
-			if err != nil {
-				return nil, err
-			}
-			mimeType = mime.String()
-		}
-		var replPath string
-		if needVoiceConvert {
-			destFile := dest.(*os.File)
-			_, err = destFile.Seek(0, io.SeekStart)
-			if err != nil {
-				return nil, err
-			}
-			_ = destFile.Close()
-			sourceFileName := destFile.Name() + exmime.ExtensionFromMimetype(mimeType)
-			err = os.Rename(destFile.Name(), sourceFileName)
-			if err != nil {
-				return nil, err
-			}
-			replPath, err = ffmpeg.ConvertPath(ctx, sourceFileName, ".ogg", []string{}, []string{"-c:a", "libopus"}, true)
-			if err != nil {
-				return nil, fmt.Errorf("%w (audio to ogg/opus): %w", bridgev2.ErrMediaConvertFailed, err)
-			}
-			fileName += ".ogg"
-			mimeType = "audio/ogg"
-		} else if needImageSize {
-			destRS := dest.(io.ReadSeeker)
-			_, err = destRS.Seek(0, io.SeekStart)
-			if err != nil {
-				return nil, err
-			}
-			config, _, err := image.DecodeConfig(destRS)
-			if err == nil {
-				width, height = config.Width, config.Height
-			}
-		}
-		return &bridgev2.FileStreamResult{
-			ReplacementFile: replPath,
-			FileName:        fileName,
-			MimeType:        mimeType,
-		}, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	fillMetadata()
-	return &bridgev2.ConvertedMessagePart{
-		Type:    eventType,
-		Content: content,
-		Extra:   extra,
-	}, nil
+	return mediadl.ReuploadAttachment(
+		ctx, attachmentType, url, fileName, mimeType, fileSize, width, height, duration, refreshMeta,
+		mc.DirectMedia, mc.MaxFileSize,
+	)
 }

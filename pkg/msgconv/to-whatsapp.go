@@ -46,6 +46,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 func (mc *MessageConverter) TextToWhatsApp(content *event.MessageEventContent) *waCommon.MessageText {
@@ -64,8 +65,8 @@ func (mc *MessageConverter) ToWhatsApp(
 	relaybotFormatted bool,
 	replyTo *database.Message,
 ) (armadillo.RealMessageApplicationSub, *waMsgApplication.MessageApplication_Metadata, error) {
-	ctx = context.WithValue(ctx, contextKeyWAClient, client)
-	ctx = context.WithValue(ctx, contextKeyPortal, portal)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyWAClient, client)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
 
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MessageType(event.EventSticker.Type)
@@ -276,7 +277,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 		content.Info.MauGIF = true
 	}
 	mediaType := msgToMediaType(content.MsgType)
-	client := ctx.Value(contextKeyWAClient).(*whatsmeow.Client)
+	client := ctx.Value(mediadl.ContextKeyWAClient).(*whatsmeow.Client)
 	uploaded, err := client.Upload(ctx, data, mediaType)
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)

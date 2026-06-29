@@ -55,7 +55,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 
 	switch mediaInfo.Type {
 	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2:
-		var info *msgconv.DirectMediaMeta
+		var info *mediadl.DirectMediaMeta
 		err = json.Unmarshal(dmm, &info)
 		if err != nil {
 			return nil, err
@@ -124,7 +124,7 @@ func (m *MetaConnector) refreshMediaURL(
 	ctx context.Context,
 	mediaInfo *metaid.MediaInfo,
 	msg *database.Message,
-	info *msgconv.DirectMediaMeta,
+	info *mediadl.DirectMediaMeta,
 ) (string, error) {
 	ul := m.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 	if ul == nil || !ul.Client.IsLoggedIn() {
@@ -136,7 +136,7 @@ func (m *MetaConnector) refreshMediaURL(
 	if info.XMATargetID != 0 || info.XMAShortcode != "" || info.StoryMediaID != "" {
 		return m.refreshXMAMedia(ctx, client, info)
 	}
-	if info.AttachmentFbid != "" {
+	if info.AttachmentFBID != "" {
 		return m.refreshBlobMedia(ctx, client, msg, info)
 	}
 
@@ -147,7 +147,7 @@ func (m *MetaConnector) refreshMediaURL(
 func (m *MetaConnector) refreshXMAMedia(
 	ctx context.Context,
 	client *MetaClient,
-	info *msgconv.DirectMediaMeta,
+	info *mediadl.DirectMediaMeta,
 ) (string, error) {
 	ig := client.Client.Instagram
 	if ig == nil {
@@ -220,7 +220,7 @@ func (m *MetaConnector) refreshBlobMedia(
 	ctx context.Context,
 	client *MetaClient,
 	msg *database.Message,
-	info *msgconv.DirectMediaMeta,
+	info *mediadl.DirectMediaMeta,
 ) (string, error) {
 	log := zerolog.Ctx(ctx)
 
@@ -240,7 +240,7 @@ func (m *MetaConnector) refreshBlobMedia(
 	log.Debug().
 		Int64("thread_key", threadKey).
 		Str("message_id", fbMsgID.ID).
-		Str("attachment_fbid", info.AttachmentFbid).
+		Str("attachment_fbid", info.AttachmentFBID).
 		Int("part_index", info.PartIndex).
 		Msg("Refreshing blob media by re-fetching messages")
 
@@ -324,18 +324,18 @@ func (m *MetaConnector) refreshBlobMedia(
 				continue
 			}
 
-			var dmm msgconv.DirectMediaMeta
+			var dmm mediadl.DirectMediaMeta
 			if err := json.Unmarshal(meta.DirectMediaMeta, &dmm); err != nil {
 				continue
 			}
 
 			// Check if this attachment has a fresh URL
-			if dmm.AttachmentFbid == "" {
+			if dmm.AttachmentFBID == "" {
 				continue
 			}
 
-			freshURL, hasFreshURL := attachmentURLs[dmm.AttachmentFbid]
-			freshExpiry := attachmentExpiry[dmm.AttachmentFbid]
+			freshURL, hasFreshURL := attachmentURLs[dmm.AttachmentFBID]
+			freshExpiry := attachmentExpiry[dmm.AttachmentFBID]
 
 			if !hasFreshURL || freshURL == dmm.URL {
 				// No update needed
@@ -361,11 +361,11 @@ func (m *MetaConnector) refreshBlobMedia(
 			updatedCount++
 			log.Debug().
 				Str("message_id", wrappedMsg.MessageId).
-				Str("attachment_fbid", dmm.AttachmentFbid).
+				Str("attachment_fbid", dmm.AttachmentFBID).
 				Msg("Updated attachment URL in database")
 
 			// Check if this is the attachment we're looking for
-			if wrappedMsg.MessageId == fbMsgID.ID && dmm.AttachmentFbid == info.AttachmentFbid {
+			if wrappedMsg.MessageId == fbMsgID.ID && dmm.AttachmentFBID == info.AttachmentFBID {
 				resultURL = freshURL
 			}
 		}

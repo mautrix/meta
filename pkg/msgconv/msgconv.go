@@ -44,15 +44,3 @@ func New(br *bridgev2.Bridge, db *metadb.MetaDB) *MessageConverter {
 	}
 	return mc
 }
-
-type contextKey int
-
-const (
-	contextKeyWAClient contextKey = iota
-	contextKeyFBClient
-	contextKeyIntent
-	contextKeyPortal
-	contextKeyFetchXMA
-	contextKeyMsgID
-	contextKeyPartID
-)

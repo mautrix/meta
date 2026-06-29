@@ -49,6 +49,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCommon.MessageText) *bridgev2.ConvertedMessagePart {
@@ -118,6 +119,39 @@ type AttachmentMessageWithCaption[Integral MediaTransportContainer, Ancillary an
 	GetCaption() *waCommon.MessageText
 }
 
+type DirectMediaWhatsApp struct {
+	Key        []byte              `json:"key"`
+	Type       whatsmeow.MediaType `json:"type"`
+	SHA256     []byte              `json:"sha256"`
+	EncSHA256  []byte              `json:"enc_sha256"`
+	DirectPath string              `json:"direct_path"`
+}
+
+func (f *DirectMediaWhatsApp) GetDirectPath() string {
+	return f.DirectPath
+}
+
+func (f *DirectMediaWhatsApp) GetMediaType() whatsmeow.MediaType {
+	return f.Type
+}
+
+func (f *DirectMediaWhatsApp) GetMediaKey() []byte {
+	return f.Key
+}
+
+func (f *DirectMediaWhatsApp) GetFileSHA256() []byte {
+	return f.SHA256
+}
+
+func (f *DirectMediaWhatsApp) GetFileEncSHA256() []byte {
+	return f.EncSHA256
+}
+
+var (
+	_ whatsmeow.DownloadableMessage = (*DirectMediaWhatsApp)(nil)
+	_ whatsmeow.MediaTypeable       = (*DirectMediaWhatsApp)(nil)
+)
+
 type convertFunc func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error)
 
 type userVisibleError struct {
@@ -168,15 +202,15 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	mediaType whatsmeow.MediaType,
 	convert convertFunc,
 ) (*bridgev2.ConvertedMessagePart, error) {
-	client := ctx.Value(contextKeyWAClient).(*whatsmeow.Client)
-	intent := ctx.Value(contextKeyIntent).(bridgev2.MatrixAPI)
-	portal := ctx.Value(contextKeyPortal).(*bridgev2.Portal)
+	client := ctx.Value(mediadl.ContextKeyWAClient).(*whatsmeow.Client)
+	intent := ctx.Value(mediadl.ContextKeyIntent).(bridgev2.MatrixAPI)
+	portal := ctx.Value(mediadl.ContextKeyPortal).(*bridgev2.Portal)
 
 	if mc.DirectMedia {
-		msgID := ctx.Value(contextKeyMsgID).(networkid.MessageID)
+		msgID := ctx.Value(mediadl.ContextKeyMsgID).(networkid.MessageID)
 		var partID networkid.PartID
-		if ctx.Value(contextKeyPartID) != nil {
-			partID = ctx.Value(contextKeyPartID).(networkid.PartID)
+		if ctx.Value(mediadl.ContextKeyPartID) != nil {
+			partID = ctx.Value(mediadl.ContextKeyPartID).(networkid.PartID)
 		}
 		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsAppV2, portal.Receiver, msgID, partID)
 		content := &event.MessageEventContent{
@@ -683,11 +717,11 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 	messageID networkid.MessageID,
 	evt *events.FBMessage,
 ) *bridgev2.ConvertedMessage {
-	ctx = context.WithValue(ctx, contextKeyFBClient, plainClient)
-	ctx = context.WithValue(ctx, contextKeyWAClient, client)
-	ctx = context.WithValue(ctx, contextKeyIntent, intent)
-	ctx = context.WithValue(ctx, contextKeyPortal, portal)
-	ctx = context.WithValue(ctx, contextKeyMsgID, messageID)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyFBClient, plainClient)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyWAClient, client)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, intent)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyMsgID, messageID)
 	cm := &bridgev2.ConvertedMessage{}
 	if disappear := evt.FBApplication.GetMetadata().GetChatEphemeralSetting(); disappear != nil {
 		cm.Disappear = database.DisappearingSetting{

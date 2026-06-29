@@ -14,33 +14,17 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package igconv
+package mediadl
 
-import (
-	"maunium.net/go/mautrix/bridgev2"
+type contextKey int
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
-	"go.mau.fi/mautrix-meta/pkg/metadb"
-	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
+const (
+	ContextKeyWAClient contextKey = iota
+	ContextKeyFBClient
+	ContextKeyIGClient
+	ContextKeyIntent
+	ContextKeyPortal
+	ContextKeyFetchXMA
+	ContextKeyMsgID
+	ContextKeyPartID
 )
-
-type MessageConverter struct {
-	Bridge          *bridgev2.Bridge
-	MaxFileSize     int64
-	AsyncFiles      bool
-	DisableViewOnce bool
-	BridgeMode      types.Platform
-	HTMLParser      *textfmt.MatrixHTMLParser
-	DB              *metadb.MetaDB
-	DirectMedia     bool
-}
-
-func New(br *bridgev2.Bridge, db *metadb.MetaDB) *MessageConverter {
-	mc := &MessageConverter{
-		Bridge:      br,
-		MaxFileSize: 50 * 1024 * 1024,
-		DB:          db,
-		HTMLParser:  textfmt.NewMatrixParser(br),
-	}
-	return mc
-}

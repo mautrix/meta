@@ -27,6 +27,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
 
@@ -55,11 +56,11 @@ func (mc *MessageConverter) ToMatrix(
 	msg *slidetypes.Message,
 	disableXMA bool,
 ) (*bridgev2.ConvertedMessage, error) {
-	ctx = context.WithValue(ctx, contextKeyIGClient, client)
-	ctx = context.WithValue(ctx, contextKeyIntent, intent)
-	ctx = context.WithValue(ctx, contextKeyPortal, portal)
-	ctx = context.WithValue(ctx, contextKeyFetchXMA, !disableXMA)
-	ctx = context.WithValue(ctx, contextKeyMsgID, messageID)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyIGClient, client)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, intent)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyFetchXMA, !disableXMA)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyMsgID, messageID)
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
