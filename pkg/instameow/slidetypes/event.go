@@ -47,6 +47,7 @@ func (*ParticipantJoinEvent) isDeltaEvent()    {}
 func (*AdminChangeEvent) isDeltaEvent()        {}
 func (*MuteThreadEvent) isDeltaEvent()         {}
 func (UnknownEvent) isDeltaEvent()             {}
+func (IgnoredEvent) isDeltaEvent()             {}
 
 type NewMessageEvent struct {
 	ThreadReadStateEffect string   `json:"thread_read_state_effect"`
@@ -181,9 +182,9 @@ type MuteThreadEvent struct {
 	Unrecognized map[string]any `json:",unknown"`
 }
 
-type CreateThreadEvent struct{}
-
 type UnknownEvent map[string]any
+
+type IgnoredEvent map[string]any
 
 type DeltaWrapper struct {
 	Data struct {
@@ -216,7 +217,7 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 		d.Data = &MarkUnreadEvent{}
 	case "SlideUQPPReadReceipt":
 		d.Data = &ReadReceiptEvent{}
-	case "SlideUQPPNewMessage":
+	case "SlideUQPPNewMessage", "SlideUQPPNewRavenMessage", "SlideUQPPNewGenieMessage":
 		d.Data = &NewMessageEvent{}
 	case "SlideUQPPAdminTextMessage":
 		d.Data = &AdminMessageEvent{}
@@ -247,7 +248,14 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 	default:
 		var raw map[string]any
 		err = json.Unmarshal(data, &raw)
-		d.Data = UnknownEvent(raw)
+		switch d.TypeName {
+		case "SlideUQPPNotYetImplementedMutation", "SlideUQPPNoOpMutation",
+			// These have no data, so they're ignored
+			"SlideUQPPCreate1To1Thread", "SlideUQPPUserReachabilityStatus":
+			d.Data = IgnoredEvent(raw)
+		default:
+			d.Data = UnknownEvent(raw)
+		}
 		return err
 	}
 	err = json.Unmarshal(data, d.Data)
