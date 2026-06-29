@@ -86,9 +86,9 @@ type TinyThread struct {
 }
 
 type ParticipantsOnlyThread struct {
-	ID          string `json:"id"`
-	ThreadTitle string `json:"thread_title"`
-	Users       []User `json:"users"`
+	ID          string  `json:"id"`
+	ThreadTitle string  `json:"thread_title"`
+	Users       []*User `json:"users"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }

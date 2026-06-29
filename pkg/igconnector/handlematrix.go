@@ -192,7 +192,7 @@ func (ic *IGClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	}
 	var reactionTS time.Time
 	for _, react := range resp.Message.Reactions {
-		if react.SenderFBID == string(ic.UserLogin.ID) {
+		if react.SenderFBID == metaid.ParseUserLoginID(ic.UserLogin.ID) {
 			reactionTS = react.ReactionTimestampMS.Time
 			break
 		}

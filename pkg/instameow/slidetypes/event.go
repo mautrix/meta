@@ -30,6 +30,7 @@ type DeltaEvent interface {
 func (*NewMessageEvent) isDeltaEvent()         {}
 func (*AdminMessageEvent) isDeltaEvent()       {}
 func (*CreateReactionEvent) isDeltaEvent()     {}
+func (*DeleteReactionEvent) isDeltaEvent()     {}
 func (*MarkReadEvent) isDeltaEvent()           {}
 func (*MarkUnreadEvent) isDeltaEvent()         {}
 func (*ReadReceiptEvent) isDeltaEvent()        {}
@@ -37,6 +38,8 @@ func (*EditMessageEvent) isDeltaEvent()        {}
 func (*DeleteMessageEvent) isDeltaEvent()      {}
 func (*DeleteThreadEvent) isDeltaEvent()       {}
 func (*UpdateThreadFolderEvent) isDeltaEvent() {}
+func (*UpdateThreadNameEvent) isDeltaEvent()   {}
+func (*UpdateThreadImageEvent) isDeltaEvent()  {}
 func (*ParticipantLeaveEvent) isDeltaEvent()   {}
 func (*ParticipantJoinEvent) isDeltaEvent()    {}
 func (*AdminChangeEvent) isDeltaEvent()        {}
@@ -62,6 +65,15 @@ type CreateReactionEvent struct {
 	Reaction  Reaction `json:"reaction"`
 
 	ReactedToMessageSenderFBID string `json:"reacted_to_message_sender_fbid"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
+type DeleteReactionEvent struct {
+	MessageID string `json:"message_id"`
+	Reaction  struct {
+		LogMessageID string `json:"log_message_id"`
+	} `json:"reaction"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
@@ -101,6 +113,22 @@ type DeleteMessageEvent struct {
 }
 
 type DeleteThreadEvent struct {
+	Unrecognized map[string]any `json:",unknown"`
+}
+
+type UpdateThreadNameEvent struct {
+	Message    *Message `json:"message"`
+	ThreadName string   `json:"thread_name"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
+type UpdateThreadImageEvent struct {
+	Message     *Message `json:"message"`
+	ThreadImage struct {
+		URI string `json:"uri"`
+	} `json:"thread_image"`
+
 	Unrecognized map[string]any `json:",unknown"`
 }
 
@@ -163,9 +191,11 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 	switch d.TypeName {
 	case "SlideUQPPCreateReaction":
 		d.Data = &CreateReactionEvent{}
+	case "SlideUQPPDeleteReaction":
+		d.Data = &DeleteReactionEvent{}
 	case "SlideUQPPMarkRead":
 		d.Data = &MarkReadEvent{}
-	case "SlideUQPPMarkUnread":
+	case "SlideUQPPIGMarkThreadUnread":
 		d.Data = &MarkUnreadEvent{}
 	case "SlideUQPPReadReceipt":
 		d.Data = &ReadReceiptEvent{}
@@ -181,6 +211,10 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 		d.Data = &DeleteThreadEvent{}
 	case "SlideUQPPUpdateThreadFolder":
 		d.Data = &UpdateThreadFolderEvent{}
+	case "SlideUQPPThreadName":
+		d.Data = &UpdateThreadNameEvent{}
+	case "SlideUQPPThreadImage":
+		d.Data = &UpdateThreadImageEvent{}
 	case "SlideUQPPParticipantLeftGroupThread":
 		d.Data = &ParticipantLeaveEvent{}
 	case "SlideUQPPParticipantsAddedToGroupThread":
