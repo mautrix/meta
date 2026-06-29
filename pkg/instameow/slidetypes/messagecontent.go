@@ -305,3 +305,7 @@ func (mc *MessageContentWrapper) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, mc.Content)
 	return err
 }
+
+func (mc *MessageContentWrapper) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&mc.Content)
+}

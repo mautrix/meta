@@ -17,6 +17,7 @@
 package slidetypes
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -193,10 +194,11 @@ type DeltaWrapper struct {
 }
 
 type Delta struct {
-	TypeName   string     `json:"__typename"`
-	UQSeqID    int64      `json:"uq_seq_id,string"`
-	ThreadIGID string     `json:"thread_fbid"`
-	Data       DeltaEvent `json:"-"`
+	TypeName   string          `json:"__typename"`
+	UQSeqID    int64           `json:"uq_seq_id,string"`
+	ThreadIGID string          `json:"thread_fbid"`
+	Data       DeltaEvent      `json:"-"`
+	Raw        json.RawMessage `json:"-"`
 }
 
 type marshalableDelta Delta
@@ -206,6 +208,7 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse delta: %w", err)
 	}
+	d.Raw = bytes.Clone(data)
 	switch d.TypeName {
 	case "SlideUQPPCreateReaction":
 		d.Data = &CreateReactionEvent{}
@@ -263,4 +266,8 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("failed to parse delta data into %T: %w", d.Data, err)
 	}
 	return nil
+}
+
+func (d *Delta) MarshalJSON() ([]byte, error) {
+	return d.Raw, nil
 }

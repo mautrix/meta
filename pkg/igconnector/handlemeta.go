@@ -204,7 +204,10 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		}
 	}()
 	log := zerolog.Ctx(ctx)
-	log.Trace().Any("event_data", d.Data).Msg("Handling delta")
+	log.Trace().
+		Type("event_struct", d.Data).
+		RawJSON("event_data", d.Raw).
+		Msg("Handling delta")
 
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID)
 	if err != nil {
