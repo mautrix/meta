@@ -162,7 +162,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 		return networkid.PortalKey{}, fmt.Errorf("failed to get thread info for %s: %w", threadIGID, err)
 	}
 	// This should be done by extra updates in the chat resync anyway, but do it here just to be safe
-	err = ic.Main.DB.PutFBIDForIGChat(ctx, resp.ThreadInfo.AsIGDirectThread.ID, resp.ThreadInfo.AsIGDirectThread.ThreadKey)
+	err = ic.saveThreadMappings(ctx, resp.ThreadInfo.AsIGDirectThread)
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to save FBID for IG thread %s: %w", threadIGID, err)
 	}
@@ -177,7 +177,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string) (networkid.PortalKey, error) {
 	if threadIGID == "" {
 		return networkid.PortalKey{}, nil
-	} else if fbid, err := ic.Main.DB.GetFBIDForIGChat(ctx, threadIGID); err != nil {
+	} else if fbid, err := ic.Main.DB.GetFBIDForIGChat(ctx, threadIGID, ic.UserLogin.ID); err != nil {
 		return networkid.PortalKey{}, err
 	} else if fbid == 0 {
 		return ic.getAndResyncThread(ctx, threadIGID)
@@ -282,7 +282,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 }
 
 func (ic *IGClient) handleTyping(ctx context.Context, evt *slidetypes.TypingNotification) error {
-	threadKey, err := ic.Main.DB.GetFBIDForIGThread(ctx, evt.ThreadID)
+	threadKey, err := ic.Main.DB.GetFBIDForIGThread(ctx, evt.ThreadID, ic.UserLogin.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get FBID for IG thread %s: %w", evt.ThreadID, err)
 	} else if threadKey == 0 {

@@ -166,6 +166,7 @@ func loginWithCookies(
 			Platform: c.Platform,
 			Cookies:  c,
 			LoginUA:  loginUA,
+			IGID:     user.ID,
 		},
 	}, nil)
 	if err != nil {

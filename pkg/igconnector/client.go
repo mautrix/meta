@@ -295,6 +295,14 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 	ic.UserLogin.RemoteName = cmp.Or(ic.UserLogin.RemoteProfile.Name, ic.UserLogin.RemoteProfile.Username)
 	// TODO update ghost avatar first?
 	ic.UserLogin.RemoteProfile.Avatar = ic.Ghost.AvatarMXC
+	meta := ic.UserLogin.Metadata.(*metaid.UserLoginMetadata)
+	if meta.IGID == "" {
+		meta.IGID = currentUser.ID
+		err = ic.UserLogin.Save(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after updating IGID")
+		}
+	}
 
 	zerolog.Ctx(ctx).Debug().Msg("Processing inbox")
 	ic.processMailbox(ctx, retryCtx, mailbox)

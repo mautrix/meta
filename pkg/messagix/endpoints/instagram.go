@@ -25,6 +25,8 @@ var InstagramEndpoints = map[string]string{
 	"i_graphql":        "https://i.instagram.com/graphql_www",
 	"route_definition": instaBaseUrl + "/ajax/route-definition/",
 
+	"bulk_route_definition": instaBaseUrl + "/ajax/bulk-route-definitions/",
+
 	"web_profile_info": instaApiV1Url + "/users/web_profile_info/?",
 	"reels_media":      instaApiV1Url + "/feed/reels_media/?",
 	"media_info":       instaApiV1Url + "/media/%s/info/",

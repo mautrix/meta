@@ -145,7 +145,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 		Origin:     c.GetEndpoint("base_url"),
 		WSURL:      "wss://gateway.instagram.com/ws/lightspeed",
 		DialOpts:   *c.http.GetWebsocketDialer(),
-		Log:        c.log.With().Str("socket", "dgw").Logger(),
+		Log:        c.log.With().Str("socket", "main").Logger(),
 		Facebook:   false,
 		AppID:      c.configs.BrowserConfigTable.DGWWebConfig.AppID,
 		UserID:     c.configs.BrowserConfigTable.PolarisViewer.ID,

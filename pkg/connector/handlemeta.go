@@ -237,7 +237,7 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			if ctx.Err() != nil {
 				return
 			}
-			igid, err := m.getIGUserForFBID(ctx, contact.GetFBID())
+			igid, err := m.Main.DB.GetIGUserForFBID(ctx, contact.GetFBID())
 			if err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Error getting IG user for FBID")
 				continue
@@ -266,7 +266,7 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 					return
 				}
 				for _, info := range resp.LSDeleteThenInsertIGContactInfo {
-					err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+					err := m.Main.DB.PutFBIDForIGUser(ctx, info.IgId, info.ContactId)
 					if err != nil {
 						zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
 						return
@@ -279,7 +279,7 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 			}
 		}()
 		for _, info := range tbl.LSDeleteThenInsertIGContactInfo {
-			err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+			err := m.Main.DB.PutFBIDForIGUser(ctx, info.IgId, info.ContactId)
 			if err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
 			}
@@ -457,7 +457,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	// TODO request more inbox if applicable
 
 	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
-		err := m.putFBIDForIGThread(ctx, igThread.IgThreadId, igThread.ThreadKey)
+		err := m.Main.DB.PutFBIDForIGThread(ctx, igThread.IgThreadId, igThread.ThreadKey, m.UserLogin.ID)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG thread")
 		}

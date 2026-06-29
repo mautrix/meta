@@ -68,10 +68,7 @@ type MetaClient struct {
 	metaState status.BridgeState
 	waState   status.BridgeState
 
-	waLastPresence   waTypes.Presence
-	igThreadIDs      map[string]int64
-	igUserIDs        map[string]int64
-	igUserIDsReverse map[int64]string
+	waLastPresence waTypes.Presence
 }
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
@@ -96,9 +93,6 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 		connectWaiter:     exsync.NewEvent(),
 		e2eeConnectWaiter: exsync.NewEvent(),
-		igThreadIDs:       map[string]int64{},
-		igUserIDs:         map[string]int64{},
-		igUserIDsReverse:  map[int64]string{},
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
 	login.Client = c

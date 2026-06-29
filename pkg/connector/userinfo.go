@@ -17,64 +17,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
-//lint:ignore U1000 -
-func (m *MetaClient) getFBIDForIGUser(ctx context.Context, igid string) (int64, error) {
-	if fbid := m.igUserIDs[igid]; fbid != 0 {
-		return fbid, nil
-	}
-	fbid, err := m.Main.DB.GetFBIDForIGUser(ctx, igid)
-	if err != nil {
-		return 0, err
-	}
-	m.igUserIDs[igid] = fbid
-	m.igUserIDsReverse[fbid] = igid
-	return fbid, nil
-}
-
-//lint:ignore U1000 -
-func (m *MetaClient) getIGUserForFBID(ctx context.Context, fbid int64) (string, error) {
-	if igid := m.igUserIDsReverse[fbid]; igid != "" {
-		return igid, nil
-	}
-	igid, err := m.Main.DB.GetIGUserForFBID(ctx, fbid)
-	if err != nil {
-		return "", err
-	}
-	m.igUserIDs[igid] = fbid
-	m.igUserIDsReverse[fbid] = igid
-	return igid, nil
-}
-
-//lint:ignore U1000 -
-func (m *MetaClient) getFBIDForIGThread(ctx context.Context, igid string) (int64, error) {
-	if fbid := m.igThreadIDs[igid]; fbid != 0 {
-		return fbid, nil
-	}
-	fbid, err := m.Main.DB.GetFBIDForIGThread(ctx, igid)
-	if err != nil {
-		return 0, err
-	}
-	m.igThreadIDs[igid] = fbid
-	return fbid, nil
-}
-
-func (m *MetaClient) putFBIDForIGUser(ctx context.Context, igid string, fbid int64) error {
-	if m.igUserIDs[igid] == fbid {
-		return nil // already saved
-	}
-	m.igUserIDs[igid] = fbid
-	m.igUserIDsReverse[fbid] = igid
-	return m.Main.DB.PutFBIDForIGUser(ctx, igid, fbid)
-}
-
-func (m *MetaClient) putFBIDForIGThread(ctx context.Context, igid string, fbid int64) error {
-	if m.igThreadIDs[igid] == fbid {
-		return nil // already saved
-	}
-	m.igThreadIDs[igid] = fbid
-	return m.Main.DB.PutFBIDForIGThread(ctx, igid, fbid)
-}
-
 func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost.Name == "" {
 		contactID := metaid.ParseUserID(ghost.ID)
@@ -85,7 +27,7 @@ func (m *MetaClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*b
 			return nil, err
 		}
 		for _, info := range resp.LSDeleteThenInsertIGContactInfo {
-			err := m.putFBIDForIGUser(ctx, info.IgId, info.ContactId)
+			err := m.Main.DB.PutFBIDForIGUser(ctx, info.IgId, info.ContactId)
 			if err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG user")
 			}

@@ -131,10 +131,10 @@ func (ic *IGClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypt
 			Msg("Confirmed push message was bridged")
 		return
 	}
-	//threadType := table.ONE_TO_ONE
 	chatID := parsed.ChatID
+	isGroup := false
 	if parsed.ChatType == 'g' {
-		//threadType = table.GROUP_THREAD
+		isGroup = true
 	} else if parsed.ChatType == 'c' {
 		chatID ^= metaid.ParseUserLoginID(ic.UserLogin.ID)
 	}
@@ -144,20 +144,27 @@ func (ic *IGClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypt
 		Str("f_param", pd.Params["f"]).
 		Msg("Push message wasn't bridged, trying to backfill")
 
-	// TODO does the push notification contain the raw instagram id?
-	igid, err := ic.Main.DB.GetIGChatForFBID(ctx, chatID)
+	portalKey := ic.makePortalKey(chatID, isGroup)
+	portal, err := ic.Main.Bridge.GetPortalByKey(ctx, portalKey)
 	if err != nil {
 		log.Err(err).
 			Int64("chat_id", chatID).
-			Msg("Failed to look up IG chat ID for push message")
+			Msg("Failed to look up portal for push message")
+		return
+	}
+	meta, err := ic.ensureIGID(ctx, portal)
+	if err != nil {
+		log.Err(err).
+			Int64("chat_id", chatID).
+			Msg("Failed to ensure portal has IGID for push message")
 		return
 	}
 
-	_, err = ic.getAndResyncThread(ctx, igid)
+	_, err = ic.getAndResyncThread(ctx, meta.IGID)
 	if err != nil {
 		log.Err(err).
 			Int64("chat_id", chatID).
-			Str("igid", igid).
+			Str("igid", meta.IGID).
 			Msg("Failed to backfill for push message")
 		return
 	}

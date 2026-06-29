@@ -33,6 +33,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
@@ -102,11 +103,11 @@ const (
 )
 
 func (ic *IGClient) saveThreadMappings(ctx context.Context, info *slidetypes.ThreadInfo) error {
-	err := ic.Main.DB.PutFBIDForIGThread(ctx, info.ThreadID, info.ThreadKey)
+	err := ic.Main.DB.PutFBIDForIGThread(ctx, info.ThreadID, info.ThreadKey, ic.UserLogin.ID)
 	if err != nil {
 		return fmt.Errorf("failed to save IG thread ID mapping %s<->%d: %w", info.ThreadID, info.ThreadKey, err)
 	}
-	err = ic.Main.DB.PutFBIDForIGChat(ctx, info.ID, info.ThreadKey)
+	err = ic.Main.DB.PutFBIDForIGChat(ctx, info.ID, info.ThreadKey, ic.UserLogin.ID)
 	if err != nil {
 		return fmt.Errorf("failed to save IG chat ID mapping %s<->%d: %w", info.ID, info.ThreadKey, err)
 	}
@@ -215,10 +216,15 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 		CanBackfill:    false, // TODO
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
+			if info.IsGroup {
+				meta.ThreadType = table.GROUP_THREAD
+			} else {
+				meta.ThreadType = table.ONE_TO_ONE
+			}
 			if meta.IGThreadID != info.ThreadID {
 				meta.IGThreadID = info.ThreadID
 				changed = true
-				err := ic.Main.DB.PutFBIDForIGThread(ctx, info.ThreadID, info.ThreadKey)
+				err := ic.Main.DB.PutFBIDForIGThread(ctx, info.ThreadID, info.ThreadKey, ic.UserLogin.ID)
 				if err != nil {
 					zerolog.Ctx(ctx).Err(err).
 						Int64("thread_fbid", info.ThreadKey).
@@ -229,7 +235,7 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 			if meta.IGID != info.ID {
 				meta.IGID = info.ID
 				changed = true
-				err := ic.Main.DB.PutFBIDForIGChat(ctx, info.ID, info.ThreadKey)
+				err := ic.Main.DB.PutFBIDForIGChat(ctx, info.ID, info.ThreadKey, ic.UserLogin.ID)
 				if err != nil {
 					zerolog.Ctx(ctx).Err(err).
 						Int64("thread_fbid", info.ThreadKey).

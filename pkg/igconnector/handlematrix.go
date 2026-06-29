@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -68,14 +69,56 @@ func getOTID(inputTxnID networkid.RawTransactionID) int64 {
 	return methods.GenerateEpochID()
 }
 
+var ErrIGIDNotFound = bridgev2.WrapErrorInStatus(errors.New("IGID of thread not available")).
+	WithIsCertain(true).WithSendNotice(true)
+
+func (ic *IGClient) fetchIGIDs(ctx context.Context, portal *bridgev2.Portal) error {
+	fbid := metaid.ParseFBPortalID(portal.ID)
+	if fbid == 0 {
+		return fmt.Errorf("invalid portal ID")
+	}
+	resp, err := ic.Client.FetchThreadIDs(ctx, fbid)
+	if err != nil {
+		return fmt.Errorf("failed to fetch IGIDs: %w", err)
+	}
+	res, ok := resp[fbid]
+	if !ok {
+		return fmt.Errorf("server didn't return route definition for %d", fbid)
+	} else if res == nil {
+		return fmt.Errorf("server returned nil route definition for %d", fbid)
+	}
+	err = ic.Main.DB.PutFBIDForIGThread(ctx, res.LongID, fbid, ic.UserLogin.ID)
+	if err != nil {
+		return fmt.Errorf("failed to save IG thread ID mapping %s<->%d: %w", res.LongID, fbid, err)
+	}
+	err = ic.Main.DB.PutFBIDForIGChat(ctx, res.ShortID, fbid, ic.UserLogin.ID)
+	if err != nil {
+		return fmt.Errorf("failed to save IG chat ID mapping %s<->%d: %w", res.ShortID, fbid, err)
+	}
+	meta := portal.Metadata.(*metaid.PortalMetadata)
+	meta.IGThreadID = res.LongID
+	meta.IGID = res.ShortID
+	return nil
+}
+
+func (ic *IGClient) ensureIGID(ctx context.Context, portal *bridgev2.Portal) (*metaid.PortalMetadata, error) {
+	meta := portal.Metadata.(*metaid.PortalMetadata)
+	if meta.IGID == "" || meta.IGThreadID == "" {
+		err := ic.fetchIGIDs(ctx, portal)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrIGIDNotFound, err)
+		}
+	}
+	return meta, nil
+}
+
 func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if ic.LoginMeta.Cookies == nil {
 		return nil, bridgev2.ErrNotLoggedIn
 	}
-	meta := msg.Portal.Metadata.(*metaid.PortalMetadata)
-	if meta.IGID == "" {
-		// TODO fetch?
-		return nil, fmt.Errorf("portal metadata missing IGID")
+	_, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		return nil, err
 	}
 	log := zerolog.Ctx(ctx)
 
@@ -129,10 +172,9 @@ func (ic *IGClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	if ic.LoginMeta.Cookies == nil {
 		return nil, bridgev2.ErrNotLoggedIn
 	}
-	meta := msg.Portal.Metadata.(*metaid.PortalMetadata)
-	if meta.IGID == "" {
-		// TODO fetch?
-		return nil, fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		return nil, err
 	}
 	msgID, ok := metaid.ParseMessageID(msg.TargetMessage.ID).(metaid.ParsedFBMessageID)
 	if !ok {
@@ -187,17 +229,16 @@ func (ic *IGClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	meta := edit.Portal.Metadata.(*metaid.PortalMetadata)
-	if meta.IGID == "" {
-		// TODO fetch?
-		return fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, edit.Portal)
+	if err != nil {
+		return err
 	}
 	otid := getOTID(edit.InputTransactionID)
 	messageID, ok := metaid.ParseMessageID(edit.EditTarget.ID).(metaid.ParsedFBMessageID)
 	if !ok {
 		return fmt.Errorf("unexpected parsed message ID type")
 	}
-	_, err := ic.Client.EditMessage(ctx, &slidetypes.EditMessageRequest{
+	_, err = ic.Client.EditMessage(ctx, &slidetypes.EditMessageRequest{
 		ThreadID:           meta.IGID,
 		TargetItemID:       "",
 		Body:               slidetypes.SensitiveString{Value: edit.Content.Body},
@@ -215,16 +256,15 @@ func (ic *IGClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	meta := msg.Portal.Metadata.(*metaid.PortalMetadata)
-	if meta.IGThreadID == "" {
-		// TODO fetch?
-		return fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		return err
 	}
 	messageID, ok := metaid.ParseMessageID(msg.TargetMessage.ID).(metaid.ParsedFBMessageID)
 	if !ok {
 		return fmt.Errorf("unexpected parsed message ID type")
 	}
-	_, err := ic.Client.UnsendMessage(ctx, &slidetypes.UnsendMessageRequest{
+	_, err = ic.Client.UnsendMessage(ctx, &slidetypes.UnsendMessageRequest{
 		MessageID: messageID.ID,
 		SendData: slidetypes.SendData{
 			ThreadID: meta.IGThreadID,
@@ -237,10 +277,9 @@ func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridge
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	meta := receipt.Portal.Metadata.(*metaid.PortalMetadata)
-	if meta.IGThreadID == "" {
-		// TODO fetch?
-		return fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, receipt.Portal)
+	if err != nil {
+		return err
 	}
 	if !receipt.ReadUpTo.After(receipt.LastRead) {
 		return nil
@@ -287,13 +326,13 @@ func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridge
 }
 
 func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.MatrixDeleteChat) error {
-	meta := chat.Portal.Metadata.(*metaid.PortalMetadata)
-	if meta.IGID == "" {
-		// TODO fetch?
-		return fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, chat.Portal)
+	if err != nil {
+		// TODO treat 404 as success? (thread already deleted)
+		return err
 	}
 
-	_, err := ic.Client.DeleteThread(ctx, &slidetypes.DeleteThreadRequest{
+	_, err = ic.Client.DeleteThread(ctx, &slidetypes.DeleteThreadRequest{
 		ThreadID:   meta.IGID,
 		MarkAsSpam: false,
 	})
@@ -392,17 +431,17 @@ func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Ma
 }
 
 func (ic *IGClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
-	igid := msg.Portal.Metadata.(*metaid.PortalMetadata).IGID
-	if igid == "" {
-		return fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		return err
 	}
-	return ic.Client.SetTyping(ctx, igid, msg.IsTyping)
+	return ic.Client.SetTyping(ctx, meta.IGID, msg.IsTyping)
 }
 
 func (ic *IGClient) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) error {
-	igid := msg.Portal.Metadata.(*metaid.PortalMetadata).IGID
-	if igid == "" {
-		return fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		return err
 	}
 	var muteSeconds int
 	dur := msg.Content.GetMuteDuration()
@@ -411,8 +450,8 @@ func (ic *IGClient) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) er
 	} else {
 		muteSeconds = int(dur.Seconds())
 	}
-	_, err := ic.Client.MuteThread(ctx, &slidetypes.MuteThreadRequest{
-		ThreadID:           igid,
+	_, err = ic.Client.MuteThread(ctx, &slidetypes.MuteThreadRequest{
+		ThreadID:           meta.IGID,
 		MuteSeconds:        muteSeconds,
 		OfflineThreadingID: strconv.FormatInt(getOTID(msg.InputTransactionID), 10),
 	})
@@ -420,13 +459,13 @@ func (ic *IGClient) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) er
 }
 
 func (ic *IGClient) HandleRoomTag(ctx context.Context, msg *bridgev2.MatrixRoomTag) error {
-	igid := msg.Portal.Metadata.(*metaid.PortalMetadata).IGID
-	if igid == "" {
-		return fmt.Errorf("portal metadata missing IGID")
+	meta, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		return err
 	}
 	_, pinned := msg.Content.Tags[event.RoomTagFavourite]
-	_, err := ic.Client.PinThread(ctx, &slidetypes.PinThreadRequest{
-		ThreadID: igid,
+	_, err = ic.Client.PinThread(ctx, &slidetypes.PinThreadRequest{
+		ThreadID: meta.IGID,
 		Pin:      pinned,
 	})
 	return err

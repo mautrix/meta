@@ -33,6 +33,7 @@ type UserLoginMetadata struct {
 	WADeviceID uint16               `json:"wa_device_id,omitempty"`
 	PushKeys   *pushcrypto.PushKeys `json:"push_keys,omitempty"`
 	LoginUA    string               `json:"login_ua,omitempty"`
+	IGID       string               `json:"igid,omitempty"`
 
 	// Thread backfill state
 	BackfillCompleted bool `json:"backfill_completed,omitempty"`

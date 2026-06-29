@@ -474,7 +474,11 @@ func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, er
 
 func (c *HTTPClient) BuildHeaders(withCookies, isSecFetchDocument bool) http.Header {
 	headers := http.Header{}
-	headers.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	if isSecFetchDocument {
+		headers.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	} else {
+		headers.Set("accept", "*/*")
+	}
 	headers.Set("accept-language", "en-US,en;q=0.9")
 	headers.Set("dpr", useragent.DPR)
 	headers.Set("user-agent", useragent.UserAgent)
