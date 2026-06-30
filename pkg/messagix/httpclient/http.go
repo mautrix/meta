@@ -509,7 +509,7 @@ func (c *HTTPClient) BuildHeaders(withCookies, isSecFetchDocument bool) http.Hea
 		}
 		w, _ := c.parent.GetCookies().GetViewports()
 		headers.Set("viewport-width", w)
-		headers.Set("x-asbd-id", "359341")
+		headers.Set("x-asbd-id", useragent.ASBDID)
 	}
 	return headers
 }

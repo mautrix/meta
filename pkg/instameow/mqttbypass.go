@@ -132,7 +132,7 @@ func (c *Client) connectMQTTBypassSocket(ctx context.Context) {
 		return
 	}
 	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("MQTT bypass socket connection lost")
+		zerolog.Ctx(ctx).Debug().Err(err).Msg("MQTT bypass socket connection lost")
 	}
 
 	c.mqttBypassConnectLock.Lock()

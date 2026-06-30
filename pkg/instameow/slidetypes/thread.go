@@ -23,7 +23,8 @@ import (
 type WrappedThreadInfo = AsThread[ThreadInfo]
 
 type AsThread[T any] struct {
-	AsIGDirectThread *T `json:"as_ig_direct_thread"`
+	AsIGDirectThread *T     `json:"as_ig_direct_thread"`
+	ID               string `json:"id"`
 }
 
 type ThreadSubtype string
@@ -81,6 +82,13 @@ type TinyThread struct {
 	ID          string `json:"id"`
 	ThreadTitle string `json:"thread_title"`
 	InputMode   int    `json:"input_mode"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
+type MessagesOnlyThread struct {
+	ID       string                 `json:"id"`
+	Messages *Edged[Node[*Message]] `json:"slide_messages"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }

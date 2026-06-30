@@ -142,6 +142,17 @@ func MakeGetThreadInfoRequest(threadID string) *GetThreadInfoRequest {
 	}
 }
 
+type PaginateMessagesRequest struct {
+	AfterCursor             *string `json:"after"`
+	BeforeCursor            *string `json:"before"`
+	FirstN                  int     `json:"first"`
+	LastN                   *int    `json:"last"`
+	NewerThanMessageID      *string `json:"newer_than_message_id"`
+	OlderThanMessageID      *string `json:"older_than_message_id"`
+	ThreadID                string  `json:"id"`
+	InitialMessagePageCount int     `json:"__relay_internal__pv__IGDInitialMessagePageCountrelayprovider"`
+}
+
 type GetMailboxRequest struct {
 	DeviceIDForIrisSubscription    string `json:"device_id_for_iris_subscription"`
 	IsProfessionalAccountGK        bool   `json:"__relay_internal__pv__IGDIsProfessionalAccountGKrelayprovider"`

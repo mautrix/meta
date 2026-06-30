@@ -28,12 +28,12 @@ func (r *MailboxResponse) GetMailbox() *Mailbox {
 }
 
 type ThreadInfoResponse struct {
-	ThreadInfo *WrappedThreadInfo `json:"get_slide_thread_nullable"`
+	ThreadInfo WrappedThreadInfo `json:"get_slide_thread_nullable"`
 }
 
-type FetchMessagesResponse struct {
+type PaginateMessagesResponse struct {
 	// Note: this will only contain slide_messages and id
-	ThreadInfo *WrappedThreadInfo `json:"fetch__SlideThread"`
+	ThreadInfo AsThread[MessagesOnlyThread] `json:"fetch__SlideThread"`
 }
 
 type SendTextResponse struct {

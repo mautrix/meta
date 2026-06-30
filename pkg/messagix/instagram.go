@@ -280,7 +280,7 @@ func (ig *InstagramMethods) DeleteThread(ctx context.Context, threadID string) e
 		ThreadID:                       id,
 		ShouldMoveFutureRequestsToSpam: false,
 	}
-	resp, _, err := ig.client.http.MakeGraphQLRequest(ctx, "IGDeleteThread", &igVariables)
+	resp, _, err := ig.client.http.MakeGraphQLRequest(ctx, "IGDInboxInfoDeleteThreadDialogOffMsysMutation", &igVariables)
 	if err != nil {
 		return fmt.Errorf("failed to delete thread %s: %w", threadID, err)
 	}
@@ -312,7 +312,7 @@ func (ig *InstagramMethods) EditGroupTitle(ctx context.Context, threadID, newTit
 		ThreadID: threadID,
 		NewTitle: newTitle,
 	}
-	resp, _, err := ig.client.http.MakeGraphQLRequest(ctx, "IGEditGroupTitle", &igVariables)
+	resp, _, err := ig.client.http.MakeGraphQLRequest(ctx, "IGDEditThreadNameDialogOffMsysMutation", &igVariables)
 	if err != nil {
 		return fmt.Errorf("failed to edit group title for thread %s: %w", threadID, err)
 	}
@@ -405,7 +405,7 @@ func (ig *InstagramMethods) EditGroupAvatar(ctx context.Context, threadID string
 		AttachmentFBID:     strconv.FormatInt(uploadResp.MediaID, 10),
 	}
 
-	_, err = ig.makeIGraphQLRequest(ctx, "IGUpdateGroupAvatar", "xig_direct_update_thread_image", igVariables)
+	_, err = ig.makeIGraphQLRequest(ctx, "IGDirectUpdateThreadImageMutation", "xig_direct_update_thread_image", igVariables)
 	if err != nil {
 		return fmt.Errorf("failed to set group avatar: %w", err)
 	}
@@ -440,7 +440,7 @@ func (ig *InstagramMethods) FetchMessageRequests(ctx context.Context) ([]*table.
 		IGDMaxUnreadMessagesCountRelayProvider:       5,
 		IGDThreadListActionsEnabledGKRelayProvider:   true,
 	}
-	resp, respBody, err := ig.client.http.MakeGraphQLRequest(ctx, "IGListMessageRequests", variables)
+	resp, respBody, err := ig.client.http.MakeGraphQLRequest(ctx, "PolarisDirectMessageRequestQuery", variables)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch instagram message requests: %w", err)
 	}
@@ -482,7 +482,7 @@ func (ig *InstagramMethods) RemoveGroupAvatar(ctx context.Context, threadID stri
 		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),
 	}
 
-	_, err := ig.makeIGraphQLRequest(ctx, "IGRemoveGroupAvatar", "xig_direct_remove_thread_image", igVariables)
+	_, err := ig.makeIGraphQLRequest(ctx, "IGDirectRemoveThreadImageMutation", "xig_direct_remove_thread_image", igVariables)
 	if err != nil {
 		return fmt.Errorf("failed to remove group avatar: %w", err)
 	}

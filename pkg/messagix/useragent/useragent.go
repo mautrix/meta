@@ -23,3 +23,5 @@ const MessengerLiteAccessToken = MessengerLiteAppID + "|3e1a7033ae7883bfb31f3537
 const MessengerLiteUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/545.0.0.12.108;FBBV/865730320;FBDV/iPhone10,3;FBMD/iPhone;FBSN/iOS;FBSV/16.7.2;FBSS/3;FBCR/;FBID/phone;FBLC/en_US;FBOP/0]"
 
 const IGDUserAgent = "WMI Web"
+
+const ASBDID = "359341"

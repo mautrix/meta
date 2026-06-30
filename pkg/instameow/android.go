@@ -83,7 +83,7 @@ func (c *Client) EditGroupAvatar(ctx context.Context, threadID string, avatar []
 		AttachmentFBID:     strconv.FormatInt(uploadResp.MediaID, 10),
 	}
 
-	_, err = c.makeIGraphQLRequest(ctx, "IGUpdateGroupAvatar", "xig_direct_update_thread_image", igVariables)
+	_, err = c.makeIGraphQLRequest(ctx, "IGDirectUpdateThreadImageMutation", "xig_direct_update_thread_image", igVariables)
 	if err != nil {
 		return fmt.Errorf("failed to set group avatar: %w", err)
 	}
@@ -97,7 +97,7 @@ func (c *Client) RemoveGroupAvatar(ctx context.Context, threadID string) error {
 		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),
 	}
 
-	_, err := c.makeIGraphQLRequest(ctx, "IGRemoveGroupAvatar", "xig_direct_remove_thread_image", igVariables)
+	_, err := c.makeIGraphQLRequest(ctx, "IGDirectRemoveThreadImageMutation", "xig_direct_remove_thread_image", igVariables)
 	if err != nil {
 		return fmt.Errorf("failed to remove group avatar: %w", err)
 	}

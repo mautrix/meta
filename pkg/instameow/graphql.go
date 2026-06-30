@@ -92,12 +92,16 @@ func (c *Client) GetThread(ctx context.Context, req *slidetypes.GetThreadInfoReq
 	return makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req, true)
 }
 
+func (c *Client) PaginateMessages(ctx context.Context, req *slidetypes.PaginateMessagesRequest) (*slidetypes.PaginateMessagesResponse, error) {
+	return makeGraphQLRequest[*slidetypes.PaginateMessagesResponse](ctx, c, "IGDMessageListOffMsysQuery", req, true)
+}
+
 func (c *Client) GetProfile(ctx context.Context, igid string) (*slidetypes.ProfilePageResponse, error) {
 	return makeGraphQLRequest[*slidetypes.ProfilePageResponse](ctx, c, "PolarisProfilePageContentQuery", slidetypes.MakeProfilePageRequest(igid), true)
 }
 
 func (c *Client) EditGroupTitle(ctx context.Context, threadID, newTitle string) error {
-	_, err := makeGraphQLRequest[noResp](ctx, c, "IGEditGroupTitle", &graphql.IGEditGroupTitleGraphQLRequestPayload{
+	_, err := makeGraphQLRequest[noResp](ctx, c, "IGDEditThreadNameDialogOffMsysMutation", &graphql.IGEditGroupTitleGraphQLRequestPayload{
 		ThreadID: threadID,
 		NewTitle: newTitle,
 	}, true)

@@ -80,6 +80,7 @@ func (mc *MessageConverter) ToInstagram(
 		if meta.IGID != "" {
 			textReq.IGThreadIGID = &meta.IGID
 		} else if portal.RoomType == database.RoomTypeDM {
+			// TODO should this be actual IG user IDs?
 			textReq.RecipientIGIDs = []string{strconv.FormatInt(threadID, 10)}
 		} else {
 			// TODO use recipients in groups?

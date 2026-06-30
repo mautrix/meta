@@ -26,11 +26,7 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "MAWCatQuery",
 		Jsessw:       "1",
 	},
-	"IGDeleteThread": {
-		DocID:        "23915602751379354",
-		FriendlyName: "IGDInboxInfoDeleteThreadDialogOffMsysMutation",
-	},
-	"IGEditGroupTitle": {
+	"IGDEditThreadNameDialogOffMsysMutation": {
 		DocID:        "29088580780787855",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
 	},
@@ -38,15 +34,15 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "36571001125823973",
 		FriendlyName: "useIGDirectAcceptMessageRequestMutation",
 	},
-	"IGListMessageRequests": {
+	"PolarisDirectMessageRequestQuery": {
 		DocID:        "25843909248644743",
 		FriendlyName: "PolarisDirectMessageRequestQuery",
 	},
-	"IGUpdateGroupAvatar": {
+	"IGDirectUpdateThreadImageMutation": {
 		ClientDocID:  "5576567352987267181917649770",
 		FriendlyName: "IGDirectUpdateThreadImageMutation",
 	},
-	"IGRemoveGroupAvatar": {
+	"IGDirectRemoveThreadImageMutation": {
 		ClientDocID:  "50027745118339199321503686240",
 		FriendlyName: "IGDirectRemoveThreadImageMutation",
 	},
@@ -83,7 +79,7 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "IGDirectEditMessageMutation",
 	},
 	"IGDMessageListOffMsysQuery": {
-		DocID:        "27615933491426376",
+		DocID:        "25255103937520139",
 		FriendlyName: "IGDMessageListOffMsysQuery",
 	},
 	"IGDMessageUnsendDialogOffMsysMutation": {
@@ -181,15 +177,4 @@ type LSPlatformGraphQLLightspeedVariables struct {
 	SyncParams        interface{} `json:"sync_params,omitempty"`
 	LastAppliedCursor any         `json:"last_applied_cursor"`
 	Version           int64       `json:"version,omitempty"`
-}
-
-type SyncParams struct {
-	FullHeight                int    `json:"full_height,omitempty"`
-	Locale                    string `json:"locale,omitempty"`
-	PreviewHeight             int    `json:"preview_height,omitempty"`
-	PreviewHeightLarge        int    `json:"preview_height_large,omitempty"`
-	PreviewWidth              int    `json:"preview_width,omitempty"`
-	PreviewWidthLarge         int    `json:"preview_width_large,omitempty"`
-	Scale                     int    `json:"scale,omitempty"`
-	SnapshotNumThreadsPerPage int    `json:"snapshot_num_threads_per_page,omitempty"`
 }
