@@ -154,15 +154,17 @@ func (c *Client) ReloadIndex(ctx context.Context) error {
 	}
 	if s := c.socket.Load(); s != nil {
 		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+		if scs := c.streamControllerSocket.Load(); scs != nil {
+			scs.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+		}
+		c.mqttBypassConnectLock.Lock()
+		if mbs := c.mqttBypassSocket; mbs != nil {
+			mbs.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+		}
+		c.mqttBypassConnectLock.Unlock()
+	} else {
+		c.makeNewSocket()
 	}
-	if s := c.streamControllerSocket.Load(); s != nil {
-		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
-	}
-	c.mqttBypassConnectLock.Lock()
-	if s := c.mqttBypassSocket; s != nil {
-		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
-	}
-	c.mqttBypassConnectLock.Unlock()
 	return nil
 }
 
