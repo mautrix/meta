@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -109,8 +110,19 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentMusicSticker:
 		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "music sticker", 0, mc.musicStickerReuploadParams(content)))
 	case *slidetypes.MessageContentXMA:
-		// TODO implement
-		cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
+		if content.XMATextBody != "" {
+			part := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)
+			preview, err := mc.wrapLinkPreview(ctx, content.XMA)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to wrap XMA link preview")
+			} else {
+				part.Content.BeeperLinkPreviews = []*event.BeeperLinkPreview{preview}
+			}
+			cm.Parts = append(cm.Parts, part)
+		} else {
+			// TODO implement
+			cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
+		}
 	case *slidetypes.MessageContentAIRichResponse:
 		// TODO the AI types haven't been observed in the wild to confirm the schema
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.UnifiedResponse, nil))
@@ -151,6 +163,54 @@ func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment) *
 		Type:    event.EventMessage,
 		Content: &content,
 	}
+}
+
+func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes.XMAContent) (*event.BeeperLinkPreview, error) {
+	realURL := xma.TargetURL
+	parsedURL, err := url.Parse(xma.TargetURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse XMA target URL: %w", err)
+	}
+	if parsedURL.Host == "l.facebook.com" {
+		realURL = parsedURL.Query().Get("u")
+	}
+	if xma.PreviewImage == nil {
+		return &event.BeeperLinkPreview{
+			LinkPreview: event.LinkPreview{
+				CanonicalURL: realURL,
+				Title:        xma.TitleText,
+				Description:  xma.SubtitleText,
+			},
+			MatchedURL: realURL,
+		}, nil
+	}
+	res, err := mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
+		AttachmentType: table.AttachmentTypeImage,
+		URL:            xma.PreviewImage.URL,
+		PreviewWidth:   xma.PreviewImage.Width,
+		PreviewHeight:  xma.PreviewImage.Height,
+		RefreshMeta:    &mediadl.MediaRefreshMeta{},
+		DirectMedia:    mc.DirectMedia,
+		MaxFileSize:    mc.MaxFileSize,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to reupload XMA preview image: %w", err)
+	}
+	return &event.BeeperLinkPreview{
+		LinkPreview: event.LinkPreview{
+			CanonicalURL: realURL,
+			Title:        xma.TitleText,
+			Description:  xma.SubtitleText,
+			ImageURL:     res.Content.URL,
+			ImageSize:    event.IntOrString(res.Content.GetInfo().Size),
+			ImageWidth:   event.IntOrString(res.Content.GetInfo().Width),
+			ImageHeight:  event.IntOrString(res.Content.GetInfo().Height),
+			ImageType:    res.Content.GetInfo().MimeType,
+		},
+		MatchedURL:      realURL,
+		ImageEncryption: res.Content.File,
+		ImageBlurhash:   res.Content.GetInfo().Blurhash,
+	}, nil
 }
 
 func (mc *MessageConverter) wrapMedia(
