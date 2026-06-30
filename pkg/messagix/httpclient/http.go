@@ -556,4 +556,5 @@ func (c *HTTPClient) addInstagramHeaders(h *http.Header) {
 		}
 		h.Set("x-ig-app-id", c.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
 	}
+	h.Set("X-IG-Max-Touch-Points", "0")
 }

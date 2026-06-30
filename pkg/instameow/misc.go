@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -68,4 +70,68 @@ func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string,
 	}
 
 	return nil
+}
+
+func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
+	h := c.http.BuildHeaders(true, false)
+	h.Set("x-requested-with", "XMLHttpRequest")
+	referer := c.GetEndpoint("base_url")
+	if mediaShortcode != "" {
+		referer = fmt.Sprintf("%s/p/%s/", referer, mediaShortcode)
+	}
+	h.Set("referer", referer)
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-site", "same-origin")
+	// TODO the web client seems to change this for media requests?
+	h.Set("X-Web-Session-ID", c.configs.WebSessionID)
+	reqUrl := fmt.Sprintf(c.GetEndpoint("media_info"), mediaID)
+
+	resp, respBody, err := c.http.MakeRequest(ctx, reqUrl, http.MethodGet, h, nil, types.NONE)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch the media by id %s: %w", mediaID, err)
+	}
+
+	c.cookies.UpdateFromResponse(resp)
+
+	var mediaInfo *responses.FetchMediaResponse
+	err = json.Unmarshal(respBody, &mediaInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.FetchMediaResponse (statusCode=%d): %w", resp.StatusCode, err)
+	}
+
+	return mediaInfo, nil
+}
+
+func (c *Client) FetchReel(ctx context.Context, reelIDs []string, mediaID string) (*responses.ReelInfoResponse, error) {
+	h := c.http.BuildHeaders(true, false)
+	h.Set("x-requested-with", "XMLHttpRequest")
+	h.Set("referer", c.GetEndpoint("base_url"))
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-site", "same-origin")
+	h.Set("X-Web-Session-ID", c.configs.WebSessionID)
+	query := url.Values{}
+	if mediaID != "" {
+		query.Add("media_id", mediaID)
+	}
+	for _, id := range reelIDs {
+		query.Add("reel_ids", id)
+	}
+
+	reqURL := c.GetEndpoint("reels_media") + query.Encode()
+	resp, respBody, err := c.http.MakeRequest(ctx, reqURL, http.MethodGet, h, nil, types.NONE)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch reels by ids %v: %w", reelIDs, err)
+	}
+
+	c.cookies.UpdateFromResponse(resp)
+
+	var reelInfo *responses.ReelInfoResponse
+	err = json.Unmarshal(respBody, &reelInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response bytes into *responses.ReelInfoResponse (statusCode=%d): %w", resp.StatusCode, err)
+	}
+
+	return reelInfo, nil
 }
