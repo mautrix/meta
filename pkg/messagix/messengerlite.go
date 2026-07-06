@@ -150,12 +150,70 @@ type BloksLoginActionResponsePayload struct {
 }
 
 func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
+	return cookiesFromRaw(payload.SessionCookies)
+}
+
+func cookiesFromRaw(rawCookies []RawCookie) *cookies.Cookies {
 	newCookies := &cookies.Cookies{Platform: types.MessengerLite}
 	newCookies.UpdateValues(make(map[cookies.MetaCookieName]string))
-	for _, raw := range payload.SessionCookies {
+	for _, raw := range rawCookies {
 		newCookies.Set(cookies.MetaCookieName(raw.Name), raw.Value)
 	}
 	return newCookies
+}
+
+type getSessionForAppResponse struct {
+	SessionCookies []RawCookie `json:"session_cookies"`
+	UID            int64       `json:"uid"`
+
+	// Present when the request fails.
+	ErrorCode    int    `json:"error_code"`
+	ErrorMsg     string `json:"error_msg"`
+	ErrorSubcode int    `json:"error_subcode"`
+}
+
+func (c *Client) ExchangeTransientToken(ctx context.Context, transientToken string) (*cookies.Cookies, error) {
+	endpoint := c.GetEndpoint("get_session_for_app")
+
+	query := url.Values{}
+	query.Set("access_token", transientToken)
+	query.Set("new_app_id", useragent.MessengerLiteAppID)
+	query.Set("generate_session_cookies", "1")
+	query.Set("format", "json")
+	fullURL := endpoint + "?" + query.Encode()
+
+	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader()
+	if err != nil {
+		return nil, err
+	}
+	httpHeaders := http.Header{}
+	for k, v := range map[string]string{
+		"accept":                      "*/*",
+		"x-fb-appid":                  useragent.MessengerLiteAppID,
+		"x-fb-request-analytics-tags": analyticsTags,
+		"user-agent":                  useragent.MessengerLiteUserAgent,
+		"accept-language":             "en-US,en;q=0.9",
+		"request_token":               uuid.New().String(),
+	} {
+		httpHeaders.Set(k, v)
+	}
+
+	_, responseBytes, err := c.http.MakeRequest(ctx, fullURL, "GET", httpHeaders, nil, types.NONE)
+	if err != nil {
+		return nil, fmt.Errorf("requesting session for transient token: %w", err)
+	}
+
+	var response getSessionForAppResponse
+	if err = json.Unmarshal(responseBytes, &response); err != nil {
+		return nil, fmt.Errorf("parsing session-for-app response: %w", err)
+	}
+	if response.ErrorCode != 0 {
+		return nil, fmt.Errorf("session-for-app error %d/%d: %s", response.ErrorCode, response.ErrorSubcode, response.ErrorMsg)
+	}
+	if len(response.SessionCookies) == 0 {
+		return nil, fmt.Errorf("session-for-app returned no cookies for transient token")
+	}
+	return cookiesFromRaw(response.SessionCookies), nil
 }
 
 // For testing only
@@ -196,14 +254,17 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		return nil, nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
-	if loginRespPayload.CredentialType == "transient_token" {
-		// There is an extra step for getting cookies when the credential_type
-		// field is transient_token, which the bridge does not currently
-		// implement. Until then, add a warning log. Normally the credential_type
-		// is two_factor. It depends on the account, not on the MFA method
-		// selected.
-		m.client.Logger.Warn().Msg("Got credential_type transient_token, login will fail")
-		return nil, nil, ErrTransientTokenLogin
+	if loginRespPayload.CredentialType == "transient_token" && len(loginRespPayload.SessionCookies) == 0 {
+		if loginRespPayload.AccessToken == "" {
+			return nil, nil, ErrTransientTokenLogin
+		}
+		m.client.Logger.Debug().Msg("Got credential_type transient_token, exchanging for session cookies")
+		newCookies, err := m.client.ExchangeTransientToken(ctx, loginRespPayload.AccessToken)
+		if err != nil {
+			m.client.Logger.Warn().Err(err).Msg("Failed to exchange transient token for session cookies")
+			return nil, nil, fmt.Errorf("%w: %w", ErrTransientTokenLogin, err)
+		}
+		return nil, newCookies, nil
 	}
 
 	if len(loginRespPayload.SessionCookies) == 0 {
