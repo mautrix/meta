@@ -38,6 +38,7 @@ func makeMessengerLiteEndpoints(host string) map[string]string {
 	endpoints := makeFacebookEndpoints(host)
 	endpoints["graph_graphql"] = "https://graph.facebook.com/graphql"
 	endpoints["pwd_key"] = "https://graph.facebook.com/pwd_key_fetch"
+	endpoints["get_session_for_app"] = "https://api.facebook.com/method/auth.getSessionForApp"
 	endpoints["v2.10"] = "https://graph.facebook.com/v2.10"
 	endpoints["cat"] = "https://web.facebook.com/messaging/lightspeed/cat"
 	endpoints["icdc_fetch"] = "https://v.whatsapp.net/v2/fb_icdc_fetch"
