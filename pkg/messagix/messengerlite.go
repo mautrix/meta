@@ -3,6 +3,7 @@ package messagix
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -18,6 +19,8 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
+
+var ErrTransientTokenLogin = errors.New("login approved but could not be completed automatically, please try logging in again")
 
 type MessengerLiteMethods struct {
 	client *Client
@@ -200,6 +203,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		// is two_factor. It depends on the account, not on the MFA method
 		// selected.
 		m.client.Logger.Warn().Msg("Got credential_type transient_token, login will fail")
+		return nil, nil, ErrTransientTokenLogin
 	}
 
 	if len(loginRespPayload.SessionCookies) == 0 {

@@ -221,6 +221,7 @@ var (
 	ErrLoginConsent          = bridgev2.RespError{ErrCode: "FI.MAU.META_CONSENT_ERROR", Err: "Consent required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
 	ErrLoginCheckpoint       = bridgev2.RespError{ErrCode: "FI.MAU.META_CHECKPOINT_ERROR", Err: "Checkpoint required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
 	ErrLoginTokenInvalidated = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_ERROR", Err: "Got logged out immediately", StatusCode: http.StatusBadRequest}
+	ErrLoginTransientToken   = bridgev2.RespError{ErrCode: "FI.MAU.META_TRANSIENT_TOKEN_ERROR", Err: "Login approved but could not be completed automatically, please try again", StatusCode: http.StatusBadRequest}
 	ErrLoginUnknown          = bridgev2.RespError{ErrCode: "M_UNKNOWN", Err: "Internal error logging in", StatusCode: http.StatusInternalServerError}
 )
 
@@ -377,6 +378,8 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
 			err = ErrLoginCheckpoint
+		} else if errors.Is(err, messagix.ErrTransientTokenLogin) {
+			err = ErrLoginTransientToken
 		}
 		return nil, err
 	}
