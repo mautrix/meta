@@ -72,6 +72,17 @@ const (
 	RavenViewModeKeepInChat RavenViewMode = 2
 )
 
+func (rvm RavenViewMode) ViewType() string {
+	switch rvm {
+	case RavenViewModeViewOnce:
+		return "viewed"
+	case RavenViewModeViewTwice:
+		return "replayed"
+	default:
+		return ""
+	}
+}
+
 type MessageContentRavenImage struct {
 	ViewMode   RavenViewMode `json:"view_mode"`
 	Attachment *Attachment   `json:"attachment"`

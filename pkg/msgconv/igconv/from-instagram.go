@@ -102,9 +102,17 @@ func (mc *MessageConverter) ToMatrix(
 			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "animated media", i, mc.animatedMediaReuploadParams(att)))
 		}
 	case *slidetypes.MessageContentRavenImage:
-		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven image", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeImage)))
+		if content.Attachment == nil && content.ViewMode.ViewType() != "" {
+			cm.Parts = append(cm.Parts, mc.makeViewOnceError("image", content.ViewMode.ViewType()))
+		} else {
+			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven image", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeImage)))
+		}
 	case *slidetypes.MessageContentRavenVideo:
-		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven video", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeVideo)))
+		if content.Attachment == nil && content.ViewMode.ViewType() != "" {
+			cm.Parts = append(cm.Parts, mc.makeViewOnceError("video", content.ViewMode.ViewType()))
+		} else {
+			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven video", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeVideo)))
+		}
 	case *slidetypes.MessageContentSticker:
 		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "sticker", 0, mc.stickerReuploadParams(content)))
 	case *slidetypes.MessageContentMusicSticker:
@@ -140,6 +148,17 @@ func (mc *MessageConverter) ToMatrix(
 
 func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, mentions slidetypes.MentionList) *event.MessageEventContent {
 	return textfmt.MetaToMatrixText(ctx, text, mentions.ToSocket(), mc.getBasicUserInfo)
+}
+
+func (mc *MessageConverter) makeViewOnceError(mediaType, viewed string) *bridgev2.ConvertedMessagePart {
+	body := fmt.Sprintf("This %s can only be %s once. Use the Instagram app to view.", mediaType, viewed)
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    body,
+		},
+	}
 }
 
 func (mc *MessageConverter) wrapText(ctx context.Context, text string, mentions slidetypes.MentionList) *bridgev2.ConvertedMessagePart {
@@ -221,6 +240,15 @@ func (mc *MessageConverter) wrapMedia(
 	index int,
 	params mediadl.ReuploadParams,
 ) *bridgev2.ConvertedMessagePart {
+	if params.URL == "" {
+		return &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    fmt.Sprintf("Unsupported %s message. Use the Instagram app to view.", typeName),
+			},
+		}
+	}
 	params.DirectMedia = mc.DirectMedia
 	params.MaxFileSize = mc.MaxFileSize
 	if params.RefreshMeta == nil {
@@ -241,6 +269,9 @@ func (mc *MessageConverter) wrapMedia(
 }
 
 func (mc *MessageConverter) attachmentReuploadParams(att *slidetypes.Attachment, typ table.AttachmentType) mediadl.ReuploadParams {
+	if att == nil {
+		return mediadl.ReuploadParams{}
+	}
 	return mediadl.ReuploadParams{
 		AttachmentType: typ,
 		URL:            att.AttachmentCDNURL,
@@ -251,6 +282,9 @@ func (mc *MessageConverter) attachmentReuploadParams(att *slidetypes.Attachment,
 }
 
 func (mc *MessageConverter) audioReuploadParams(att *slidetypes.AudioAttachment) mediadl.ReuploadParams {
+	if att == nil {
+		return mediadl.ReuploadParams{}
+	}
 	return mediadl.ReuploadParams{
 		AttachmentType: table.AttachmentTypeAudio,
 		URL:            att.AttachmentCDNURL,
@@ -260,6 +294,9 @@ func (mc *MessageConverter) audioReuploadParams(att *slidetypes.AudioAttachment)
 }
 
 func (mc *MessageConverter) animatedMediaReuploadParams(att *slidetypes.AnimatedAttachment) mediadl.ReuploadParams {
+	if att == nil {
+		return mediadl.ReuploadParams{}
+	}
 	var typ table.AttachmentType
 	var filename, url, mimeType string
 	if att.AttachmentWebpURL != "" && (att.IsSticker || att.AttachmentMP4URL == "") {
@@ -283,6 +320,9 @@ func (mc *MessageConverter) animatedMediaReuploadParams(att *slidetypes.Animated
 }
 
 func (mc *MessageConverter) stickerReuploadParams(att *slidetypes.MessageContentSticker) mediadl.ReuploadParams {
+	if att == nil {
+		return mediadl.ReuploadParams{}
+	}
 	return mediadl.ReuploadParams{
 		AttachmentType: table.AttachmentTypeSticker,
 		URL:            att.PreviewURL,
@@ -293,6 +333,9 @@ func (mc *MessageConverter) stickerReuploadParams(att *slidetypes.MessageContent
 }
 
 func (mc *MessageConverter) musicStickerReuploadParams(att *slidetypes.MessageContentMusicSticker) mediadl.ReuploadParams {
+	if att == nil {
+		return mediadl.ReuploadParams{}
+	}
 	return mediadl.ReuploadParams{
 		AttachmentType: table.AttachmentTypeSticker,
 		URL:            att.AudioTrack.Web30SPreviewDownloadURL,
@@ -333,7 +376,7 @@ func (mc *MessageConverter) wrapUnsupportedContent(content any) *bridgev2.Conver
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgNotice,
-			Body:    "Unsupported message. Use the native Instagram app to view.",
+			Body:    "Unsupported message. Use the Instagram app to view.",
 		},
 		Extra: unsupportedContentToExtra(content),
 	}
