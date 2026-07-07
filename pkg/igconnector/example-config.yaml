@@ -4,15 +4,13 @@
 #  .ID - The internal user ID of the user.
 displayname_template: '{{or .DisplayName .Username "Unknown user"}}'
 
-# Static proxy address (HTTP or SOCKS5) for connecting to Meta.
+# Static proxy address (HTTP or SOCKS5) for connecting to Instagram.
 proxy:
 # HTTP endpoint to request new proxy address from, for dynamically assigned proxies.
 # The endpoint must return a JSON body with a string field called proxy_url.
 get_proxy_from:
 # Should media be proxied too?
 proxy_media: false
-# Should Messenger Lite login traffic be proxied?
-proxy_messenger_lite: true
 # Should other traffic, not configured here, be proxied?
 proxy_other: true
 # Minimum interval between full reconnects in seconds, default is 1 hour
@@ -25,6 +23,10 @@ cache_connection_state: true
 disable_xma_backfill: true
 # Disable fetching XMA media entirely.
 disable_xma_always: false
+# Should typing notification bridging be disabled?
+# Bridging typing notifications requires 2 extra connections per user (one for receiving and one for sending),
+# because Meta only employs professional software engineers who make excellent architecture decisions.
+disable_typing: false
 # Should view-once messages be disabled entirely?
 disable_view_once: false
 

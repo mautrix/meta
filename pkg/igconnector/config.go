@@ -30,11 +30,10 @@ import (
 var ExampleConfig string
 
 type Config struct {
-	Proxy              string `yaml:"proxy"`
-	GetProxyFrom       string `yaml:"get_proxy_from"`
-	ProxyMedia         bool   `yaml:"proxy_media"`
-	ProxyMessengerLite bool   `yaml:"proxy_messenger_lite"`
-	ProxyOther         bool   `yaml:"proxy_other"`
+	Proxy        string `yaml:"proxy"`
+	GetProxyFrom string `yaml:"get_proxy_from"`
+	ProxyMedia   bool   `yaml:"proxy_media"`
+	ProxyOther   bool   `yaml:"proxy_other"`
 
 	DisableXMABackfill bool `yaml:"disable_xma_backfill"`
 	DisableXMAAlways   bool `yaml:"disable_xma_always"`
@@ -47,6 +46,7 @@ type Config struct {
 	displaynameTemplate *template.Template `yaml:"-"`
 
 	DisableViewOnce bool `yaml:"disable_view_once"`
+	DisableTyping   bool `yaml:"disable_typing"`
 
 	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
 }
@@ -76,13 +76,13 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str|up.Null, "proxy")
 	helper.Copy(up.Str|up.Null, "get_proxy_from")
 	helper.Copy(up.Bool, "proxy_media")
-	helper.Copy(up.Bool, "proxy_messenger_lite")
 	helper.Copy(up.Bool, "proxy_other")
 	helper.Copy(up.Int, "min_full_reconnect_interval_seconds")
 	helper.Copy(up.Int, "force_refresh_interval_seconds")
 	helper.Copy(up.Bool, "cache_connection_state")
 	helper.Copy(up.Bool, "disable_xma_backfill")
 	helper.Copy(up.Bool, "disable_xma_always")
+	helper.Copy(up.Bool, "disable_typing")
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")

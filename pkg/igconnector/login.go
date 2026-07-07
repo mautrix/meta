@@ -106,9 +106,10 @@ var (
 
 func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
 	client := instameow.NewClient(instameow.ClientParams{
-		Cookies:  c,
-		Log:      log,
-		Settings: conn.Bridge.GetHTTPClientSettings(),
+		Cookies:       c,
+		Log:           log,
+		Settings:      conn.Bridge.GetHTTPClientSettings(),
+		DisableTyping: conn.Config.DisableTyping,
 	})
 	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
 		client.GetHTTP().GetNewProxy = conn.getProxy
