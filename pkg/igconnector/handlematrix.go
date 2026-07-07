@@ -108,6 +108,10 @@ func (ic *IGClient) ensureIGID(ctx context.Context, portal *bridgev2.Portal) (*m
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrIGIDNotFound, err)
 		}
+		err = portal.Save(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save portal after fetching IGID: %w", err)
+		}
 	}
 	return meta, nil
 }

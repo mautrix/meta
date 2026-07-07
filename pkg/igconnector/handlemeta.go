@@ -308,7 +308,7 @@ func (ic *IGClient) handleMessage(portalKey networkid.PortalKey, msg *slidetypes
 		Data: msg,
 		ID:   msgID,
 		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data *slidetypes.Message) (*bridgev2.ConvertedMessage, error) {
-			return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, intent, msgID, data, ic.Main.Config.DisableXMAAlways)
+			return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, intent, msgID, data, ic.Main.Config.DisableXMAAlways), ctx.Err()
 		},
 	})
 }

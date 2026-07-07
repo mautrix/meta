@@ -213,7 +213,7 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 			Tag:        tag,
 		},
 		MessageRequest: ptr.Ptr(info.SystemFolder == "PENDING" || info.SystemFolder == "SPAM"),
-		CanBackfill:    false, // TODO
+		CanBackfill:    true,
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
 			if info.IsGroup {

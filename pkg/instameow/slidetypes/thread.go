@@ -36,6 +36,8 @@ const (
 	ThreadSubtypeGroup          ThreadSubtype = "IGD_GROUP"
 )
 
+type SlideMessages = Edged[Node[*Message]]
+
 type ThreadInfo struct {
 	ID                      string                   `json:"id"`
 	ThreadKey               int64                    `json:"thread_key,string"`
@@ -51,7 +53,7 @@ type ThreadInfo struct {
 	Users                   []*User                  `json:"users"`
 	Nicknames               []Nickname               `json:"nicknames"`
 	LastActivityTimestampMS jsontime.UnixMilliString `json:"last_activity_timestamp_ms"`
-	SlideMessages           *Edged[Node[*Message]]   `json:"slide_messages"`
+	SlideMessages           *SlideMessages           `json:"slide_messages"`
 	SlideReadReceipts       []ReadReceipt            `json:"slide_read_receipts"`
 	MarkedAsUnread          bool                     `json:"marked_as_unread"`
 	SystemFolder            string                   `json:"system_folder"`
@@ -87,8 +89,8 @@ type TinyThread struct {
 }
 
 type MessagesOnlyThread struct {
-	ID       string                 `json:"id"`
-	Messages *Edged[Node[*Message]] `json:"slide_messages"`
+	ID       string         `json:"id"`
+	Messages *SlideMessages `json:"slide_messages"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }

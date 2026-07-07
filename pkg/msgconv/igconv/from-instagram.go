@@ -60,7 +60,7 @@ func (mc *MessageConverter) ToMatrix(
 	messageID networkid.MessageID,
 	msg *slidetypes.Message,
 	disableXMA bool,
-) (*bridgev2.ConvertedMessage, error) {
+) *bridgev2.ConvertedMessage {
 	ctx = context.WithValue(ctx, mediadl.ContextKeyIGClient, client)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, intent)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
@@ -131,9 +131,11 @@ func (mc *MessageConverter) ToMatrix(
 	case slidetypes.MessageContentUnknown:
 		cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
 	default:
-		return nil, fmt.Errorf("unrecognized message content struct: %T", content)
+		// This shouldn't happen since all the structs are defined in our code
+		zerolog.Ctx(ctx).Warn().Type("content_struct", content).Msg("Unrecognized content struct in message")
+		cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
 	}
-	return cm, nil
+	return cm
 }
 
 func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, mentions slidetypes.MentionList) *event.MessageEventContent {
