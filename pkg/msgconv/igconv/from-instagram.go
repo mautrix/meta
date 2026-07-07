@@ -106,13 +106,13 @@ func (mc *MessageConverter) ToMatrix(
 			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "animated media", i, mc.animatedMediaReuploadParams(att)))
 		}
 	case *slidetypes.MessageContentRavenImage:
-		if content.Attachment == nil && content.ViewMode.ViewType() != "" {
+		if (content.Attachment == nil || mc.DisableViewOnce) && content.ViewMode.ViewType() != "" {
 			cm.Parts = append(cm.Parts, mc.makeViewOnceError("image", content.ViewMode.ViewType()))
 		} else {
 			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven image", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeImage)))
 		}
 	case *slidetypes.MessageContentRavenVideo:
-		if content.Attachment == nil && content.ViewMode.ViewType() != "" {
+		if (content.Attachment == nil || mc.DisableViewOnce) && content.ViewMode.ViewType() != "" {
 			cm.Parts = append(cm.Parts, mc.makeViewOnceError("video", content.ViewMode.ViewType()))
 		} else {
 			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven video", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeVideo)))
