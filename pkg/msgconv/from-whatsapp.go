@@ -50,14 +50,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
 
 func (mc *MessageConverter) WhatsAppTextToMatrix(ctx context.Context, text *waCommon.MessageText) *bridgev2.ConvertedMessagePart {
-	content := &event.MessageEventContent{
-		MsgType:  event.MsgText,
-		Body:     text.GetText(),
-		Mentions: &event.Mentions{},
-	}
+	content := textfmt.MetaToMatrixText(ctx, text.GetText(), nil, mc.getBasicUserInfo)
 	silent := false
 	if len(text.Commands) > 0 {
 		for _, cmd := range text.Commands {

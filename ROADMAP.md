@@ -84,7 +84,7 @@
     * [x] Gifs
     * [ ] Locations
     * [ ] Polls
-  * [ ] Formatting (Messenger only)
+  * [ ] Formatting
   * [x] Replies
   * [ ] Mentions
 * [x] Message redactions
@@ -120,7 +120,7 @@
     * [ ] Story/reel/clip shares
     * [ ] Profile shares
     * [ ] Product shares
-  * [ ] Formatting (Messenger only)
+  * [x] Formatting
   * [x] Replies
   * [x] Mentions
   * [ ] Polls
