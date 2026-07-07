@@ -203,7 +203,7 @@ type XMAContent struct {
 	OverlayDescription     any              `json:"overlay_description"`
 	OverlayIconGlyph       any              `json:"overlay_icon_glyph"`
 	Favicon                any              `json:"favicon"`
-	EyebrowText            any              `json:"eyebrow_text"`
+	EyebrowText            string           `json:"eyebrow_text"`
 	CollapsibleID          any              `json:"collapsible_id"`
 
 	Unrecognized map[string]any `json:",unknown"`

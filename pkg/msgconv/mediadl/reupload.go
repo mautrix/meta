@@ -55,6 +55,8 @@ type MediaRefreshMeta struct {
 	XMATargetID  int64  `json:"xma_target_id,omitempty"`
 	XMAShortcode string `json:"xma_shortcode,omitempty"`
 
+	CarouselMediaID string `json:"carousel_media_id,omitempty"`
+
 	// For XMA story attachments (pre-parsed from action URL)
 	StoryMediaID string `json:"story_media_id,omitempty"` // story pk
 	StoryReelID  string `json:"story_reel_id,omitempty"`  // user pk (for /stories/direct/ type)

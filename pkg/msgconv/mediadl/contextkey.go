@@ -16,6 +16,10 @@
 
 package mediadl
 
+import (
+	"context"
+)
+
 type contextKey int
 
 const (
@@ -28,3 +32,7 @@ const (
 	ContextKeyMsgID
 	ContextKeyPartID
 )
+
+func ShouldFetchXMA(ctx context.Context) bool {
+	return ctx.Value(ContextKeyFetchXMA).(bool)
+}

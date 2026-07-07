@@ -47,7 +47,7 @@ import (
 )
 
 func (mc *MessageConverter) ShouldFetchXMA(ctx context.Context) bool {
-	return ctx.Value(mediadl.ContextKeyFetchXMA).(bool)
+	return mediadl.ShouldFetchXMA(ctx)
 }
 
 func isProbablyURLPreview(xma *table.WrappedXMA) bool {

@@ -17,6 +17,7 @@
 package igconv
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -118,7 +119,7 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentMusicSticker:
 		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "music sticker", 0, mc.musicStickerReuploadParams(content)))
 	case *slidetypes.MessageContentXMA:
-		if content.XMATextBody != "" {
+		if content.XMATextBody != "" && content.XMA.TargetID == "" {
 			part := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)
 			preview, err := mc.wrapLinkPreview(ctx, content.XMA)
 			if err != nil {
@@ -126,9 +127,23 @@ func (mc *MessageConverter) ToMatrix(
 			} else {
 				part.Content.BeeperLinkPreviews = []*event.BeeperLinkPreview{preview}
 			}
+			// Replies to instants don't have any media on web, but do have the quote text
+			if content.XMA.EyebrowText != "" {
+				part.Content.FormattedBody = fmt.Sprintf(
+					"<blockquote>%s</blockquote>%s",
+					html.EscapeString(content.XMA.EyebrowText),
+					part.Content.FormattedBody,
+				)
+			}
 			cm.Parts = append(cm.Parts, part)
+		} else if xmaPart := mc.wrapXMA(ctx, content.XMA); xmaPart != nil {
+			cm.Parts = append(cm.Parts, xmaPart)
+			if content.XMATextBody != "" {
+				textPart := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)
+				textPart.ID = "xma-text-body"
+				cm.Parts = append(cm.Parts, textPart)
+			}
 		} else {
-			// TODO implement
 			cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
 		}
 	case *slidetypes.MessageContentAIRichResponse:
@@ -195,7 +210,8 @@ func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes
 	if parsedURL.Host == "l.facebook.com" {
 		realURL = parsedURL.Query().Get("u")
 	}
-	if xma.PreviewImage == nil {
+	img := cmp.Or(xma.PreviewImage, xma.XMAPreviewImage)
+	if img == nil {
 		return &event.BeeperLinkPreview{
 			LinkPreview: event.LinkPreview{
 				CanonicalURL: realURL,
@@ -207,9 +223,9 @@ func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes
 	}
 	res, err := mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
 		AttachmentType: table.AttachmentTypeImage,
-		URL:            xma.PreviewImage.URL,
-		PreviewWidth:   xma.PreviewImage.Width,
-		PreviewHeight:  xma.PreviewImage.Height,
+		URL:            img.URL,
+		PreviewWidth:   img.Width,
+		PreviewHeight:  img.Height,
 		RefreshMeta:    &mediadl.MediaRefreshMeta{},
 		DirectMedia:    mc.DirectMedia,
 		MaxFileSize:    mc.MaxFileSize,
@@ -245,7 +261,7 @@ func (mc *MessageConverter) wrapMedia(
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    fmt.Sprintf("Unsupported %s message. Use the Instagram app to view.", typeName),
+				Body:    fmt.Sprintf("Unrecognized %s attachment message. Use the Instagram app to view.", typeName),
 			},
 		}
 	}
@@ -337,7 +353,7 @@ func (mc *MessageConverter) musicStickerReuploadParams(att *slidetypes.MessageCo
 		return mediadl.ReuploadParams{}
 	}
 	return mediadl.ReuploadParams{
-		AttachmentType: table.AttachmentTypeSticker,
+		AttachmentType: table.AttachmentTypeAudio,
 		URL:            att.AudioTrack.Web30SPreviewDownloadURL,
 		RefreshMeta:    &mediadl.MediaRefreshMeta{AttachmentFBID: att.MediaContentFBID},
 	}
