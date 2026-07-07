@@ -81,7 +81,10 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentText:
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.TextBody, msg.Mentions))
 	case *slidetypes.MessageContentAdminText:
-		cm.Parts = append(cm.Parts, mc.wrapAdminText(content.TextFragments))
+		adminText := mc.wrapAdminText(content.TextFragments)
+		// TODO find out if there are any important admin text messages that should be bridged
+		adminText.DontBridge = true
+		cm.Parts = append(cm.Parts, adminText)
 	case *slidetypes.MessageContentImage:
 		for i, att := range content.Attachments {
 			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "image", i, mc.attachmentReuploadParams(att, table.AttachmentTypeImage)))
