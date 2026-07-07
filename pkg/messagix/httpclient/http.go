@@ -413,7 +413,7 @@ func (c *HTTPClient) makeRequest(
 			return nil, nil, err
 		}
 		backoff := time.Duration(attempts) * 3 * time.Second
-		if resp.StatusCode == 429 {
+		if resp != nil && resp.StatusCode == 429 {
 			backoff *= 2
 		}
 		logContext(c.log.Err(err)).
