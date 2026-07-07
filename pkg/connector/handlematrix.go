@@ -458,7 +458,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		}
 		consumerMsg := wrapEdit(&waConsumerApplication.ConsumerApplication_EditMessage{
 			Key:         m.messageIDToWAKey(messageID),
-			Message:     m.Main.MsgConv.TextToWhatsApp(edit.Content),
+			Message:     m.Main.MsgConv.TextToWhatsApp(ctx, edit.Portal, edit.Content),
 			TimestampMS: ptr.Ptr(edit.Event.Timestamp),
 		})
 		edit.EditTarget.Metadata.(*metaid.MessageMetadata).EditTimestamp = edit.Event.Timestamp

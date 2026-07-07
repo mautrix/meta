@@ -18,10 +18,12 @@ package textfmt
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
@@ -98,6 +100,20 @@ func (mhp *MatrixHTMLParser) Parse(ctx context.Context, content *event.MessageEv
 	return parsed, socketMentions
 }
 
+func (mhp *MatrixHTMLParser) ParseWhatsApp(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal) (string, []string) {
+	if content.Format != event.FormatHTML {
+		return content.Body, nil
+	}
+	mentions := make([]string, 0)
+
+	parseCtx := format.NewContext(ctx)
+	parseCtx.ReturnData["waMentions"] = &mentions
+	parseCtx.ReturnData["portal"] = portal
+	parsed := mhp.f.Parse(content.FormattedBody, parseCtx)
+
+	return parsed, mentions
+}
+
 const mentionLocator = "meta_mention_"
 
 type MetaMention struct {
@@ -147,6 +163,11 @@ func (mhp *MatrixHTMLParser) convertPill(displayname, mxid, eventID string, ctx 
 		}
 	} else {
 		return displayname
+	}
+	if waMentions, ok := ctx.ReturnData["waMentions"].(*[]string); ok {
+		mentionedJID := types.NewJID(strconv.FormatInt(userID, 10), types.MessengerServer).String()
+		*waMentions = append(*waMentions, mentionedJID)
+		return "@" + mentionedJID
 	}
 	mention := NewMetaMention(userID, username)
 	mentions := ctx.ReturnData["mentions"].(*[]*MetaMention)

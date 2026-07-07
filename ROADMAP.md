@@ -84,9 +84,9 @@
     * [x] Gifs
     * [ ] Locations
     * [ ] Polls
-  * [ ] Formatting
+  * [x] Formatting
   * [x] Replies
-  * [ ] Mentions
+  * [x] Mentions
 * [x] Message redactions
 * [x] Message reactions
 * [x] Message edits

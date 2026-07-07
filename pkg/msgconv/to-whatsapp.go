@@ -49,10 +49,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
-func (mc *MessageConverter) TextToWhatsApp(content *event.MessageEventContent) *waCommon.MessageText {
-	// TODO mentions
+func (mc *MessageConverter) TextToWhatsApp(ctx context.Context, portal *bridgev2.Portal, content *event.MessageEventContent) *waCommon.MessageText {
+	text, mentions := mc.HTMLParser.ParseWhatsApp(ctx, content, portal)
 	return &waCommon.MessageText{
-		Text: proto.String(content.Body),
+		Text:         &text,
+		MentionedJID: mentions,
 	}
 }
 
@@ -82,7 +83,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		waContent.Content = &waConsumerApplication.ConsumerApplication_Content_MessageText{
-			MessageText: mc.TextToWhatsApp(content),
+			MessageText: mc.TextToWhatsApp(ctx, portal, content),
 		}
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile, event.MessageType(event.EventSticker.Type):
 		reuploaded, fileName, err := mc.reuploadMediaToWhatsApp(ctx, evt, content)
@@ -91,7 +92,7 @@ func (mc *MessageConverter) ToWhatsApp(
 		}
 		var caption *waCommon.MessageText
 		if content.FileName != "" && content.Body != content.FileName {
-			caption = mc.TextToWhatsApp(content)
+			caption = mc.TextToWhatsApp(ctx, portal, content)
 		} else {
 			caption = &waCommon.MessageText{}
 		}
