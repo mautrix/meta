@@ -52,6 +52,9 @@ func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.Fe
 		if err != nil {
 			return nil, fmt.Errorf("failed to get thread info: %w", err)
 		}
+		zerolog.Ctx(ctx).Trace().
+			Any("thread_response", resp.ThreadInfo.AsIGDirectThread).
+			Msg("Response for initial thread fetch")
 		thread = resp.ThreadInfo.AsIGDirectThread
 	}
 	canBackwardsBackfill := params.AnchorMessage == nil && ic.Main.Bridge.Config.Backfill.Queue.AnyEnabled()
@@ -102,6 +105,9 @@ func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.Fe
 		if err != nil {
 			return nil, fmt.Errorf("failed to paginate messages: %w", err)
 		}
+		zerolog.Ctx(ctx).Trace().
+			Any("paginate_response", resp.ThreadInfo.AsIGDirectThread.Messages).
+			Msg("Response for pagination")
 		appendMessages(resp.ThreadInfo.AsIGDirectThread.Messages)
 	}
 	var markRead bool
@@ -153,6 +159,9 @@ func (ic *IGClient) fetchBackwardBackfill(ctx context.Context, params bridgev2.F
 		if err != nil {
 			return nil, fmt.Errorf("failed to paginate messages: %w", err)
 		}
+		zerolog.Ctx(ctx).Trace().
+			Any("paginate_response", resp.ThreadInfo.AsIGDirectThread.Messages).
+			Msg("Response for backwards pagination")
 		messages = append(messages, resp.ThreadInfo.AsIGDirectThread.Messages.Edges...)
 		beforeMessageID = nil
 		cursor = &resp.ThreadInfo.AsIGDirectThread.Messages.PageInfo.EndCursor

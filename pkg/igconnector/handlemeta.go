@@ -153,6 +153,9 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to get thread info for %s: %w", threadIGID, err)
 	}
+	zerolog.Ctx(ctx).Trace().
+		Any("thread_resp", resp.ThreadInfo.AsIGDirectThread).
+		Msg("Response for thread resync fetch")
 	// This should be done by extra updates in the chat resync anyway, but do it here just to be safe
 	err = ic.saveThreadMappings(ctx, resp.ThreadInfo.AsIGDirectThread)
 	if err != nil {
