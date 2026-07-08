@@ -88,6 +88,10 @@ func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, e
 	)
 }
 
+func (c *Client) PaginateMailbox(ctx context.Context, req *slidetypes.PaginateMailboxRequest) (*slidetypes.PaginateMailboxResponse, error) {
+	return makeGraphQLRequest[*slidetypes.PaginateMailboxResponse](ctx, c, "IGDThreadListOffMsysPaginationQuery", req, true)
+}
+
 func (c *Client) GetThread(ctx context.Context, req *slidetypes.GetThreadInfoRequest) (*slidetypes.ThreadInfoResponse, error) {
 	return makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req, true)
 }

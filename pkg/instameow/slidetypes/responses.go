@@ -27,6 +27,10 @@ func (r *MailboxResponse) GetMailbox() *Mailbox {
 	return r.Mailbox
 }
 
+type PaginateMailboxResponse struct {
+	Mailbox *MailboxPage `json:"fetch__SlideMailbox"`
+}
+
 type ThreadInfoResponse struct {
 	ThreadInfo WrappedThreadInfo `json:"get_slide_thread_nullable"`
 }

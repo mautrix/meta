@@ -173,6 +173,33 @@ func MakeMailboxRequest(deviceID string) *GetMailboxRequest {
 	}
 }
 
+type PaginateMailboxRequest struct {
+	Count                int    `json:"count"`
+	Cursor               string `json:"cursor"`
+	Folder               string `json:"folder"`
+	NewerThanTimestampMS *int64 `json:"newer_than_timestamp_ms"`
+	ViewerFBID           int64  `json:"id,string"`
+
+	IGDPinnedThreadsRenderEnabledGK bool `json:"__relay_internal__pv__IGDPinnedThreadsRenderEnabledGKrelayprovider"`
+	IGDMaxUnreadMessagesCount       int  `json:"__relay_internal__pv__IGDMaxUnreadMessagesCountrelayprovider"`
+	PolarisAIGMAccountLabelEnabled  bool `json:"__relay_internal__pv__PolarisAIGMAccountLabelEnabledrelayprovider"`
+	IGDThreadListActionsEnabledGK   bool `json:"__relay_internal__pv__IGDThreadListActionsEnabledGKrelayprovider"`
+}
+
+func MakePaginateMailboxRequest(viewerFBID int64, cursor, folder string, newerThanTimestampMS *int64) *PaginateMailboxRequest {
+	return &PaginateMailboxRequest{
+		Count:                           5,
+		Cursor:                          cursor,
+		Folder:                          folder,
+		NewerThanTimestampMS:            newerThanTimestampMS,
+		ViewerFBID:                      viewerFBID,
+		IGDPinnedThreadsRenderEnabledGK: true,
+		IGDMaxUnreadMessagesCount:       5,
+		PolarisAIGMAccountLabelEnabled:  false,
+		IGDThreadListActionsEnabledGK:   true,
+	}
+}
+
 type GetProfilePageRequest struct {
 	EnableIntegrityFilters          bool   `json:"enable_integrity_filters"`
 	ID                              string `json:"id"`

@@ -26,6 +26,14 @@ type Mailbox struct {
 	Unrecognized map[string]any `json:",unknown"`
 }
 
+type MailboxPage struct {
+	ThreadsByFolder Edged[Node[WrappedThreadInfo]] `json:"threads_by_folder"`
+	ID              string                         `json:"id"`
+	Token           string                         `json:"__token"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
 type Edged[T any] struct {
 	Edges    []T      `json:"edges"`
 	PageInfo PageInfo `json:"page_info,omitzero"`

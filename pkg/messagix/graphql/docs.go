@@ -130,6 +130,10 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "26919110827778778",
 		FriendlyName: "useIGDUnpinMessageOffMsysMutation",
 	},
+	"IGDThreadListOffMsysPaginationQuery": {
+		DocID:        "27712934271665380",
+		FriendlyName: "IGDThreadListOffMsysPaginationQuery",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {
