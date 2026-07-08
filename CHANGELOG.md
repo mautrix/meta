@@ -1,3 +1,16 @@
+# v26.07 (unreleased)
+
+* Added new Instagram bridge.
+  * Existing bridges configured with `mode: instagram` can seamlessly switch to
+    the new bridge by just replacing the binary (`mautrix-meta` →
+    `mautrix-instagram`) or Docker image (still `dock.mau.dev/mautrix/meta`, but
+    with an `ig-` prefix for the tag, e.g. `:ig-latest` or `:ig-v26.07`).
+  * Mixed-mode bridges can't be migrated. Trying to do that will break all
+    Messenger logins.
+  * The old bridge still works until Meta breaks the old API.
+* Added support for bridging text formatting.
+* Removed support for bridging typing notifications in legacy Instagram bridge.
+
 # v26.06
 
 * Fixed connecting to Instagram again.
