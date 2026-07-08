@@ -28,6 +28,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -183,6 +184,7 @@ func (ic *IGClient) wrapBackfillMessages(
 	// Instagram returns messages newest to oldest, bridgev2 wants oldest to newest
 	slices.Reverse(messages)
 	out := make([]*bridgev2.BackfillMessage, len(messages))
+	var reactions []*metadb.IGReactionEntry
 	for i, msg := range messages {
 		if ctx.Err() != nil {
 			return nil
@@ -211,7 +213,18 @@ func (ic *IGClient) wrapBackfillMessages(
 				Sender:    ic.makeEventSender(react.SenderFBID),
 				Emoji:     react.Reaction,
 			}
+			if react.LogMessageID != "" {
+				reactions = append(reactions, &metadb.IGReactionEntry{
+					TargetMsgID:   msg.Node.ID,
+					Sender:        react.SenderFBID,
+					ReactionMsgID: react.LogMessageID,
+				})
+			}
 		}
+	}
+	err := ic.Main.DB.PutManyIGReactions(ctx, portal.PortalKey, reactions)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to store IG reaction mappings from backfill")
 	}
 	return out
 }

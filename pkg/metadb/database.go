@@ -259,3 +259,50 @@ func (db *MetaDB) PutFBIDForIGChat(ctx context.Context, igid string, fbid int64,
 	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_chat_id (igid, fbid, login) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", igid, fbid, login)
 	return err
 }
+
+const (
+	putIGReactionQuery = `
+		INSERT INTO meta_instagram_reaction (bridge_id, portal_id, portal_receiver, target_message_id, reaction_sender, reaction_message_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT DO NOTHING
+	`
+	getIGReactionQuery = `
+		SELECT target_message_id, reaction_sender
+		FROM meta_instagram_reaction
+		WHERE bridge_id = $1 AND portal_id = $2 AND portal_receiver = $3 AND reaction_message_id = $4
+	`
+)
+
+func (db *MetaDB) PutIGReaction(ctx context.Context, portalKey networkid.PortalKey, targetMsgID string, sender int64, reactionMsgID string) error {
+	_, err := db.Exec(ctx, putIGReactionQuery, db.BridgeID, portalKey.ID, portalKey.Receiver, targetMsgID, sender, reactionMsgID)
+	return err
+}
+
+type IGReactionEntry struct {
+	TargetMsgID   string
+	Sender        int64
+	ReactionMsgID string
+}
+
+func (ire *IGReactionEntry) GetMassInsertValues() [3]any {
+	return [3]any{ire.TargetMsgID, ire.Sender, ire.ReactionMsgID}
+}
+
+var putIGReactionMassInsertBuilder = dbutil.NewMassInsertBuilder[*IGReactionEntry, [3]any](putIGReactionQuery, "($1, $2, $3, $%d, $%d, $%d)")
+
+func (db *MetaDB) PutManyIGReactions(ctx context.Context, portalKey networkid.PortalKey, reactions []*IGReactionEntry) error {
+	if len(reactions) == 0 {
+		return nil
+	}
+	query, values := putIGReactionMassInsertBuilder.Build([3]any{db.BridgeID, portalKey.ID, portalKey.Receiver}, reactions)
+	_, err := db.Exec(ctx, query, values...)
+	return err
+}
+
+func (db *MetaDB) GetIGReactionTarget(ctx context.Context, portalKey networkid.PortalKey, reactionMsgID string) (targetMsgID string, sender int64, err error) {
+	err = db.QueryRow(ctx, getIGReactionQuery, db.BridgeID, portalKey.ID, portalKey.Receiver, reactionMsgID).Scan(&targetMsgID, &sender)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return
+}

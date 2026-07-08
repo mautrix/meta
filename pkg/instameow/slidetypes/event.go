@@ -74,10 +74,8 @@ type CreateReactionEvent struct {
 }
 
 type DeleteReactionEvent struct {
-	MessageID string `json:"message_id"`
-	Reaction  struct {
-		LogMessageID string `json:"log_message_id"`
-	} `json:"reaction"`
+	MessageID string   `json:"message_id"`
+	Reaction  Reaction `json:"reaction"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }

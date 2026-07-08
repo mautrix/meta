@@ -242,9 +242,9 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	case *slidetypes.EditMessageEvent:
 		res = ic.handleEdit(portalKey, evt)
 	case *slidetypes.CreateReactionEvent:
-		res = ic.handleReaction(portalKey, evt)
+		res = ic.handleReaction(ctx, portalKey, evt)
 	case *slidetypes.DeleteReactionEvent:
-		res = ic.handleReactionDelete(portalKey, evt)
+		res = ic.handleReactionDelete(ctx, portalKey, evt)
 	case *slidetypes.DeleteMessageEvent:
 		res = ic.handleMessageDelete(portalKey, evt.MessageID)
 	case *slidetypes.DeleteThreadEvent:
@@ -347,7 +347,11 @@ func (ic *IGClient) handleEdit(portalKey networkid.PortalKey, evt *slidetypes.Ed
 	})
 }
 
-func (ic *IGClient) handleReaction(portalKey networkid.PortalKey, evt *slidetypes.CreateReactionEvent) bridgev2.EventHandlingResult {
+func (ic *IGClient) handleReaction(ctx context.Context, portalKey networkid.PortalKey, evt *slidetypes.CreateReactionEvent) bridgev2.EventHandlingResult {
+	err := ic.Main.DB.PutIGReaction(ctx, portalKey, evt.MessageID, evt.Reaction.SenderFBID, evt.Reaction.LogMessageID)
+	if err != nil {
+		return bridgev2.EventHandlingResultFailed.WithError(fmt.Errorf("failed to store reaction mapping in db: %w", err))
+	}
 	return ic.UserLogin.QueueRemoteEvent(&simplevent.Reaction{
 		EventMeta: simplevent.EventMeta{
 			Type:        bridgev2.RemoteEventReaction,
@@ -361,9 +365,31 @@ func (ic *IGClient) handleReaction(portalKey networkid.PortalKey, evt *slidetype
 	})
 }
 
-func (ic *IGClient) handleReactionDelete(portalKey networkid.PortalKey, evt *slidetypes.DeleteReactionEvent) bridgev2.EventHandlingResult {
-	// TODO
-	return bridgev2.EventHandlingResultIgnored
+func (ic *IGClient) handleReactionDelete(ctx context.Context, portalKey networkid.PortalKey, evt *slidetypes.DeleteReactionEvent) bridgev2.EventHandlingResult {
+	targetMsgID := evt.MessageID
+	reactionSenderFBID := evt.Reaction.SenderFBID
+	if reactionSenderFBID == 0 {
+		var err error
+		targetMsgID, reactionSenderFBID, err = ic.Main.DB.GetIGReactionTarget(ctx, portalKey, evt.Reaction.LogMessageID)
+		if err != nil {
+			return bridgev2.EventHandlingResultFailed.WithError(fmt.Errorf("failed to get reaction target from db: %w", err))
+		} else if targetMsgID == "" {
+			zerolog.Ctx(ctx).Warn().
+				Stringer("portal_key", portalKey).
+				Str("delete_id", evt.MessageID).
+				Str("reaction_message_id", evt.Reaction.LogMessageID).
+				Msg("Dropping reaction delete of unknown reaction message ID")
+			return bridgev2.EventHandlingResultIgnored
+		}
+	}
+	return ic.UserLogin.QueueRemoteEvent(&simplevent.Reaction{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventReactionRemove,
+			PortalKey: portalKey,
+			Sender:    ic.makeEventSender(reactionSenderFBID),
+		},
+		TargetMessage: metaid.MakeFBMessageID(targetMsgID),
+	})
 }
 
 func (ic *IGClient) handleMessageDelete(portalKey networkid.PortalKey, id string) bridgev2.EventHandlingResult {

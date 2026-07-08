@@ -198,7 +198,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 	} else if !ic.Main.Config.CacheConnectionState {
 		zerolog.Ctx(ctx).Debug().Msg("Not using saved reconnection state as it's disabled in the config")
 	} else if err = cli.LoadState(state); err != nil {
-		zerolog.Ctx(ctx).Err(err).
+		zerolog.Ctx(ctx).Debug().Err(err).
 			Time("last_used", lastUsed).
 			Msg("Failed to load reconnection state")
 	} else if cli.HasSeqID() {

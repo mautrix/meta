@@ -66,10 +66,10 @@ type MessageSender struct {
 }
 
 type Reaction struct {
-	LogMessageID        string                   `json:"log_message_id"`
-	Reaction            string                   `json:"reaction"`
-	ReactionTimestampMS jsontime.UnixMilliString `json:"reaction_timestamp_ms"`
-	SenderFBID          int64                    `json:"sender_fbid,string"`
+	LogMessageID        string                   `json:"log_message_id,omitzero"`
+	Reaction            string                   `json:"reaction,omitzero"`
+	ReactionTimestampMS jsontime.UnixMilliString `json:"reaction_timestamp_ms,omitzero"`
+	SenderFBID          int64                    `json:"sender_fbid,string,omitzero"`
 }
 
 type MentionList []*Mention
