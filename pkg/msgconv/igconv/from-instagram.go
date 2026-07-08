@@ -124,11 +124,12 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentXMA:
 		if content.XMATextBody != "" && content.XMA.TargetID == "" {
 			part := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)
-			preview, err := mc.wrapLinkPreview(ctx, content.XMA)
+			preview, dbMeta, err := mc.wrapLinkPreview(ctx, content.XMA)
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to wrap XMA link preview")
 			} else {
 				part.Content.BeeperLinkPreviews = []*event.BeeperLinkPreview{preview}
+				part.DBMetadata = dbMeta
 			}
 			// Replies to instants don't have any media on web, but do have the quote text
 			if content.XMA.EyebrowText != "" {
@@ -204,11 +205,11 @@ func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment) *
 	}
 }
 
-func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes.XMAContent) (*event.BeeperLinkPreview, error) {
+func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes.XMAContent) (*event.BeeperLinkPreview, any, error) {
 	realURL := xma.TargetURL
 	parsedURL, err := url.Parse(xma.TargetURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse XMA target URL: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse XMA target URL: %w", err)
 	}
 	if parsedURL.Host == "l.facebook.com" {
 		realURL = parsedURL.Query().Get("u")
@@ -222,7 +223,7 @@ func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes
 				Description:  xma.SubtitleText,
 			},
 			MatchedURL: realURL,
-		}, nil
+		}, nil, nil
 	}
 	res, err := mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
 		AttachmentType: table.AttachmentTypeImage,
@@ -234,7 +235,7 @@ func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes
 		MaxFileSize:    mc.MaxFileSize,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to reupload XMA preview image: %w", err)
+		return nil, nil, fmt.Errorf("failed to reupload XMA preview image: %w", err)
 	}
 	return &event.BeeperLinkPreview{
 		LinkPreview: event.LinkPreview{
@@ -250,7 +251,7 @@ func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes
 		MatchedURL:      realURL,
 		ImageEncryption: res.Content.File,
 		ImageBlurhash:   res.Content.GetInfo().Blurhash,
-	}, nil
+	}, res.DBMetadata, nil
 }
 
 func (mc *MessageConverter) wrapMedia(
@@ -275,8 +276,11 @@ func (mc *MessageConverter) wrapMedia(
 	}
 	params.RefreshMeta.PartIndex = index
 
-	partID := networkid.PartID(fmt.Sprintf("%s-%d", strings.ReplaceAll(typeName, " ", ""), index))
-	ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
+	partID, ok := ctx.Value(mediadl.ContextKeyPartID).(networkid.PartID)
+	if !ok {
+		partID = networkid.PartID(fmt.Sprintf("%s-%d", strings.ReplaceAll(typeName, " ", ""), index))
+		ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
+	}
 
 	res, err := mediadl.ReuploadFileToMatrix(ctx, params)
 	if err != nil {
@@ -293,7 +297,7 @@ func (mc *MessageConverter) attachmentReuploadParams(att *slidetypes.Attachment,
 	}
 	return mediadl.ReuploadParams{
 		AttachmentType: typ,
-		URL:            att.AttachmentCDNURL,
+		URL:            cmp.Or(att.AttachmentCDNURL, att.PreviewCDNURL),
 		PreviewWidth:   att.PreviewWidth,
 		PreviewHeight:  att.PreviewHeight,
 		RefreshMeta:    &mediadl.MediaRefreshMeta{AttachmentFBID: att.AttachmentFBID},
@@ -327,6 +331,9 @@ func (mc *MessageConverter) animatedMediaReuploadParams(att *slidetypes.Animated
 		typ = table.AttachmentTypeAnimatedImage
 		url = att.AttachmentMP4URL
 		mimeType = "video/mp4"
+	} else if att.PreviewCDNURL != "" {
+		typ = table.AttachmentTypeImage
+		url = att.PreviewCDNURL
 	}
 	return mediadl.ReuploadParams{
 		AttachmentType: typ,

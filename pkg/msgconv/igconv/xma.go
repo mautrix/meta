@@ -272,7 +272,8 @@ func (mc *MessageConverter) wrapXMAItem(
 	part.Content.Format = basePart.Content.Format
 	part.Content.FormattedBody = basePart.Content.FormattedBody
 	info := part.Content.Info
-	if info != nil && part.Content.MsgType == event.MsgVideo && basePart.Content.MsgType == event.MsgImage {
+	// TODO support thumbnails with direct media
+	if info != nil && part.Content.MsgType == event.MsgVideo && basePart.Content.MsgType == event.MsgImage && !mc.DirectMedia {
 		info.ThumbnailURL = basePart.Content.URL
 		info.ThumbnailFile = basePart.Content.File
 		info.ThumbnailInfo = basePart.Content.Info

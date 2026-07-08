@@ -30,10 +30,12 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gabriel-vasile/mimetype"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -45,7 +47,7 @@ import (
 
 // MediaRefreshMeta contains identifiers needed to refresh expired media URLs
 type MediaRefreshMeta struct {
-	ExpiresAt int64 `json:"expires_at,omitempty"` // Unix seconds when the URL expires
+	ExpiresAt jsontime.UnixMilli `json:"expires_at,omitzero"`
 
 	// For blob attachments (message re-fetch):
 	AttachmentFBID string `json:"attachment_fbid,omitempty"`
@@ -88,6 +90,18 @@ type ReuploadParams struct {
 
 	DirectMedia bool
 	MaxFileSize int64
+}
+
+func ParseExpiryFromURL(urlStr string) time.Time {
+	parsedURL, _ := url.Parse(urlStr)
+	if parsedURL == nil {
+		return time.Time{}
+	}
+	expiresAtInt, _ := strconv.ParseInt(parsedURL.Query().Get("oe"), 16, 64)
+	if expiresAtInt > 0 {
+		return time.Unix(expiresAtInt, 0)
+	}
+	return time.Time{}
 }
 
 func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2.ConvertedMessagePart, error) {
@@ -177,8 +191,8 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 		if err != nil {
 			return nil, err
 		}
-		if params.RefreshMeta != nil && params.RefreshMeta.ExpiresAt == 0 && parsedURL != nil {
-			params.RefreshMeta.ExpiresAt, _ = strconv.ParseInt(parsedURL.Query().Get("oe"), 16, 64)
+		if params.RefreshMeta != nil && params.RefreshMeta.ExpiresAt.IsZero() {
+			params.RefreshMeta.ExpiresAt = jsontime.UM(ParseExpiryFromURL(params.URL))
 		}
 		directMediaMeta, err := json.Marshal(&DirectMediaMeta{
 			MimeType:         params.MimeType,

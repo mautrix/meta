@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -65,7 +66,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 		url := info.URL
 
 		// Check if URL is expired or about to expire (5 minute buffer)
-		needsRefresh := info.ExpiresAt > 0 && time.Now().UnixMilli() > info.ExpiresAt-5*60*1000
+		needsRefresh := !info.ExpiresAt.IsZero() && time.Now().After(info.ExpiresAt.Add(-5*time.Minute))
 
 		// Try download first
 		size, reader, err := mediadl.DownloadMedia(ctx, info.MimeType, url, m.MsgConv.MaxFileSize)
@@ -272,7 +273,7 @@ func (m *MetaConnector) refreshBlobMedia(
 	for _, wrappedMsg := range allMessages {
 		// Build attachment URL map: AttachmentFbid -> fresh URL
 		attachmentURLs := make(map[string]string)
-		attachmentExpiry := make(map[string]int64)
+		attachmentExpiry := make(map[string]time.Time)
 
 		for _, att := range wrappedMsg.BlobAttachments {
 			if att.AttachmentFbid == "" {
@@ -286,7 +287,7 @@ func (m *MetaConnector) refreshBlobMedia(
 			}
 			if url != "" {
 				attachmentURLs[att.AttachmentFbid] = url
-				attachmentExpiry[att.AttachmentFbid] = expiry
+				attachmentExpiry[att.AttachmentFbid] = time.UnixMilli(expiry)
 			}
 		}
 
@@ -302,7 +303,7 @@ func (m *MetaConnector) refreshBlobMedia(
 			}
 			if url != "" {
 				attachmentURLs[att.AttachmentFbid] = url
-				attachmentExpiry[att.AttachmentFbid] = expiry
+				attachmentExpiry[att.AttachmentFbid] = time.UnixMilli(expiry)
 			}
 		}
 
@@ -344,7 +345,7 @@ func (m *MetaConnector) refreshBlobMedia(
 
 			// Update the stored URL and expiry
 			dmm.URL = freshURL
-			dmm.ExpiresAt = freshExpiry
+			dmm.ExpiresAt = jsontime.UM(freshExpiry)
 
 			updatedMeta, err := json.Marshal(dmm)
 			if err != nil {

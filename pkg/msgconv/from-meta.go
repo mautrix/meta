@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
@@ -339,7 +340,7 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 	}
 
 	refreshMeta := &mediadl.MediaRefreshMeta{
-		ExpiresAt:      expiresAt,
+		ExpiresAt:      jsontime.UMInt(expiresAt),
 		AttachmentFBID: att.AttachmentFbid,
 		PartIndex:      partIndex,
 	}
@@ -401,7 +402,7 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 	}
 
 	refreshMeta := &mediadl.MediaRefreshMeta{
-		ExpiresAt:      expiresAt,
+		ExpiresAt:      jsontime.UMInt(expiresAt),
 		AttachmentFBID: att.AttachmentFbid,
 		PartIndex:      partIndex,
 	}
