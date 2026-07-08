@@ -187,7 +187,7 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 	marshaledSyncParams, err := json.Marshal(&syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
-		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQueryInstagramRelayOperation,
+		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQuery,
 	})
 	if err != nil {
 		return nil, err

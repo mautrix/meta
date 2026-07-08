@@ -9,7 +9,7 @@ type GraphQLDoc struct {
 	Jsessw string
 }
 
-const IGDSlideDeltaProcessorQueryInstagramRelayOperation = "27603408612621900"
+const IGDSlideDeltaProcessorQuery = "28239922265610241"
 const IGDTypingIndicatorClientSubscription = "27563068933278040"
 
 var GraphQLDocs = map[string]GraphQLDoc{
@@ -27,7 +27,7 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		Jsessw:       "1",
 	},
 	"IGDEditThreadNameDialogOffMsysMutation": {
-		DocID:        "29088580780787855",
+		DocID:        "26508340268868683",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
 	},
 	"useIGDirectAcceptMessageRequestMutation": {
@@ -35,7 +35,7 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "useIGDirectAcceptMessageRequestMutation",
 	},
 	"PolarisDirectMessageRequestQuery": {
-		DocID:        "25843909248644743",
+		DocID:        "27512223021750545",
 		FriendlyName: "PolarisDirectMessageRequestQuery",
 	},
 	"IGDirectUpdateThreadImageMutation": {
@@ -47,7 +47,7 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "IGDirectRemoveThreadImageMutation",
 	},
 	"PolarisDirectInboxQuery": {
-		DocID:        "27243523918640219",
+		DocID:        "27262915580045003",
 		FriendlyName: "PolarisDirectInboxQuery",
 	},
 	"useIGDSystemFolderUnreadThreadCountQuery": {
@@ -55,7 +55,7 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "useIGDSystemFolderUnreadThreadCountQuery",
 	},
 	"IGDThreadDetailQuery": {
-		DocID:        "27285304037801080",
+		DocID:        "37117700834487428",
 		FriendlyName: "IGDThreadDetailQuery",
 	},
 	"IGDSlideAsyncFetchAndInsertIGDViewerThreadQuery": {
@@ -79,7 +79,7 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "IGDirectEditMessageMutation",
 	},
 	"IGDMessageListOffMsysQuery": {
-		DocID:        "25255103937520139",
+		DocID:        "27502152406082940",
 		FriendlyName: "IGDMessageListOffMsysQuery",
 	},
 	"IGDMessageUnsendDialogOffMsysMutation": {
