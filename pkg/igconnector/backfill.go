@@ -48,7 +48,7 @@ func (ic *IGClient) FetchMessages(ctx context.Context, params bridgev2.FetchMess
 func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.FetchMessagesParams, meta *metaid.PortalMetadata) (*bridgev2.FetchMessagesResponse, error) {
 	thread, ok := params.BundledData.(*slidetypes.ThreadInfo)
 	if !ok {
-		zerolog.Ctx(ctx).Warn().Msg("No bundled data in FetchMessages request, fetching thread...")
+		zerolog.Ctx(ctx).Debug().Msg("Fetching thread for forward backfill request...")
 		resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(meta.IGID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get thread info: %w", err)
@@ -57,6 +57,7 @@ func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.Fe
 			Any("thread_response", resp.ThreadInfo.AsIGDirectThread).
 			Msg("Response for initial thread fetch")
 		thread = resp.ThreadInfo.AsIGDirectThread
+		params.Portal.UpdateInfo(ctx, ic.wrapChatInfo(thread), ic.UserLogin, nil, time.Time{})
 	}
 	canBackwardsBackfill := params.AnchorMessage == nil && ic.Main.Bridge.Config.Backfill.Queue.AnyEnabled()
 	needsMore := len(thread.SlideMessages.Edges) < params.Count &&
@@ -190,7 +191,7 @@ func (ic *IGClient) wrapBackfillMessages(
 			return nil
 		}
 		msgID := metaid.MakeFBMessageID(msg.Node.ID)
-		sender := ic.makeEventSender(msg.Node.Sender.UserDict.InteropMessagingUserFBID)
+		sender := ic.makeEventSender(msg.Node.SenderFBID)
 		intent, ok := portal.GetIntentFor(ctx, sender, ic.UserLogin, bridgev2.RemoteEventBackfill)
 		if !ok {
 			intent = ic.Main.Bridge.Bot

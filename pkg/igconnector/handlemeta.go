@@ -137,17 +137,22 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	}
 }
 
-func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo) *simplevent.ChatResync {
+func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool) *simplevent.ChatResync {
+	var bundle any
+	// Fetching the entire inbox only returns stub messages which can't be used safely for backfilling.
+	// Let FetchMessages fetch the full thread info in such cases (which happens after checking if backfill is needed).
+	if useBundle {
+		bundle = thread
+	}
 	return &simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatResync,
 			PortalKey:    ic.makePortalKey(thread.ThreadKey, thread.IsGroup),
 			CreatePortal: true,
 		},
-		ChatInfo: ic.wrapChatInfo(thread),
-		// TODO use CheckNeedsBackfillFunc instead?
+		ChatInfo:            ic.wrapChatInfo(thread),
 		LatestMessageTS:     thread.LastActivityTimestampMS.Time,
-		BundledBackfillData: thread,
+		BundledBackfillData: bundle,
 	}
 }
 
@@ -164,7 +169,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to save FBID for IG thread %s: %w", threadIGID, err)
 	}
-	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread)
+	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread, true)
 	res := ic.UserLogin.QueueRemoteEvent(evt)
 	if !res.Success {
 		return evt.PortalKey, res.Error
@@ -299,7 +304,7 @@ func (ic *IGClient) makeMessageEventMeta(portalKey networkid.PortalKey, msg *sli
 	return simplevent.EventMeta{
 		Type:         evtType,
 		PortalKey:    portalKey,
-		Sender:       ic.makeEventSender(msg.Sender.UserDict.InteropMessagingUserFBID),
+		Sender:       ic.makeEventSender(msg.SenderFBID),
 		CreatePortal: true,
 		Timestamp:    msg.TimestampMS.Time,
 		StreamOrder:  msg.TimestampMS.UnixMilli(),
