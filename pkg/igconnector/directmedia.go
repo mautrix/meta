@@ -58,10 +58,10 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	}
 
 	var msg *database.Message
-	if mediaInfo.PartID == "" {
-		msg, err = ic.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
-	} else {
+	if mediaInfo.Type.IncludesPartID() {
 		msg, err = ic.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
+	} else {
+		msg, err = ic.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
 	}
 	if err != nil {
 		return nil, err

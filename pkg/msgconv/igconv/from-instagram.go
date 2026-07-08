@@ -276,11 +276,11 @@ func (mc *MessageConverter) wrapMedia(
 	}
 	params.RefreshMeta.PartIndex = index
 
-	partID, ok := ctx.Value(mediadl.ContextKeyPartID).(networkid.PartID)
-	if !ok {
-		partID = networkid.PartID(fmt.Sprintf("%s-%d", strings.ReplaceAll(typeName, " ", ""), index))
-		ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
+	partID := networkid.PartID(fmt.Sprintf("%s-%d", strings.ReplaceAll(typeName, " ", ""), index))
+	if index == 0 {
+		partID = ""
 	}
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 
 	res, err := mediadl.ReuploadFileToMatrix(ctx, params)
 	if err != nil {

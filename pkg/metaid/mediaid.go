@@ -30,7 +30,7 @@ func (t DirectMediaType) isSupported() bool {
 	return false
 }
 
-func (t DirectMediaType) includesPartID() bool {
+func (t DirectMediaType) IncludesPartID() bool {
 	switch t {
 	case DirectMediaTypeMetaV1, DirectMediaTypeWhatsAppV1:
 		return false
@@ -51,7 +51,7 @@ func MakeMediaID(mediaType DirectMediaType, userID networkid.UserLoginID, messag
 	mediaID = binary.BigEndian.AppendUint64(mediaID, uint64(ParseUserLoginID(userID)))
 	mediaID = append(mediaID, byte(len(messageID)))
 	mediaID = append(mediaID, messageID...)
-	if mediaType.includesPartID() {
+	if mediaType.IncludesPartID() {
 		mediaID = append(mediaID, byte(len(partID)))
 		mediaID = append(mediaID, partID...)
 	}
@@ -106,7 +106,7 @@ func ParseMediaID(mediaID networkid.MediaID) (*MediaInfo, error) {
 	}
 	info.MessageID = networkid.MessageID(b)
 
-	if info.Type.includesPartID() {
+	if info.Type.IncludesPartID() {
 		c, err = readOne("part id length")
 		if err != nil {
 			return nil, err

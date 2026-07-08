@@ -86,10 +86,7 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	return ptr.Ptr(format.HTMLToContent(captionHTML))
 }
 
-const xmaPartID networkid.PartID = "xma"
-
 func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent) *bridgev2.ConvertedMessagePart {
-	ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, xmaPartID)
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
 	captionPart := mc.wrapXMACaption(ctx, xma)
 	if previewPart == nil {
@@ -106,9 +103,8 @@ func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMACont
 		previewPart.Content.Format = captionPart.Format
 		previewPart.Content.FormattedBody = captionPart.FormattedBody
 	}
-	fetchedPart := mc.fetchXMA(ctx, xma, previewPart)
-	fetchedPart.ID = xmaPartID
-	return fetchedPart
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, networkid.PartID(""))
+	return mc.fetchXMA(ctx, xma, previewPart)
 }
 
 func isNumeric(str string) bool {
