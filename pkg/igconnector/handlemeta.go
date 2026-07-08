@@ -96,6 +96,9 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		} else {
 			ic.catchingUpTo = evt.LatestSeqID
 		}
+		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
+			go ic.doChatBackfill(ctx, "")
+		}
 		return nil
 	case *slidetypes.Disconnected:
 		ic.UserLogin.BridgeState.Send(status.BridgeState{

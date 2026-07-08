@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -52,6 +53,8 @@ type IGClient struct {
 	catchingUpTo int64
 
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
+	stopChatBackfill     atomic.Pointer[context.CancelFunc]
+	chatBackfillLock     sync.Mutex
 	mailboxProcessed     atomic.Bool
 	waitMailboxProcessed chan struct{}
 }
@@ -341,6 +344,9 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 func (ic *IGClient) Disconnect() {
 	if stopConnectAttempt := ic.stopConnectAttempt.Swap(nil); stopConnectAttempt != nil {
 		(*stopConnectAttempt)()
+	}
+	if stopChatBackfill := ic.stopChatBackfill.Swap(nil); stopChatBackfill != nil {
+		(*stopChatBackfill)()
 	}
 	if cli := ic.Client; cli != nil {
 		cli.Disconnect()

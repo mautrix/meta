@@ -56,6 +56,10 @@ type ThreadBackfillConfig struct {
 	BatchDelay time.Duration `yaml:"batch_delay"`
 }
 
+func (tbc ThreadBackfillConfig) Enabled() bool {
+	return tbc.BatchCount != 0 && tbc.BatchCount != 1
+}
+
 type umConfig Config
 
 func (c *Config) UnmarshalYAML(node *yaml.Node) error {
