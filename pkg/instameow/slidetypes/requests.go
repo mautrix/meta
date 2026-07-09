@@ -77,7 +77,7 @@ type MarkReadData struct {
 }
 
 type DeleteThreadRequest struct {
-	ThreadID   string `json:"thread_fbid,string"`
+	ThreadID   string `json:"thread_fbid"`
 	MarkAsSpam bool   `json:"should_move_future_requests_to_spam"`
 }
 
@@ -218,4 +218,14 @@ func MakeProfilePageRequest(igid string) *GetProfilePageRequest {
 		WebSchoolsEnabled:               false,
 		RepostsConsumptionEnabled:       true,
 	}
+}
+
+type SearchRequest struct {
+	SearchText string `json:"search_text"`
+}
+
+type CreateGroupRequest struct {
+	RecipientFBIDs     []string `json:"recipient_eimu_fbids"`
+	OfflineThreadingID string   `json:"offline_threading_id"`
+	EntryPoint         any      `json:"entry_point"`
 }

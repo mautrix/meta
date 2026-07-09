@@ -104,6 +104,14 @@ func (c *Client) GetProfile(ctx context.Context, igid string) (*slidetypes.Profi
 	return makeGraphQLRequest[*slidetypes.ProfilePageResponse](ctx, c, "PolarisProfilePageContentQuery", slidetypes.MakeProfilePageRequest(igid), true)
 }
 
+func (c *Client) SearchUsers(ctx context.Context, query string) (*slidetypes.SearchResponse, error) {
+	return makeGraphQLRequest[*slidetypes.SearchResponse](ctx, c, "IGDOmniPickerSearchResultsListQuery", slidetypes.SearchRequest{SearchText: query}, true)
+}
+
+func (c *Client) CreateGroup(ctx context.Context, req *slidetypes.CreateGroupRequest) (*slidetypes.CreateGroupResponse, error) {
+	return makeGraphQLRequest[*slidetypes.CreateGroupResponse](ctx, c, "useCreateOpenGroupThreadOffMsysMutation", req, true)
+}
+
 func (c *Client) EditGroupTitle(ctx context.Context, threadID, newTitle string) error {
 	_, err := makeGraphQLRequest[noResp](ctx, c, "IGDEditThreadNameDialogOffMsysMutation", &graphql.IGEditGroupTitleGraphQLRequestPayload{
 		ThreadID: threadID,

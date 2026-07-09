@@ -40,3 +40,12 @@ type User struct {
 
 	Unrecognized map[string]any `json:",unknown"`
 }
+
+type SearchResult struct {
+	InteropMessagingUserFBID int64  `json:"interop_messaging_user_fbid,string"`
+	Username                 string `json:"username"`
+	FullName                 string `json:"full_name"`
+	PK                       string `json:"pk"`
+	ProfilePicURL            string `json:"profile_pic_url"`
+	IsVerified               bool   `json:"is_verified"`
+}

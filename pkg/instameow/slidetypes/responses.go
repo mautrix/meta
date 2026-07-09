@@ -131,3 +131,16 @@ type PinnedMessage struct {
 	ID        string `json:"id"`
 	MessageID string `json:"message_id"`
 }
+
+type SearchResponse struct {
+	Data struct {
+		Results []*SearchResult `json:"search_messenger_contact_v2"`
+	} `json:"xfb_combinedIGSearchQuery"`
+}
+
+type CreateGroupResponse struct {
+	Data struct {
+		ID     string            `json:"id"`
+		Thread *FolderOnlyThread `json:"as_ig_direct_thread"`
+	} `json:"xig_ig_direct_create_thread"`
+}

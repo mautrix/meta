@@ -52,11 +52,12 @@ type IGClient struct {
 	caughtUp     *exsync.Event
 	catchingUpTo int64
 
-	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
-	stopChatBackfill     atomic.Pointer[context.CancelFunc]
-	chatBackfillLock     sync.Mutex
-	mailboxProcessed     atomic.Bool
-	waitMailboxProcessed chan struct{}
+	pendingGroupCreations *exsync.Set[string]
+	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
+	stopChatBackfill      atomic.Pointer[context.CancelFunc]
+	chatBackfillLock      sync.Mutex
+	mailboxProcessed      atomic.Bool
+	waitMailboxProcessed  chan struct{}
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -66,6 +67,8 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		LoginMeta: loginMetadata,
 		UserLogin: login,
 		caughtUp:  exsync.NewEvent(),
+
+		pendingGroupCreations: exsync.NewSet[string](),
 	}
 	c.mailboxProcessed.Store(true)
 	login.Client = c

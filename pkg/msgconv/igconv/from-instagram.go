@@ -81,7 +81,7 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentText:
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.TextBody, msg.Mentions))
 	case *slidetypes.MessageContentAdminText:
-		adminText := mc.wrapAdminText(content.TextFragments)
+		adminText := mc.wrapAdminText(content.TextFragments, msg.IGDSnippet)
 		// TODO find out if there are any important admin text messages that should be bridged
 		adminText.DontBridge = true
 		cm.Parts = append(cm.Parts, adminText)
@@ -187,7 +187,16 @@ func (mc *MessageConverter) wrapText(ctx context.Context, text string, mentions 
 	}
 }
 
-func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment) *bridgev2.ConvertedMessagePart {
+func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment, snippet string) *bridgev2.ConvertedMessagePart {
+	if len(fragments) == 0 {
+		return &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    snippet,
+			},
+		}
+	}
 	var buf strings.Builder
 	for _, f := range fragments {
 		htmlText := event.TextToHTML(f.Plaintext)

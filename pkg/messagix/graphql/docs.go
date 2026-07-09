@@ -134,6 +134,14 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "27712934271665380",
 		FriendlyName: "IGDThreadListOffMsysPaginationQuery",
 	},
+	"IGDOmniPickerSearchResultsListQuery": {
+		DocID:        "27248216181454285",
+		FriendlyName: "IGDOmniPickerSearchResultsListQuery",
+	},
+	"useCreateOpenGroupThreadOffMsysMutation": {
+		DocID:        "27529949946640544",
+		FriendlyName: "useCreateOpenGroupThreadOffMsysMutation",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {

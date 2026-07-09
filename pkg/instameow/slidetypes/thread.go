@@ -88,6 +88,14 @@ type TinyThread struct {
 	Unrecognized map[string]any `json:",unknown"`
 }
 
+type FolderOnlyThread struct {
+	ThreadKey     string `json:"thread_key"`
+	ThreadSubtype string `json:"thread_subtype"`
+	SystemFolder  string `json:"system_folder"`
+	Folder        string `json:"folder"`
+	ID            string `json:"id"`
+}
+
 type MessagesOnlyThread struct {
 	ID       string         `json:"id"`
 	Messages *SlideMessages `json:"slide_messages"`

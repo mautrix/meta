@@ -41,6 +41,7 @@ type Message struct {
 	TextBody                    string                    `json:"text_body"`
 	Mentions                    MentionList               `json:"mentions"`
 	IGDIsForwarded              bool                      `json:"igd_is_forwarded"`
+	IGDSnippet                  string                    `json:"igd_snippet"`
 	RepliedToMessageID          string                    `json:"replied_to_message_id"`
 	RepliedToMessage            *Message                  `json:"replied_to_message"`
 	Sender                      *MessageSender            `json:"sender"`

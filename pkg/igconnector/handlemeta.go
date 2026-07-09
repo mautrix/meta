@@ -224,10 +224,18 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		Msg("Handling delta")
 
 	allowCreate := true
-	switch d.Data.(type) {
+	switch evt := d.Data.(type) {
 	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
 		*slidetypes.ParticipantLeaveEvent:
 		allowCreate = false
+	case *slidetypes.AdminMessageEvent:
+		if ic.pendingGroupCreations.Has(evt.Message.OfflineThreadingID) {
+			log.Debug().
+				Str("offline_threading_id", evt.Message.OfflineThreadingID).
+				Str("thread_id", d.ThreadIGID).
+				Msg("Ignoring create notice for pending creation")
+			return nil
+		}
 	}
 
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate)

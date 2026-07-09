@@ -51,6 +51,28 @@ func (ic *IGClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 	return nil, nil
 }
 
+func (ic *IGClient) updateGhostIGID(username, igid string, fbid int64) bridgev2.ExtraUpdater[*bridgev2.Ghost] {
+	return func(ctx context.Context, ghost *bridgev2.Ghost) (changed bool) {
+		meta := ghost.Metadata.(*metaid.GhostMetadata)
+		if meta.Username != username {
+			meta.Username = username
+			changed = true
+		}
+		if meta.IGID != igid {
+			meta.IGID = igid
+			changed = true
+			err := ic.Main.DB.PutFBIDForIGUser(ctx, igid, fbid)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).
+					Int64("user_fbid", fbid).
+					Str("user_igid", igid).
+					Msg("Failed to save FBID for IG user")
+			}
+		}
+		return
+	}
+}
+
 func (ic *IGClient) wrapUserInfo(info *slidetypes.User) *bridgev2.UserInfo {
 	return &bridgev2.UserInfo{
 		Identifiers: []string{fmt.Sprintf("instagram:%s", info.Username)},
@@ -59,27 +81,22 @@ func (ic *IGClient) wrapUserInfo(info *slidetypes.User) *bridgev2.UserInfo {
 			Username:    info.Username,
 			ID:          info.InteropMessagingUserFBID,
 		})),
-		Avatar: wrapAvatar(info.ProfilePicURL),
-		IsBot:  ptr.Ptr(info.AIAgentType != ""),
-		ExtraUpdates: func(ctx context.Context, ghost *bridgev2.Ghost) (changed bool) {
-			meta := ghost.Metadata.(*metaid.GhostMetadata)
-			if meta.Username != info.Username {
-				meta.Username = info.Username
-				changed = true
-			}
-			if meta.IGID != info.ID {
-				meta.IGID = info.ID
-				changed = true
-				err := ic.Main.DB.PutFBIDForIGUser(ctx, info.ID, info.InteropMessagingUserFBID)
-				if err != nil {
-					zerolog.Ctx(ctx).Err(err).
-						Int64("user_fbid", info.InteropMessagingUserFBID).
-						Str("user_igid", info.ID).
-						Msg("Failed to save FBID for IG user")
-				}
-			}
-			return
-		},
+		Avatar:       wrapAvatar(info.ProfilePicURL),
+		IsBot:        ptr.Ptr(info.AIAgentType != ""),
+		ExtraUpdates: ic.updateGhostIGID(info.Username, info.ID, info.InteropMessagingUserFBID),
+	}
+}
+
+func (ic *IGClient) wrapSearchResultInfo(info *slidetypes.SearchResult) *bridgev2.UserInfo {
+	return &bridgev2.UserInfo{
+		Identifiers: []string{fmt.Sprintf("instagram:%s", info.Username)},
+		Name: ptr.Ptr(ic.Main.Config.FormatDisplayname(DisplaynameParams{
+			DisplayName: info.FullName,
+			Username:    info.Username,
+			ID:          info.InteropMessagingUserFBID,
+		})),
+		Avatar:       wrapAvatar(info.ProfilePicURL),
+		ExtraUpdates: ic.updateGhostIGID(info.Username, info.PK, info.InteropMessagingUserFBID),
 	}
 }
 
