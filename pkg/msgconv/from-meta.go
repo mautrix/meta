@@ -508,6 +508,10 @@ func removeLPHP(addr string) string {
 	return addr
 }
 
+func isInstagramPostPath(path string) bool {
+	return strings.HasPrefix(path, "/p/") || strings.HasPrefix(path, "/reel/") || strings.HasPrefix(path, "/reels/")
+}
+
 func addExternalURLCaption(content *event.MessageEventContent, externalURL string) {
 	if content.FileName == "" {
 		content.FileName = content.Body
@@ -539,6 +543,15 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		mediaShortcode := strings.TrimPrefix(att.CTA.NativeUrl, "instagram://media/?shortcode=")
 		mediaShortcode = strings.TrimPrefix(mediaShortcode, "instagram://reels_share/?shortcode=")
 		externalURL := fmt.Sprintf("https://www.instagram.com/p/%s/", mediaShortcode)
+		if actionURL != nil && isInstagramPostPath(actionURL.Path) {
+			if actionURL.Scheme == "https" && (actionURL.Host == "www.instagram.com" || actionURL.Host == "instagram.com") {
+				externalURL = actionURL.String()
+			} else if actionURL.Scheme == "" && actionURL.Host == "" {
+				actionURL.Scheme = "https"
+				actionURL.Host = "www.instagram.com"
+				externalURL = actionURL.String()
+			}
+		}
 		minimalConverted.Extra["external_url"] = externalURL
 		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
