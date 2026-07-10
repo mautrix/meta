@@ -1,4 +1,4 @@
--- v0 -> v10 (compatible with v8+): Latest schema
+-- v0 -> v11 (compatible with v11+): Latest schema
 CREATE TABLE meta_thread (
     parent_key BIGINT NOT NULL,
     thread_key BIGINT NOT NULL,
@@ -44,20 +44,24 @@ CREATE TABLE meta_instagram_thread_id (
     login     TEXT   NOT NULL,
 
     PRIMARY KEY (igid, login),
-    CONSTRAINT ig_thread_fbid_unique UNIQUE (fbid, login)
+    CONSTRAINT meta_ig_thread_fbid_unique UNIQUE (fbid, login),
+    CONSTRAINT meta_ig_thread_user_login_fkey FOREIGN KEY (bridge_id, login)
+        REFERENCES user_login (bridge_id, id) ON DELETE CASCADE ON UPDATE CASCADE
 );
-
 
 -- Short IG chat ID <-> FB thread key.
 -- For groups, these two are usually the same value.
 -- For DMs, the fbid is the recipient user ID, but the igid is a different short ID.
 CREATE TABLE meta_instagram_chat_id (
-    igid  TEXT   NOT NULL,
-    fbid  BIGINT NOT NULL,
-    login TEXT   NOT NULL,
+    bridge_id TEXT   NOT NULL,
+    igid      TEXT   NOT NULL,
+    fbid      BIGINT NOT NULL,
+    login     TEXT   NOT NULL,
 
     PRIMARY KEY (igid, login),
-    CONSTRAINT ig_chat_fbid_unique UNIQUE (fbid, login)
+    CONSTRAINT meta_ig_chat_fbid_unique UNIQUE (fbid, login),
+    CONSTRAINT meta_ig_chat_user_login_fkey FOREIGN KEY (bridge_id, login)
+        REFERENCES user_login (bridge_id, id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE meta_instagram_reaction (

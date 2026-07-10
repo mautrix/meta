@@ -190,7 +190,7 @@ func (db *MetaDB) GetIGUserForFBID(ctx context.Context, fbid int64) (igid string
 }
 
 func (db *MetaDB) GetIGChatForFBID(ctx context.Context, fbid int64, login networkid.UserLoginID) (igid string, err error) {
-	err = db.QueryRow(ctx, "SELECT igid FROM meta_instagram_chat_id WHERE fbid = $1 AND login = $2", fbid, login).Scan(&igid)
+	err = db.QueryRow(ctx, "SELECT igid FROM meta_instagram_chat_id WHERE fbid = $1 AND login = $2 AND bridge_id = $3", fbid, login, db.BridgeID).Scan(&igid)
 	if errors.Is(err, sql.ErrNoRows) {
 		// return "" if not cached
 		err = nil
@@ -204,7 +204,7 @@ func (db *MetaDB) GetFBIDForIGThread(ctx context.Context, igid string, login net
 	if ok {
 		return fbid, nil
 	}
-	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_thread_id WHERE igid = $1 AND login = $2", igid, login).Scan(&fbid)
+	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_thread_id WHERE igid = $1 AND login = $2 AND bridge_id = $3", igid, login, db.BridgeID).Scan(&fbid)
 	if errors.Is(err, sql.ErrNoRows) {
 		// return 0 if not cached
 		err = nil
@@ -220,7 +220,7 @@ func (db *MetaDB) GetFBIDForIGChat(ctx context.Context, igid string, login netwo
 	if ok {
 		return fbid, nil
 	}
-	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_chat_id WHERE igid = $1 AND login = $2", igid, login).Scan(&fbid)
+	err = db.QueryRow(ctx, "SELECT fbid FROM meta_instagram_chat_id WHERE igid = $1 AND login = $2 AND bridge_id = $3", igid, login, db.BridgeID).Scan(&fbid)
 	if errors.Is(err, sql.ErrNoRows) {
 		// return 0 if not cached
 		err = nil
@@ -253,7 +253,7 @@ func (db *MetaDB) PutFBIDForIGThread(ctx context.Context, igid string, fbid int6
 	if exists {
 		return nil
 	}
-	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_thread_id (igid, fbid, login) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", igid, fbid, login)
+	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_thread_id (bridge_id, igid, fbid, login) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING", db.BridgeID, igid, fbid, login)
 	return err
 }
 
@@ -265,7 +265,7 @@ func (db *MetaDB) PutFBIDForIGChat(ctx context.Context, igid string, fbid int64,
 	if exists {
 		return nil
 	}
-	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_chat_id (igid, fbid, login) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", igid, fbid, login)
+	_, err := db.Exec(ctx, "INSERT INTO meta_instagram_chat_id (bridge_id, igid, fbid, login) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING", db.BridgeID, igid, fbid, login)
 	return err
 }
 
