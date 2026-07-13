@@ -299,6 +299,7 @@ const (
 	StateChooseNumberPage      BrowserState = "choose-number-page"
 	StateWhatsAppPage          BrowserState = "whatsapp-page"
 	StateWhatsAppPageAfterSend BrowserState = "whatsapp-page-after-send"
+	StatePasskeyPage           BrowserState = "passkey"
 	StateSuccess               BrowserState = "success"
 )
 
@@ -528,6 +529,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				newState = StateChooseNumberPage
 			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
 				newState = StateWhatsAppPage
+			case "com.bloks.www.ap.passkey_auth":
+				newState = StatePasskeyPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
@@ -1456,6 +1459,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
+
+	case StatePasskeyPage:
+		btn := b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
+			FindContainingButton()
+		err := btn.TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping try another way button: %w", err)
 		}
 
 	default:

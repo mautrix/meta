@@ -48,6 +48,7 @@ var doCaptcha = flag.String("captcha-code", "", "Captcha code to submit")
 var captchaResponse = flag.String("captcha-resp", "", "Bloks response for captcha submission")
 var doWhatsAppNumbers = flag.Bool("whatsapp-numbers", false, "Print the available WhatsApp numbers")
 var selectedWhatsAppNumber = flag.String("whatsapp-number", "", "Pick a WhatsApp number and submit")
+var cancelPasskey = flag.Bool("cancel-passkey", false, "Tap the 'try another way' passkey button")
 
 func main() {
 	err := mainE()
@@ -635,6 +636,14 @@ func mainE() error {
 			TapButton(ctx, interp)
 		if err != nil {
 			return fmt.Errorf("tap continue: %w", err)
+		}
+	} else if *cancelPasskey {
+		btn := bundle.
+			FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
+			FindContainingButton()
+		err := btn.TapButton(ctx, interp)
+		if err != nil {
+			return fmt.Errorf("tapping try another way button: %w", err)
 		}
 	}
 	return nil
