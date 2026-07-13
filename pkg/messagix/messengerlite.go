@@ -256,7 +256,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		newCookies, err := m.client.ExchangeTransientToken(ctx, loginRespPayload.AccessToken)
 		if err != nil {
 			m.client.Logger.Warn().Err(err).Msg("Failed to exchange transient token for session cookies")
-			return nil, nil, fmt.Errorf("%w: %w", ErrTransientTokenLogin, err)
+			return nil, nil, err
 		}
 		return nil, newCookies, nil
 	}
