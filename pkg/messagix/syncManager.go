@@ -125,8 +125,12 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 	resp.Finish()
 
 	if len(resp.Table.LSHandleSyncFailure) > 0 {
-		// TODO handle these somehow?
-		sm.client.Logger.Warn().
+		// These failures mean the server-side sync for the database errored and no
+		// cursor was obtained, so the database stays unsynced until the next attempt.
+		// A common cause is empty sync params (handled in getSyncParams, see
+		// PLAT-36990); log at error level with the database ID so it's visible.
+		sm.client.Logger.Error().
+			Int64("database_id", databaseID).
 			Any("sync_failures", resp.Table.LSHandleSyncFailure).
 			Msg("Sync failures found")
 	}
@@ -236,18 +240,30 @@ func (sm *SyncManager) UpdateDatabaseSyncParams(dbs []*socket.QueryMetadata) err
 
 var dbID7Params = `{"mnet_rank_types":[44]}`
 
+// defaultLocaleSyncParams is the fallback sync params payload used when the page
+// config doesn't provide LSPlatformMessengerSyncParams. messenger-lite sessions
+// don't include these, so an empty string would make Meta's server fail with
+// "Invalid argument supplied for foreach()" (see PLAT-36990), permanently
+// breaking the affected sync database (e.g. Contact sync on database 2).
+var defaultLocaleSyncParams = `{"locale":"en_US"}`
+
 func (sm *SyncManager) getSyncParams(dbID int64, ch socket.SyncChannel) *string {
 	if dbID == 7 {
 		return &dbID7Params
 	}
+	var params *string
 	switch ch {
 	case socket.MailBox:
-		return &sm.syncParams.Mailbox
+		params = &sm.syncParams.Mailbox
 	case socket.Contact:
-		return &sm.syncParams.Contact
+		params = &sm.syncParams.Contact
 	default:
-		return &sm.syncParams.E2Ee
+		params = &sm.syncParams.E2Ee
 	}
+	if params == nil || *params == "" {
+		return &defaultLocaleSyncParams
+	}
+	return params
 }
 
 func (sm *SyncManager) GetCursor(db int64) string {
