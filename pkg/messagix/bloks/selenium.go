@@ -775,7 +775,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				b.LastError = "Invalid username or password"
 			} else if strings.Contains(err.Error(), "isn't connected to an account") {
 				thing := "username"
-				if strings.Contains("@", username) {
+				if strings.Contains(username, "@") {
 					thing = "email address"
 				}
 				b.LastError = fmt.Sprintf("That %s is not connected to a Messenger account", thing)
