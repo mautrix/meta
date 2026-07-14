@@ -145,7 +145,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 	return dgw.SocketOptions{
 		GetCookies: c.cookies.String,
 		Origin:     c.GetEndpoint("base_url"),
-		WSURL:      "wss://gateway.instagram.com/ws/lightspeed",
+		WSURL:      c.GetEndpoint("dgw_lightspeed"),
 		DialOpts:   *c.http.GetWebsocketDialer(),
 		Log:        c.log.With().Str("socket", "main").Logger(),
 		Facebook:   false,

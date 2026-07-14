@@ -146,26 +146,20 @@ func (s *Socket) handleACKEvent(ackData AckEvent) {
 	}
 }
 
-func (s *Socket) postHandlePublishResponse(tbl *table.LSTable) {
-	syncGroupsNeedUpdate := methods.NeedUpdateSyncGroups(tbl)
-	if syncGroupsNeedUpdate {
-		s.client.Logger.Debug().
-			Any("LSExecuteFirstBlockForSyncTransaction", tbl.LSExecuteFirstBlockForSyncTransaction).
-			Any("LSUpsertSyncGroupThreadsRange", tbl.LSUpsertSyncGroupThreadsRange).
-			Msg("Updating sync groups")
-		err := s.client.syncManager.updateSyncGroupCursors(tbl)
-		if err != nil {
-			s.client.Logger.Err(err).Msg("Failed to sync transactions from publish response event")
-		}
-	}
-}
-
 func (c *Client) PostHandlePublishResponse(tbl *table.LSTable) {
 	if c == nil {
 		return
 	}
-	if s := c.socket; s != nil {
-		s.postHandlePublishResponse(tbl)
+	syncGroupsNeedUpdate := methods.NeedUpdateSyncGroups(tbl)
+	if syncGroupsNeedUpdate {
+		c.Logger.Debug().
+			Any("LSExecuteFirstBlockForSyncTransaction", tbl.LSExecuteFirstBlockForSyncTransaction).
+			Any("LSUpsertSyncGroupThreadsRange", tbl.LSUpsertSyncGroupThreadsRange).
+			Msg("Updating sync groups")
+		err := c.syncManager.updateSyncGroupCursors(tbl)
+		if err != nil {
+			c.Logger.Err(err).Msg("Failed to sync transactions from publish response event")
+		}
 	}
 }
 

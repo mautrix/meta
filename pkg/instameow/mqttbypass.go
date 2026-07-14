@@ -84,7 +84,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 	return dgw.SocketOptions{
 		GetCookies: c.cookies.String,
 		Origin:     c.GetEndpoint("base_url"),
-		WSURL:      "wss://gateway.instagram.com/ws/mqttbypass",
+		WSURL:      c.GetEndpoint("dgw_mqttbypass"),
 		DialOpts:   *c.http.GetWebsocketDialer(),
 		Log:        c.log.With().Str("socket", "mqttbypass").Logger(),
 		Facebook:   false,

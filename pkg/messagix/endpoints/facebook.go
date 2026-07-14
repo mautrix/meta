@@ -1,9 +1,9 @@
 package endpoints
 
 const (
-	facebookHost    = "www.facebook.com"
-	messengerHost   = "www.messenger.com"
-	facebookTorHost = "www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion"
+	facebookHost    = "facebook.com"
+	messengerHost   = "messenger.com"
+	facebookTorHost = "facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion"
 )
 
 var FacebookEndpoints = makeFacebookEndpoints(facebookHost)
@@ -12,9 +12,11 @@ var FacebookTorEndpoints = makeFacebookEndpoints(facebookTorHost)
 var MessengerLiteEndpoints = makeMessengerLiteEndpoints(facebookHost)
 
 func makeFacebookEndpoints(host string) map[string]string {
-	baseURL := "https://" + host
+	wwwHost := "www." + host
+	baseURL := "https://" + wwwHost
+	dgwBase := "https://gateway." + host
 	urls := map[string]string{
-		"host":           host,
+		"host":           wwwHost,
 		"base_url":       baseURL,
 		"messages":       baseURL + "/messages",
 		"thread":         baseURL + "/messages/t/",
@@ -22,6 +24,8 @@ func makeFacebookEndpoints(host string) map[string]string {
 		"graphql":        baseURL + "/api/graphql/",
 		"media_upload":   baseURL + "/ajax/mercury/upload.php?",
 		"web_push":       baseURL + "/push/register/service_worker/",
+
+		"dgw_lightspeed": dgwBase + "/ws/lightspeed",
 
 		"e2ee_ws_url":   "wss://web-chat-e2ee.facebook.com/ws/chat",
 		"icdc_fetch":    "https://reg-e2ee.facebook.com/v2/fb_icdc_fetch",

@@ -415,7 +415,7 @@ func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*socket
 	}
 
 	resp.Finish()
-	c.socket.postHandlePublishResponse(resp.Table)
+	c.PostHandlePublishResponse(resp.Table)
 
 	return keyStore, resp.Table, nil
 }

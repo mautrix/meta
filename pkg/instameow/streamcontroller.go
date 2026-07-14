@@ -92,7 +92,7 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 	return dgw.SocketOptions{
 		GetCookies:     c.cookies.String,
 		Origin:         c.GetEndpoint("base_url"),
-		WSURL:          "wss://gateway.instagram.com/ws/streamcontroller",
+		WSURL:          c.GetEndpoint("dgw_streamcontroller"),
 		DialOpts:       *c.http.GetWebsocketDialer(),
 		Log:            c.log.With().Str("socket", "streamcontroller").Logger(),
 		AppStreamGroup: "group1",
