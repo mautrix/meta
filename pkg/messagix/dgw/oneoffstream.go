@@ -35,13 +35,17 @@ type OneOffStream struct {
 	received *exsync.Event
 	closed   atomic.Bool
 	data     atomic.Pointer[[]byte]
+	noAck    bool
+	noData   bool
 }
 
-func newOneOffStream(conn *websocket.Conn, id StreamID, log *zerolog.Logger) *OneOffStream {
+func newOneOffStream(conn *websocket.Conn, id StreamID, log *zerolog.Logger, noAckOrData bool) *OneOffStream {
 	return &OneOffStream{
 		baseStream: newBaseStream(conn, id, log),
 		acked:      exsync.NewEvent(),
 		received:   exsync.NewEvent(),
+		noAck:      noAckOrData,
+		noData:     noAckOrData,
 	}
 }
 
@@ -59,7 +63,7 @@ func (s *OneOffStream) Do(ctx context.Context, parameters json.RawMessage, initP
 	}, &DataFrame{
 		StreamID:    s.id,
 		Payload:     initPayload,
-		RequiresAck: true,
+		RequiresAck: !s.noAck,
 		AckID:       oneOffAckID,
 	})
 	if err != nil {
@@ -75,23 +79,29 @@ func (s *OneOffStream) Do(ctx context.Context, parameters json.RawMessage, initP
 	if errPtr := s.establishErr.Load(); errPtr != nil {
 		return nil, fmt.Errorf("dgw: establish error: %w", *errPtr)
 	}
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(AckTimeout):
-		return nil, fmt.Errorf("%w for init payload", ErrAckTimeout)
-	case <-s.acked.GetChan():
+	if !s.noAck {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(AckTimeout):
+			return nil, fmt.Errorf("%w for init payload", ErrAckTimeout)
+		case <-s.acked.GetChan():
+		}
 	}
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(AckTimeout):
-		return nil, ErrReceiveTimeout
-	case <-s.received.GetChan():
+	if !s.noData {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(AckTimeout):
+			return nil, ErrReceiveTimeout
+		case <-s.received.GetChan():
+		}
 	}
 	data := s.data.Load()
 	if data == nil {
-		if s.closed.Load() {
+		if s.noData {
+			return nil, nil
+		} else if s.closed.Load() {
 			return nil, ErrClosedBeforeTimeout
 		}
 		return nil, fmt.Errorf("dgw: data is unexpectedly nil")

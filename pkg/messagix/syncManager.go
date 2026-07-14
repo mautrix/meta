@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
@@ -58,26 +59,7 @@ func (c *Client) newSyncManager() *SyncManager {
 	}
 }
 
-func (sm *SyncManager) syncSocketData(ctx context.Context, db int64, cb func(), outErr *error) {
-	defer cb()
-	database, ok := sm.store[db]
-	if !ok {
-		sm.client.Logger.Error().Int64("database_id", db).Msg("Could not find sync store for database")
-		return
-	}
-
-	err := sm.SyncSocketData(ctx, db, database)
-	if err != nil {
-		sm.client.Logger.Err(err).Int64("database_id", db).Msg("Failed to sync database through socket")
-		if db == 1 {
-			*outErr = err
-		}
-	} else {
-		sm.client.Logger.Debug().Any("database_id", db).Any("database", database).Msg("Synced database")
-	}
-}
-
-func (sm *SyncManager) EnsureSyncedSocket(ctx context.Context, databases []int64) (err error) {
+func (sm *SyncManager) ensureSyncedSocket(ctx context.Context, databases []int64) (err error) {
 	var wg sync.WaitGroup
 	wg.Add(len(databases))
 	for _, db := range databases {
@@ -88,12 +70,39 @@ func (sm *SyncManager) EnsureSyncedSocket(ctx context.Context, databases []int64
 	return
 }
 
-func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db *socket.QueryMetadata) error {
+func (sm *SyncManager) syncSocketData(ctx context.Context, db int64, cb func(), outErr *error) {
+	defer cb()
+	database, ok := sm.store[db]
+	if !ok {
+		sm.client.Logger.Error().Int64("database_id", db).Msg("Could not find sync store for database")
+		return
+	}
+
+	err := sm.recursivelySyncSocketData(ctx, db, database, nil)
+	if err != nil {
+		sm.client.Logger.Err(err).Int64("database_id", db).Msg("Failed to sync database through socket")
+		if db == 1 {
+			*outErr = fmt.Errorf("failed to sync db 1: %w", err)
+		}
+	} else {
+		sm.client.Logger.Debug().Any("database_id", db).Any("database", database).Msg("Synced database")
+	}
+}
+
+func (c *Client) clearSocketSyncWaiters() {
+	for _, ch := range c.socketSyncWaiters.SwapData(nil) {
+		close(ch)
+	}
+}
+
+func (sm *SyncManager) recursivelySyncSocketData(
+	ctx context.Context, databaseID int64, db *socket.QueryMetadata, stream *dgw.PersistentStream,
+) error {
 	var t int
 	payload := &socket.DatabaseQuery{
 		Database: databaseID,
 		Version:  json.Number(strconv.FormatInt(sm.client.configs.VersionID, 10)),
-		EpochId:  methods.GenerateEpochID(),
+		EpochID:  methods.GenerateEpochID(),
 	}
 
 	var prevCursor string
@@ -110,46 +119,77 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 
 	jsonPayload, err := json.Marshal(&payload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal DatabaseQuery struct into json bytes (databaseID=%d): %w", databaseID, err)
+		return fmt.Errorf("failed to marshal database query: %w", err)
+	}
+	req, packetID, err := sm.client.encodeLSRequest(jsonPayload, t)
+	if err != nil {
+		return fmt.Errorf("failed to encode lightspeed request: %w", err)
+	}
+	ch := make(chan *PublishResponseData)
+	if oldCh, swapped := sm.client.socketSyncWaiters.Swap(packetID, ch); swapped {
+		close(oldCh)
 	}
 
 	sm.client.Logger.Trace().
 		RawJSON("payload", jsonPayload).
 		Int64("database_id", databaseID).
 		Msg("Syncing database via socket")
-	resp, err := sm.client.socket.makeLSRequest(ctx, jsonPayload, t)
-	if err != nil {
-		return fmt.Errorf("failed to make lightspeed socket request with DatabaseQuery byte payload (databaseID=%d): %w", databaseID, err)
+	if stream == nil {
+		stream, err = sm.client.socket.EstablishStream(ctx, dgw.StreamInit{
+			InitPayload:  req,
+			LogName:      fmt.Sprintf("db %d", databaseID),
+			FrameHandler: sm.client.handleFrame,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to establish stream: %w", err)
+		}
+	} else {
+		err = stream.SendData(ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to send recursive query: %w", err)
+		}
+	}
+	var resp *PublishResponseData
+	select {
+	case resp = <-ch:
+		if resp == nil {
+			return fmt.Errorf("publish response data not received")
+		}
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 
-	resp.Finish()
+	tbl, err := resp.Parse(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to parse table for syncing socket data: %w", err)
+	}
 
-	if len(resp.Table.LSHandleSyncFailure) > 0 {
+	if len(tbl.LSHandleSyncFailure) > 0 {
 		// TODO handle these somehow?
 		sm.client.Logger.Warn().
-			Any("sync_failures", resp.Table.LSHandleSyncFailure).
+			Any("sync_failures", tbl.LSHandleSyncFailure).
 			Msg("Sync failures found")
 	}
-	if len(resp.Table.LSExecuteFirstBlockForSyncTransaction) == 0 {
+	if len(tbl.LSExecuteFirstBlockForSyncTransaction) == 0 {
 		sm.client.Logger.Warn().
 			Any("database_id", databaseID).
 			Any("payload", string(jsonPayload)).
-			Any("response", resp.Data).
-			Any("table", resp.Table).
+			Any("response", resp).
+			Any("table", tbl).
 			Msg("No transactions found")
 		return nil
 	}
-	block := resp.Table.LSExecuteFirstBlockForSyncTransaction[0]
+	block := tbl.LSExecuteFirstBlockForSyncTransaction[0]
 	nextCursor, currentCursor := block.NextCursor, block.CurrentCursor
 	sm.client.Logger.Debug().
 		Any("full_block", block).
 		Any("block_response", block).
 		Any("database_id", payload.Database).
 		Any("payload", string(jsonPayload)).
-		Strs("response_table_fields", resp.Table.NonNilFields()).
+		Strs("response_table_fields", tbl.NonNilFields()).
 		Msg("Synced database")
 	// TODO remove this after confirming there's nothing useful
-	sm.client.HandleEvent(ctx, resp)
+	sm.client.HandleEvent(ctx, tbl)
 	if nextCursor == currentCursor || nextCursor == prevCursor || nextCursor == "dummy_cursor" || nextCursor == "" || !shouldRecurseDatabase[databaseID] {
 		return nil
 	}
@@ -158,12 +198,12 @@ func (sm *SyncManager) SyncSocketData(ctx context.Context, databaseID int64, db 
 	db.LastAppliedCursor = &nextCursor
 	db.SendSyncParams = block.SendSyncParams
 	db.SyncChannel = socket.SyncChannel(block.SyncChannel)
-	err = sm.updateSyncGroupCursors(resp.Table) // Also sync the transaction with the store map because the db param is just a copy of the map entry
+	err = sm.updateSyncGroupCursors(tbl) // Also sync the transaction with the store map because the db param is just a copy of the map entry
 	if err != nil {
 		return err
 	}
 
-	return sm.SyncSocketData(ctx, databaseID, db)
+	return sm.recursivelySyncSocketData(ctx, databaseID, db, stream)
 }
 
 func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table.LSTable, error) {
@@ -224,9 +264,9 @@ func (sm *SyncManager) SyncTransactions(transactions []*table.LSExecuteFirstBloc
 
 func (sm *SyncManager) UpdateDatabaseSyncParams(dbs []*socket.QueryMetadata) error {
 	for _, db := range dbs {
-		database, ok := sm.store[db.DatabaseId]
+		database, ok := sm.store[db.DatabaseID]
 		if !ok {
-			return fmt.Errorf("failed to update sync params for database: %d", db.DatabaseId)
+			return fmt.Errorf("failed to update sync params for database: %d", db.DatabaseID)
 		}
 		database.SendSyncParams = db.SendSyncParams
 		database.SyncChannel = db.SyncChannel

@@ -109,8 +109,8 @@ func handleOutgoingRequest(data json.RawMessage) {
 		var dbQuery socket.DatabaseQuery
 		exerrors.PanicIfNotNil(json.Unmarshal([]byte(payload.Payload), &dbQuery))
 		exerrors.PanicIfNotNil(json.NewEncoder(os.Stdout).Encode(&formattedOutgoingRequest{
-			AppID:         payload.AppId,
-			RequestID:     payload.RequestId,
+			AppID:         payload.AppID,
+			RequestID:     payload.RequestID,
 			Type:          payload.Type,
 			EpochID:       taskPayload.EpochId,
 			DataTraceID:   taskPayload.DataTraceId,
@@ -131,8 +131,8 @@ func handleOutgoingRequest(data json.RawMessage) {
 		}
 	}
 	exerrors.PanicIfNotNil(json.NewEncoder(os.Stdout).Encode(&formattedOutgoingRequest{
-		AppID:       payload.AppId,
-		RequestID:   payload.RequestId,
+		AppID:       payload.AppID,
+		RequestID:   payload.RequestID,
 		Type:        payload.Type,
 		EpochID:     taskPayload.EpochId,
 		DataTraceID: taskPayload.DataTraceId,

@@ -27,14 +27,17 @@ func (c *Client) ExecuteTasks(ctx context.Context, tasks ...socket.Task) (*table
 		return nil, fmt.Errorf("failed to finalize payload: %w", err)
 	}
 
-	resp, err := c.socket.makeLSRequest(ctx, payload, 3)
+	resp, err := c.makeLSRequest(ctx, payload, 3)
 	if err != nil {
 		return nil, err
 	}
 
-	resp.Finish()
+	tbl, err := resp.Parse(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
 
-	return resp.Table, nil
+	return tbl, nil
 }
 
 func (c *Client) ExecuteStatelessTask(ctx context.Context, task socket.Task) error {
@@ -61,6 +64,6 @@ func (c *Client) ExecuteStatelessTask(ctx context.Context, task socket.Task) err
 	if err != nil {
 		return fmt.Errorf("failed to marshal outer task %s payload: %w", label, err)
 	}
-	_, err = c.socket.makeLSRequest(ctx, outerPayloadMarshalled, 4)
+	_, err = c.makeLSRequest(ctx, outerPayloadMarshalled, 4)
 	return err
 }

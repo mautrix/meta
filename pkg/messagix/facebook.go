@@ -72,12 +72,10 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 }
 
 type pushNotificationsResponse struct {
-	Ar        int     `json:"__ar"`
-	Payload   payload `json:"payload"`
-	DtsgToken string  `json:"dtsgToken"`
-	Lid       string  `json:"lid"`
-}
-
-type payload struct {
-	Success bool `json:"success"`
+	Ar      int `json:"__ar"`
+	Payload struct {
+		Success bool `json:"success"`
+	} `json:"payload"`
+	DtsgToken string `json:"dtsgToken"`
+	Lid       string `json:"lid"`
 }

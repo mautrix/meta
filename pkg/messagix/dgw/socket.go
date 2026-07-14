@@ -76,6 +76,13 @@ func NewSocket(opts SocketOptions) *Socket {
 	return s
 }
 
+func (s *Socket) IsConnected() bool {
+	if s == nil {
+		return false
+	}
+	return s.conn.Load() != nil
+}
+
 func (s *Socket) rawNextStreamID() (streamID StreamID, overflow bool) {
 	placeholderID := s.nextStreamID.Add(1) - 1
 	if placeholderID > MaxStreamID {
@@ -111,7 +118,7 @@ type StreamInit struct {
 	FrameHandler FrameHandler
 }
 
-func (s *Socket) DoOneOffStream(ctx context.Context, payload []byte) ([]byte, error) {
+func (s *Socket) DoOneOffStream(ctx context.Context, payload []byte, noAckOrData bool) ([]byte, error) {
 	conn := s.conn.Load()
 	if conn == nil {
 		return nil, ErrSocketNotOpen
@@ -121,7 +128,7 @@ func (s *Socket) DoOneOffStream(ctx context.Context, payload []byte) ([]byte, er
 		s.sendFatalError(err)
 		return nil, err
 	}
-	oos := newOneOffStream(conn, streamID, &s.Log)
+	oos := newOneOffStream(conn, streamID, &s.Log, noAckOrData)
 	_, replaced := s.streams.Swap(streamID, oos)
 	if replaced {
 		err = fmt.Errorf("dgw: stream ID collision on %d", streamID)

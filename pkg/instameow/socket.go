@@ -202,7 +202,7 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 		Database:          223,
 		LastAppliedCursor: ptr.Ptr(string(marshaledCursor)),
 		SyncParams:        ptr.Ptr(string(marshaledSyncParams)),
-		EpochId:           0,
+		EpochID:           0,
 		Version:           "-3",
 		FailureCount:      retryCount,
 	})
