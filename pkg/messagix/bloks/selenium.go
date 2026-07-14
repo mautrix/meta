@@ -773,7 +773,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			log.Debug().Err(err).Msg("Got error from username/password submission")
 			if strings.Contains(err.Error(), "Invalid username or password") {
 				b.LastError = "Invalid username or password"
-			} else if strings.Contains(err.Error(), "isn't connected to an account") {
+			} else if strings.Contains(err.Error(), "isn’t connected to an account") || strings.Contains(err.Error(), "isn't connected to an account") {
+				// Note matching both unicode + ASCII apostrophe - unicode appears to be what Meta uses
 				thing := "username"
 				if strings.Contains(username, "@") {
 					thing = "email address"
