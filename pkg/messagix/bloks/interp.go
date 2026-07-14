@@ -33,6 +33,7 @@ type InterpBridge struct {
 	DisplayNewScreen     func(context.Context, string, *BloksBundle) error
 	HandleLoginResponse  func(ctx context.Context, data string) error
 	StartTimer           func(name string, interval time.Duration, callback func() error) error
+	CancelTimer          func(name string) error
 	OpenURL              func(url string) error
 	HandleVariableChange func(ctx context.Context, name string, value *BloksScriptLiteral) error
 }
@@ -152,6 +153,11 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	if br.StartTimer == nil {
 		br.StartTimer = func(name string, interval time.Duration, callback func() error) error {
 			return fmt.Errorf("unhandled timer %s", name)
+		}
+	}
+	if br.CancelTimer == nil {
+		br.CancelTimer = func(name string) error {
+			return fmt.Errorf("unhandled timer cancel %s", name)
 		}
 	}
 	if br.OpenURL == nil {
@@ -1091,6 +1097,17 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			})
 			return err
 		})
+		if err != nil {
+			return nil, err
+		}
+		return BloksNothing, nil
+	case "bk.action.timer.Cancel":
+		// Args are (timer context, name), the first of which we have no use for.
+		name, err := evalAs[string](ctx, i, &call.Args[1], "timer.cancel")
+		if err != nil {
+			return nil, err
+		}
+		err = i.Bridge.CancelTimer(name)
 		if err != nil {
 			return nil, err
 		}
