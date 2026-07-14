@@ -1212,7 +1212,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return false
 			}
 			for _, prefix := range []string{
-				"We sent a notification",
+				// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
+				"We sent a",
 				"Open the notification",
 			} {
 				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
