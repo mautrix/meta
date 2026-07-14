@@ -22,7 +22,8 @@ import (
 )
 
 var (
-	ErrLoginPhoneNumber = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
+	ErrLoginPhoneNumber     = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
+	ErrLoginInvalidUsername = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
 )
 
 // This error is returned in cases where we have observed Meta returning an error that is
@@ -740,6 +741,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		if !definitelyNotPhoneNumberRegexp.MatchString(username) {
 			return nil, ErrLoginPhoneNumber
+		}
+		if strings.Contains(username, ":") { // covers MXIDs
+			return nil, ErrLoginInvalidUsername
 		}
 
 		// Set up in case we don't navigate to a new page successfully
