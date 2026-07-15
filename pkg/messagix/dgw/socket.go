@@ -290,13 +290,17 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		for {
 			select {
 			case frame := <-incoming:
-				if frame.f == nil {
+				if frame.s == nil {
 					return
 				}
-				err := frame.s.receiveFrame(ctx, frame.f)
-				if err != nil {
-					fatalError(fmt.Errorf("dgw: frame handler error: %w", err))
-					return
+				if frame.f != nil {
+					err := frame.s.receiveFrame(ctx, frame.f)
+					if err != nil {
+						fatalError(fmt.Errorf("dgw: frame handler error: %w", err))
+						return
+					}
+				} else {
+					frame.s.close()
 				}
 			case <-done:
 				return
@@ -346,7 +350,9 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 				s.Log.Debug().Uint16("stream_id", uint16(f.StreamID)).Msg("Received end of data frame for unknown stream")
 			} else {
 				s.Log.Debug().Uint16("stream_id", uint16(f.StreamID)).Msg("Received end of data frame")
-				stream.close()
+				incoming <- wrappedDataFrame{
+					s: stream,
+				}
 				s.streams.Delete(f.StreamID)
 			}
 		case *DrainFrame:

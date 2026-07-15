@@ -209,6 +209,7 @@ func (s *PersistentStream) cancelAck(id uint16, expectedCh <-chan bool) {
 }
 
 func (s *PersistentStream) close() {
+	s.log.Debug().Msg("Close called for persistent stream")
 	if !s.closed.Set() {
 		return
 	}

@@ -324,14 +324,14 @@ func (f *EndOfDataFrame) MarshalAppend(b []byte) []byte {
 
 func (f *EndOfDataFrame) Unmarshal(bytes []byte) ([]byte, error) {
 	if len(bytes) < 3 {
-		return nil, fmt.Errorf("input too short for CloseFrame")
+		return nil, fmt.Errorf("input too short for EndOfDataFrame")
 	}
 	f.StreamID = StreamID(binary.LittleEndian.Uint16(bytes[1:3]))
 	return bytes[3:], nil
 }
 
 func (f *EndOfDataFrame) String() string {
-	return fmt.Sprintf("CloseFrame{StreamID: %d}", f.StreamID)
+	return fmt.Sprintf("EndOfDataFrame{StreamID: %d}", f.StreamID)
 }
 
 type EstablishStreamFrame struct {

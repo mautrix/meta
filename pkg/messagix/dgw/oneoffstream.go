@@ -101,6 +101,10 @@ func (s *OneOffStream) Do(ctx context.Context, parameters json.RawMessage, initP
 
 func (s *OneOffStream) receiveFrame(ctx context.Context, f *DataFrame) error {
 	if s.data.Swap(&f.Payload) == nil {
+		s.log.Trace().
+			Uint16("stream_id", uint16(f.StreamID)).
+			Uint16("frame_ack_id", f.AckID).
+			Msg("Received data frame for one-off stream")
 		s.received.Set()
 	} else {
 		s.log.Warn().
@@ -125,6 +129,7 @@ func (s *OneOffStream) receiveAck(id uint16) bool {
 }
 
 func (s *OneOffStream) close() {
+	s.log.Trace().Uint16("stream_id", uint16(s.id)).Msg("Close called for one-off stream")
 	s.closed.Store(true)
 	s.received.Set()
 	s.acked.Set()
