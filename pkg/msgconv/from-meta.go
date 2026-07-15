@@ -90,6 +90,7 @@ func (mc *MessageConverter) ToMatrix(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	client *messagix.Client,
+	userLogin *bridgev2.UserLogin,
 	intent bridgev2.MatrixAPI,
 	messageID networkid.MessageID,
 	msg *table.WrappedMessage,
@@ -98,6 +99,7 @@ func (mc *MessageConverter) ToMatrix(
 	ctx = context.WithValue(ctx, mediadl.ContextKeyFBClient, client)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyIGClient, client.Instagram)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, intent)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyUserLogin, userLogin)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyFetchXMA, !disableXMA)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyMsgID, messageID)

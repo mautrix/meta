@@ -107,7 +107,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 
 		ul := m.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 		if ul == nil || !ul.Client.IsLoggedIn() {
-			return nil, fmt.Errorf("no logged in user found")
+			return nil, fmt.Errorf("login %s not found for download", mediaInfo.UserID)
 		}
 		client := ul.Client.(*MetaClient)
 		return &mediaproxy.GetMediaResponseFile{
@@ -129,7 +129,7 @@ func (m *MetaConnector) refreshMediaURL(
 ) (string, error) {
 	ul := m.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 	if ul == nil || !ul.Client.IsLoggedIn() {
-		return "", fmt.Errorf("no logged in user found for refresh")
+		return "", fmt.Errorf("login %s not found for refresh", mediaInfo.UserID)
 	}
 	client := ul.Client.(*MetaClient)
 

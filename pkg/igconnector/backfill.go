@@ -200,7 +200,7 @@ func (ic *IGClient) wrapBackfillMessages(
 		}
 		out[i] = &bridgev2.BackfillMessage{
 			ConvertedMessage: ic.Main.MsgConv.ToMatrix(
-				ctx, portal, ic.Client, intent, msgID, msg.Node,
+				ctx, portal, ic.Client, ic.UserLogin, intent, msgID, msg.Node,
 				ic.Main.Config.DisableXMABackfill || ic.Main.Config.DisableXMAAlways,
 			),
 			Sender:      sender,

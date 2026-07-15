@@ -27,6 +27,7 @@ const (
 	ContextKeyFBClient
 	ContextKeyIGClient
 	ContextKeyIntent
+	ContextKeyUserLogin
 	ContextKeyPortal
 	ContextKeyFetchXMA
 	ContextKeyMsgID

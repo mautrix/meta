@@ -209,7 +209,12 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		if ctx.Value(mediadl.ContextKeyPartID) != nil {
 			partID = ctx.Value(mediadl.ContextKeyPartID).(networkid.PartID)
 		}
-		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsAppV2, portal.Receiver, msgID, partID)
+		loginID := portal.Receiver
+		login, ok := ctx.Value(mediadl.ContextKeyUserLogin).(*bridgev2.UserLogin)
+		if ok {
+			loginID = login.ID
+		}
+		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsAppV2, loginID, msgID, partID)
 		content := &event.MessageEventContent{
 			Info: &event.FileInfo{
 				MimeType: transport.GetAncillary().GetMimetype(),
@@ -710,6 +715,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 	portal *bridgev2.Portal,
 	plainClient *messagix.Client,
 	client *whatsmeow.Client,
+	userLogin *bridgev2.UserLogin,
 	intent bridgev2.MatrixAPI,
 	messageID networkid.MessageID,
 	evt *events.FBMessage,
@@ -717,6 +723,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 	ctx = context.WithValue(ctx, mediadl.ContextKeyFBClient, plainClient)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyWAClient, client)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, intent)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyUserLogin, userLogin)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyMsgID, messageID)
 	cm := &bridgev2.ConvertedMessage{}

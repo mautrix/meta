@@ -122,7 +122,7 @@ func (ic *IGConnector) refreshMediaURL(
 ) (string, error) {
 	ul := ic.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 	if ul == nil || !ul.Client.IsLoggedIn() {
-		return "", fmt.Errorf("no logged in user found for refresh")
+		return "", fmt.Errorf("login %s not found for refresh", mediaInfo.UserID)
 	}
 	client := ul.Client.(*IGClient)
 
