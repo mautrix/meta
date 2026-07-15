@@ -148,9 +148,9 @@ func (t *SendMessageTask) GetLabel() string {
 	return TaskLabels["SendMessageTask"]
 }
 
-func (t *SendMessageTask) Create() (interface{}, interface{}, bool) {
+func (t *SendMessageTask) Create() (any, string) {
 	queueName := strconv.FormatInt(t.ThreadId, 10)
-	return t, queueName, false
+	return t, queueName
 }
 
 type CreatePollTask struct {
@@ -164,8 +164,8 @@ func (t *CreatePollTask) GetLabel() string {
 	return TaskLabels["CreatePollTask"]
 }
 
-func (t *CreatePollTask) Create() (interface{}, interface{}, bool) {
-	return t, "poll_creation", false
+func (t *CreatePollTask) Create() (any, string) {
+	return t, "poll_creation"
 }
 
 type UpdatePollTask struct {
@@ -180,8 +180,8 @@ func (t *UpdatePollTask) GetLabel() string {
 	return TaskLabels["UpdatePollTask"]
 }
 
-func (t *UpdatePollTask) Create() (interface{}, interface{}, bool) {
-	return t, "poll_update", false
+func (t *UpdatePollTask) Create() (any, string) {
+	return t, "poll_update"
 }
 
 type ThreadMarkReadTask struct {
@@ -194,9 +194,9 @@ func (t *ThreadMarkReadTask) GetLabel() string {
 	return TaskLabels["ThreadMarkRead"]
 }
 
-func (t *ThreadMarkReadTask) Create() (interface{}, interface{}, bool) {
+func (t *ThreadMarkReadTask) Create() (any, string) {
 	queueName := strconv.FormatInt(t.ThreadId, 10)
-	return t, queueName, false
+	return t, queueName
 }
 
 type FetchMessagesTask struct {
@@ -212,10 +212,10 @@ func (t *FetchMessagesTask) GetLabel() string {
 	return TaskLabels["FetchMessagesTask"]
 }
 
-func (t *FetchMessagesTask) Create() (interface{}, interface{}, bool) {
+func (t *FetchMessagesTask) Create() (any, string) {
 	threadStr := strconv.FormatInt(t.ThreadKey, 10)
 	queueName := "mrq." + threadStr
-	return t, queueName, false
+	return t, queueName
 }
 
 type MuteThreadTask struct {
@@ -229,8 +229,8 @@ func (t *MuteThreadTask) GetLabel() string {
 	return TaskLabels["MuteThreadTask"]
 }
 
-func (t *MuteThreadTask) Create() (interface{}, interface{}, bool) {
-	return t, strconv.FormatInt(t.ThreadKey, 10), false
+func (t *MuteThreadTask) Create() (any, string) {
+	return t, strconv.FormatInt(t.ThreadKey, 10)
 }
 
 type RenameThreadTask struct {
@@ -243,8 +243,8 @@ func (t *RenameThreadTask) GetLabel() string {
 	return TaskLabels["RenameThreadTask"]
 }
 
-func (t *RenameThreadTask) Create() (interface{}, interface{}, bool) {
-	return t, strconv.FormatInt(t.ThreadKey, 10), false
+func (t *RenameThreadTask) Create() (any, string) {
+	return t, strconv.FormatInt(t.ThreadKey, 10)
 }
 
 type SetThreadImageTask struct {
@@ -257,8 +257,8 @@ func (t *SetThreadImageTask) GetLabel() string {
 	return TaskLabels["SetThreadImageTask"]
 }
 
-func (t *SetThreadImageTask) Create() (interface{}, interface{}, bool) {
-	return t, "thread_image", false
+func (t *SetThreadImageTask) Create() (any, string) {
+	return t, "thread_image"
 }
 
 type EditMessageTask struct {
@@ -270,8 +270,8 @@ func (t *EditMessageTask) GetLabel() string {
 	return TaskLabels["EditMessageTask"]
 }
 
-func (t *EditMessageTask) Create() (interface{}, interface{}, bool) {
-	return t, "edit_message", false
+func (t *EditMessageTask) Create() (any, string) {
+	return t, "edit_message"
 }
 
 type UpdateAdminTask struct {
@@ -284,8 +284,8 @@ func (t *UpdateAdminTask) GetLabel() string {
 	return TaskLabels["UpdateAdminTask"]
 }
 
-func (t *UpdateAdminTask) Create() (interface{}, interface{}, bool) {
-	return t, "admin_status", false
+func (t *UpdateAdminTask) Create() (any, string) {
+	return t, "admin_status"
 }
 
 type RemoveParticipantTask struct {
@@ -297,8 +297,8 @@ func (t *RemoveParticipantTask) GetLabel() string {
 	return TaskLabels["RemoveParticipantTask"]
 }
 
-func (t *RemoveParticipantTask) Create() (interface{}, interface{}, bool) {
-	return t, "remove_participant_v2", false
+func (t *RemoveParticipantTask) Create() (any, string) {
+	return t, "remove_participant_v2"
 }
 
 type AddParticipantsTask struct {
@@ -311,8 +311,8 @@ func (t *AddParticipantsTask) GetLabel() string {
 	return TaskLabels["AddParticipantsTask"]
 }
 
-func (t *AddParticipantsTask) Create() (interface{}, interface{}, bool) {
-	return t, strconv.FormatInt(t.ThreadKey, 10), false
+func (t *AddParticipantsTask) Create() (any, string) {
+	return t, strconv.FormatInt(t.ThreadKey, 10)
 }
 
 type CreateThreadTask struct {
@@ -328,8 +328,8 @@ func (t *CreateThreadTask) GetLabel() string {
 	return TaskLabels["CreateThreadTask"]
 }
 
-func (t *CreateThreadTask) Create() (interface{}, interface{}, bool) {
-	return t, strconv.FormatInt(t.ThreadFBID, 10), false
+func (t *CreateThreadTask) Create() (any, string) {
+	return t, strconv.FormatInt(t.ThreadFBID, 10)
 }
 
 type CreateGroupPayload struct {
@@ -348,8 +348,8 @@ func (t *CreateGroupTask) GetLabel() string {
 	return TaskLabels["CreateGroupTask"]
 }
 
-func (t *CreateGroupTask) Create() (interface{}, interface{}, bool) {
-	return t, strconv.FormatInt(t.SendPayload.ThreadID, 10), false
+func (t *CreateGroupTask) Create() (any, string) {
+	return t, strconv.FormatInt(t.SendPayload.ThreadID, 10)
 }
 
 type AcceptMessageRequestTask struct {
@@ -362,8 +362,8 @@ func (t *AcceptMessageRequestTask) GetLabel() string {
 	return TaskLabels["AcceptMessageRequestTask"]
 }
 
-func (t *AcceptMessageRequestTask) Create() (interface{}, interface{}, bool) {
-	return t, "message_request", false
+func (t *AcceptMessageRequestTask) Create() (any, string) {
+	return t, "message_request"
 }
 
 type DeleteThreadTask struct {
@@ -376,8 +376,8 @@ func (t *DeleteThreadTask) GetLabel() string {
 	return TaskLabels["DeleteThreadTask"]
 }
 
-func (t *DeleteThreadTask) Create() (interface{}, interface{}, bool) {
-	return t, strconv.FormatInt(t.ThreadKey, 10), false
+func (t *DeleteThreadTask) Create() (any, string) {
+	return t, strconv.FormatInt(t.ThreadKey, 10)
 }
 
 type CreateWhatsAppThreadTask struct {
@@ -393,8 +393,8 @@ func (t *CreateWhatsAppThreadTask) GetLabel() string {
 	return TaskLabels["CreateWhatsAppThreadTask"]
 }
 
-func (t *CreateWhatsAppThreadTask) Create() (any, any, bool) {
-	return t, strconv.FormatInt(t.OfflineThreadKey, 10), false
+func (t *CreateWhatsAppThreadTask) Create() (any, string) {
+	return t, strconv.FormatInt(t.OfflineThreadKey, 10)
 }
 
 type FetchCommunityMemberList struct {
@@ -414,8 +414,8 @@ func (t *FetchCommunityMemberList) GetLabel() string {
 	return TaskLabels["FetchCommunityMemberList"]
 }
 
-func (t *FetchCommunityMemberList) Create() (any, any, bool) {
-	return t, "fetch_community_member_list", false
+func (t *FetchCommunityMemberList) Create() (any, string) {
+	return t, "fetch_community_member_list"
 }
 
 type FetchAdditionalThreadData struct {
@@ -426,8 +426,8 @@ func (t *FetchAdditionalThreadData) GetLabel() string {
 	return TaskLabels["FetchAdditionalThreadData"]
 }
 
-func (t *FetchAdditionalThreadData) Create() (any, any, bool) {
-	return t, fmt.Sprintf("fetch_additional_thread_data_%d", t.ThreadKey), false
+func (t *FetchAdditionalThreadData) Create() (any, string) {
+	return t, fmt.Sprintf("fetch_additional_thread_data_%d", t.ThreadKey)
 }
 
 type CreateCommunitySubThread struct {
@@ -441,8 +441,8 @@ func (t *CreateCommunitySubThread) GetLabel() string {
 	return TaskLabels["CreateCommunitySubThread"]
 }
 
-func (t *CreateCommunitySubThread) Create() (any, any, bool) {
-	return t, fmt.Sprintf("create_community_sub_thread_%d", t.ParentThreadID), false
+func (t *CreateCommunitySubThread) Create() (any, string) {
+	return t, fmt.Sprintf("create_community_sub_thread_%d", t.ParentThreadID)
 }
 
 type DeleteCommunitySubThread struct {
@@ -455,8 +455,8 @@ func (t *DeleteCommunitySubThread) GetLabel() string {
 	return TaskLabels["DeleteCommunitySubThread"]
 }
 
-func (t *DeleteCommunitySubThread) Create() (any, any, bool) {
-	return t, strconv.FormatInt(t.ThreadKey, 10), false
+func (t *DeleteCommunitySubThread) Create() (any, string) {
+	return t, strconv.FormatInt(t.ThreadKey, 10)
 }
 
 type CommunityThreadHoleDetection struct {
@@ -470,6 +470,6 @@ func (t *CommunityThreadHoleDetection) GetLabel() string {
 	return TaskLabels["CommunityThreadHoleDetection"]
 }
 
-func (t *CommunityThreadHoleDetection) Create() (any, any, bool) {
-	return t, fmt.Sprintf("cm_thread_hole_detection%d", t.ThreadID), false
+func (t *CommunityThreadHoleDetection) Create() (any, string) {
+	return t, fmt.Sprintf("cm_thread_hole_detection%d", t.ThreadID)
 }

@@ -11,7 +11,7 @@ func (t *ReportAppStateTask) GetLabel() string {
 	return TaskLabels["ReportAppStateTask"]
 }
 
-func (t *ReportAppStateTask) Create() (interface{}, interface{}, bool) {
+func (t *ReportAppStateTask) Create() (any, string) {
 	queueName := "ls_presence_report_app_state"
-	return t, queueName, false
+	return t, queueName
 }

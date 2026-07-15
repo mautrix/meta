@@ -42,6 +42,9 @@ func main() {
 		exerrors.PanicIfNotNil(clipboard.Initialize())
 		data = []byte(exerrors.Must(clipboard.ReadAll("clipboard")))
 	}
+	if len(data) == 0 {
+		return
+	}
 	if !json.Valid(data) {
 		data, _ = base64.StdEncoding.DecodeString(string(data))
 		if bytes.Contains(data[:20], []byte("/ls_req")) || bytes.Contains(data[:20], []byte("/ls_resp")) {
@@ -124,7 +127,7 @@ func handleOutgoingRequest(data json.RawMessage) {
 			LabelName:    taskNames[task.Label],
 			QueueName:    task.QueueName,
 			TaskID:       task.TaskID,
-			Payload:      json.RawMessage(task.Payload.(string)),
+			Payload:      json.RawMessage(task.Payload),
 		}
 	}
 	exerrors.PanicIfNotNil(json.NewEncoder(os.Stdout).Encode(&formattedOutgoingRequest{
