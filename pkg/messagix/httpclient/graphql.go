@@ -217,9 +217,9 @@ func (c *HTTPClient) MakeLSRequest(ctx context.Context, variables *graphql.LSPla
 
 	var lsRequestQueryName string
 	if c.parent.GetPlatform().IsMessenger() {
-		lsRequestQueryName = "LSGraphQLRequest"
+		lsRequestQueryName = "LSPlatformGraphQLLightspeedRequestQuery"
 	} else {
-		lsRequestQueryName = "LSGraphQLRequestIG"
+		lsRequestQueryName = "LSPlatformGraphQLLightspeedRequestForIGDQuery"
 	}
 	_, respBody, err := c.MakeGraphQLRequest(ctx, lsRequestQueryName, &lsVariables)
 	if err != nil {

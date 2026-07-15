@@ -13,16 +13,16 @@ const IGDSlideDeltaProcessorQuery = "28239922265610241"
 const IGDTypingIndicatorClientSubscription = "27563068933278040"
 
 var GraphQLDocs = map[string]GraphQLDoc{
-	"LSGraphQLRequest": {
-		DocID:        "7357432314358409",
+	"LSPlatformGraphQLLightspeedRequestQuery": {
+		DocID:        "9697184873702141",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestQuery",
 	},
-	"LSGraphQLRequestIG": {
+	"LSPlatformGraphQLLightspeedRequestForIGDQuery": {
 		DocID:        "6195354443842040",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestForIGDQuery",
 	},
 	"MAWCatQuery": {
-		DocID:        "23999698219677129",
+		DocID:        "29559957360285299",
 		FriendlyName: "MAWCatQuery",
 		Jsessw:       "1",
 	},
