@@ -378,6 +378,10 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			msgtype, data, err := conn.Read(ctx)
 			if err != nil {
 				fatalError(fmt.Errorf("dgw: reading message: %w", err))
+				// Close status errors are the best, so force them to overwrite any other errors
+				if websocket.CloseStatus(err) > 0 {
+					s.err.Store(&err)
+				}
 				return
 			} else if msgtype != websocket.MessageBinary {
 				s.Log.Warn().
@@ -483,7 +487,7 @@ func (s *Socket) getConnURL() string {
 	} else {
 		query.Add("x-dgw-authtype", "6:0")
 	}
-	query.Add("x-dgw-version", "5")
+	query.Add("x-dgw-version", "5") // DGWVER_BIG_IDS
 	query.Add("x-dgw-uuid", s.UserID)
 	query.Add("x-dgw-tier", "prod")
 	if s.LoggingID {

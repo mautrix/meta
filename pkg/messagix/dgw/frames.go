@@ -28,6 +28,15 @@ import (
 	"github.com/coder/websocket"
 )
 
+const (
+	CloseStatusGracefulClose    websocket.StatusCode = 4000
+	CloseStatusKeepaliveTimeout websocket.StatusCode = 4001
+	CloseStatusDGWServerError   websocket.StatusCode = 4002
+	CloseStatusUnauthorized     websocket.StatusCode = 4003
+	CloseStatusRejected         websocket.StatusCode = 4004
+	CloseStatusBadRequest       websocket.StatusCode = 4005
+)
+
 type DrainReason uint8
 
 const (

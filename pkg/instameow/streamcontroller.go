@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -48,6 +49,9 @@ func (c *Client) connectStreamController(ctx context.Context) {
 			return
 		} else if ctx.Err() != nil {
 			sock.Log.Debug().Err(err).Msg("Context canceled, stopping socket reconnect attempts")
+			return
+		} else if websocket.CloseStatus(err) == dgw.CloseStatusUnauthorized {
+			sock.Log.Err(err).Msg("Unauthorized error, not reconnecting")
 			return
 		}
 		if !wasConnected {

@@ -58,6 +58,7 @@ type IGClient struct {
 	chatBackfillLock      sync.Mutex
 	mailboxProcessed      atomic.Bool
 	waitMailboxProcessed  chan struct{}
+	permanentErrored      atomic.Bool
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -188,6 +189,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 			return
 		}
 	}
+	ic.permanentErrored.Store(false)
 	if attempts > 0 {
 		retryIn := time.Duration(1<<attempts) * time.Second
 		zerolog.Ctx(ctx).Debug().Stringer("retry_in", retryIn).Msg("Sleeping before retrying connection")
@@ -345,6 +347,7 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 }
 
 func (ic *IGClient) Disconnect() {
+	ic.permanentErrored.Store(false)
 	if stopConnectAttempt := ic.stopConnectAttempt.Swap(nil); stopConnectAttempt != nil {
 		(*stopConnectAttempt)()
 	}
@@ -358,7 +361,7 @@ func (ic *IGClient) Disconnect() {
 }
 
 func (ic *IGClient) IsLoggedIn() bool {
-	return ic.Client.IsAuthenticated()
+	return ic.Client.IsAuthenticated() && !ic.permanentErrored.Load()
 }
 
 func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {

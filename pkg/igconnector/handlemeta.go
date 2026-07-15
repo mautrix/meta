@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -32,41 +33,42 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 const (
-	DGWConnectionError         status.BridgeStateErrorCode = "ig-dgw-connection-error"
-	MetaConnectionUnauthorized status.BridgeStateErrorCode = "meta-connection-unauthorized"
-	MetaCookieRemoved          status.BridgeStateErrorCode = "meta-cookie-removed"
-	MetaUserIDIsZero           status.BridgeStateErrorCode = "meta-user-id-is-zero"
-	MetaRedirectedToLoginPage  status.BridgeStateErrorCode = "meta-redirected-to-login"
-	MetaNotLoggedIn            status.BridgeStateErrorCode = "meta-not-logged-in"
-	MetaConnectError           status.BridgeStateErrorCode = "meta-connect-error"
-	MetaGraphQLError           status.BridgeStateErrorCode = "meta-graphql-error"
-	IGChallengeRequired        status.BridgeStateErrorCode = "ig-challenge-required"
-	IGAccountSuspended         status.BridgeStateErrorCode = "ig-account-suspended"
-	IGConsentRequired          status.BridgeStateErrorCode = "ig-consent-required"
-	FBCheckpointRequired       status.BridgeStateErrorCode = "fb-checkpoint-required"
-	MetaProxyUpdateFail        status.BridgeStateErrorCode = "meta-proxy-update-fail"
-	MetaNotInstagram           status.BridgeStateErrorCode = "meta-not-instagram-account"
+	DGWConnectionError        status.BridgeStateErrorCode = "ig-dgw-connection-error"
+	DGWConnectionUnauthorized status.BridgeStateErrorCode = "dgw-connection-unauthorized"
+	MetaCookieRemoved         status.BridgeStateErrorCode = "meta-cookie-removed"
+	MetaUserIDIsZero          status.BridgeStateErrorCode = "meta-user-id-is-zero"
+	MetaRedirectedToLoginPage status.BridgeStateErrorCode = "meta-redirected-to-login"
+	MetaNotLoggedIn           status.BridgeStateErrorCode = "meta-not-logged-in"
+	MetaConnectError          status.BridgeStateErrorCode = "meta-connect-error"
+	MetaGraphQLError          status.BridgeStateErrorCode = "meta-graphql-error"
+	IGChallengeRequired       status.BridgeStateErrorCode = "ig-challenge-required"
+	IGAccountSuspended        status.BridgeStateErrorCode = "ig-account-suspended"
+	IGConsentRequired         status.BridgeStateErrorCode = "ig-consent-required"
+	FBCheckpointRequired      status.BridgeStateErrorCode = "fb-checkpoint-required"
+	MetaProxyUpdateFail       status.BridgeStateErrorCode = "meta-proxy-update-fail"
+	MetaNotInstagram          status.BridgeStateErrorCode = "meta-not-instagram-account"
 )
 
 func init() {
 	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
-		DGWConnectionError:         "Disconnected from server, trying to reconnect",
-		MetaConnectionUnauthorized: "Logged out, please relogin to continue",
-		MetaCookieRemoved:          "Logged out, please relogin to continue",
-		MetaUserIDIsZero:           "Logged out, please relogin to continue",
-		MetaRedirectedToLoginPage:  "Logged out, please relogin to continue",
-		MetaNotLoggedIn:            "Logged out, please relogin to continue",
-		IGAccountSuspended:         "Logged out, please check the Instagram website to continue",
-		IGChallengeRequired:        "Challenge required, please check the Instagram website to continue",
-		IGConsentRequired:          "Consent required, please check the Instagram website to continue",
-		FBCheckpointRequired:       "Checkpoint required, please check the Facebook website to continue",
-		MetaConnectError:           "Unknown connection error",
-		MetaProxyUpdateFail:        "Failed to update proxy",
-		MetaNotInstagram:           "Non-Instagram login present on Instagram-only bridge",
+		DGWConnectionError:        "Disconnected from server, trying to reconnect",
+		DGWConnectionUnauthorized: "Logged out, please relogin to continue",
+		MetaCookieRemoved:         "Logged out, please relogin to continue",
+		MetaUserIDIsZero:          "Logged out, please relogin to continue",
+		MetaRedirectedToLoginPage: "Logged out, please relogin to continue",
+		MetaNotLoggedIn:           "Logged out, please relogin to continue",
+		IGAccountSuspended:        "Logged out, please check the Instagram website to continue",
+		IGChallengeRequired:       "Challenge required, please check the Instagram website to continue",
+		IGConsentRequired:         "Consent required, please check the Instagram website to continue",
+		FBCheckpointRequired:      "Checkpoint required, please check the Facebook website to continue",
+		MetaConnectError:          "Unknown connection error",
+		MetaProxyUpdateFail:       "Failed to update proxy",
+		MetaNotInstagram:          "Non-Instagram login present on Instagram-only bridge",
 	})
 }
 
@@ -86,6 +88,7 @@ func (ic *IGClient) doWaitMailboxProcessed(ctx context.Context) error {
 func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientEvent) error {
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
+		ic.permanentErrored.Store(false)
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
@@ -101,14 +104,24 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		}
 		return nil
 	case *slidetypes.Disconnected:
+		stateEvt := status.StateTransientDisconnect
+		errCode := DGWConnectionError
+		var retErr error
+		if websocket.CloseStatus(evt.Error) == dgw.CloseStatusUnauthorized {
+			// TODO do full reconnect instead of this?
+			stateEvt = status.StateBadCredentials
+			errCode = DGWConnectionUnauthorized
+			retErr = fmt.Errorf("connection unauthorized; stop reconnects")
+			ic.permanentErrored.Store(true)
+		}
 		ic.UserLogin.BridgeState.Send(status.BridgeState{
-			StateEvent: status.StateTransientDisconnect,
-			Error:      DGWConnectionError,
+			StateEvent: stateEvt,
+			Error:      errCode,
 			Info: map[string]any{
 				"go_error": evt.Error.Error(),
 			},
 		})
-		return nil
+		return retErr
 	case *slidetypes.SeqIDUpdate:
 		_ = ic.doWaitMailboxProcessed(ctx)
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, evt.SeqID, evt.Timestamp)
