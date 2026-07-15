@@ -764,3 +764,9 @@ type LSFillDeanonCacheForE2EEThread struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSDisableSyncForSyncGroup struct {
+	// unknown value 10 in field 0
+
+	Unrecognized map[int]any `json:",omitempty"`
+}

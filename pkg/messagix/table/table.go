@@ -162,6 +162,7 @@ type LSTable struct {
 	LSResetGroupInvites                              []*LSResetGroupInvites                              `json:",omitempty"`
 	LSDeleteMessageRequest                           []*LSDeleteMessageRequest                           `json:",omitempty"`
 	LSFillDeanonCacheForE2EEThread                   []*LSFillDeanonCacheForE2EEThread                   `json:",omitempty"`
+	LSDisableSyncForSyncGroup                        []*LSDisableSyncForSyncGroup                        `json:",omitempty"`
 }
 
 func (t *LSTable) NonNilFields() (fields []string) {
@@ -328,6 +329,7 @@ var SPTable = map[string]string{
 	"resetGroupInvites":                              "LSResetGroupInvites",
 	"deleteMessageRequest":                           "LSDeleteMessageRequest",
 	"fillDeanonCacheForE2EEThread":                   "LSFillDeanonCacheForE2EEThread",
+	"disableSyncForSyncGroup":                        "LSDisableSyncForSyncGroup",
 }
 
 func SPToDepMap(sp []string) map[string]string {
