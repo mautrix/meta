@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -49,6 +50,8 @@ type routeDefinitions struct {
 	} `json:"payload"`
 }
 
+var ErrThreadNotFound = errors.New("instagram thread not found")
+
 func (c *Client) FetchThreadIDs(ctx context.Context, threadFBIDs ...int64) (map[int64]*ThreadIGIDs, error) {
 	payload := c.http.NewHTTPQuery()
 	if c.configs.RoutingNamespace == "" {
@@ -75,8 +78,11 @@ func (c *Client) FetchThreadIDs(ctx context.Context, threadFBIDs ...int64) (map[
 	headers.Set("sec-fetch-site", "same-origin")
 
 	url := c.GetEndpoint("route_definition")
-	_, body, err := c.http.MakeRequest(ctx, url, http.MethodPost, headers, payloadBytes, types.FORM)
+	resp, body, err := c.http.MakeRequest(ctx, url, http.MethodPost, headers, payloadBytes, types.FORM)
 	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return nil, ErrThreadNotFound
+		}
 		return nil, err
 	}
 

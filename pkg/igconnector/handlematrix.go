@@ -143,7 +143,9 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return nil, bridgev2.ErrNotLoggedIn
 	}
 	_, err := ic.ensureIGID(ctx, msg.Portal)
-	if err != nil {
+	if errors.Is(err, instameow.ErrThreadNotFound) && msg.Content.MsgType == event.MsgText && msg.Portal.RoomType == database.RoomTypeDM {
+		// Allow sending text DMs even if the thread isn't known
+	} else if err != nil {
 		return nil, err
 	}
 	log := zerolog.Ctx(ctx)

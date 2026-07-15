@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -72,21 +74,28 @@ func (ic *IGClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 		}
 	} else if createChat {
 		igChatID, err := ic.ensureIGIDDirect(ctx, id)
-		if err != nil {
+		if errors.Is(err, instameow.ErrThreadNotFound) {
+			chat = &bridgev2.CreateChatResponse{
+				PortalKey:  portalKey,
+				Portal:     portal,
+				PortalInfo: ic.makeMinimalDMInfo(id),
+			}
+		} else if err != nil {
 			return nil, fmt.Errorf("failed to get DM chat ID for user %d: %w", id, err)
-		}
-		resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(igChatID))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get DM chat info with %d: %w", id, err)
-		}
-		chatInfo := ic.wrapChatInfo(resp.ThreadInfo.AsIGDirectThread)
-		if chatInfo.Members != nil {
-			userInfo = chatInfo.Members.MemberMap[userID].UserInfo
-		}
-		chat = &bridgev2.CreateChatResponse{
-			PortalKey:  portalKey,
-			Portal:     portal,
-			PortalInfo: chatInfo,
+		} else {
+			resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(igChatID))
+			if err != nil {
+				return nil, fmt.Errorf("failed to get DM chat info with %d: %w", id, err)
+			}
+			chatInfo := ic.wrapChatInfo(resp.ThreadInfo.AsIGDirectThread)
+			if chatInfo.Members != nil {
+				userInfo = chatInfo.Members.MemberMap[userID].UserInfo
+			}
+			chat = &bridgev2.CreateChatResponse{
+				PortalKey:  portalKey,
+				Portal:     portal,
+				PortalInfo: chatInfo,
+			}
 		}
 	}
 	return &bridgev2.ResolveIdentifierResponse{

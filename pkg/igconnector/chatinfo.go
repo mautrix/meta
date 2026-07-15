@@ -137,6 +137,21 @@ func (ic *IGClient) saveThreadMappings(ctx context.Context, info *slidetypes.Thr
 	return nil
 }
 
+func (ic *IGClient) makeMinimalDMInfo(userID int64) *bridgev2.ChatInfo {
+	memberMap := make(bridgev2.ChatMemberMap, 2)
+	return &bridgev2.ChatInfo{
+		Members: &bridgev2.ChatMemberList{
+			IsFull:                     true,
+			ExcludeChangesFromTimeline: true,
+			TotalMemberCount:           2,
+			OtherUserID:                metaid.MakeUserID(userID),
+			MemberMap:                  memberMap,
+		},
+		Type:                       ptr.Ptr(database.RoomTypeDM),
+		ExcludeChangesFromTimeline: true,
+	}
+}
+
 func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo {
 	if info.ThreadFBID != info.ID ||
 		(info.IsGroup && strconv.FormatInt(info.ThreadKey, 10) != info.ID) ||
