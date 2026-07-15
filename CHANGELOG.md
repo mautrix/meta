@@ -7,7 +7,9 @@
     with an `ig-` prefix for the tag, e.g. `:ig-latest` or `:ig-v26.07`).
   * Mixed-mode bridges can't be migrated. Trying to do that will break all
     Messenger logins.
-  * The old bridge still works until Meta breaks the old API.
+  * This is the last release that will support the legacy Instagram bridge.
+    The API for the Facebook side will be slightly changed immediately after
+    release, which no longer allows connecting to Instagram with the same code.
 * Added support for bridging text formatting.
 * Removed support for bridging typing notifications in legacy Instagram bridge.
 
