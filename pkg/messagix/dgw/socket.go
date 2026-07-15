@@ -357,6 +357,8 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			}
 		case *DrainFrame:
 			s.Log.Debug().Stringer("reason", f.DrainReason).Msg("Received drain frame")
+		case *DeauthFrame:
+			s.Log.Debug().Msg("Received deauth frame")
 		case *UnsupportedFrame:
 			s.Log.Warn().
 				Stringer("frame_type", FrameType(f.Raw[0])).
