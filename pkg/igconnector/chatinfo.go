@@ -139,6 +139,8 @@ func (ic *IGClient) saveThreadMappings(ctx context.Context, info *slidetypes.Thr
 
 func (ic *IGClient) makeMinimalDMInfo(userID int64) *bridgev2.ChatInfo {
 	memberMap := make(bridgev2.ChatMemberMap, 2)
+	memberMap.Set(bridgev2.ChatMember{EventSender: ic.makeEventSender(metaid.ParseUserLoginID(ic.UserLogin.ID))})
+	memberMap.Set(bridgev2.ChatMember{EventSender: ic.makeEventSender(userID)})
 	return &bridgev2.ChatInfo{
 		Members: &bridgev2.ChatMemberList{
 			IsFull:                     true,
