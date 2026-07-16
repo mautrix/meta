@@ -334,6 +334,7 @@ func (ic *IGClient) makeMessageEventMeta(portalKey networkid.PortalKey, msg *sli
 
 func (ic *IGClient) handleMessage(portalKey networkid.PortalKey, msg *slidetypes.Message) bridgev2.EventHandlingResult {
 	msgID := metaid.MakeFBMessageID(msg.ID)
+	ic.updateGhostFromEvent(msg.Sender)
 	return ic.UserLogin.QueueRemoteEvent(&simplevent.Message[*slidetypes.Message]{
 		EventMeta: ic.makeMessageEventMeta(portalKey, msg, bridgev2.RemoteEventMessage),
 		//TransactionID: msg.OfflineThreadingID,
@@ -343,6 +344,28 @@ func (ic *IGClient) handleMessage(portalKey networkid.PortalKey, msg *slidetypes
 			return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, ic.UserLogin, intent, msgID, data, ic.Main.Config.DisableXMAAlways), ctx.Err()
 		},
 	})
+}
+
+func (ic *IGClient) updateGhostFromEvent(sender *slidetypes.MessageSender) {
+	if sender == nil || sender.UserDict.InteropMessagingUserFBID == 0 {
+		return
+	}
+	log := ic.UserLogin.Log.With().
+		Str("action", "update ghost from event").
+		Int64("user_id", sender.UserDict.InteropMessagingUserFBID).
+		Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	ghost, err := ic.Main.Bridge.GetGhostByID(ctx, metaid.MakeUserID(sender.UserDict.InteropMessagingUserFBID))
+	if err != nil {
+		log.Err(err).Msg("Failed to get ghost")
+		return
+	}
+	if ghost.Name == "" {
+		ghost.UpdateInfo(ctx, ic.wrapUserInfo(&sender.UserDict))
+	} else {
+		// Already have a name, do update in background
+		go ghost.UpdateInfo(ctx, ic.wrapUserInfo(&sender.UserDict))
+	}
 }
 
 func (ic *IGClient) handleEdit(portalKey networkid.PortalKey, evt *slidetypes.EditMessageEvent) bridgev2.EventHandlingResult {
