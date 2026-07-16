@@ -355,8 +355,8 @@ func (ic *IGClient) handleEdit(portalKey networkid.PortalKey, evt *slidetypes.Ed
 			Timestamp:   evt.SlideEditHistoryEntry.TimestampMS.Time,
 			StreamOrder: evt.SlideEditHistoryEntry.TimestampMS.UnixMilli(),
 		},
-		Data: evt.TextBody,
-		ID:   msgID,
+		Data:          evt.TextBody,
+		TargetMessage: msgID,
 		ConvertEditFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message, newText string) (*bridgev2.ConvertedEdit, error) {
 			if len(existing) == 0 {
 				return nil, fmt.Errorf("no existing message found for edit event %s", msgID)
