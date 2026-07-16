@@ -47,8 +47,8 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 		}
 	case FlowIDMessengerCookies:
 		plat = types.Messenger
-	case FlowIDInstagramCookies:
-		plat = types.Instagram
+	//case FlowIDInstagramCookies:
+	//	plat = types.Instagram
 	case FlowIDMessengerLite:
 		plat = types.MessengerLite
 		return &MetaNativeLogin{
@@ -129,7 +129,7 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 			case types.Messenger:
 				flows = append(flows, loginFlowMessenger)
 			case types.Instagram:
-				flows = append(flows, loginFlowInstagram)
+				//flows = append(flows, loginFlowInstagram)
 			case types.MessengerLite:
 				flows = append(flows, loginFlowMessengerLite)
 			default:
@@ -151,7 +151,7 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	case types.Messenger:
 		return []bridgev2.LoginFlow{loginFlowMessenger}
 	case types.Instagram:
-		return []bridgev2.LoginFlow{loginFlowInstagram}
+		return []bridgev2.LoginFlow{}
 	case types.MessengerLite:
 		return []bridgev2.LoginFlow{loginFlowMessengerLite}
 	default:
