@@ -180,6 +180,13 @@ func loginWithCookies(
 	client.SetEventHandler(igClient.handleIGEvent)
 	igClient.Client = client
 
+	dumpedState, err := client.DumpState()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to dump initial reconnection state")
+	} else if err = conn.DB.PutReconnectionState(ctx, ul.ID, dumpedState); err != nil {
+		log.Warn().Err(err).Msg("Failed to save initial reconnection state")
+	}
+
 	backgroundCtx := ul.Log.WithContext(conn.Bridge.BackgroundCtx)
 	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	go func() {

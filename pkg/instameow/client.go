@@ -280,3 +280,13 @@ func (c *Client) DumpState() (json.RawMessage, error) {
 		Timestamp: c.lastReload,
 	})
 }
+
+func (c *Client) checkResponseError(err error) {
+	if errors.Is(err, httpclient.ErrChallengeRequired) ||
+		errors.Is(err, httpclient.ErrCheckpointRequired) ||
+		errors.Is(err, httpclient.ErrCheckpointRequired) ||
+		errors.Is(err, httpclient.ErrConsentRequired) ||
+		errors.Is(err, httpclient.ErrTokenInvalidated) {
+		_ = c.eventHandler(context.TODO(), &slidetypes.AuthError{Error: err})
+	}
+}

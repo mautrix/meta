@@ -28,6 +28,7 @@ type ClientEvent interface {
 func (*ResnapshotRequired) isClientEvent()      {}
 func (*Connected) isClientEvent()               {}
 func (*Disconnected) isClientEvent()            {}
+func (*AuthError) isClientEvent()               {}
 func (*SeqIDUpdate) isClientEvent()             {}
 func (*ReconnectionStateUpdate) isClientEvent() {}
 func (*Delta) isClientEvent()                   {}
@@ -41,6 +42,10 @@ type Connected struct {
 }
 
 type Disconnected struct {
+	Error error
+}
+
+type AuthError struct {
 	Error error
 }
 

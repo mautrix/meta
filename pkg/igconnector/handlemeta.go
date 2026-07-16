@@ -122,6 +122,14 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			},
 		})
 		return retErr
+	case *slidetypes.AuthError:
+		if state := ic.errorToBridgeState(ctx, evt.Error); state != nil {
+			ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Got auth error event from request failing")
+			ic.UserLogin.BridgeState.Send(*state)
+		} else {
+			ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Got unrecognized auth error event")
+		}
+		return nil
 	case *slidetypes.SeqIDUpdate:
 		_ = ic.doWaitMailboxProcessed(ctx)
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, evt.SeqID, evt.Timestamp)

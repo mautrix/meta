@@ -80,6 +80,7 @@ func (c *Client) FetchThreadIDs(ctx context.Context, threadFBIDs ...int64) (map[
 	url := c.GetEndpoint("route_definition")
 	resp, body, err := c.http.MakeRequest(ctx, url, http.MethodPost, headers, payloadBytes, types.FORM)
 	if err != nil {
+		c.checkResponseError(err)
 		if resp != nil && resp.StatusCode == 404 {
 			return nil, ErrThreadNotFound
 		}

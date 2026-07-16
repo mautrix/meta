@@ -129,6 +129,7 @@ func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req 
 	}
 	_, respData, err := c.http.MakeGraphQLRequest(ctx, name, req)
 	if err != nil {
+		c.checkResponseError(err)
 		return
 	}
 	var wrappedResp graphql.Response[T]

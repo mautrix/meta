@@ -65,6 +65,7 @@ func (c *Client) EditGroupAvatar(ctx context.Context, threadID string, avatar []
 
 	_, respBody, err := c.http.MakeRequest(ctx, reqUrl, http.MethodPost, h, avatar, types.NONE)
 	if err != nil {
+		c.checkResponseError(err)
 		return fmt.Errorf("failed to upload group avatar: %w", err)
 	}
 
@@ -158,6 +159,7 @@ func (c *Client) makeIGraphQLRequest(ctx context.Context, docName, rootFieldName
 
 	_, respBody, err := c.http.MakeRequest(ctx, graphQLUrl, http.MethodPost, h, payloadBytes, types.FORM)
 	if err != nil {
+		c.checkResponseError(err)
 		return nil, err
 	}
 
