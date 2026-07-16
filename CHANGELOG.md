@@ -1,15 +1,14 @@
-# v26.07 (unreleased)
+# v26.07
 
+* Updated Docker image to Alpine 3.24.
 * Added new Instagram bridge.
   * Existing bridges configured with `mode: instagram` can seamlessly switch to
     the new bridge by just replacing the binary (`mautrix-meta` →
     `mautrix-instagram`) or Docker image (still `dock.mau.dev/mautrix/meta`, but
     with an `ig-` prefix for the tag, e.g. `:ig-latest` or `:ig-v26.07`).
-  * Mixed-mode bridges can't be migrated. Trying to do that will break all
-    Messenger logins.
-  * This is the last release that will support the legacy Instagram bridge.
-    The API for the Facebook side will be slightly changed immediately after
-    release, which no longer allows connecting to Instagram with the same code.
+  * The old bridge can still be used for Instagram, but only on this release.
+    After this release, mautrix-meta can only be used for Messenger.
+  * More details can be found in the [release post](https://mau.fi/blog/2026-07-mautrix-release/#new-instagram-bridge).
 * Added support for bridging text formatting.
 * Removed support for bridging typing notifications in legacy Instagram bridge.
 
