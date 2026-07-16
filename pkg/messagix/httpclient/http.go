@@ -403,14 +403,14 @@ func (c *HTTPClient) makeRequest(
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, giving up")
-			return nil, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
+			return resp, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
 		} else if IsPermanentRequestError(err) || (resp != nil && resp.StatusCode < 500 && resp.StatusCode != 429) || ctx.Err() != nil {
 			logContext(c.log.Err(err)).
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, cannot be retried")
-			return nil, nil, err
+			return resp, nil, err
 		}
 		backoff := time.Duration(attempts) * 3 * time.Second
 		if resp != nil && resp.StatusCode == 429 {
@@ -425,7 +425,7 @@ func (c *HTTPClient) makeRequest(
 		select {
 		case <-time.After(backoff):
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return resp, nil, ctx.Err()
 		}
 	}
 }
