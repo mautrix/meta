@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -84,8 +85,7 @@ func (mc *MessageConverter) ToMatrix(
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.TextBody, msg.Mentions))
 	case *slidetypes.MessageContentAdminText:
 		adminText := mc.wrapAdminText(content.TextFragments, msg.IGDSnippet)
-		// TODO find out if there are any important admin text messages that should be bridged
-		adminText.DontBridge = true
+		mc.mutateWrappedAdminText(adminText, msg)
 		cm.Parts = append(cm.Parts, adminText)
 	case *slidetypes.MessageContentImage:
 		for i, att := range content.Attachments {
@@ -189,6 +189,15 @@ func (mc *MessageConverter) wrapText(ctx context.Context, text string, mentions 
 	}
 }
 
+func (mc *MessageConverter) mutateWrappedAdminText(part *bridgev2.ConvertedMessagePart, msg *slidetypes.Message) {
+	switch msg.ContentType {
+	case "IG_VIDEO_CALL_XMAT":
+		// TODO include call metadata if possible
+	default:
+		part.DontBridge = true
+	}
+}
+
 func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment, snippet string) *bridgev2.ConvertedMessagePart {
 	if len(fragments) == 0 {
 		return &bridgev2.ConvertedMessagePart{
@@ -202,8 +211,10 @@ func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment, s
 	var buf strings.Builder
 	for _, f := range fragments {
 		htmlText := event.TextToHTML(f.Plaintext)
-		if f.LinkFragment != nil {
-			_, _ = buf.WriteString(fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(f.LinkFragment.URI), htmlText))
+		uri := ptr.Val(f.LinkFragment).URI
+		// TODO convert instagram://user?username=... links into mentions?
+		if strings.HasPrefix(uri, "http") {
+			_, _ = buf.WriteString(fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(uri), htmlText))
 		} else {
 			buf.WriteString(htmlText)
 		}
