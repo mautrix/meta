@@ -58,14 +58,10 @@ func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *
 	}
 }
 
-var table dbutil.UpgradeTable
+var table = dbutil.BuildUpgradeTable().WithFS(upgrades).Finish()
 
 //go:embed *.sql
 var upgrades embed.FS
-
-func init() {
-	table.RegisterFS(upgrades)
-}
 
 func (db *MetaDB) PutThread(ctx context.Context, parentKey, threadKey int64, messageID string) error {
 	_, err := db.Exec(ctx, `

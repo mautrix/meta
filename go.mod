@@ -19,15 +19,15 @@ require (
 	github.com/tidwall/gjson v1.19.0
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.2.2
-	go.mau.fi/util v0.9.11
-	go.mau.fi/whatsmeow v0.0.0-20260716095330-85d99080dee8
+	go.mau.fi/util v0.9.12-0.20260719092501-f9c03d846391
+	go.mau.fi/whatsmeow v0.0.0-20260718134955-fac667d55293
 	golang.org/x/crypto v0.54.0
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597
 	golang.org/x/image v0.44.0
 	golang.org/x/net v0.57.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.29.1-0.20260716144625-c5d96b4de36f
+	maunium.net/go/mautrix v0.29.1-0.20260719130752-5743d9b6f27e
 )
 
 require (
