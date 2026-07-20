@@ -384,6 +384,8 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 
 	// Deleting a thread will cancel all further events, so handle those first
 	collectPortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
+	// Same as above, but for deleting/declining a pending message request
+	collectPortalEvents(params, tbl.LSDeleteMessageRequest, m.handleDeleteMessageRequest, &innerQueue)
 	// Similar to above - delete the thread when the user leaves it
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleSelfLeaveThread, &innerQueue)
 
@@ -568,6 +570,10 @@ func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, on
 }
 
 func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThread) bridgev2.RemoteEvent {
+	return m.handleDeleteThreadKey(tk, msg.ThreadKey, false /* OnlyForMe */)
+}
+
+func (m *MetaClient) handleDeleteMessageRequest(tk handlerParams, msg *table.LSDeleteMessageRequest) bridgev2.RemoteEvent {
 	return m.handleDeleteThreadKey(tk, msg.ThreadKey, false /* OnlyForMe */)
 }
 

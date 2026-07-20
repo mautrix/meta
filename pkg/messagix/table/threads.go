@@ -758,6 +758,10 @@ type LSDeleteMessageRequest struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+func (ls *LSDeleteMessageRequest) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSFillDeanonCacheForE2EEThread struct {
 	ThreadKey int64 `index:"0" json:",omitempty"`
 	// field 2 has some value
