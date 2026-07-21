@@ -707,6 +707,16 @@ func (ls *LSDeleteThread) GetThreadKey() int64 {
 	return ls.ThreadKey
 }
 
+type LSDeletePartialThread struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSDeletePartialThread) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
 type LSUpdateThreadMuteSetting struct {
 	ThreadKey        int64 `index:"0" json:",omitempty"`
 	MuteExpireTimeMS int64 `index:"1" json:",omitempty"`
@@ -756,6 +766,10 @@ type LSDeleteMessageRequest struct {
 	ThreadKey int64 `index:"0" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSDeleteMessageRequest) GetThreadKey() int64 {
+	return ls.ThreadKey
 }
 
 type LSFillDeanonCacheForE2EEThread struct {

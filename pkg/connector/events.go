@@ -281,7 +281,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
 			}, nil
 		}
-		return evt.m.makeWADirectChatInfo(evt.JID), nil
+		return evt.m.makeWADirectChatInfo(ctx, evt.JID), nil
 	default:
 		return nil, fmt.Errorf("unknown WhatsApp server %s", evt.JID.Server)
 	}

@@ -55,7 +55,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 15
+	return 1, 16
 }
 
 const MaxTextLength = 20000
@@ -71,7 +71,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2026_07_07"
+	base := "fi.mau.meta.capabilities.2026_07_21"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -194,7 +194,6 @@ func init() {
 	}
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
-	metaCapsWithE2E.DeleteChat = false
 	metaCapsWithE2EGroup = metaCapsWithE2E.Clone()
 	metaCapsWithE2EGroup.ID += "+group"
 	metaCapsWithE2EGroup.MemberActions = map[event.MemberAction]event.CapabilitySupportLevel{

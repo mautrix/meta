@@ -308,10 +308,16 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
 	for _, jid := range tbl.LSUpdateThreadAuthorityAndMappingWithOTIDFromJID {
 		waThreadMap[jid.ThreadKey] = jid.ThreadJID
+		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, 0); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid thread mapping")
+		}
 		activeThreads.Add(jid.ThreadJID)
 	}
 	for _, jid := range tbl.LSVerifyHybridThreadExists {
 		waThreadMap[jid.ThreadKey] = jid.ThreadJID
+		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, int64(jid.ThreadType)); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid thread mapping")
+		}
 		activeThreads.Add(jid.ThreadJID)
 		innerQueue = append(innerQueue, &simplevent.ChatDelete{
 			EventMeta: simplevent.EventMeta{
@@ -350,6 +356,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		info := m.wrapChatInfo(thread)
 		if fbKey != thread.ThreadKey {
 			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbKey))
+			if err := m.Main.DB.SetHybridThreadMessageRequest(ctx, m.UserLogin.ID, fbKey, thread.FolderName == folderPending); err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid message request status")
+			}
 		}
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
@@ -370,6 +379,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		info := m.wrapChatInfo(thread)
 		if fbKey != thread.ThreadKey {
 			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbKey))
+			if err := m.Main.DB.SetHybridThreadMessageRequest(ctx, m.UserLogin.ID, fbKey, thread.FolderName == folderPending); err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid message request status")
+			}
 		}
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
@@ -384,6 +396,10 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 
 	// Deleting a thread will cancel all further events, so handle those first
 	collectPortalEvents(params, tbl.LSDeleteThread, m.handleDeleteThread, &innerQueue)
+	// Facebook's web client uses this procedure when deleting a chat for the current user.
+	collectPortalEvents(params, tbl.LSDeletePartialThread, m.handleDeletePartialThread, &innerQueue)
+	// Same as above, but for deleting/declining a pending message request
+	collectPortalEvents(params, tbl.LSDeleteMessageRequest, m.handleDeleteMessageRequest, &innerQueue)
 	// Similar to above - delete the thread when the user leaves it
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleSelfLeaveThread, &innerQueue)
 
@@ -533,6 +549,9 @@ func (m *MetaClient) handleDeleteThenInsertMessage(tk handlerParams, msg *table.
 func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg *table.LSDeleteThenInsertMessageRequest) bridgev2.RemoteEvent {
 	// Status 1 means the thread is in the pending/message request folder.
 	isMessageRequest := msg.MessageRequestStatus == 1
+	if err := m.Main.DB.SetHybridThreadMessageRequest(tk.ctx, m.UserLogin.ID, msg.ThreadKey, isMessageRequest); err != nil {
+		zerolog.Ctx(tk.ctx).Warn().Err(err).Msg("Failed to persist hybrid message request status")
+	}
 	if tk.Sync != nil {
 		if tk.Sync.Raw != nil && tk.Sync.Raw.FolderName == folderSpam {
 			return nil
@@ -540,7 +559,7 @@ func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg 
 		tk.Sync.Info.MessageRequest = ptr.Ptr(isMessageRequest)
 		return nil
 	}
-	return m.wrapChatInfoChange(msg.ThreadKey, 0, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, 0, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
 			MessageRequest: ptr.Ptr(isMessageRequest),
 		},
@@ -568,7 +587,26 @@ func (m *MetaClient) handleDeleteThreadKey(tk handlerParams, threadKey int64, on
 }
 
 func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThread) bridgev2.RemoteEvent {
-	return m.handleDeleteThreadKey(tk, msg.ThreadKey, false /* OnlyForMe */)
+	return m.handleDeleteThreadKey(tk, tk.ID, false /* OnlyForMe */)
+}
+
+func (m *MetaClient) handleDeletePartialThread(tk handlerParams, msg *table.LSDeletePartialThread) bridgev2.RemoteEvent {
+	if tk.Type == table.UNKNOWN_THREAD_TYPE {
+		threadJID, threadType, err := m.Main.DB.GetHybridThreadJID(tk.ctx, m.UserLogin.ID, msg.ThreadKey)
+		if err != nil {
+			zerolog.Ctx(tk.ctx).Warn().Err(err).Int64("thread_key", msg.ThreadKey).
+				Msg("Failed to get persisted hybrid thread mapping")
+		} else if threadJID != 0 {
+			tk.ID = threadJID
+			tk.Type = table.ThreadType(threadType)
+			tk.Portal = m.makeFBPortalKey(threadJID, tk.Type)
+		}
+	}
+	return m.handleDeleteThreadKey(tk, tk.ID, true /* OnlyForMe */)
+}
+
+func (m *MetaClient) handleDeleteMessageRequest(tk handlerParams, msg *table.LSDeleteMessageRequest) bridgev2.RemoteEvent {
+	return m.handleDeleteThreadKey(tk, tk.ID, false /* OnlyForMe */)
 }
 
 func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
