@@ -574,7 +574,7 @@ func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThr
 }
 
 func (m *MetaClient) handleDeleteMessageRequest(tk handlerParams, msg *table.LSDeleteMessageRequest) bridgev2.RemoteEvent {
-	return m.handleDeleteThreadKey(tk, msg.ThreadKey, false /* OnlyForMe */)
+	return m.handleDeleteThreadKey(tk, tk.ID, false /* OnlyForMe */)
 }
 
 func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {

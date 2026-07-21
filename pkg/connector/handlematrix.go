@@ -668,8 +668,12 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 	if platform.IsInstagram() {
 		return t.Client.Instagram.DeleteThread(ctx, strconv.FormatInt(threadID, 10))
 	} else if platform.IsMessenger() {
+		fbThreadID := threadID
+		if portalMeta.ThreadType.IsWhatsApp() && portalMeta.FBThreadKey != 0 {
+			fbThreadID = portalMeta.FBThreadKey
+		}
 		_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
-			ThreadKey:  threadID,
+			ThreadKey:  fbThreadID,
 			RemoveType: 0,
 			SyncGroup:  1,
 		})
@@ -678,7 +682,7 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		}
 		if portalMeta.ThreadType.IsWhatsApp() {
 			_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
-				ThreadKey:  threadID, // TODO: use e2ee thread ID
+				ThreadKey:  threadID,
 				RemoveType: 0,
 				SyncGroup:  95,
 			})

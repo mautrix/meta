@@ -55,7 +55,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 15
+	return 1, 16
 }
 
 const MaxTextLength = 20000
@@ -173,7 +173,9 @@ var metaCaps = &event.RoomFeatures{
 
 var metaCapsWithThreads *event.RoomFeatures
 var metaCapsWithE2E *event.RoomFeatures
+var metaCapsWithE2EDelete *event.RoomFeatures
 var metaCapsWithE2EGroup *event.RoomFeatures
+var metaCapsWithE2EGroupDelete *event.RoomFeatures
 var igCaps *event.RoomFeatures
 var igCapsGroup *event.RoomFeatures
 var metaCapsGroup *event.RoomFeatures
@@ -195,12 +197,18 @@ func init() {
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/webm")
 	delete(metaCapsWithE2E.File[event.MsgVideo].MimeTypes, "video/ogg")
 	metaCapsWithE2E.DeleteChat = false
+	metaCapsWithE2EDelete = metaCapsWithE2E.Clone()
+	metaCapsWithE2EDelete.ID += "+delete"
+	metaCapsWithE2EDelete.DeleteChat = true
 	metaCapsWithE2EGroup = metaCapsWithE2E.Clone()
 	metaCapsWithE2EGroup.ID += "+group"
 	metaCapsWithE2EGroup.MemberActions = map[event.MemberAction]event.CapabilitySupportLevel{
 		event.MemberActionInvite: event.CapLevelFullySupported,
 		event.MemberActionKick:   event.CapLevelFullySupported,
 	}
+	metaCapsWithE2EGroupDelete = metaCapsWithE2EGroup.Clone()
+	metaCapsWithE2EGroupDelete.ID += "+delete"
+	metaCapsWithE2EGroupDelete.DeleteChat = true
 
 	metaCapsGroup = metaCaps.Clone()
 	metaCapsGroup.ID += "+group"
@@ -229,12 +237,19 @@ func init() {
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	switch portal.Metadata.(*metaid.PortalMetadata).ThreadType {
+	meta := portal.Metadata.(*metaid.PortalMetadata)
+	switch meta.ThreadType {
 	case table.COMMUNITY_GROUP:
 		return metaCapsWithThreads
 	case table.ENCRYPTED_OVER_WA_ONE_TO_ONE:
+		if meta.FBThreadKey != 0 {
+			return metaCapsWithE2EDelete
+		}
 		return metaCapsWithE2E
 	case table.ENCRYPTED_OVER_WA_GROUP:
+		if meta.FBThreadKey != 0 {
+			return metaCapsWithE2EGroupDelete
+		}
 		return metaCapsWithE2EGroup
 	}
 	if m.Client.GetPlatform() == types.Instagram || m.Main.Config.Mode == types.Instagram {
