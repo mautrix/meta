@@ -46,8 +46,7 @@ type MetaClient struct {
 	stopConnectAttempt  atomic.Pointer[context.CancelFunc]
 	permanentErrored    atomic.Bool
 
-	editChannels    *exsync.Map[string, chan *FBEditEvent]
-	hybridThreadMap *exsync.Map[int64, int64]
+	editChannels *exsync.Map[string, chan *FBEditEvent]
 
 	connectBackgroundEvt           chan connectBackgroundEvent
 	connectBackgroundWAOfflineSync *exsync.Event
@@ -96,7 +95,6 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		e2eeConnectWaiter: exsync.NewEvent(),
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
-	c.hybridThreadMap = exsync.NewMap[int64, int64]()
 	login.Client = c
 	return nil
 }

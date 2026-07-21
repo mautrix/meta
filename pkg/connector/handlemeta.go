@@ -308,7 +308,6 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
 	for _, jid := range tbl.LSUpdateThreadAuthorityAndMappingWithOTIDFromJID {
 		waThreadMap[jid.ThreadKey] = jid.ThreadJID
-		m.hybridThreadMap.Set(jid.ThreadKey, jid.ThreadJID)
 		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, 0); err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid thread mapping")
 		}
@@ -316,7 +315,6 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	}
 	for _, jid := range tbl.LSVerifyHybridThreadExists {
 		waThreadMap[jid.ThreadKey] = jid.ThreadJID
-		m.hybridThreadMap.Set(jid.ThreadKey, jid.ThreadJID)
 		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, int64(jid.ThreadType)); err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid thread mapping")
 		}
@@ -593,7 +591,7 @@ func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThr
 }
 
 func (m *MetaClient) handleDeletePartialThread(tk handlerParams, msg *table.LSDeletePartialThread) bridgev2.RemoteEvent {
-	if tk.ID == msg.ThreadKey {
+	if tk.Type == table.UNKNOWN_THREAD_TYPE {
 		threadJID, threadType, err := m.Main.DB.GetHybridThreadJID(tk.ctx, m.UserLogin.ID, msg.ThreadKey)
 		if err != nil {
 			zerolog.Ctx(tk.ctx).Warn().Err(err).Int64("thread_key", msg.ThreadKey).
@@ -839,9 +837,6 @@ type threadMaps struct {
 
 func (tm threadMaps) MapWhatsAppThreadKey(fbKey int64) int64 {
 	if waKey, ok := tm.waThreadMap[fbKey]; ok {
-		return waKey
-	}
-	if waKey, ok := tm.m.hybridThreadMap.Get(fbKey); ok {
 		return waKey
 	}
 	return fbKey

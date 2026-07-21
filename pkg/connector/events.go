@@ -281,15 +281,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
 			}, nil
 		}
-		info := evt.m.makeWADirectChatInfo(evt.JID)
-		fbThreadKey, messageRequest, err := evt.m.Main.DB.GetHybridThreadInfoByJID(ctx, evt.m.UserLogin.ID, metaid.ParseFBPortalID(evt.GetPortalKey().ID))
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to restore hybrid thread info")
-		} else if fbThreadKey != 0 {
-			info.MessageRequest = ptr.Ptr(messageRequest)
-			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbThreadKey))
-		}
-		return info, nil
+		return evt.m.makeWADirectChatInfo(ctx, evt.JID), nil
 	default:
 		return nil, fmt.Errorf("unknown WhatsApp server %s", evt.JID.Server)
 	}
