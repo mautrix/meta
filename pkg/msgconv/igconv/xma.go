@@ -86,6 +86,10 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	return ptr.Ptr(format.HTMLToContent(captionHTML))
 }
 
+func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {
+	return len(xma.CTAButtons) == 1 && strings.HasPrefix(xma.CTAButtons[0].ActionURL, "https://api.whatsapp.com/send")
+}
+
 func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent) *bridgev2.ConvertedMessagePart {
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
 	captionPart := mc.wrapXMACaption(ctx, xma)

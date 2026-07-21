@@ -150,7 +150,9 @@ func (mc *MessageConverter) ToMatrix(
 				cm.Parts = append(cm.Parts, textPart)
 			}
 		} else {
-			cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
+			unrecognizedPart := mc.wrapUnsupportedContent(content)
+			unrecognizedPart.DontBridge = xmaLooksLikeWhatsAppButton(content.XMA)
+			cm.Parts = append(cm.Parts, unrecognizedPart)
 		}
 	case *slidetypes.MessageContentAIRichResponse:
 		// TODO the AI types haven't been observed in the wild to confirm the schema

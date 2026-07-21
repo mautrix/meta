@@ -196,7 +196,7 @@ type XMAContent struct {
 	CaptionBodyText        string           `json:"caption_body_text"`
 	SubtitleText           string           `json:"subtitle_text"`
 	SubtitleDecorationType any              `json:"subtitle_decoration_type"`
-	CTAButtons             []any            `json:"cta_buttons"`
+	CTAButtons             []*CTAButton     `json:"cta_buttons"`
 	PreviewLayoutType      string           `json:"preview_layout_type"`
 	PreviewExtraURLsInfo   []any            `json:"preview_extra_urls_info"`
 	OverlayTitle           any              `json:"overlay_title"`
@@ -205,6 +205,14 @@ type XMAContent struct {
 	Favicon                any              `json:"favicon"`
 	EyebrowText            string           `json:"eyebrow_text"`
 	CollapsibleID          any              `json:"collapsible_id"`
+
+	Unrecognized map[string]any `json:",unknown"`
+}
+
+type CTAButton struct {
+	ActionURL string `json:"action_url"`
+	CTAType   string `json:"cta_type"`
+	Title     string `json:"title"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
