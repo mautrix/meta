@@ -668,29 +668,17 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 	if platform.IsInstagram() {
 		return t.Client.Instagram.DeleteThread(ctx, strconv.FormatInt(threadID, 10))
 	} else if platform.IsMessenger() {
-		fbThreadID := threadID
+		syncGroup := int64(1)
 		if portalMeta.ThreadType.IsWhatsApp() && portalMeta.FBThreadKey != 0 {
-			fbThreadID = portalMeta.FBThreadKey
+			threadID = portalMeta.FBThreadKey
+			syncGroup = 95
 		}
 		_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
-			ThreadKey:  fbThreadID,
+			ThreadKey:  threadID,
 			RemoveType: 0,
-			SyncGroup:  1,
+			SyncGroup:  syncGroup,
 		})
-		if err != nil {
-			return err
-		}
-		if portalMeta.ThreadType.IsWhatsApp() {
-			_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
-				ThreadKey:  threadID,
-				RemoveType: 0,
-				SyncGroup:  95,
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
+		return err
 	}
 	return fmt.Errorf("unknown platform for deleting chat: %v", platform)
 }

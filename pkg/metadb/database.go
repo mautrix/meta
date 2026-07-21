@@ -90,6 +90,47 @@ func (db *MetaDB) GetThreadByMessage(ctx context.Context, messageID string) (thr
 	return
 }
 
+func (db *MetaDB) PutHybridThreadMapping(ctx context.Context, loginID networkid.UserLoginID, fbThreadKey, threadJID, threadType int64) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_hybrid_thread (bridge_id, login_id, fb_thread_key, thread_jid, thread_type)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (bridge_id, login_id, fb_thread_key) DO UPDATE SET
+			thread_jid = excluded.thread_jid,
+			thread_type = CASE WHEN excluded.thread_type = 0 THEN meta_hybrid_thread.thread_type ELSE excluded.thread_type END
+	`, db.BridgeID, loginID, fbThreadKey, threadJID, threadType)
+	return err
+}
+
+func (db *MetaDB) GetHybridThreadJID(ctx context.Context, loginID networkid.UserLoginID, fbThreadKey int64) (threadJID, threadType int64, err error) {
+	err = db.QueryRow(ctx, `
+		SELECT thread_jid, thread_type FROM meta_hybrid_thread
+		WHERE bridge_id = $1 AND login_id = $2 AND fb_thread_key = $3
+	`, db.BridgeID, loginID, fbThreadKey).Scan(&threadJID, &threadType)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return
+}
+
+func (db *MetaDB) SetHybridThreadMessageRequest(ctx context.Context, loginID networkid.UserLoginID, fbThreadKey int64, messageRequest bool) error {
+	_, err := db.Exec(ctx, `
+		UPDATE meta_hybrid_thread SET message_request = $4
+		WHERE bridge_id = $1 AND login_id = $2 AND fb_thread_key = $3
+	`, db.BridgeID, loginID, fbThreadKey, messageRequest)
+	return err
+}
+
+func (db *MetaDB) GetHybridThreadInfoByJID(ctx context.Context, loginID networkid.UserLoginID, threadJID int64) (fbThreadKey int64, messageRequest bool, err error) {
+	err = db.QueryRow(ctx, `
+		SELECT fb_thread_key, message_request FROM meta_hybrid_thread
+		WHERE bridge_id = $1 AND login_id = $2 AND thread_jid = $3
+	`, db.BridgeID, loginID, threadJID).Scan(&fbThreadKey, &messageRequest)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return
+}
+
 func (db *MetaDB) GetIGSeqID(ctx context.Context, loginID networkid.UserLoginID) (int64, time.Time, error) {
 	var seqID, ts int64
 	err := db.QueryRow(ctx, "SELECT seq_id, timestamp FROM meta_instagram_seq_id WHERE bridge_id = $1 AND login_id = $2", db.BridgeID, loginID).Scan(&seqID, &ts)
