@@ -1082,13 +1082,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		methodNames := []string{}
 
 		knownMethods := map[string]bool{
+			"Authentication app": true,
+			"Email":              true,
+			"Text message":       true,
+			"Backup code":        true,
+			"WhatsApp":           true,
+			// Disabled because there's no reasonable way to support this outside of a webview
+			"Verify with Google": false,
+			// Intentionally last because this tends to give transient_token results rather than
+			// cookies directly, which requires a currently unknown extra step.
 			"Notification on another device": true,
-			"Authentication app":             true,
-			"Email":                          true,
-			"Text message":                   true,
-			"Backup code":                    true,
-			"WhatsApp":                       true,
-			"Verify with Google":             false,
 		}
 
 		listItems := b.CurrentPage.FindDescendant(FilterByAttribute(
