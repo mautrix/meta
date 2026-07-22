@@ -104,6 +104,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		br.DeviceID = strings.ToUpper(uuid.New().String())
 	}
 	if br.FamilyDeviceID == "" {
+		// On Android, it appears that FamilyDeviceID is set to the same
+		// as regular DeviceID in the initial Bloks request. We may want
+		// to replicate that behavior.
 		br.FamilyDeviceID = strings.ToUpper(uuid.New().String())
 	}
 	if br.EncryptPassword == nil {

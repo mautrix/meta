@@ -207,7 +207,7 @@ type HTTPQuery struct {
 	AcceptOnlyEssential  string `url:"accept_only_essential,omitempty"`
 	Av                   string `url:"av,omitempty"`          // not required
 	User                 string `url:"__user,omitempty"`      // not required
-	A                    string `url:"__a,omitempty"`         // 1 or 0 wether to include "suggestion_keys" or not in the response - no idea what this is
+	A                    string `url:"__a,omitempty"`         // 1 or 0 whether to include "suggestion_keys" or not in the response - no idea what this is
 	Req                  string `url:"__req,omitempty"`       // not required
 	Hs                   string `url:"__hs,omitempty"`        // not required
 	Dpr                  string `url:"dpr,omitempty"`         // not required
@@ -258,6 +258,9 @@ type HTTPQuery struct {
 	EnableCanonicalVariableOverrides            string `url:"enable_canonical_variable_overrides,omitempty"`              // "true" or "false"
 	EnableCanonicalNamingAmbiguousTypePrefixing string `url:"enable_canonical_naming_ambiguous_type_prefixing,omitempty"` // "true" or "false"
 	// Variables
+	FbAPIClientContext string `url:"fb_api_client_context,omitempty"`
+	FbAPIAnalyticsTags string `url:"fb_api_analytics_tags,omitempty"`
+	ClientTraceID      string `url:"client_trace_id,omitempty"`
 }
 
 func (c *HTTPClient) NewHTTPQuery() *HTTPQuery {
@@ -512,34 +515,6 @@ func (c *HTTPClient) BuildHeaders(withCookies, isSecFetchDocument bool) http.Hea
 		headers.Set("x-asbd-id", useragent.ASBDID)
 	}
 	return headers
-}
-
-func (c *HTTPClient) buildMessengerLiteHeaders() (http.Header, error) {
-	// This isn't from a browser, so we don't include most of the usual headers
-	headers := http.Header{}
-	var appID string
-	switch c.GetPlatform() {
-	case types.MessengerLiteIOS:
-		headers.Set("user-agent", useragent.MessengerLiteIOSUserAgent)
-		headers.Set("x-fb-http-engine", "Tigon+iOS")
-		appID = useragent.MessengerLiteIOSAppID
-	case types.MessengerLiteAndroid:
-		headers.Set("user-agent", useragent.MessengerLiteAndroidUserAgent)
-		headers.Set("x-fb-http-engine", "Tigon/Liger")
-		appID = useragent.MessengerLiteAndroidAppID
-	default:
-		return nil, fmt.Errorf("platform %s does not support messenger-lite", c.GetPlatform())
-	}
-	analyticsTags, err := MakeRequestAnalyticsHeader(appID)
-	if err != nil {
-		return nil, err
-	}
-	headers.Set("accept", "*/*")
-	headers.Set("priority", "u=3, i")
-	headers.Set("accept-language", "en-US,en;q=0.9")
-	headers.Set("x-fb-request-analytics-tags", analyticsTags)
-
-	return headers, nil
 }
 
 func (c *HTTPClient) addFacebookHeaders(h *http.Header) {

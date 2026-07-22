@@ -308,7 +308,7 @@ const (
 type BrowserConfig struct {
 	Platform         types.Platform
 	EncryptPassword  func(context.Context, string) (string, error)
-	MakeBloksRequest func(context.Context, *BloksDoc, *BloksRequestOuter) (*BloksBundle, error)
+	MakeBloksRequest func(context.Context, *BloksDoc, string, BloksParamsInner, string, string) (*BloksBundle, error)
 }
 
 type Browser struct {
@@ -452,7 +452,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
-			bundle, err := cfg.MakeBloksRequest(ctx, appDoc, NewBloksRequest(name, paramsInner))
+			bundle, err := cfg.MakeBloksRequest(ctx, appDoc, name, paramsInner, b.Bridge.DeviceID, b.Bridge.FamilyDeviceID)
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
@@ -470,7 +470,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
-			bundle, err := cfg.MakeBloksRequest(ctx, actionDoc, NewBloksRequest(name, paramsInner))
+			bundle, err := cfg.MakeBloksRequest(ctx, actionDoc, name, paramsInner, b.Bridge.DeviceID, b.Bridge.FamilyDeviceID)
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
@@ -695,24 +695,34 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, fmt.Errorf("initial request: %w", err)
 		}
-		// It might be desirable to keep these parameters more up to
-		// date, and to account for differences by platform.
-		action, err := b.Config.MakeBloksRequest(ctx, actionDoc, NewBloksRequest(rpc, map[string]any{
-			"blocked_uid":                               []any{},
-			"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
-			"family_device_id":                          b.Bridge.FamilyDeviceID,
-			"use_auto_login_interstitial":               true,
-			"layered_homepage_experiment_group":         "not_in_experiment",
-			"disable_recursive_auto_login_interstitial": true,
-			"show_internal_settings":                    false,
-			"waterfall_id":                              hex.EncodeToString(random.Bytes(16)),
-			"account_list":                              []any{},
-			"disable_auto_login":                        false,
-			"is_from_logged_in_switcher":                false,
-			"auto_login_interstitial_experiment_group":  "",
-			"device_id":                                 b.Bridge.DeviceID,
-			"machine_id":                                b.Bridge.MachineID,
-		}))
+		params := BloksParamsInner{
+			"account_list":           []any{},
+			"blocked_uid":            []any{},
+			"device_id":              b.Bridge.DeviceID,
+			"disable_auto_login":     false,
+			"family_device_id":       b.Bridge.FamilyDeviceID,
+			"show_internal_settings": false,
+			"waterfall_id":           hex.EncodeToString(random.Bytes(16)),
+		}
+		switch b.Config.Platform {
+		case types.MessengerLiteIOS:
+			params["auto_login_interstitial_experiment_group"] = ""
+			params["disable_recursive_auto_login_interstitial"] = true
+			params["is_from_logged_in_switcher"] = false
+			params["layered_homepage_experiment_group"] = "not_in_experiment"
+			params["machine_id"] = b.Bridge.MachineID
+			params["offline_experiment_group"] = "caa_iteration_v2_perf_ls_ios_test_1"
+			params["use_auto_login_interstitial"] = true
+		case types.MessengerLiteAndroid:
+			params["INTERNAL_INFRA_THEME"] = "THREE_NEUTRAL_GRAY"
+			params["device_emails"] = []any{}
+			params["offline_experiment_group"] = "caa_iteration_v3_perf_msg_6"
+			params["openid_tokens"] = map[string]any{}
+			params["spectra_guardian_token"] = ""
+		default:
+			return nil, fmt.Errorf("no initial bloks params for platform %s", b.Config.Platform.String())
+		}
+		action, err := b.Config.MakeBloksRequest(ctx, actionDoc, rpc, params, b.Bridge.DeviceID, b.Bridge.FamilyDeviceID)
 		if err != nil {
 			return nil, fmt.Errorf("rpc %s: %w", rpc, err)
 		}
