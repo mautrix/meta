@@ -53,6 +53,9 @@ type routeDefinitions struct {
 var ErrThreadNotFound = errors.New("instagram thread not found")
 
 func (c *Client) FetchThreadIDs(ctx context.Context, threadFBIDs ...int64) (map[int64]*ThreadIGIDs, error) {
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
 	payload := c.http.NewHTTPQuery()
 	if c.configs.RoutingNamespace == "" {
 		return nil, fmt.Errorf("routing namespace is empty")

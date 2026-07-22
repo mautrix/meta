@@ -39,7 +39,9 @@ type indicateActivity struct {
 }
 
 func (c *Client) SetTyping(ctx context.Context, threadID string, typing bool) error {
-	if !c.enableTyping {
+	if c == nil {
+		return ErrClientIsNil
+	} else if !c.enableTyping {
 		return nil
 	}
 	req := &indicateActivity{
