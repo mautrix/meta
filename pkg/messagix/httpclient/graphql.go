@@ -101,8 +101,14 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	if respOuter.Data.BloksApp != nil {
 		innerData = respOuter.Data.BloksApp.Screen.Component.Bundle.Tree
 	}
+	if respOuter.Data.BloksAppFB != nil {
+		innerData = respOuter.Data.BloksAppFB.RootComponent.Bundle.Tree
+	}
 	if respOuter.Data.BloksAction != nil {
 		innerData = respOuter.Data.BloksAction.Action.Bundle.BundleAction
+	}
+	if respOuter.Data.BloksActionFB != nil {
+		innerData = respOuter.Data.BloksActionFB.RootAction.Action.Bundle.BundleAction
 	}
 
 	if innerData == "" {

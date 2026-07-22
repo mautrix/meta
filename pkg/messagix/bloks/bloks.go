@@ -103,7 +103,11 @@ type BloksResponseData struct {
 	//lint:ignore SA5008 handled with custom unmarshaler
 	BloksApp *BloksAppData `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
 	//lint:ignore SA5008 handled with custom unmarshaler
+	BloksAppFB *BloksAppDataFB `json:"1$fb_bloks_app(nt_context:$nt_context,params:$params)"`
+	//lint:ignore SA5008 handled with custom unmarshaler
 	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
+	//lint:ignore SA5008 handled with custom unmarshaler
+	BloksActionFB *BloksActionDataFB `json:"1$fb_bloks_action(nt_context:$nt_context,params:$params)"`
 }
 
 // Workaround https://github.com/golang/go/issues/15000
@@ -130,6 +134,10 @@ func (b *BloksResponseData) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type BloksAppDataFB struct {
+	RootComponent BloksComponent `json:"root_component"`
+}
+
 type BloksAppData struct {
 	Screen BloksScreenContent `json:"screen_content"`
 }
@@ -144,6 +152,10 @@ type BloksComponent struct {
 
 type BloksAppBundle struct {
 	Tree string `json:"bloks_bundle_tree"` // BloksBundle struct
+}
+
+type BloksActionDataFB struct {
+	RootAction BloksActionData `json:"root_action"`
 }
 
 type BloksActionData struct {
