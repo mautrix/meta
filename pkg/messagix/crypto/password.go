@@ -27,8 +27,8 @@ var (
 )
 
 // TO-DO: implement automatic grabbing of pub key from html module config for facebook as insta does
-func EncryptPassword(platform int, pubKeyId int, pubKey, password string) (string, error) {
-	if platform == int(types.MessengerLite) {
+func EncryptPassword(platform types.Platform, pubKeyId int, pubKey, password string) (string, error) {
+	if platform.IsMessengerLite() {
 		return encryptPasswordLightspeed(pubKeyId, pubKey, password)
 	}
 

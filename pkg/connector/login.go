@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	FlowIDFacebookCookies  = "facebook"
-	FlowIDMessengerCookies = "messenger"
-	FlowIDInstagramCookies = "instagram"
-	FlowIDMessengerLite    = "messenger-lite"
+	FlowIDFacebookCookies      = "facebook"
+	FlowIDMessengerCookies     = "messenger"
+	FlowIDInstagramCookies     = "instagram"
+	FlowIDMessengerLiteIOS     = "messenger-lite"
+	FlowIDMessengerLiteAndroid = "messenger-lite-android"
 
 	LoginStepIDCookies  = "fi.mau.meta.cookies"
 	LoginStepIDComplete = "fi.mau.meta.complete"
@@ -49,8 +50,15 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 		plat = types.Messenger
 	//case FlowIDInstagramCookies:
 	//	plat = types.Instagram
-	case FlowIDMessengerLite:
-		plat = types.MessengerLite
+	case FlowIDMessengerLiteIOS:
+		plat = types.MessengerLiteIOS
+		return &MetaNativeLogin{
+			Mode: plat,
+			User: user,
+			Main: m,
+		}, nil
+	case FlowIDMessengerLiteAndroid:
+		plat = types.MessengerLiteAndroid
 		return &MetaNativeLogin{
 			Mode: plat,
 			User: user,
@@ -110,10 +118,15 @@ var (
 		Description: "Login using cookies from instagram.com",
 		ID:          FlowIDInstagramCookies,
 	}
-	loginFlowMessengerLite = bridgev2.LoginFlow{
+	loginFlowMessengerLiteIOS = bridgev2.LoginFlow{
 		Name:        "Messenger iOS",
-		Description: "Login in using Messenger mobile API",
-		ID:          FlowIDMessengerLite,
+		Description: "Login in using Messenger iOS API",
+		ID:          FlowIDMessengerLiteIOS,
+	}
+	loginFlowMessengerLiteAndroid = bridgev2.LoginFlow{
+		Name:        "Messenger Android",
+		Description: "Login in using Messenger Android API",
+		ID:          FlowIDMessengerLiteAndroid,
 	}
 )
 
@@ -130,8 +143,10 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 				flows = append(flows, loginFlowMessenger)
 			case types.Instagram:
 				//flows = append(flows, loginFlowInstagram)
-			case types.MessengerLite:
-				flows = append(flows, loginFlowMessengerLite)
+			case types.MessengerLiteIOS:
+				flows = append(flows, loginFlowMessengerLiteIOS)
+			case types.MessengerLiteAndroid:
+				flows = append(flows, loginFlowMessengerLiteAndroid)
 			default:
 				panic("unknown mode in config")
 			}
@@ -140,7 +155,7 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	}
 	switch m.Config.Mode {
 	case types.Unset:
-		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram, loginFlowMessengerLite}
+		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram, loginFlowMessengerLiteIOS, loginFlowMessengerLiteAndroid}
 	case types.Facebook:
 		if m.Config.AllowMessengerComOnFB {
 			return []bridgev2.LoginFlow{loginFlowMessenger, loginFlowFacebook}
@@ -152,8 +167,10 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 		return []bridgev2.LoginFlow{loginFlowMessenger}
 	case types.Instagram:
 		return []bridgev2.LoginFlow{}
-	case types.MessengerLite:
-		return []bridgev2.LoginFlow{loginFlowMessengerLite}
+	case types.MessengerLiteIOS:
+		return []bridgev2.LoginFlow{loginFlowMessengerLiteIOS}
+	case types.MessengerLiteAndroid:
+		return []bridgev2.LoginFlow{loginFlowMessengerLiteAndroid}
 	default:
 		panic("unknown mode in config")
 	}

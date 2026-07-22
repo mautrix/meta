@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
@@ -305,6 +306,7 @@ const (
 )
 
 type BrowserConfig struct {
+	Platform         types.Platform
 	EncryptPassword  func(context.Context, string) (string, error)
 	MakeBloksRequest func(context.Context, *BloksDoc, *BloksRequestOuter) (*BloksBundle, error)
 }
@@ -446,7 +448,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			if err != nil {
 				return nil, fmt.Errorf("parsing %s params: %w", name, err)
 			}
-			bundle, err := cfg.MakeBloksRequest(ctx, &BloksAppDoc, NewBloksRequest(name, paramsInner))
+			appDoc, err := GetBloksAppDoc(cfg.Platform)
+			if err != nil {
+				return nil, fmt.Errorf("rpc %s: %w", name, err)
+			}
+			bundle, err := cfg.MakeBloksRequest(ctx, appDoc, NewBloksRequest(name, paramsInner))
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
@@ -460,7 +466,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			if err != nil {
 				return nil, fmt.Errorf("parsing %s params: %w", name, err)
 			}
-			bundle, err := cfg.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(name, paramsInner))
+			actionDoc, err := GetBloksActionDoc(cfg.Platform)
+			if err != nil {
+				return nil, fmt.Errorf("rpc %s: %w", name, err)
+			}
+			bundle, err := cfg.MakeBloksRequest(ctx, actionDoc, NewBloksRequest(name, paramsInner))
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
@@ -681,7 +691,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateInitial:
 		rpc := "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
-		action, err := b.Config.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(rpc, map[string]any{
+		actionDoc, err := GetBloksActionDoc(b.Config.Platform)
+		if err != nil {
+			return nil, fmt.Errorf("initial request: %w", err)
+		}
+		// It might be desirable to keep these parameters more up to
+		// date, and to account for differences by platform.
+		action, err := b.Config.MakeBloksRequest(ctx, actionDoc, NewBloksRequest(rpc, map[string]any{
 			"blocked_uid":                               []any{},
 			"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
 			"family_device_id":                          b.Bridge.FamilyDeviceID,

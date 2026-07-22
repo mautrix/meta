@@ -43,13 +43,14 @@ type LightspeedKeyResponse struct {
 
 func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 	return &bloks.BrowserConfig{
+		Platform: fb.client.Platform,
 		EncryptPassword: func(ctx context.Context, password string) (string, error) {
 			key, err := fb.client.FetchLightspeedKey(ctx)
 			if err != nil {
 				return "", fmt.Errorf("fetching lightspeed key for messenger lite: %w", err)
 			}
 
-			encryptedPW, err := crypto.EncryptPassword(int(fb.client.Platform), key.KeyID, key.PublicKey, password)
+			encryptedPW, err := crypto.EncryptPassword(fb.client.Platform, key.KeyID, key.PublicKey, password)
 			if err != nil {
 				return "", fmt.Errorf("encrypting password for messenger lite: %w", err)
 			}
@@ -146,8 +147,8 @@ type BloksLoginActionResponsePayload struct {
 	SessionCookies []RawCookie `json:"session_cookies"`
 }
 
-func convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
-	newCookies := &cookies.Cookies{Platform: types.MessengerLite}
+func (m *MessengerLiteMethods) convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
+	newCookies := &cookies.Cookies{Platform: m.client.Platform}
 	newCookies.UpdateValues(make(map[cookies.MetaCookieName]string))
 	for _, raw := range payload.SessionCookies {
 		newCookies.Set(cookies.MetaCookieName(raw.Name), raw.Value)
@@ -208,5 +209,5 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		)
 	}
 
-	return nil, convertCookies(&loginRespPayload), nil
+	return nil, m.convertCookies(&loginRespPayload), nil
 }
