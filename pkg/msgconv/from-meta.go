@@ -850,7 +850,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		}}
 	} else if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
-		converted = errorToNotice(err, "XMA")
+		converted = mc.fetchFullXMA(ctx, att, errorToNotice(err, "XMA"))
 	} else {
 		converted = mc.fetchFullXMA(ctx, att, converted)
 	}
