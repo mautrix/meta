@@ -63,8 +63,22 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
 	endpoint := c.GetEndpoint("pwd_key")
 
+	var accessToken, appID, userAgent string
+	switch c.Platform {
+	case types.MessengerLiteIOS:
+		accessToken = useragent.MessengerLiteIOSAccessToken
+		appID = useragent.MessengerLiteIOSAppID
+		userAgent = useragent.MessengerLiteIOSUserAgent
+	case types.MessengerLiteAndroid:
+		accessToken = useragent.MessengerLiteAndroidAccessToken
+		appID = useragent.MessengerLiteAndroidAppID
+		userAgent = useragent.MessengerLiteAndroidUserAgent
+	default:
+		return nil, fmt.Errorf("platform %s does not support lightspeed key fetch", c.Platform.String())
+	}
+
 	params := map[string]any{
-		"access_token": useragent.MessengerLiteAccessToken,
+		"access_token": accessToken,
 		"device_id":    strings.ToUpper(c.MessengerLite.deviceID.String()),
 		"machine_id":   c.MessengerLite.machineID,
 		"version":      "3",
@@ -76,16 +90,16 @@ func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 	}
 	fullURL := endpoint + "?" + query.Encode()
 
-	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader()
+	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader(appID)
 	if err != nil {
 		return nil, err
 	}
 
 	headers := map[string]string{
 		"accept":                      "*/*",
-		"x-fb-appid":                  useragent.MessengerLiteAppID,
+		"x-fb-appid":                  appID,
 		"x-fb-request-analytics-tags": analyticsTags,
-		"user-agent":                  useragent.MessengerLiteUserAgent,
+		"user-agent":                  userAgent,
 		"accept-language":             "en-US,en;q=0.9",
 		"request_token":               uuid.New().String(),
 	}

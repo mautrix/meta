@@ -72,7 +72,14 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	headers.Set("x-fb-http-engine", "Tigon/MNS/TCP")
 	headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
 
-	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
+	switch c.GetPlatform() {
+	case types.MessengerLiteIOS:
+		headers.Set("Authorization", "OAuth "+useragent.MessengerLiteIOSAccessToken)
+	case types.MessengerLiteAndroid:
+		headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAndroidAccessToken)
+	default:
+		return nil, fmt.Errorf("platform %s does not support bloks", c.GetPlatform().String())
+	}
 
 	reqUrl := c.parent.GetEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
 	_, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)

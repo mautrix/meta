@@ -515,15 +515,25 @@ func (c *HTTPClient) BuildHeaders(withCookies, isSecFetchDocument bool) http.Hea
 }
 
 func (c *HTTPClient) buildMessengerLiteHeaders() (http.Header, error) {
-	analyticsTags, err := MakeRequestAnalyticsHeader()
+	// This isn't from a browser, so we don't include most of the usual headers
+	headers := http.Header{}
+	var appID string
+	switch c.GetPlatform() {
+	case types.MessengerLiteIOS:
+		headers.Set("user-agent", useragent.MessengerLiteIOSUserAgent)
+		headers.Set("x-fb-http-engine", "Tigon+iOS")
+		appID = useragent.MessengerLiteIOSAppID
+	case types.MessengerLiteAndroid:
+		headers.Set("user-agent", useragent.MessengerLiteAndroidUserAgent)
+		headers.Set("x-fb-http-engine", "Tigon/Liger")
+		appID = useragent.MessengerLiteAndroidAppID
+	default:
+		return nil, fmt.Errorf("platform %s does not support messenger-lite", c.GetPlatform())
+	}
+	analyticsTags, err := MakeRequestAnalyticsHeader(appID)
 	if err != nil {
 		return nil, err
 	}
-
-	// This isn't from a browser, so we don't include most of the usual headers
-	headers := http.Header{}
-	headers.Set("user-agent", useragent.MessengerLiteUserAgent)
-	headers.Set("x-fb-http-engine", "Tigon+iOS")
 	headers.Set("accept", "*/*")
 	headers.Set("priority", "u=3, i")
 	headers.Set("accept-language", "en-US,en;q=0.9")

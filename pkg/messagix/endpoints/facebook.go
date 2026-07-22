@@ -1,5 +1,7 @@
 package endpoints
 
+import "fmt"
+
 const (
 	facebookHost    = "facebook.com"
 	messengerHost   = "messenger.com"
@@ -9,7 +11,8 @@ const (
 var FacebookEndpoints = makeFacebookEndpoints(facebookHost)
 var MessengerEndpoints = makeFacebookEndpoints(messengerHost)
 var FacebookTorEndpoints = makeFacebookEndpoints(facebookTorHost)
-var MessengerLiteEndpoints = makeMessengerLiteEndpoints(facebookHost)
+var MessengerLiteIOSEndpoints = makeMessengerLiteEndpoints(facebookHost, "graph.facebook.com", false)
+var MessengerLiteAndroidEndpoints = makeMessengerLiteEndpoints(facebookHost, "b-graph.facebook.com", true)
 
 func makeFacebookEndpoints(host string) map[string]string {
 	wwwHost := "www." + host
@@ -38,10 +41,14 @@ func makeFacebookEndpoints(host string) map[string]string {
 	return urls
 }
 
-func makeMessengerLiteEndpoints(host string) map[string]string {
+func makeMessengerLiteEndpoints(host string, graph string, doubleSlash bool) map[string]string {
+	slash := "/"
+	if doubleSlash {
+		slash = "//"
+	}
 	endpoints := makeFacebookEndpoints(host)
-	endpoints["graph_graphql"] = "https://graph.facebook.com/graphql"
-	endpoints["pwd_key"] = "https://graph.facebook.com/pwd_key_fetch"
+	endpoints["graph_graphql"] = fmt.Sprintf("https://%s/graphql", graph)
+	endpoints["pwd_key"] = fmt.Sprintf("https://%s%spwd_key_fetch", graph, slash)
 	endpoints["v2.10"] = "https://graph.facebook.com/v2.10"
 	endpoints["cat"] = "https://web.facebook.com/messaging/lightspeed/cat"
 	endpoints["icdc_fetch"] = "https://v.whatsapp.net/v2/fb_icdc_fetch"
