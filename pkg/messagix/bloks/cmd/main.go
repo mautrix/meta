@@ -212,6 +212,10 @@ func mainE() error {
 			}
 			return nil
 		},
+		CancelTimer: func(name string) error {
+			fmt.Printf("timer cancelled: %s\n", name)
+			return nil
+		},
 		OpenURL: func(url string) error {
 			if lastURL != "" {
 				return fmt.Errorf("already opened a url this session")

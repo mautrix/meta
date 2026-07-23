@@ -24,6 +24,7 @@ import (
 var (
 	ErrLoginPhoneNumber     = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
 	ErrLoginInvalidUsername = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
+	ErrLoginAFADStopped     = bridgev2.RespError{ErrCode: "FI.MAU.META_AFAD_STOPPED", Err: "The approval request expired or was denied, please try logging in again", StatusCode: http.StatusBadRequest}
 )
 
 // This error is returned in cases where we have observed Meta returning an error that is
@@ -528,6 +529,8 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				newState = StateBackupCodePage
 			case "com.bloks.www.ap.two_step_verification.contactpoint_chooser":
 				newState = StateChooseNumberPage
+			case "com.bloks.www.approve_from_another_device.xmds.challenged_device_denied":
+				return ErrLoginAFADStopped
 			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
 				newState = StateWhatsAppPage
 			case "com.bloks.www.ap.passkey_auth":
@@ -562,6 +565,16 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 				b.AFADCallback = callback
 			default:
 				return fmt.Errorf("unexpected timer %s", name)
+			}
+			return nil
+		},
+		CancelTimer: func(name string) error {
+			switch name {
+			case "approve_from_another_device_polling_timer":
+				b.AFADInterval = 0
+				b.AFADCallback = nil
+			default:
+				return fmt.Errorf("unexpected timer cancel %s", name)
 			}
 			return nil
 		},
@@ -1261,9 +1274,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateAFADPageWaiting:
 		for b.State == StateAFADPageWaiting {
+			if b.AFADCallback == nil {
+				return nil, ErrLoginAFADStopped
+			}
 			time.Sleep(b.AFADInterval)
 			err := b.AFADCallback()
 			if err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, fmt.Errorf("login cancelled while waiting for approval: %w", ctxErr)
+				}
 				return nil, fmt.Errorf("AFAD callback: %w", err)
 			}
 		}
