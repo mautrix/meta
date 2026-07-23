@@ -3,6 +3,12 @@ package bloks
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -327,6 +333,31 @@ type Browser struct {
 	LastError string
 }
 
+var genericDeviceNetworkInfo = map[string]any{
+	"active_subscriptions_info": nil,
+	"default_subscription_info": map[string]any{
+		"network_type":           18,
+		"is_data_roaming":        1,
+		"is_esim":                nil,
+		"is_gsm_roaming":         0,
+		"is_sim_sms_capable":     nil,
+		"is_mobile_data_enabled": 0,
+		"sim_carrier_id":         2578,
+		"sim_carrier_id_name":    "Tello",
+		"sim_state":              5,
+		"sim_operator":           "310240",
+		"sim_operator_name":      "Tello",
+		"signal_strength":        2,
+		"group_id_level_1":       nil,
+		"network_operator":       "310260",
+	},
+	"is_airplane_mode":           0,
+	"is_active_network_cellular": 0,
+	"is_device_sms_capable":      1,
+	"sim_count":                  2,
+	"is_wifi":                    1,
+}
+
 // You will want an explanation of how to maintain this code.
 //
 // The problem being solved is tricky because Facebook wants to shake their frontend around like a
@@ -415,11 +446,20 @@ type Browser struct {
 // error state, then we'll re-prompt the user for input, rather than reusing what they gave last
 // time.
 
-func NewBrowser(cfg *BrowserConfig) *Browser {
+func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 	b := Browser{
 		State:  StateInitial,
 		Config: cfg,
 	}
+	attestationKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate attestation key: %w", err)
+	}
+	attestationPublicKey, err := x509.MarshalPKIXPublicKey(&attestationKey.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("get attestation public key: %w", err)
+	}
+	attestationKeyHash := sha256.Sum256(attestationPublicKey)
 	b.Bridge = &InterpBridge{
 		DeviceID:       strings.ToUpper(uuid.New().String()),
 		FamilyDeviceID: strings.ToUpper(uuid.New().String()),
@@ -438,8 +478,25 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 		//
 		// The machine_id would generally be a 24 character alphanumeric string. However it
 		// cannot be generated on the client side so this fact is purely informational.
-		MachineID:       "",
-		EncryptPassword: cfg.EncryptPassword,
+		MachineID:         "",
+		DeviceNetworkInfo: genericDeviceNetworkInfo,
+		EncryptPassword:   cfg.EncryptPassword,
+		SignRequestData: func(ctx context.Context, data any) (any, error) {
+			payload, err := json.Marshal(data)
+			if err != nil {
+				return nil, fmt.Errorf("marshal request data: %w", err)
+			}
+			hash := sha256.Sum256(payload)
+			sig, err := ecdsa.SignASN1(rand.Reader, attestationKey, hash[:])
+			if err != nil {
+				return nil, fmt.Errorf("sign request data: %w", err)
+			}
+			return map[string]any{
+				"keyHash":   hex.EncodeToString(attestationKeyHash[:]),
+				"data":      base64.StdEncoding.EncodeToString(payload),
+				"signature": base64.StdEncoding.EncodeToString(sig),
+			}, nil
+		},
 		DoPageRPC: func(ctx context.Context, name string, params map[string]string) (*BloksBundle, error) {
 			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Str("rpc_type", "page").Msg("Invoking RPC from Bloks")
@@ -605,7 +662,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			return nil
 		},
 	}
-	return &b
+	return &b, nil
 }
 
 var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
@@ -1210,7 +1267,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		delete(userInput, "totp_code")
 		b.LastError = "Facebook rejected that code"
 
-		err := b.CurrentPage.
+		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -1218,8 +1275,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return comp.FindDescendant(FilterByAttribute(
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
-			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, totpCode)
+			})
+
+		if input == nil {
+			input = b.CurrentPage.
+				FindDescendant(func(comp *BloksTreeComponent) bool {
+					if comp.ComponentID != "bk.components.TextInput" {
+						return false
+					}
+					return comp.GetAttribute("type") == "number"
+				})
+		}
+
+		err := input.FillInput(ctx, b.CurrentPage.Interpreter, totpCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling mfa code input: %w", err)
 		}

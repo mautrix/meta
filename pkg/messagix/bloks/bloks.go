@@ -161,11 +161,10 @@ type BloksResponseData struct {
 	//lint:ignore SA5008 handled with custom unmarshaler
 	BloksApp *BloksAppData `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
 	//lint:ignore SA5008 handled with custom unmarshaler
-	BloksAppFB *BloksAppDataFB `json:"1$fb_bloks_app(nt_context:$nt_context,params:$params)"`
-	//lint:ignore SA5008 handled with custom unmarshaler
 	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
 
 	// normal shit
+	BloksAppFB    *BloksAppDataFB    `json:"fb_bloks_app"`
 	BloksActionFB *BloksActionDataFB `json:"fb_bloks_action"`
 }
 

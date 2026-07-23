@@ -23,8 +23,12 @@ type InterpBridge struct {
 	FamilyDeviceID       string
 	MachineID            string
 	EncryptPassword      func(context.Context, string) (string, error)
+	GetEncryptedMSISDN   func(context.Context, string, bool) (string, error)
+	SignRequestData      func(context.Context, any) (any, error)
 	SIMPhones            any
 	DeviceEmails         any
+	DevicePhoneNumber    any
+	DeviceNetworkInfo    any
 	IsAppInstalled       func(url string, pkgnames ...string) bool
 	HasAppPermissions    func(permissions ...string) bool
 	GetSecureNonces      func() []string
@@ -75,7 +79,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 		id := BloksVariableID(item.ID)
 		switch item.Type {
-		case "gs":
+		case "gs", "bloks_android_system_insets":
 			// Check if global var was already set
 			if globals[id] != nil {
 				break
@@ -115,6 +119,16 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 				"#PWD_LIGHTSPEED_FAKE:%s",
 				base64.StdEncoding.EncodeToString(sha256.New().Sum([]byte(pw))),
 			), nil
+		}
+	}
+	if br.GetEncryptedMSISDN == nil {
+		br.GetEncryptedMSISDN = func(ctx context.Context, name string, flag bool) (string, error) {
+			return "", nil
+		}
+	}
+	if br.SignRequestData == nil {
+		br.SignRequestData = func(ctx context.Context, data any) (any, error) {
+			return nil, nil
 		}
 	}
 	if br.IsAppInstalled == nil {
@@ -181,7 +195,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 		id := BloksVariableID(item.ID)
 		switch item.Type {
-		case "gs":
+		case "gs", "bloks_android_system_insets":
 			if globals[id] != nil {
 				break
 			}
@@ -370,6 +384,7 @@ func getBloksType(lit *BloksScriptLiteral) (int64, error) {
 	case map[string]*BloksScriptLiteral:
 		return 7, nil
 	}
+	fmt.Println(lit)
 	return -1, fmt.Errorf("unexpected bloks typecheck for %T", lit.Value())
 }
 
@@ -620,7 +635,31 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(pass), nil
-	case "bk.action.textinput.GetText", "bk.action.caa.GetPasswordText":
+	case "bk.action.fos.headers.GetHeadersSubmitIdentifier":
+		name, err := evalAs[string](ctx, i, &call.Args[0], "msisdn")
+		if err != nil {
+			return nil, err
+		}
+		flag, err := evalAs[bool](ctx, i, &call.Args[1], "msisdn")
+		if err != nil {
+			return nil, err
+		}
+		msisdn, err := i.Bridge.GetEncryptedMSISDN(ctx, name, flag)
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(msisdn), nil
+	case "bk.action.caa.attestation.SignRequestDataAndChallengeNonce":
+		input, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		attest, err := i.Bridge.SignRequestData(ctx, input.Flatten(false))
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralFromJavaScript(attest), nil
+	case "bk.action.textinput.GetText", "bk.action.caa.GetUsernameText", "bk.action.caa.GetPasswordText":
 		ref, err := evalAs[*BloksElemRef](ctx, i, &call.Args[0], "gettext")
 		if err != nil {
 			return nil, err
@@ -636,8 +675,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(!arg.IsTruthy()), nil
-	case "null":
-		return i.Evaluate(ctx, &call.Args[0])
+	case "h9h":
+		arg, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(arg.Value() == nil), nil
 	case "bk.action.mins.CallRuntime":
 		num, err := evalAs[int64](ctx, i, &call.Args[0], "callruntime")
 		if err != nil {
@@ -712,7 +755,56 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		default:
 			return nil, fmt.Errorf("expected array or map in array.get, got %T", mapping.Value())
 		}
-	case "ig.action.IsDarkModeEnabled":
+	case "bk.action.array.Map":
+		arr, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "array.map")
+		if err != nil {
+			return nil, err
+		}
+		callback, err := evalAs[*BloksLambda](ctx, i, &call.Args[1], "array.map")
+		if err != nil {
+			return nil, err
+		}
+		results := []*BloksScriptLiteral{}
+		for idx, item := range arr {
+			res, err := i.Evaluate(ctx, &BloksScriptNode{
+				Content: &BloksScriptFuncall{
+					Function: "bk.action.core.Apply",
+					Args: []BloksScriptNode{{
+						BloksLiteralOf(callback),
+					}, {
+						BloksLiteralOf(idx),
+					}, {
+						item,
+					}},
+				},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("map idx %d: %w", idx, err)
+			}
+			results = append(results, res)
+		}
+		return BloksLiteralOf(results), nil
+	case "bk.action.map.Keys":
+		dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.keys")
+		if err != nil {
+			return nil, err
+		}
+		keys := []*BloksScriptLiteral{}
+		for key := range dict {
+			keys = append(keys, BloksLiteralOf(key))
+		}
+		return BloksLiteralOf(keys), nil
+	case "bk.action.map.Values":
+		dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.keys")
+		if err != nil {
+			return nil, err
+		}
+		vals := []*BloksScriptLiteral{}
+		for _, val := range dict {
+			vals = append(vals, val)
+		}
+		return BloksLiteralOf(vals), nil
+	case "ig.action.IsDarkModeEnabled", "fb.action.IsDarkModeEnabled":
 		return BloksLiteralOf(false), nil
 	case "bk.action.mins.InByVal":
 		dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "put")
@@ -729,6 +821,10 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		return BloksLiteralOf(i.Bridge.SIMPhones), nil
 	case "bk.action.caa.login.GetDeviceEmails":
 		return BloksLiteralOf(i.Bridge.DeviceEmails), nil
+	case "bk.action.caa.login.GetDevicePhoneNumber":
+		return BloksLiteralOf(i.Bridge.DevicePhoneNumber), nil
+	case "bk.action.mi.GetDeviceNetworkInfoSync":
+		return BloksLiteralOf(i.Bridge.DeviceNetworkInfo), nil
 	case "bk.action.bloks.IsAppInstalled":
 		url, err := evalAs[string](ctx, i, &call.Args[0], "isappinstalled")
 		if err != nil {
@@ -846,7 +942,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, nil
-	case "bk.action.string.JsonEncode":
+	case "bk.action.string.JsonEncode", "bk.action.string.JsonEncodeV3":
 		arg, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
 			return nil, err
@@ -915,7 +1011,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				},
 			},
 		})
-	case "bk.action.caa.HandleLoginResponseForContextChange":
+	case "bk.action.caa.HandleLoginResponseForContextChange", "bk.action.caa.HandleLoginResponse":
 		data, err := evalTreeProp35(ctx, i, &call.Args[0], "handleloginresponse")
 		if err != nil {
 			return nil, err
@@ -1124,6 +1220,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "bk.action.caa.GenerateUUID":
 		// This may be wrong, just guessed the implementation based on the function name, it seems to work
 		return BloksLiteralOf(uuid.New().String()), nil
+	case "bk.action.core.Delay":
+		// First argument is time delay in milliseconds. It seems to be for
+		// triggering asynchronous execution. I really hope we can get away
+		// without actually doing that.
+		return i.Evaluate(ctx, &call.Args[1])
 	case
 		"bk.action.animated.Start",
 		"bk.action.animated.Build",
@@ -1143,7 +1244,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.textinput.SetTextV2",
 		"bk.action.caa.reg.SaveMachineID",
 		"bk.action.caa.ShowLoggedInResetPassword",
-		"bk.fx.action.FetchAllAvailableNativeAuthDataForCaller":
+		"bk.fx.action.FetchAllAvailableNativeAuthDataForCaller",
+		"bk.action.cds.internal.GetContainerMode",
+		"bk.action.caa.GetSPIEligibility":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
