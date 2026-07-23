@@ -384,7 +384,6 @@ func getBloksType(lit *BloksScriptLiteral) (int64, error) {
 	case map[string]*BloksScriptLiteral:
 		return 7, nil
 	}
-	fmt.Println(lit)
 	return -1, fmt.Errorf("unexpected bloks typecheck for %T", lit.Value())
 }
 

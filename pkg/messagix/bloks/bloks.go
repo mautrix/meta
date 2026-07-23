@@ -9,7 +9,7 @@ import (
 )
 
 // Messenger iOS 571.0.0.18.106 of 2026-07-22
-const BloksVersionIOS = "7f577336851f32ef4842b8eb2394aaf9d036c1dda7c1064b3f3090b6212b63e5"
+const BloksVersionIOS = "e74cbfe42b6152a793f3ee3d81eeba4c48b5c4477b54d05ab8d8bce991f1319d"
 
 // Messenger Android 569.0.0.44.91 of 2026-07-22
 const BloksVersionAndroid = "194a25b5ca64b7e2cc9a1b57a306ae5b1536d14d53e54f273f19a639c21cb197"
