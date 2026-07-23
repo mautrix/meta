@@ -44,11 +44,13 @@ var doSMSCode = flag.String("sms-code", "", "Submit SMS code")
 var doBackupCode = flag.String("backup-code", "", "Submit backup code")
 var doEncrypt = flag.String("encrypt", "", "Encrypt a password")
 var deviceID = flag.String("device-id", "", "Device ID for password encryption")
+var familyDeviceID = flag.String("family-device-id", "", "Family device ID for headers")
 var doCaptcha = flag.String("captcha-code", "", "Captcha code to submit")
 var captchaResponse = flag.String("captcha-resp", "", "Bloks response for captcha submission")
 var doWhatsAppNumbers = flag.Bool("whatsapp-numbers", false, "Print the available WhatsApp numbers")
 var selectedWhatsAppNumber = flag.String("whatsapp-number", "", "Pick a WhatsApp number and submit")
 var cancelPasskey = flag.Bool("cancel-passkey", false, "Tap the 'try another way' passkey button")
+var isAndroid = flag.Bool("android", false, "Use Android instead of iOS")
 
 func main() {
 	err := mainE()
@@ -94,12 +96,17 @@ func mainE() error {
 	log := zerolog.New(zerolog.NewConsoleWriter()).Level(logLevel)
 	ctx = log.WithContext(ctx)
 
+	plat := types.MessengerLiteIOS
+	if *isAndroid {
+		plat = types.MessengerLiteAndroid
+	}
+
 	if *doEncrypt != "" {
 		if *deviceID == "" {
 			return fmt.Errorf("must give -device-id to use -encrypt")
 		}
 		cook := &cookies.Cookies{
-			Platform: types.MessengerLite,
+			Platform: plat,
 		}
 		cl := messagix.NewClient(cook, log, &messagix.Config{
 			ClientSettings: exhttp.SensibleClientSettings,
@@ -109,7 +116,7 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
-		enc, err := crypto.EncryptPassword(int(types.MessengerLite), key.KeyID, key.PublicKey, *doEncrypt)
+		enc, err := crypto.EncryptPassword(plat, key.KeyID, key.PublicKey, *doEncrypt)
 		if err != nil {
 			return err
 		}
@@ -135,9 +142,13 @@ func mainE() error {
 		}
 
 		mcl := messagix.NewClient(&cookies.Cookies{
-			Platform: types.MessengerLite,
+			Platform: plat,
 		}, log, &messagix.Config{})
-		mcl.GetHTTP().MakeBloksRequest(ctx, &bloks.BloksAppDoc, bloks.NewBloksRequest(*doRPC, paramsInner))
+		doc, err := bloks.GetBloksAppDoc(plat)
+		if err != nil {
+			return err
+		}
+		mcl.GetHTTP().MakeBloksRequest(ctx, doc, *doRPC, paramsInner, *deviceID, *familyDeviceID)
 
 		return nil
 	}
