@@ -224,6 +224,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		step.CookiesParams.URL = "https://www.instagram.com/accounts/login/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.IGRequiredCookies, "instagram.com")
 		step.CookiesParams.WaitForURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$"
+		step.CookiesParams.UserAgent = ""
 	default:
 		return nil, fmt.Errorf("unknown mode %s", m.Mode)
 	}
