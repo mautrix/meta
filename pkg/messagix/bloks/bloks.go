@@ -164,8 +164,9 @@ type BloksResponseData struct {
 	BloksAppFB *BloksAppDataFB `json:"1$fb_bloks_app(nt_context:$nt_context,params:$params)"`
 	//lint:ignore SA5008 handled with custom unmarshaler
 	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
-	//lint:ignore SA5008 handled with custom unmarshaler
-	BloksActionFB *BloksActionDataFB `json:"1$fb_bloks_action(nt_context:$nt_context,params:$params)"`
+
+	// normal shit
+	BloksActionFB *BloksActionDataFB `json:"fb_bloks_action"`
 }
 
 // Workaround https://github.com/golang/go/issues/15000

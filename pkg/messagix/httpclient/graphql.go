@@ -70,12 +70,16 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-graphql-request-purpose", "fetch")
 		headers.Set("x-root-field-name", doc.RootField)
 		headers.Set("x-fb-conn-uuid-client", strings.Replace(uuid.New().String(), "-", "", -1))
-		headers.Set("accept-encoding", "zstd")
 		headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
 		headers.Set("x-graphql-client-library", "pando")
 
 		// Not clear if this needs to be remembered
 		headers.Set("x-meta-usdid-uuid", strings.ToUpper(uuid.New().String()))
+
+		// Skip setting encoding headers since it messes up
+		// our own http library
+		//
+		// headers.Set("accept-encoding", "zstd")
 	case types.MessengerLiteAndroid:
 		appID = useragent.MessengerLiteAndroidAppID
 		payload.FbAPICallerClass = "graphservice"
@@ -86,9 +90,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-fb-http-engine", "Tigon/Liger")
 		headers.Set("authorization", "OAuth "+useragent.MessengerLiteAndroidAccessToken)
 		headers.Set("x-fb-conn-uuid-client", base64.StdEncoding.EncodeToString(random.Bytes(16)))
-		headers.Set("accept-encoding", "gzip, deflate")
 		headers.Set("x-graphql-client-library", "graphservice")
-		headers.Set("content-encoding", "gzip")
 		headers.Set("x-fb-connection-type", "WIFI")
 		headers.Set("x-tigon-is-retry", "False")
 
@@ -105,6 +107,12 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-zero-eh", hex.EncodeToString(random.Bytes(16)))
 		headers.Set("x-zero-state", "unknown")
 		headers.Set("app-scope-id-header", did)
+
+		// Skip setting encoding headers since it messes up
+		// our own http library
+		//
+		// headers.Set("accept-encoding", "gzip, deflate")
+		// headers.Set("content-encoding", "gzip")
 	default:
 		return nil, fmt.Errorf("platform %s does not support bloks", c.GetPlatform().String())
 	}
