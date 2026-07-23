@@ -15,13 +15,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
+	"go.mau.fi/util/random"
+
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/lightspeed"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
-	"go.mau.fi/util/random"
 )
 
 // This has some overlap with makeGraphQLRequest but it's really a
