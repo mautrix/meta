@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+
+	"go.mau.fi/util/random"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
@@ -26,9 +29,10 @@ import (
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, variables *bloks.BloksRequestOuter) (*bloks.BloksBundle, error) {
-	appID := variables.Params.AppID
+func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID string, familyDeviceID string) (*bloks.BloksBundle, error) {
 	c.log.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
+
+	variables := bloks.NewBloksRequest(doc, appID, inner)
 
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
@@ -42,13 +46,83 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	payload.Format = "json"
 	payload.ServerTimestamps = "true"
 	payload.Locale = "en_US"
-	payload.Purpose = "fetch"
 	payload.FbAPIReqFriendlyName = doc.Name + "-" + appID
 	payload.ClientDocID = doc.ClientDocID
-	payload.EnableCanonicalNaming = "true"
-	payload.EnableCanonicalVariableOverrides = "true"
-	payload.EnableCanonicalNamingAmbiguousTypePrefixing = "true"
 	payload.Variables = string(vBytes)
+
+	headers := http.Header{}
+	headers.Set("priority", "u=3, i")
+	headers.Set("x-fb-friendly-name", doc.Name+"-"+appID)
+	headers.Set("x-fb-client-ip", "True")
+	headers.Set("x-fb-server-cluster", "True")
+
+	switch c.GetPlatform() {
+	case types.MessengerLiteIOS:
+		appID = useragent.MessengerLiteIOSAppID
+		payload.Purpose = "fetch"
+		payload.EnableCanonicalNaming = "true"
+		payload.EnableCanonicalVariableOverrides = "true"
+		payload.EnableCanonicalNamingAmbiguousTypePrefixing = "true"
+		headers.Set("user-agent", useragent.MessengerLiteIOSUserAgent)
+		headers.Set("x-fb-http-engine", "Tigon/MNS/TCP")
+		headers.Set("authorization", "OAuth "+useragent.MessengerLiteIOSAccessToken)
+		headers.Set("x-fb-device-id", deviceID)
+		headers.Set("x-fb-family-device-id", familyDeviceID)
+		headers.Set("x-graphql-request-purpose", "fetch")
+		headers.Set("x-root-field-name", doc.RootField)
+		headers.Set("x-fb-conn-uuid-client", strings.Replace(uuid.New().String(), "-", "", -1))
+		headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
+		headers.Set("x-graphql-client-library", "pando")
+
+		// Not clear if this needs to be remembered
+		headers.Set("x-meta-usdid-uuid", strings.ToUpper(uuid.New().String()))
+
+		// Skip setting encoding headers since it messes up
+		// our own http library
+		//
+		// headers.Set("accept-encoding", "zstd")
+	case types.MessengerLiteAndroid:
+		appID = useragent.MessengerLiteAndroidAppID
+		payload.FbAPICallerClass = "graphservice"
+		payload.FbAPIClientContext = `{"is_background":false}`
+		payload.FbAPIAnalyticsTags = `["GraphServices"]`
+		payload.ClientTraceID = uuid.New().String()
+		headers.Set("user-agent", useragent.MessengerLiteAndroidUserAgent)
+		headers.Set("x-fb-http-engine", "Tigon/Liger")
+		headers.Set("authorization", "OAuth "+useragent.MessengerLiteAndroidAccessToken)
+		headers.Set("x-fb-conn-uuid-client", base64.StdEncoding.EncodeToString(random.Bytes(16)))
+		headers.Set("x-graphql-client-library", "graphservice")
+		headers.Set("x-fb-connection-type", "WIFI")
+		headers.Set("x-tigon-is-retry", "False")
+
+		// https://en.wikipedia.org/wiki/Mobile_network_codes_in_ITU_region_3xx_(North_America)#U
+		headers.Set("x-fb-net-hni", "310260")
+		headers.Set("x-fb-sim-hni", "310240")
+
+		// This probably needs to come from somewhere
+		headers.Set("x-fb-integrity-machine-id", string(random.StringBytes(24)))
+
+		// Meaning unclear
+		did := uuid.New().String()
+		headers.Set("x-zero-f-device-id", did)
+		headers.Set("x-zero-eh", hex.EncodeToString(random.Bytes(16)))
+		headers.Set("x-zero-state", "unknown")
+		headers.Set("app-scope-id-header", did)
+
+		// Skip setting encoding headers since it messes up
+		// our own http library
+		//
+		// headers.Set("accept-encoding", "gzip, deflate")
+		// headers.Set("content-encoding", "gzip")
+	default:
+		return nil, fmt.Errorf("platform %s does not support bloks", c.GetPlatform().String())
+	}
+
+	analyticsTags, err := MakeRequestAnalyticsHeader(appID)
+	if err != nil {
+		return nil, err
+	}
+	headers.Set("x-fb-request-analytics-tags", analyticsTags)
 
 	form, err := query.Values(payload)
 	if err != nil {
@@ -56,23 +130,6 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	}
 
 	payloadBytes := []byte(form.Encode())
-
-	headers, err := c.buildMessengerLiteHeaders()
-	if err != nil {
-		return nil, err
-	}
-
-	headers.Set("x-fb-friendly-name", doc.Name+"-"+appID)
-	headers.Set("x-root-field-name", doc.RootField)
-	headers.Set("x-graphql-request-purpose", "fetch")
-	headers.Set("x-graphql-client-library", "pando")
-	headers.Set("x-fb-client-ip", "True")
-	headers.Set("x-fb-server-cluster", "True")
-	headers.Set("x-fb-conn-uuid-client", strings.Replace(uuid.New().String(), "-", "", -1))
-	headers.Set("x-fb-http-engine", "Tigon/MNS/TCP")
-	headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
-
-	headers.Set("Authorization", "OAuth "+useragent.MessengerLiteAccessToken)
 
 	reqUrl := c.parent.GetEndpoint("graph_graphql") // graph.facebook.com vs /api/graphql
 	_, respData, err := c.MakeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
@@ -101,8 +158,14 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	if respOuter.Data.BloksApp != nil {
 		innerData = respOuter.Data.BloksApp.Screen.Component.Bundle.Tree
 	}
+	if respOuter.Data.BloksAppFB != nil {
+		innerData = respOuter.Data.BloksAppFB.RootComponent.Bundle.Tree
+	}
 	if respOuter.Data.BloksAction != nil {
 		innerData = respOuter.Data.BloksAction.Action.Bundle.BundleAction
+	}
+	if respOuter.Data.BloksActionFB != nil {
+		innerData = respOuter.Data.BloksActionFB.RootAction.Action.Bundle.BundleAction
 	}
 
 	if innerData == "" {

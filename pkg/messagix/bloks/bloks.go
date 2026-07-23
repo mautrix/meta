@@ -2,31 +2,60 @@ package bloks
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-// Messenger iOS 544.0.0.20.406 of 1768247148
-const BloksVersion = "7f577336851f32ef4842b8eb2394aaf9d036c1dda7c1064b3f3090b6212b63e5"
+// Messenger iOS 571.0.0.18.106 of 2026-07-22
+const BloksVersionIOS = "e74cbfe42b6152a793f3ee3d81eeba4c48b5c4477b54d05ab8d8bce991f1319d"
+
+// Messenger Android 569.0.0.44.91 of 2026-07-22
+const BloksVersionAndroid = "194a25b5ca64b7e2cc9a1b57a306ae5b1536d14d53e54f273f19a639c21cb197"
+
+func GetBloksVersion(p types.Platform) (string, error) {
+	switch p {
+	case types.MessengerLiteIOS:
+		return BloksVersionIOS, nil
+	case types.MessengerLiteAndroid:
+		return BloksVersionAndroid, nil
+	default:
+		return "", fmt.Errorf("platform %s does not have a bloks version", p.String())
+	}
+}
 
 type ExtraStringification[T any] struct {
 	Body T
+
+	// Set this to skip the special behavior on marshal and
+	// unmarshal, and instead treat the wrapper struct like it is not
+	// present.
+	SkipExtraStringification bool
 }
 
 func (extra *ExtraStringification[T]) UnmarshalJSON(data []byte) error {
-	var first string
-	err := json.Unmarshal(data, &first)
-	if err != nil {
-		return err
+	if !extra.SkipExtraStringification {
+		var first string
+		err := json.Unmarshal(data, &first)
+		if err != nil {
+			return err
+		}
+		data = []byte(first)
 	}
-	return json.Unmarshal([]byte(first), extra.Body)
+	return json.Unmarshal(data, extra.Body)
 }
 
 func (extra *ExtraStringification[T]) MarshalJSON() ([]byte, error) {
-	first, err := json.Marshal(&extra.Body)
-	if err != nil {
-		return nil, err
+	var obj any = &extra.Body
+	if !extra.SkipExtraStringification {
+		first, err := json.Marshal(&extra.Body)
+		if err != nil {
+			return nil, err
+		}
+		obj = string(first)
 	}
-	return json.Marshal(string(first))
+	return json.Marshal(obj)
 }
 
 type BloksParamsInner map[string]any
@@ -36,11 +65,15 @@ type BloksBkContext struct {
 	BloksVersion string  `json:"bloks_version"`
 }
 
-func NewBkContext() *BloksBkContext {
-	return &BloksBkContext{
-		PixelRatio:   3,
-		BloksVersion: BloksVersion,
-	}
+type BloksNtContext struct {
+	DebugToolingMetadataToken any                  `json:"debug_tooling_metadata_token"`
+	IsFlipperEnabled          bool                 `json:"is_flipper_enabled"`
+	ThemeParams               []BloksNtThemeParams `json:"theme_params"`
+}
+
+type BloksNtThemeParams struct {
+	DesignSystemName string   `json:"design_system_name"`
+	Value            []string `json:"value"`
 }
 
 type BloksParamsMiddle struct {
@@ -56,20 +89,45 @@ type BloksParamsOuter struct {
 
 type BloksRequestOuter struct {
 	BkContext *BloksBkContext   `json:"bk_context,omitempty"`
+	NtContext *BloksNtContext   `json:"nt_context,omitempty"`
 	Params    *BloksParamsOuter `json:"params,omitempty"`
+	Scale     string            `json:"scale,omitempty"`
 }
 
-func NewBloksRequest(appID string, inner BloksParamsInner) *BloksRequestOuter {
-	return &BloksRequestOuter{
-		BkContext: NewBkContext(),
+func NewBloksRequest(doc *BloksDoc, appID string, inner BloksParamsInner) *BloksRequestOuter {
+	outer := &BloksRequestOuter{
 		Params: &BloksParamsOuter{
-			BloksVersioningId: BloksVersion,
+			BloksVersioningId: doc.Version,
 			AppID:             appID,
 			Params: ExtraStringification[BloksParamsMiddle]{BloksParamsMiddle{
-				Params: ExtraStringification[BloksParamsInner]{inner},
-			}},
+				Params: ExtraStringification[BloksParamsInner]{inner, false},
+			}, false},
 		},
 	}
+	if doc.UseNT {
+		outer.NtContext = &BloksNtContext{
+			DebugToolingMetadataToken: nil,
+			IsFlipperEnabled:          false,
+			ThemeParams: []BloksNtThemeParams{
+				{
+					DesignSystemName: "XMDS",
+					Value:            []string{"three_neutral_gray"},
+				},
+				{
+					DesignSystemName: "FDS",
+					Value:            []string{},
+				},
+			},
+		}
+		outer.Scale = "3"
+		outer.Params.Params.Body.Params.SkipExtraStringification = true
+	} else {
+		outer.BkContext = &BloksBkContext{
+			PixelRatio:   3,
+			BloksVersion: doc.Version,
+		}
+	}
+	return outer
 }
 
 type BloksResponse struct {
@@ -104,6 +162,10 @@ type BloksResponseData struct {
 	BloksApp *BloksAppData `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
 	//lint:ignore SA5008 handled with custom unmarshaler
 	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
+
+	// normal shit
+	BloksAppFB    *BloksAppDataFB    `json:"fb_bloks_app"`
+	BloksActionFB *BloksActionDataFB `json:"fb_bloks_action"`
 }
 
 // Workaround https://github.com/golang/go/issues/15000
@@ -130,6 +192,10 @@ func (b *BloksResponseData) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type BloksAppDataFB struct {
+	RootComponent BloksComponent `json:"root_component"`
+}
+
 type BloksAppData struct {
 	Screen BloksScreenContent `json:"screen_content"`
 }
@@ -144,6 +210,10 @@ type BloksComponent struct {
 
 type BloksAppBundle struct {
 	Tree string `json:"bloks_bundle_tree"` // BloksBundle struct
+}
+
+type BloksActionDataFB struct {
+	RootAction BloksActionData `json:"root_action"`
 }
 
 type BloksActionData struct {

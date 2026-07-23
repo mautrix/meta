@@ -3,6 +3,12 @@ package bloks
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,6 +25,8 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 var (
@@ -305,8 +313,9 @@ const (
 )
 
 type BrowserConfig struct {
+	Platform         types.Platform
 	EncryptPassword  func(context.Context, string) (string, error)
-	MakeBloksRequest func(context.Context, *BloksDoc, *BloksRequestOuter) (*BloksBundle, error)
+	MakeBloksRequest func(context.Context, *BloksDoc, string, BloksParamsInner, string, string) (*BloksBundle, error)
 }
 
 type Browser struct {
@@ -323,6 +332,31 @@ type Browser struct {
 	DisplayedURL     string
 
 	LastError string
+}
+
+var genericDeviceNetworkInfo = map[string]any{
+	"active_subscriptions_info": nil,
+	"default_subscription_info": map[string]any{
+		"network_type":           18,
+		"is_data_roaming":        1,
+		"is_esim":                nil,
+		"is_gsm_roaming":         0,
+		"is_sim_sms_capable":     nil,
+		"is_mobile_data_enabled": 0,
+		"sim_carrier_id":         2578,
+		"sim_carrier_id_name":    "Tello",
+		"sim_state":              5,
+		"sim_operator":           "310240",
+		"sim_operator_name":      "Tello",
+		"signal_strength":        2,
+		"group_id_level_1":       nil,
+		"network_operator":       "310260",
+	},
+	"is_airplane_mode":           0,
+	"is_active_network_cellular": 0,
+	"is_device_sms_capable":      1,
+	"sim_count":                  2,
+	"is_wifi":                    1,
 }
 
 // You will want an explanation of how to maintain this code.
@@ -413,11 +447,20 @@ type Browser struct {
 // error state, then we'll re-prompt the user for input, rather than reusing what they gave last
 // time.
 
-func NewBrowser(cfg *BrowserConfig) *Browser {
+func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 	b := Browser{
 		State:  StateInitial,
 		Config: cfg,
 	}
+	attestationKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate attestation key: %w", err)
+	}
+	attestationPublicKey, err := x509.MarshalPKIXPublicKey(&attestationKey.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("get attestation public key: %w", err)
+	}
+	attestationKeyHash := sha256.Sum256(attestationPublicKey)
 	b.Bridge = &InterpBridge{
 		DeviceID:       strings.ToUpper(uuid.New().String()),
 		FamilyDeviceID: strings.ToUpper(uuid.New().String()),
@@ -436,8 +479,25 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 		//
 		// The machine_id would generally be a 24 character alphanumeric string. However it
 		// cannot be generated on the client side so this fact is purely informational.
-		MachineID:       "",
-		EncryptPassword: cfg.EncryptPassword,
+		MachineID:         "",
+		DeviceNetworkInfo: genericDeviceNetworkInfo,
+		EncryptPassword:   cfg.EncryptPassword,
+		SignRequestData: func(ctx context.Context, data any) (any, error) {
+			payload, err := json.Marshal(data)
+			if err != nil {
+				return nil, fmt.Errorf("marshal request data: %w", err)
+			}
+			hash := sha256.Sum256(payload)
+			sig, err := ecdsa.SignASN1(rand.Reader, attestationKey, hash[:])
+			if err != nil {
+				return nil, fmt.Errorf("sign request data: %w", err)
+			}
+			return map[string]any{
+				"keyHash":   hex.EncodeToString(attestationKeyHash[:]),
+				"data":      base64.StdEncoding.EncodeToString(payload),
+				"signature": base64.StdEncoding.EncodeToString(sig),
+			}, nil
+		},
 		DoPageRPC: func(ctx context.Context, name string, params map[string]string) (*BloksBundle, error) {
 			log := zerolog.Ctx(ctx)
 			log.Debug().Str("state", string(b.State)).Str("rpc", name).Str("rpc_type", "page").Msg("Invoking RPC from Bloks")
@@ -446,7 +506,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			if err != nil {
 				return nil, fmt.Errorf("parsing %s params: %w", name, err)
 			}
-			bundle, err := cfg.MakeBloksRequest(ctx, &BloksAppDoc, NewBloksRequest(name, paramsInner))
+			appDoc, err := GetBloksAppDoc(cfg.Platform)
+			if err != nil {
+				return nil, fmt.Errorf("rpc %s: %w", name, err)
+			}
+			bundle, err := cfg.MakeBloksRequest(ctx, appDoc, name, paramsInner, b.Bridge.DeviceID, b.Bridge.FamilyDeviceID)
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
@@ -460,7 +524,11 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			if err != nil {
 				return nil, fmt.Errorf("parsing %s params: %w", name, err)
 			}
-			bundle, err := cfg.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(name, paramsInner))
+			actionDoc, err := GetBloksActionDoc(cfg.Platform)
+			if err != nil {
+				return nil, fmt.Errorf("rpc %s: %w", name, err)
+			}
+			bundle, err := cfg.MakeBloksRequest(ctx, actionDoc, name, paramsInner, b.Bridge.DeviceID, b.Bridge.FamilyDeviceID)
 			if err != nil {
 				return nil, fmt.Errorf("rpc %s: %w", name, err)
 			}
@@ -595,7 +663,7 @@ func NewBrowser(cfg *BrowserConfig) *Browser {
 			return nil
 		},
 	}
-	return &b
+	return &b, nil
 }
 
 var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
@@ -681,22 +749,38 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateInitial:
 		rpc := "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
-		action, err := b.Config.MakeBloksRequest(ctx, &BloksActionDoc, NewBloksRequest(rpc, map[string]any{
-			"blocked_uid":                               []any{},
-			"offline_experiment_group":                  "caa_iteration_v2_perf_ls_ios_test_1",
-			"family_device_id":                          b.Bridge.FamilyDeviceID,
-			"use_auto_login_interstitial":               true,
-			"layered_homepage_experiment_group":         "not_in_experiment",
-			"disable_recursive_auto_login_interstitial": true,
-			"show_internal_settings":                    false,
-			"waterfall_id":                              hex.EncodeToString(random.Bytes(16)),
-			"account_list":                              []any{},
-			"disable_auto_login":                        false,
-			"is_from_logged_in_switcher":                false,
-			"auto_login_interstitial_experiment_group":  "",
-			"device_id":                                 b.Bridge.DeviceID,
-			"machine_id":                                b.Bridge.MachineID,
-		}))
+		actionDoc, err := GetBloksActionDoc(b.Config.Platform)
+		if err != nil {
+			return nil, fmt.Errorf("initial request: %w", err)
+		}
+		params := BloksParamsInner{
+			"account_list":           []any{},
+			"blocked_uid":            []any{},
+			"device_id":              b.Bridge.DeviceID,
+			"disable_auto_login":     false,
+			"family_device_id":       b.Bridge.FamilyDeviceID,
+			"show_internal_settings": false,
+			"waterfall_id":           hex.EncodeToString(random.Bytes(16)),
+		}
+		switch b.Config.Platform {
+		case types.MessengerLiteIOS:
+			params["auto_login_interstitial_experiment_group"] = ""
+			params["disable_recursive_auto_login_interstitial"] = true
+			params["is_from_logged_in_switcher"] = false
+			params["layered_homepage_experiment_group"] = "not_in_experiment"
+			params["machine_id"] = b.Bridge.MachineID
+			params["offline_experiment_group"] = "caa_iteration_v2_perf_ls_ios_test_1"
+			params["use_auto_login_interstitial"] = true
+		case types.MessengerLiteAndroid:
+			params["INTERNAL_INFRA_THEME"] = "THREE_NEUTRAL_GRAY"
+			params["device_emails"] = []any{}
+			params["offline_experiment_group"] = "caa_iteration_v3_perf_msg_6"
+			params["openid_tokens"] = map[string]any{}
+			params["spectra_guardian_token"] = ""
+		default:
+			return nil, fmt.Errorf("no initial bloks params for platform %s", b.Config.Platform.String())
+		}
+		action, err := b.Config.MakeBloksRequest(ctx, actionDoc, rpc, params, b.Bridge.DeviceID, b.Bridge.FamilyDeviceID)
 		if err != nil {
 			return nil, fmt.Errorf("rpc %s: %w", rpc, err)
 		}
@@ -1184,7 +1268,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		delete(userInput, "totp_code")
 		b.LastError = "Facebook rejected that code"
 
-		err := b.CurrentPage.
+		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -1192,8 +1276,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return comp.FindDescendant(FilterByAttribute(
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
-			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, totpCode)
+			})
+
+		if input == nil {
+			input = b.CurrentPage.
+				FindDescendant(func(comp *BloksTreeComponent) bool {
+					if comp.ComponentID != "bk.components.TextInput" {
+						return false
+					}
+					return comp.GetAttribute("type") == "number"
+				})
+		}
+
+		err := input.FillInput(ctx, b.CurrentPage.Interpreter, totpCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling mfa code input: %w", err)
 		}
