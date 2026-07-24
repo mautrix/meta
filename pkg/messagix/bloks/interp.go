@@ -1224,6 +1224,10 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		// triggering asynchronous execution. I really hope we can get away
 		// without actually doing that.
 		return i.Evaluate(ctx, &call.Args[1])
+	case "bk.fx.action.FetchAllAvailableNativeAuthDataForCaller",
+		"bk.action.cds.internal.GetContainerMode",
+		"bk.action.caa.GetSPIEligibility":
+		return BloksNull, nil
 	case
 		"bk.action.animated.Start",
 		"bk.action.animated.Build",
@@ -1242,10 +1246,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.caa.reg.SaveCachedInfo",
 		"bk.action.textinput.SetTextV2",
 		"bk.action.caa.reg.SaveMachineID",
-		"bk.action.caa.ShowLoggedInResetPassword",
-		"bk.fx.action.FetchAllAvailableNativeAuthDataForCaller",
-		"bk.action.cds.internal.GetContainerMode",
-		"bk.action.caa.GetSPIEligibility":
+		"bk.action.caa.ShowLoggedInResetPassword":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
