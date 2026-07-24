@@ -98,6 +98,9 @@ func (btn *BloksTreeNode) FindDescendants(pred func(*BloksTreeComponent) bool) [
 }
 
 func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	if comp == nil {
+		return nil
+	}
 	if pred(comp) {
 		return comp
 	}
