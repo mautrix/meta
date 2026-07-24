@@ -545,7 +545,7 @@ func mainE() error {
 		fmt.Println("Image:", imageURL)
 		fmt.Println("Audio:", audioURL)
 		if *doCaptcha != "" {
-			err := bundle.
+			input := bundle.
 				FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 					if comp.ComponentID != "bk.components.TextInput" {
 						return false
@@ -553,7 +553,11 @@ func mainE() error {
 					return comp.FindDescendant(bloks.FilterByAttribute(
 						"bk.components.AccessibilityExtension", "label", "Enter characters",
 					)) != nil
-				}).
+				})
+			if input == nil {
+				input = bundle.FindDescendant(bloks.FilterByComponent("bk.components.TextInput"))
+			}
+			err := input.
 				FillInput(ctx, interp, *doCaptcha)
 			if err != nil {
 				return fmt.Errorf("filling captcha code input: %w", err)

@@ -1106,7 +1106,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		delete(userInput, "captcha_code")
 		b.LastError = "Facebook rejected that captcha solution"
 
-		err := b.CurrentPage.
+		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -1114,7 +1114,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return comp.FindDescendant(FilterByAttribute(
 					"bk.components.AccessibilityExtension", "label", "Enter characters",
 				)) != nil
-			}).
+			})
+		if input == nil {
+			input = b.CurrentPage.FindDescendant(FilterByComponent("bk.components.TextInput"))
+		}
+		err := input.
 			FillInput(ctx, b.CurrentPage.Interpreter, captchaCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling captcha code input: %w", err)
