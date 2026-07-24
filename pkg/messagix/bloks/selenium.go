@@ -914,7 +914,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		delete(userInput, "otp_code")
 		b.LastError = "Facebook rejected that code"
 
-		err := b.CurrentPage.
+		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -922,8 +922,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return comp.FindDescendant(FilterByAttribute(
 					"bk.components.AccessibilityExtension", "label", "Enter code",
 				)) != nil
-			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, otpCode)
+			})
+		if input == nil {
+			input = b.CurrentPage.FindDescendant(FilterByComponent("bk.components.TextInput"))
+		}
+		err := input.FillInput(ctx, b.CurrentPage.Interpreter, otpCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling otp code input: %w", err)
 		}
