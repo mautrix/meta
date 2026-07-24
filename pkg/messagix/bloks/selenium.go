@@ -596,7 +596,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.ap.two_step_verification.challenge_picker",
 				"com.bloks.www.two_step_verification.method_picker":
 				newState = StateChooseMFAPage
-			case "com.bloks.www.caa.ar.auth_method":
+			case "com.bloks.www.caa.ar.auth_method", "com.bloks.www.ap.two_step_verification.google_oauth":
 				newState = StateMFALandingPage
 			case "com.bloks.www.two_factor_login.enter_totp_code":
 				newState = StateTOTPPage
