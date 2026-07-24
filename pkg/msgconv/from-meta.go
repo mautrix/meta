@@ -557,7 +557,15 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
-			log.Debug().Msg("Not fetching XMA media")
+			log.Debug().
+				Str("cta_type", att.CTA.Type_).
+				Str("native_url", att.CTA.NativeUrl).
+				Str("action_url", att.CTA.ActionUrl).
+				Str("carousel_share_child_media_id", carouselChildMediaID).
+				Str("external_url", externalURL).
+				Bool("has_playable_url", att.PlayableUrl != "").
+				Bool("has_preview_url", att.PreviewUrl != "").
+				Msg("Not fetching XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
 			return minimalConverted
 		}
@@ -618,7 +626,13 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		}
 		minimalConverted.Extra["external_url"] = externalURL
 		if !mc.ShouldFetchXMA(ctx) {
-			log.Debug().Msg("Not fetching XMA media")
+			log.Debug().
+				Str("cta_type", att.CTA.Type_).
+				Str("action_url", att.CTA.ActionUrl).
+				Str("external_url", externalURL).
+				Bool("has_playable_url", att.PlayableUrl != "").
+				Bool("has_preview_url", att.PreviewUrl != "").
+				Msg("Not fetching XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
 			addExternalURLCaption(minimalConverted.Content, externalURL)
 			return minimalConverted
@@ -710,7 +724,13 @@ func (mc *MessageConverter) fetchFullXMA(ctx context.Context, att *table.Wrapped
 		minimalConverted.Extra["external_url"] = externalURL
 		addExternalURLCaption(minimalConverted.Content, externalURL)
 		if !mc.ShouldFetchXMA(ctx) {
-			log.Debug().Msg("Not fetching XMA media")
+			log.Debug().
+				Str("cta_type", att.CTA.Type_).
+				Str("action_url", att.CTA.ActionUrl).
+				Str("external_url", externalURL).
+				Bool("has_playable_url", att.PlayableUrl != "").
+				Bool("has_preview_url", att.PreviewUrl != "").
+				Msg("Not fetching XMA media")
 			minimalConverted.Extra["fi.mau.meta.xma_fetch_status"] = "skip"
 			return minimalConverted
 		}
