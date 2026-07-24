@@ -266,7 +266,7 @@ func mainE() error {
 			if script == nil {
 				continue
 			}
-			_, err := interp.Evaluate(ctx, &script.AST)
+			_, err := interp.Evaluate(bloks.InterpBindThis(ctx, mount), &script.AST)
 			if err != nil {
 				return err
 			}
