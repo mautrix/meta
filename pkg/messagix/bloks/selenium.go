@@ -97,6 +97,9 @@ func (btn *BloksTreeNode) FindDescendants(pred func(*BloksTreeComponent) bool) [
 }
 
 func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	if comp == nil {
+		return nil
+	}
 	if pred(comp) {
 		return comp
 	}
@@ -109,6 +112,9 @@ func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bo
 }
 
 func (comp *BloksTreeComponent) FindDescendants(pred func(*BloksTreeComponent) bool) []*BloksTreeComponent {
+	if comp == nil {
+		return nil
+	}
 	if pred(comp) {
 		return []*BloksTreeComponent{comp}
 	}
@@ -1175,9 +1181,24 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			"Verify with Google":             false,
 		}
 
-		listItems := b.CurrentPage.FindDescendant(FilterByAttribute(
+		listHeader := b.CurrentPage.FindDescendant(FilterByAttribute(
 			"bk.data.TextSpan", "text", "Choose a way to confirm it’s you",
-		)).
+		))
+		if listHeader == nil {
+			// The com.bloks.www.caa.ar.auth_method screen is not always a method
+			// picker: after a rejected password it can be a single-method
+			// confirmation dialog (we'll send you a token...).
+			err := b.CurrentPage.
+				FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+				FindContainingButton().
+				TapButton(ctx, b.CurrentPage.Interpreter)
+			if err != nil {
+				return nil, fmt.Errorf("tapping continue on auth method screen: %w", err)
+			}
+			break
+		}
+
+		listItems := listHeader.
 			FindAncestor(FilterByComponent("bk.components.Collection")).
 			FindDescendant(FilterByAttribute("bk.components.BoxDecoration", "border_width", "1dp")).
 			FindAncestor(FilterByComponent("bk.components.Flexbox")).
