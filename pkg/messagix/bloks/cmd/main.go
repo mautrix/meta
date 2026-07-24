@@ -51,6 +51,7 @@ var doWhatsAppNumbers = flag.Bool("whatsapp-numbers", false, "Print the availabl
 var selectedWhatsAppNumber = flag.String("whatsapp-number", "", "Pick a WhatsApp number and submit")
 var cancelPasskey = flag.Bool("cancel-passkey", false, "Tap the 'try another way' passkey button")
 var isAndroid = flag.Bool("android", false, "Use Android instead of iOS")
+var doPageFromAction = flag.Bool("new-page", false, "Act on new page rendered by action")
 
 func main() {
 	err := mainE()
@@ -161,25 +162,6 @@ func mainE() error {
 	if err != nil {
 		return err
 	}
-	if *doPrint {
-		return bundle.Print(os.Stdout, "")
-	}
-	if *doRedact {
-		bundle.Redact()
-		return bundle.Print(os.Stdout, "")
-	}
-	if *doExport {
-		out, err := json.Marshal(bundle)
-		if err != nil {
-			return err
-		}
-		os.Stdout.Write(out)
-		fmt.Println()
-		return nil
-	}
-	if *doHTML {
-		return bundle.PrintHTML(os.Stdout, "")
-	}
 	lastURL := ""
 	bridge := bloks.InterpBridge{
 		DoPageRPC: func(ctx context.Context, name string, params map[string]string) (*bloks.BloksBundle, error) {
@@ -274,7 +256,7 @@ func mainE() error {
 	}
 	if *doAction {
 		gotNewScreen := false
-		if *doLogin {
+		if *doPageFromAction {
 			interp.Bridge.DisplayNewScreen = func(ctx context.Context, name string, newBundle *bloks.BloksBundle) error {
 				bundle = newBundle
 				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge, interp, true)
@@ -289,12 +271,31 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
-		if !*doLogin {
+		if !*doPageFromAction {
 			return nil
 		}
 		if !gotNewScreen {
 			return fmt.Errorf("didn't get new screen from action")
 		}
+	}
+	if *doPrint {
+		return bundle.Print(os.Stdout, "")
+	}
+	if *doRedact {
+		bundle.Redact()
+		return bundle.Print(os.Stdout, "")
+	}
+	if *doExport {
+		out, err := json.Marshal(bundle)
+		if err != nil {
+			return err
+		}
+		os.Stdout.Write(out)
+		fmt.Println()
+		return nil
+	}
+	if *doHTML {
+		return bundle.PrintHTML(os.Stdout, "")
 	}
 	fillTextInput := func(fieldName string, fillText string) error {
 		input := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
