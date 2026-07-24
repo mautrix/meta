@@ -34,6 +34,7 @@ var (
 	ErrLoginInvalidUsername = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
 	ErrLoginAFADStopped     = bridgev2.RespError{ErrCode: "FI.MAU.META_AFAD_STOPPED", Err: "The approval request expired or was denied, please try logging in again", StatusCode: http.StatusBadRequest}
 	ErrLoginMandatoryOAuth  = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from another device", StatusCode: http.StatusBadRequest}
+	ErrLoginNoSupportedMFA  = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SUPPORTED_MFA", Err: "None of the available MFA methods are supported. Please try adding a different MFA method to your Facebook account from another device", StatusCode: http.StatusBadRequest}
 )
 
 // This error is returned in cases where we have observed Meta returning an error that is
@@ -1219,6 +1220,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			FindAncestor(FilterByComponent("bk.components.Flexbox")).
 			GetChildren("children")
 
+		numIgnored := 0
 		for _, item := range listItems {
 			span := item.
 				FindDescendant(FilterByComponent("bk.components.RichText")).
@@ -1227,6 +1229,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			method := span.GetAttribute("text")
 			if !knownMethods[method] {
 				log.Warn().Str("mfa_method", method).Msg("Ignoring unsupported MFA method")
+				numIgnored += 1
 				continue
 			}
 			foundMethods[method] = span
@@ -1234,7 +1237,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 		if len(foundMethods) == 0 {
-			return nil, fmt.Errorf("couldn't find any allowed mfa types")
+			if numIgnored == 0 {
+				return nil, fmt.Errorf("couldn't find any mfa types at all")
+			}
+			return nil, ErrLoginNoSupportedMFA
 		}
 
 		chosenMethod := userInput["mfatype"]
