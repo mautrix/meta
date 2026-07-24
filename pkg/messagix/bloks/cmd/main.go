@@ -505,6 +505,9 @@ func mainE() error {
 		getURLs := func() (string, string, error) {
 			img := bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
 			if img == nil {
+				img = bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "scale_type", "stretch"))
+			}
+			if img == nil {
 				return "", "", fmt.Errorf("can't find captcha image")
 			}
 			imageURL := img.GetDynamicAttribute(ctx, interp, "url")

@@ -990,6 +990,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if captchaCode == "" {
 			img := b.CurrentPage.FindDescendant(FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
 			if img == nil {
+				img = b.CurrentPage.FindDescendant(FilterByAttribute("bk.components.Image", "scale_type", "stretch"))
+			}
+			if img == nil {
 				return nil, fmt.Errorf("can't find captcha image")
 			}
 			imageURL := img.GetDynamicAttribute(ctx, b.CurrentPage.Interpreter, "url")
