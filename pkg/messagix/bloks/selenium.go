@@ -960,6 +960,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			log.Debug().Err(err).Msg("Got error from OTP code submission")
 			if strings.Contains(err.Error(), "Please re-enter") {
 				// retry
+			} else if strings.Contains(err.Error(), "An unexpected error occurred") {
+				return nil, ErrLoginUninformative("otp submit unexpected error")
 			} else {
 				return nil, fmt.Errorf("tapping continue: %w", err)
 			}
