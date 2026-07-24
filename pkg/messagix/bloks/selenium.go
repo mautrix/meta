@@ -32,6 +32,7 @@ import (
 var (
 	ErrLoginPhoneNumber     = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
 	ErrLoginInvalidUsername = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
+	ErrLoginMandatoryOAuth  = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from another device", StatusCode: http.StatusBadRequest}
 )
 
 // This error is returned in cases where we have observed Meta returning an error that is
@@ -1370,7 +1371,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateOAuthPage:
-		return nil, fmt.Errorf("can't handle Google OAuth yet")
+		return nil, ErrLoginMandatoryOAuth
 
 	case StateSMSPage:
 		for _, mount := range b.CurrentPage.FindDescendants(FilterByComponent("bk.components.OnMount")) {
