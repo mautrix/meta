@@ -476,8 +476,9 @@ func mainE() error {
 				return false
 			}
 			for _, prefix := range []string{
-				"We sent a notification",
+				"We sent a",
 				"Open the notification",
+				"You need to sign in on",
 			} {
 				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
 					return true

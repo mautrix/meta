@@ -582,6 +582,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				} else {
 					newState = StateMFALandingPage
 				}
+			case "com.bloks.www.ap.two_step_verification.limbo_proactive":
+				newState = StateAFADPage
 			case "com.bloks.www.ap.two_step_verification.challenge_picker",
 				"com.bloks.www.two_step_verification.method_picker",
 				"com.bloks.www.caa.ar.auth_method":
@@ -1313,6 +1315,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
 				"We sent a",
 				"Open the notification",
+				"You need to sign in on",
 			} {
 				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
 					return true
