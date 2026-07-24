@@ -310,6 +310,7 @@ const (
 	StateWhatsAppPage          BrowserState = "whatsapp-page"
 	StateWhatsAppPageAfterSend BrowserState = "whatsapp-page-after-send"
 	StatePasskeyPage           BrowserState = "passkey"
+	StateSilentCaptchaPage     BrowserState = "noop-captcha"
 	StateSuccess               BrowserState = "success"
 )
 
@@ -603,6 +604,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StateWhatsAppPage
 			case "com.bloks.www.ap.passkey_auth":
 				newState = StatePasskeyPage
+			case "com.bloks.www.two_step_verification.no_op_captcha":
+				newState = StateSilentCaptchaPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
@@ -1391,6 +1394,21 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		// Running the on_mount handlers should have triggered a code to be sent.
 		b.State = StateSMSPageAfterSend
+
+	case StateSilentCaptchaPage:
+		// This is handled the same way as the SMS page, it should
+		// trigger a network request which hopefully leads to something
+		// interesting.
+		for _, mount := range b.CurrentPage.FindDescendants(FilterByComponent("bk.components.OnMount")) {
+			script := mount.GetScript("on_first_mount")
+			if script == nil {
+				continue
+			}
+			_, err := b.CurrentPage.Interpreter.Evaluate(InterpBindThis(ctx, mount), &script.AST)
+			if err != nil {
+				return nil, fmt.Errorf("no-op captcha on_mount script: %w", err)
+			}
+		}
 
 	case StateSMSPageAfterSend:
 		smsCode := userInput["sms_code"]
