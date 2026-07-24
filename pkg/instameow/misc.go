@@ -30,6 +30,9 @@ type pushRegisterQuery struct {
 }
 
 func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string, keys PushKeys) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
 	jsonKeys, err := json.Marshal(&keys)
 	if err != nil {
 		return err
@@ -55,6 +58,7 @@ func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string,
 		ctx, c.GetEndpoint("web_push"), http.MethodPost, headers, []byte(form.Encode()), types.FORM,
 	)
 	if err != nil {
+		c.checkResponseError(err)
 		return err
 	}
 
@@ -73,6 +77,9 @@ func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string,
 }
 
 func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
 	h := c.http.BuildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	referer := c.GetEndpoint("base_url")
@@ -89,6 +96,7 @@ func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string)
 
 	resp, respBody, err := c.http.MakeRequest(ctx, reqUrl, http.MethodGet, h, nil, types.NONE)
 	if err != nil {
+		c.checkResponseError(err)
 		return nil, fmt.Errorf("failed to fetch the media by id %s: %w", mediaID, err)
 	}
 
@@ -104,6 +112,9 @@ func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string)
 }
 
 func (c *Client) FetchReel(ctx context.Context, reelIDs []string, mediaID string) (*responses.ReelInfoResponse, error) {
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
 	h := c.http.BuildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	h.Set("referer", c.GetEndpoint("base_url"))
@@ -122,6 +133,7 @@ func (c *Client) FetchReel(ctx context.Context, reelIDs []string, mediaID string
 	reqURL := c.GetEndpoint("reels_media") + query.Encode()
 	resp, respBody, err := c.http.MakeRequest(ctx, reqURL, http.MethodGet, h, nil, types.NONE)
 	if err != nil {
+		c.checkResponseError(err)
 		return nil, fmt.Errorf("failed to fetch reels by ids %v: %w", reelIDs, err)
 	}
 

@@ -122,6 +122,14 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			},
 		})
 		return retErr
+	case *slidetypes.AuthError:
+		if state := ic.errorToBridgeState(ctx, evt.Error); state != nil {
+			ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Got auth error event from request failing")
+			ic.UserLogin.BridgeState.Send(*state)
+		} else {
+			ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Got unrecognized auth error event")
+		}
+		return nil
 	case *slidetypes.SeqIDUpdate:
 		_ = ic.doWaitMailboxProcessed(ctx)
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, evt.SeqID, evt.Timestamp)
@@ -334,6 +342,7 @@ func (ic *IGClient) makeMessageEventMeta(portalKey networkid.PortalKey, msg *sli
 
 func (ic *IGClient) handleMessage(portalKey networkid.PortalKey, msg *slidetypes.Message) bridgev2.EventHandlingResult {
 	msgID := metaid.MakeFBMessageID(msg.ID)
+	ic.updateGhostFromEvent(msg.Sender)
 	return ic.UserLogin.QueueRemoteEvent(&simplevent.Message[*slidetypes.Message]{
 		EventMeta: ic.makeMessageEventMeta(portalKey, msg, bridgev2.RemoteEventMessage),
 		//TransactionID: msg.OfflineThreadingID,
@@ -343,6 +352,28 @@ func (ic *IGClient) handleMessage(portalKey networkid.PortalKey, msg *slidetypes
 			return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, ic.UserLogin, intent, msgID, data, ic.Main.Config.DisableXMAAlways), ctx.Err()
 		},
 	})
+}
+
+func (ic *IGClient) updateGhostFromEvent(sender *slidetypes.MessageSender) {
+	if sender == nil || sender.UserDict.InteropMessagingUserFBID == 0 {
+		return
+	}
+	log := ic.UserLogin.Log.With().
+		Str("action", "update ghost from event").
+		Int64("user_id", sender.UserDict.InteropMessagingUserFBID).
+		Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	ghost, err := ic.Main.Bridge.GetGhostByID(ctx, metaid.MakeUserID(sender.UserDict.InteropMessagingUserFBID))
+	if err != nil {
+		log.Err(err).Msg("Failed to get ghost")
+		return
+	}
+	if ghost.Name == "" {
+		ghost.UpdateInfo(ctx, ic.wrapUserInfo(&sender.UserDict))
+	} else {
+		// Already have a name, do update in background
+		go ghost.UpdateInfo(ctx, ic.wrapUserInfo(&sender.UserDict))
+	}
 }
 
 func (ic *IGClient) handleEdit(portalKey networkid.PortalKey, evt *slidetypes.EditMessageEvent) bridgev2.EventHandlingResult {
@@ -355,8 +386,8 @@ func (ic *IGClient) handleEdit(portalKey networkid.PortalKey, evt *slidetypes.Ed
 			Timestamp:   evt.SlideEditHistoryEntry.TimestampMS.Time,
 			StreamOrder: evt.SlideEditHistoryEntry.TimestampMS.UnixMilli(),
 		},
-		Data: evt.TextBody,
-		ID:   msgID,
+		Data:          evt.TextBody,
+		TargetMessage: msgID,
 		ConvertEditFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message, newText string) (*bridgev2.ConvertedEdit, error) {
 			if len(existing) == 0 {
 				return nil, fmt.Errorf("no existing message found for edit event %s", msgID)

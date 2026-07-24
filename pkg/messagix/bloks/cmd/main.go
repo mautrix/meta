@@ -44,11 +44,14 @@ var doSMSCode = flag.String("sms-code", "", "Submit SMS code")
 var doBackupCode = flag.String("backup-code", "", "Submit backup code")
 var doEncrypt = flag.String("encrypt", "", "Encrypt a password")
 var deviceID = flag.String("device-id", "", "Device ID for password encryption")
+var familyDeviceID = flag.String("family-device-id", "", "Family device ID for headers")
 var doCaptcha = flag.String("captcha-code", "", "Captcha code to submit")
 var captchaResponse = flag.String("captcha-resp", "", "Bloks response for captcha submission")
 var doWhatsAppNumbers = flag.Bool("whatsapp-numbers", false, "Print the available WhatsApp numbers")
 var selectedWhatsAppNumber = flag.String("whatsapp-number", "", "Pick a WhatsApp number and submit")
 var cancelPasskey = flag.Bool("cancel-passkey", false, "Tap the 'try another way' passkey button")
+var isAndroid = flag.Bool("android", false, "Use Android instead of iOS")
+var doPageFromAction = flag.Bool("new-page", false, "Act on new page rendered by action")
 
 func main() {
 	err := mainE()
@@ -94,12 +97,17 @@ func mainE() error {
 	log := zerolog.New(zerolog.NewConsoleWriter()).Level(logLevel)
 	ctx = log.WithContext(ctx)
 
+	plat := types.MessengerLiteIOS
+	if *isAndroid {
+		plat = types.MessengerLiteAndroid
+	}
+
 	if *doEncrypt != "" {
 		if *deviceID == "" {
 			return fmt.Errorf("must give -device-id to use -encrypt")
 		}
 		cook := &cookies.Cookies{
-			Platform: types.MessengerLite,
+			Platform: plat,
 		}
 		cl := messagix.NewClient(cook, log, &messagix.Config{
 			ClientSettings: exhttp.SensibleClientSettings,
@@ -109,7 +117,7 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
-		enc, err := crypto.EncryptPassword(int(types.MessengerLite), key.KeyID, key.PublicKey, *doEncrypt)
+		enc, err := crypto.EncryptPassword(plat, key.KeyID, key.PublicKey, *doEncrypt)
 		if err != nil {
 			return err
 		}
@@ -135,9 +143,13 @@ func mainE() error {
 		}
 
 		mcl := messagix.NewClient(&cookies.Cookies{
-			Platform: types.MessengerLite,
+			Platform: plat,
 		}, log, &messagix.Config{})
-		mcl.GetHTTP().MakeBloksRequest(ctx, &bloks.BloksAppDoc, bloks.NewBloksRequest(*doRPC, paramsInner))
+		doc, err := bloks.GetBloksAppDoc(plat)
+		if err != nil {
+			return err
+		}
+		mcl.GetHTTP().MakeBloksRequest(ctx, doc, *doRPC, paramsInner, *deviceID, *familyDeviceID)
 
 		return nil
 	}
@@ -149,25 +161,6 @@ func mainE() error {
 	bundle, err := readAndParse[bloks.BloksBundle](*filename)
 	if err != nil {
 		return err
-	}
-	if *doPrint {
-		return bundle.Print(os.Stdout, "")
-	}
-	if *doRedact {
-		bundle.Redact()
-		return bundle.Print(os.Stdout, "")
-	}
-	if *doExport {
-		out, err := json.Marshal(bundle)
-		if err != nil {
-			return err
-		}
-		os.Stdout.Write(out)
-		fmt.Println()
-		return nil
-	}
-	if *doHTML {
-		return bundle.PrintHTML(os.Stdout, "")
 	}
 	lastURL := ""
 	bridge := bloks.InterpBridge{
@@ -259,7 +252,7 @@ func mainE() error {
 			if script == nil {
 				continue
 			}
-			_, err := interp.Evaluate(ctx, &script.AST)
+			_, err := interp.Evaluate(bloks.InterpBindThis(ctx, mount), &script.AST)
 			if err != nil {
 				return err
 			}
@@ -267,7 +260,7 @@ func mainE() error {
 	}
 	if *doAction {
 		gotNewScreen := false
-		if *doLogin {
+		if *doPageFromAction {
 			interp.Bridge.DisplayNewScreen = func(ctx context.Context, name string, newBundle *bloks.BloksBundle) error {
 				bundle = newBundle
 				interp, err = bloks.NewInterpreter(ctx, bundle, &bridge, interp, true)
@@ -282,12 +275,31 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
-		if !*doLogin {
+		if !*doPageFromAction {
 			return nil
 		}
 		if !gotNewScreen {
 			return fmt.Errorf("didn't get new screen from action")
 		}
+	}
+	if *doPrint {
+		return bundle.Print(os.Stdout, "")
+	}
+	if *doRedact {
+		bundle.Redact()
+		return bundle.Print(os.Stdout, "")
+	}
+	if *doExport {
+		out, err := json.Marshal(bundle)
+		if err != nil {
+			return err
+		}
+		os.Stdout.Write(out)
+		fmt.Println()
+		return nil
+	}
+	if *doHTML {
+		return bundle.PrintHTML(os.Stdout, "")
 	}
 	fillTextInput := func(fieldName string, fillText string) error {
 		input := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
@@ -469,8 +481,9 @@ func mainE() error {
 				return false
 			}
 			for _, prefix := range []string{
-				"We sent a notification",
+				"We sent a",
 				"Open the notification",
+				"You need to sign in on",
 			} {
 				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
 					return true
@@ -497,6 +510,9 @@ func mainE() error {
 	} else if *captcha {
 		getURLs := func() (string, string, error) {
 			img := bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "unique_id", "i:com.bloks.www.two_step_verification.enter_text_captcha_code/p:captcha_image"))
+			if img == nil {
+				img = bundle.FindDescendant(bloks.FilterByAttribute("bk.components.Image", "scale_type", "stretch"))
+			}
 			if img == nil {
 				return "", "", fmt.Errorf("can't find captcha image")
 			}
@@ -534,7 +550,7 @@ func mainE() error {
 		fmt.Println("Image:", imageURL)
 		fmt.Println("Audio:", audioURL)
 		if *doCaptcha != "" {
-			err := bundle.
+			input := bundle.
 				FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 					if comp.ComponentID != "bk.components.TextInput" {
 						return false
@@ -542,7 +558,11 @@ func mainE() error {
 					return comp.FindDescendant(bloks.FilterByAttribute(
 						"bk.components.AccessibilityExtension", "label", "Enter characters",
 					)) != nil
-				}).
+				})
+			if input == nil {
+				input = bundle.FindDescendant(bloks.FilterByComponent("bk.components.TextInput"))
+			}
+			err := input.
 				FillInput(ctx, interp, *doCaptcha)
 			if err != nil {
 				return fmt.Errorf("filling captcha code input: %w", err)

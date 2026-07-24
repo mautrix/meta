@@ -61,6 +61,6 @@ func (l *LSIssueNewTask) GetLabel() string {
 	return strconv.FormatInt(l.Context, 10)
 }
 
-func (l *LSIssueNewTask) Create() (any, any, bool) {
-	return json.RawMessage(l.TaskValue), l.QueueName, false
+func (l *LSIssueNewTask) Create() (any, string) {
+	return json.RawMessage(l.TaskValue), l.QueueName
 }

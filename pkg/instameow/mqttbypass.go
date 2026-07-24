@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/thrift"
@@ -38,7 +39,9 @@ type indicateActivity struct {
 }
 
 func (c *Client) SetTyping(ctx context.Context, threadID string, typing bool) error {
-	if !c.enableTyping {
+	if c == nil {
+		return ErrClientIsNil
+	} else if !c.enableTyping {
 		return nil
 	}
 	req := &indicateActivity{
@@ -138,7 +141,12 @@ func (c *Client) connectMQTTBypassSocket(ctx context.Context) {
 	c.mqttBypassConnectLock.Lock()
 	if c.mqttBypassSocket == nil || c.mqttBypassSocket == sock {
 		c.mqttBypassStream.Store(nil)
-		c.mqttBypassConnected.Clear()
+		// Let anything waiting for the connection fail immediately when unauthorized
+		if websocket.CloseStatus(err) == dgw.CloseStatusUnauthorized {
+			c.mqttBypassConnected.Set()
+		} else {
+			c.mqttBypassConnected.Clear()
+		}
 	}
 	c.mqttBypassConnectLock.Unlock()
 }

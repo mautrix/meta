@@ -3,8 +3,6 @@ package httpclient
 import (
 	"encoding/json"
 	"fmt"
-
-	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 type NetworkTags struct {
@@ -18,10 +16,10 @@ type RequestAnalytics struct {
 	NetworkTags NetworkTags `json:"network_tags"`
 }
 
-func MakeRequestAnalyticsHeader() (string, error) {
+func MakeRequestAnalyticsHeader(appID string) (string, error) {
 	anal := RequestAnalytics{
 		NetworkTags: NetworkTags{
-			Product:         useragent.MessengerLiteAppID,
+			Product:         appID,
 			RequestCategory: "graphql",
 			Purpose:         "fetch",
 			RetryAttempt:    "0",

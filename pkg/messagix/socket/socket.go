@@ -15,7 +15,7 @@ type DatabaseQuery struct {
 	Database          int64       `json:"database"`
 	LastAppliedCursor *string     `json:"last_applied_cursor"`
 	SyncParams        *string     `json:"sync_params"`
-	EpochId           int64       `json:"epoch_id"`
+	EpochID           int64       `json:"epoch_id"`
 	DataTraceId       string      `json:"data_trace_id,omitempty"`
 	Version           json.Number `json:"version"`
 	FailureCount      interface{} `json:"failure_count"`

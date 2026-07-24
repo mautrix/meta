@@ -43,19 +43,19 @@ var TaskLabels = map[string]string{
 
 type Task interface {
 	GetLabel() string
-	Create() (any, any, bool) // payload, queue_name, marshal_queuename
+	Create() (payload any, queueName string)
 }
 
 type TaskData struct {
-	FailureCount *int64      `json:"failure_count"`
-	Label        string      `json:"label,omitempty"`
-	Payload      interface{} `json:"payload,omitempty"`
-	QueueName    interface{} `json:"queue_name,omitempty"`
-	TaskID       int64       `json:"task_id"`
+	FailureCount *int64 `json:"failure_count"`
+	Label        string `json:"label,omitempty"`
+	Payload      string `json:"payload,omitempty"`
+	QueueName    string `json:"queue_name,omitempty"`
+	TaskID       int64  `json:"task_id"`
 }
 
 type StatelessTaskData struct {
-	Label   string      `json:"label,omitempty"`
-	Payload interface{} `json:"payload,omitempty"`
-	Version string      `json:"version,omitempty"`
+	Label   string `json:"label,omitempty"`
+	Payload string `json:"payload,omitempty"`
+	Version string `json:"version,omitempty"`
 }

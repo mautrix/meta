@@ -18,7 +18,7 @@ var m = mxmain.BridgeMain{
 	Name:        "mautrix-meta",
 	URL:         "https://github.com/mautrix/meta",
 	Description: "A Matrix-Instagram puppeting bridge.",
-	Version:     "26.06",
+	Version:     "26.07",
 	SemCalVer:   true,
 	Connector:   &igconnector.IGConnector{},
 }

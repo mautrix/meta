@@ -42,6 +42,9 @@ func main() {
 		exerrors.PanicIfNotNil(clipboard.Initialize())
 		data = []byte(exerrors.Must(clipboard.ReadAll("clipboard")))
 	}
+	if len(data) == 0 {
+		return
+	}
 	if !json.Valid(data) {
 		data, _ = base64.StdEncoding.DecodeString(string(data))
 		if bytes.Contains(data[:20], []byte("/ls_req")) || bytes.Contains(data[:20], []byte("/ls_resp")) {
@@ -64,8 +67,6 @@ func main() {
 		exerrors.PanicIfNotNil(json.Unmarshal(data, &pbd))
 		dependencies = table.SPToDepMap(pbd.Sp)
 		exerrors.PanicIfNotNil(json.Unmarshal([]byte(pbd.Payload), &lsData))
-	} else if gjson.GetBytes(data, "data.lightspeed_web_request_for_igd").Exists() {
-
 	} else {
 		_, _ = fmt.Fprintln(os.Stderr, "unsupported json")
 		return
@@ -85,6 +86,7 @@ type formattedOutgoingRequest struct {
 	VersionID   string          `json:"version_id"`
 	Tasks       []formattedTask `json:"tasks"`
 
+	StatelessTask *statelessTask        `json:"stateless_task,omitempty"`
 	DatabaseQuery *socket.DatabaseQuery `json:"database_query,omitempty"`
 }
 
@@ -97,23 +99,42 @@ type formattedTask struct {
 	Payload      json.RawMessage `json:"payload"`
 }
 
+type statelessTask struct {
+	Label     string          `json:"label"`
+	LabelName string          `json:"label_name"`
+	Version   string          `json:"version"`
+	Payload   json.RawMessage `json:"payload"`
+}
+
 func handleOutgoingRequest(data json.RawMessage) {
 	var payload messagix.SocketLSRequestPayload
 	exerrors.PanicIfNotNil(json.Unmarshal(data, &payload))
 	var taskPayload socket.TaskPayload
 	exerrors.PanicIfNotNil(json.Unmarshal([]byte(payload.Payload), &taskPayload))
 	if len(taskPayload.Tasks) == 0 {
-		var dbQuery socket.DatabaseQuery
-		exerrors.PanicIfNotNil(json.Unmarshal([]byte(payload.Payload), &dbQuery))
-		exerrors.PanicIfNotNil(json.NewEncoder(os.Stdout).Encode(&formattedOutgoingRequest{
-			AppID:         payload.AppId,
-			RequestID:     payload.RequestId,
-			Type:          payload.Type,
-			EpochID:       taskPayload.EpochId,
-			DataTraceID:   taskPayload.DataTraceId,
-			VersionID:     taskPayload.VersionId,
-			DatabaseQuery: &dbQuery,
-		}))
+		og := &formattedOutgoingRequest{
+			AppID:       payload.AppID,
+			RequestID:   payload.RequestID,
+			Type:        payload.Type,
+			EpochID:     taskPayload.EpochId,
+			DataTraceID: taskPayload.DataTraceId,
+			VersionID:   taskPayload.VersionId,
+		}
+		var st socket.StatelessTaskData
+		exerrors.PanicIfNotNil(json.Unmarshal([]byte(payload.Payload), &st))
+		if st.Label != "" && st.Payload != "" {
+			og.StatelessTask = &statelessTask{
+				Label:     st.Label,
+				LabelName: taskNames[st.Label],
+				Payload:   json.RawMessage(st.Payload),
+				Version:   st.Version,
+			}
+		} else {
+			var dbQuery socket.DatabaseQuery
+			exerrors.PanicIfNotNil(json.Unmarshal([]byte(payload.Payload), &dbQuery))
+			og.DatabaseQuery = &dbQuery
+		}
+		exerrors.PanicIfNotNil(json.NewEncoder(os.Stdout).Encode(og))
 		return
 	}
 	formattedTasks := make([]formattedTask, len(taskPayload.Tasks))
@@ -124,12 +145,12 @@ func handleOutgoingRequest(data json.RawMessage) {
 			LabelName:    taskNames[task.Label],
 			QueueName:    task.QueueName,
 			TaskID:       task.TaskID,
-			Payload:      json.RawMessage(task.Payload.(string)),
+			Payload:      json.RawMessage(task.Payload),
 		}
 	}
 	exerrors.PanicIfNotNil(json.NewEncoder(os.Stdout).Encode(&formattedOutgoingRequest{
-		AppID:       payload.AppId,
-		RequestID:   payload.RequestId,
+		AppID:       payload.AppID,
+		RequestID:   payload.RequestID,
 		Type:        payload.Type,
 		EpochID:     taskPayload.EpochId,
 		DataTraceID: taskPayload.DataTraceId,

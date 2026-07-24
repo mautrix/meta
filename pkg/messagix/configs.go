@@ -1,40 +1,37 @@
 package messagix
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
+func (c *Client) updateSocketIDs() {
+	c.socket.AppID = c.configs.BrowserConfigTable.DGWWebConfig.AppID
+	c.socket.UserID = cmp.Or(c.configs.BrowserConfigTable.PolarisViewer.ID, c.configs.BrowserConfigTable.CurrentUserInitialData.UserID)
+	c.socket.DeviceID = cmp.Or(c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID, c.configs.BrowserConfigTable.MqttWebDeviceID.ClientID)
+}
+
 func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LSTable, error) {
-	if c.socket != nil {
-		c.socket.previouslyConnected = false
-	}
+	c.socketWasSynced.Store(false)
 	authenticated := c.IsAuthenticated()
 	c.configs.Setup(authenticated)
 	if !authenticated {
 		return ls, nil
 	}
 
-	if c.Platform == types.Instagram {
-		c.socket.broker = "wss://edge-chat.instagram.com/chat?"
-	} else {
-		if c.configs.BrowserConfigTable.MqttWebConfig.Endpoint == "" {
-			return ls, fmt.Errorf("MQTT broker endpoint not found in page response (MqttWebConfig.Endpoint is empty)")
-		}
-		c.socket.broker = c.configs.BrowserConfigTable.MqttWebConfig.Endpoint
-	}
+	c.updateSocketIDs()
 	c.syncManager.syncParams = &c.configs.BrowserConfigTable.LSPlatformMessengerSyncParams
 	if len(ls.LSExecuteFinallyBlockForSyncTransaction) == 0 {
 		c.Logger.Warn().Msg("Syncing initial data via graphql")
 		err := c.syncManager.UpdateDatabaseSyncParams(
 			[]*socket.QueryMetadata{
-				{DatabaseId: 1, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.MailBox},
-				{DatabaseId: 2, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
-				{DatabaseId: 95, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
+				{DatabaseID: 1, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.MailBox},
+				{DatabaseID: 2, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
+				{DatabaseID: 95, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
 			},
 		)
 		if err != nil {
@@ -65,7 +62,7 @@ func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LS
 		ptks = append(ptks, ptk.ParentThreadKey)
 	}
 	c.configs.ParentThreadKeys = ptks
-	c.Logger.Debug().Str("broker", c.socket.broker).Msg("Configs successfully setup!")
+	c.Logger.Debug().Msg("Configs successfully setup!")
 
 	return ls, nil
 }

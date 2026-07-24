@@ -228,19 +228,15 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 	go ic.Connect(ctx)
 	defer ic.Disconnect()
 
-	timer := time.NewTimer(15 * time.Second)
-	for {
-		select {
-		case <-timer.C:
-			log.Debug().Msg("Closing background connection due to timeout")
-			ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
-			return nil
-		case <-ctx.Done():
-			log.Debug().Msg("Closing background connection due to cancellation")
-			return nil
-		case <-ic.caughtUp.GetChan():
-			log.Debug().Msg("Closing background connection as we caught up to the latest seq ID")
-			ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
-		}
+	select {
+	case <-time.After(15 * time.Second):
+		log.Debug().Msg("Closing background connection due to timeout")
+		ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
+	case <-ctx.Done():
+		log.Debug().Msg("Closing background connection due to cancellation")
+	case <-ic.caughtUp.GetChan():
+		log.Debug().Msg("Closing background connection as we caught up to the latest seq ID")
+		ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
 	}
+	return nil
 }

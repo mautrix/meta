@@ -1,7 +1,10 @@
 package socket
 
 import (
+	"encoding/json"
 	"time"
+
+	"go.mau.fi/util/exerrors"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 )
@@ -12,7 +15,7 @@ type SendReactionTask struct {
 	MessageID       string                 `json:"message_id"`
 	ActorID         int64                  `json:"actor_id"`
 	Reaction        string                 `json:"reaction"` // unicode emoji (empty reaction to remove)
-	ReactionStyle   interface{}            `json:"reaction_style"`
+	ReactionStyle   any                    `json:"reaction_style"`
 	SyncGroup       int                    `json:"sync_group"`
 	SendAttribution table.ThreadSourceType `json:"send_attribution"`
 }
@@ -21,11 +24,11 @@ func (t *SendReactionTask) GetLabel() string {
 	return TaskLabels["SendReactionTask"]
 }
 
-func (t *SendReactionTask) Create() (interface{}, interface{}, bool) {
+func (t *SendReactionTask) Create() (any, string) {
 	t.TimestampMs = time.Now().UnixMilli()
 	t.SyncGroup = 1
-	queueName := []string{"reaction", t.MessageID}
-	return t, queueName, true
+	queueName := exerrors.Must(json.Marshal([]string{"reaction", t.MessageID}))
+	return t, string(queueName)
 }
 
 type DeleteMessageTask struct {
@@ -36,9 +39,9 @@ func (t *DeleteMessageTask) GetLabel() string {
 	return TaskLabels["DeleteMessageTask"]
 }
 
-func (t *DeleteMessageTask) Create() (interface{}, interface{}, bool) {
+func (t *DeleteMessageTask) Create() (any, string) {
 	queueName := "unsend_message"
-	return t, queueName, false
+	return t, queueName
 }
 
 type DeleteMessageMeOnlyTask struct {
@@ -50,9 +53,9 @@ func (t *DeleteMessageMeOnlyTask) GetLabel() string {
 	return TaskLabels["DeleteMessageMeOnlyTask"]
 }
 
-func (t *DeleteMessageMeOnlyTask) Create() (interface{}, interface{}, bool) {
+func (t *DeleteMessageMeOnlyTask) Create() (any, string) {
 	queueName := "155"
-	return t, queueName, false
+	return t, queueName
 }
 
 type FetchReactionsV2UserList struct {
@@ -67,8 +70,8 @@ func (t *FetchReactionsV2UserList) GetLabel() string {
 	return TaskLabels["FetchReactionsV2UserList"]
 }
 
-func (t *FetchReactionsV2UserList) Create() (any, any, bool) {
-	return t, "fetch_reactions_v2_details_users_list", false
+func (t *FetchReactionsV2UserList) Create() (any, string) {
+	return t, "fetch_reactions_v2_details_users_list"
 }
 
 type SendReactionV2Task struct {
@@ -90,6 +93,6 @@ func (t *SendReactionV2Task) GetLabel() string {
 	return TaskLabels["SendReactionV2"]
 }
 
-func (t *SendReactionV2Task) Create() (any, any, bool) {
-	return t, []string{"reaction_v2", t.MessageID}, true
+func (t *SendReactionV2Task) Create() (any, string) {
+	return t, string(exerrors.Must(json.Marshal([]string{"reaction_v2", t.MessageID})))
 }

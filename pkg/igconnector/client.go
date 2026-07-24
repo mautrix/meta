@@ -166,6 +166,53 @@ func (ic *IGClient) Connect(ctx context.Context) {
 
 const MaxConnectRetries = 10
 
+func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *status.BridgeState) {
+	if errors.Is(err, httpclient.ErrTokenInvalidated) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      MetaCookieRemoved,
+		}
+		if errors.Is(err, httpclient.ErrTokenInvalidatedRedirect) {
+			state.Error = MetaRedirectedToLoginPage
+		} else if errors.Is(err, httpclient.ErrUserIDIsZero) {
+			state.Error = MetaUserIDIsZero
+		}
+		ic.Disconnect()
+		ic.LoginMeta.Cookies = nil
+		err = ic.UserLogin.Save(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after clearing cookies")
+		}
+	} else if errors.Is(err, httpclient.ErrChallengeRequired) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      IGChallengeRequired,
+			UserAction: status.UserActionRestart,
+		}
+	} else if errors.Is(err, httpclient.ErrAccountSuspended) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      IGAccountSuspended,
+		}
+	} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      FBCheckpointRequired,
+			UserAction: status.UserActionRestart,
+		}
+	} else if errors.Is(err, httpclient.ErrConsentRequired) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      IGConsentRequired,
+			UserAction: status.UserActionRestart,
+		}
+	}
+	if state != nil {
+		ic.permanentErrored.Store(true)
+	}
+	return
+}
+
 func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int) {
 	if retryCtx.Err() != nil {
 		return
@@ -227,46 +274,8 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 	}
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load index")
-		if errors.Is(err, httpclient.ErrTokenInvalidated) {
-			state := status.BridgeState{
-				StateEvent: status.StateBadCredentials,
-				Error:      MetaCookieRemoved,
-			}
-			if errors.Is(err, httpclient.ErrTokenInvalidatedRedirect) {
-				state.Error = MetaRedirectedToLoginPage
-			} else if errors.Is(err, httpclient.ErrUserIDIsZero) {
-				state.Error = MetaUserIDIsZero
-			}
-			ic.UserLogin.BridgeState.Send(state)
-			ic.Client = nil
-			ic.LoginMeta.Cookies = nil
-			err = ic.UserLogin.Save(ctx)
-			if err != nil {
-				zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after clearing cookies")
-			}
-		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateBadCredentials,
-				Error:      IGChallengeRequired,
-				UserAction: status.UserActionRestart,
-			})
-		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateBadCredentials,
-				Error:      IGAccountSuspended,
-			})
-		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateBadCredentials,
-				Error:      FBCheckpointRequired,
-				UserAction: status.UserActionRestart,
-			})
-		} else if errors.Is(err, httpclient.ErrConsentRequired) {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateBadCredentials,
-				Error:      IGConsentRequired,
-				UserAction: status.UserActionRestart,
-			})
+		if state := ic.errorToBridgeState(ctx, err); state != nil {
+			ic.UserLogin.BridgeState.Send(*state)
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {

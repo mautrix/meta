@@ -39,9 +39,9 @@ func (tm *TaskManager) setTraceId(traceId string) {
 }
 
 func (tm *TaskManager) AddNewTask(task socket.Task) {
-	payload, queueName, marshalQueueName := task.Create()
+	payload, queueName := task.Create()
 	label := task.GetLabel()
-	if queueName == nil {
+	if queueName == "" {
 		tm.client.Logger.Error().Str("label", label).Msg("no queue name provided for task")
 		return
 	}
@@ -50,15 +50,6 @@ func (tm *TaskManager) AddNewTask(task socket.Task) {
 	if err != nil {
 		tm.client.Logger.Err(err).Str("label", label).Msg("failed to marshal task payload")
 		return
-	}
-
-	if marshalQueueName {
-		queueName, err = json.Marshal(queueName)
-		if err != nil {
-			tm.client.Logger.Err(err).Str("label", label).Msg("failed to marshal queueName information for task")
-			return
-		}
-		queueName = string(queueName.([]byte))
 	}
 
 	taskData := socket.TaskData{

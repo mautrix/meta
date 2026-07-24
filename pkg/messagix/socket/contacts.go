@@ -1,7 +1,11 @@
 package socket
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
+
+	"go.mau.fi/util/exerrors"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -15,9 +19,9 @@ func (t *GetContactsTask) GetLabel() string {
 	return TaskLabels["GetContactsTask"]
 }
 
-func (t *GetContactsTask) Create() (interface{}, interface{}, bool) {
-	queueName := []string{"search_contacts", methods.GenerateTimestampString()}
-	return t, queueName, false
+func (t *GetContactsTask) Create() (any, string) {
+	queueName := exerrors.Must(json.Marshal([]string{"search_contacts", methods.GenerateTimestampString()}))
+	return t, string(queueName)
 }
 
 type GetContactsFullTask struct {
@@ -28,9 +32,9 @@ func (t *GetContactsFullTask) GetLabel() string {
 	return TaskLabels["GetContactsFullTask"]
 }
 
-func (t *GetContactsFullTask) Create() (interface{}, interface{}, bool) {
+func (t *GetContactsFullTask) Create() (any, string) {
 	queueName := "cpq_v2"
-	return t, queueName, false
+	return t, queueName
 }
 
 type SearchUserTask struct {
@@ -53,9 +57,9 @@ func (t *SearchUserTask) GetLabel() string {
 	return TaskLabels["SearchUserTask"]
 }
 
-func (t *SearchUserTask) Create() (interface{}, interface{}, bool) {
+func (t *SearchUserTask) Create() (any, string) {
 	if t.Secondary {
-		return t, "search_secondary", false
+		return t, "search_secondary"
 	}
-	return t, []any{"search_primary", time.Now().UnixMilli()}, true
+	return t, fmt.Sprintf(`["search_primary",%d]`, time.Now().UnixMilli())
 }

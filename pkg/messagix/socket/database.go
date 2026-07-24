@@ -8,7 +8,7 @@ const (
 )
 
 type QueryMetadata struct {
-	DatabaseId        int64
+	DatabaseID        int64
 	SendSyncParams    bool
 	LastAppliedCursor *string
 	SyncParams        interface{}
@@ -37,7 +37,6 @@ func (t *FetchThreadsTask) GetLabel() string {
 	return TaskLabels["FetchThreadsTask"]
 }
 
-func (t *FetchThreadsTask) Create() (interface{}, interface{}, bool) {
-	queueName := "trq"
-	return t, queueName, false
+func (t *FetchThreadsTask) Create() (any, string) {
+	return t, "trq"
 }

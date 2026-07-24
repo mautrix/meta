@@ -54,7 +54,7 @@ type PortalMetadata struct {
 
 	// FBThreadKey is the original Facebook thread key for hybrid threads. The portal is keyed by the
 	// WhatsApp thread JID (the result of MapWhatsAppThreadKey), but some tasks (e.g. accepting a
-	// message request) need the original Facebook key instead.
+	// message request or deleting the legacy thread) need the original Facebook key instead.
 	FBThreadKey int64 `json:"fb_thread_key,omitempty"`
 
 	IGID       string `json:"igid,omitempty"`

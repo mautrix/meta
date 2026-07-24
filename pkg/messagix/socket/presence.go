@@ -13,6 +13,6 @@ func (t *UpdatePresenceTask) GetLabel() string {
 	return TaskLabels["UpdatePresence"]
 }
 
-func (t *UpdatePresenceTask) Create() (any, any, bool) {
-	return t, nil, false
+func (t *UpdatePresenceTask) Create() (any, string) {
+	return t, ""
 }
