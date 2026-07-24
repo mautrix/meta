@@ -1536,7 +1536,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if script == nil {
 				continue
 			}
-			_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &script.AST)
+			_, err := b.CurrentPage.Interpreter.Evaluate(InterpBindThis(ctx, mount), &script.AST)
 			if err != nil {
 				return nil, fmt.Errorf("whatsapp on_mount script: %w", err)
 			}
