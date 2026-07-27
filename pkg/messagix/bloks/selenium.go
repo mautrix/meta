@@ -329,8 +329,11 @@ type BrowserConfig struct {
 }
 
 type Browser struct {
-	State       BrowserState
-	CurrentPage *BloksBundle
+	State         BrowserState
+	PreviousState BrowserState
+
+	CurrentPage  *BloksBundle
+	PreviousPage *BloksBundle
 
 	Config *BrowserConfig
 	Bridge *InterpBridge
@@ -629,6 +632,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				return err
 			}
 
+			b.PreviousPage = b.CurrentPage
 			b.CurrentPage = page
 			b.State = newState
 			return nil
@@ -1443,7 +1447,27 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			_, err := b.CurrentPage.Interpreter.Evaluate(InterpBindThis(ctx, mount), &script.AST)
 			if err != nil {
-				return nil, fmt.Errorf("no-op captcha on_mount script: %w", err)
+				// Sometimes the email/password page redirects us to the captcha
+				// page, which then opens a dialog to give the error message.
+				//
+				// So it's possible that we are getting an error from the captcha
+				// process itself, but it's also possible that we are getting a
+				// delayed error that Facebook did not show until after the captcha
+				// request. We try to detect the latter.
+				//
+				// If we end up seeing this happen in cases other than the initial
+				// email/password screen then we'd want to generalize this code.
+				//
+				// Warning: I haven't tested the "return to previous screen" logic.
+				log.Debug().Err(err).Msg("Got error from no-op captcha on_mount script")
+				if strings.Contains(err.Error(), "Invalid username or password") && b.PreviousState == StateEmailPasswordPage {
+					log.Debug().Str("cur_state", string(b.State)).Str("prev_state", string(b.PreviousState)).Msg("Returning to previous Bloks screen")
+					b.State = StateEmailPasswordPage
+					b.CurrentPage = b.PreviousPage
+					b.LastError = "Invalid username or password"
+				} else {
+					return nil, fmt.Errorf("no-op captcha on_mount script: %w", err)
+				}
 			}
 		}
 
@@ -1649,6 +1673,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("handling %s failed to advance flow", prevState)
 		}
 	} else {
+		b.PreviousState = prevState
 		log.Debug().Str("old_state", string(prevState)).Str("new_state", string(b.State)).Msg("Transitioned login step")
 
 		// Ignore LastError, which is only used for signaling an error within the current
