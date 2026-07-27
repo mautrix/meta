@@ -19,6 +19,10 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
+var (
+	ErrLoginMissingCookies = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Meta returned incomplete credentials after login. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account"}
+)
+
 type MessengerLiteMethods struct {
 	client *Client
 
@@ -222,9 +226,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 	}
 
 	if len(loginRespPayload.SessionCookies) == 0 {
-		return nil, nil, fmt.Errorf(
-			"messenger-lite login returned no cookies after login",
-		)
+		return nil, nil, ErrLoginMissingCookies
 	}
 
 	return nil, m.convertCookies(&loginRespPayload), nil
