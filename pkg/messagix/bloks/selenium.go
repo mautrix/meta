@@ -35,6 +35,7 @@ var (
 	ErrLoginAFADStopped     = bridgev2.RespError{ErrCode: "FI.MAU.META_AFAD_STOPPED", Err: "The approval request expired or was denied, please try logging in again", StatusCode: http.StatusBadRequest}
 	ErrLoginMandatoryOAuth  = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
 	ErrLoginNoSupportedMFA  = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SUPPORTED_MFA", Err: "None of the available MFA methods are supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
+	ErrLoginReCaptcha       = bridgev2.RespError{ErrCode: "FI.MAU.META_GOOGLE_RECAPTCHA", Err: "Meta is requiring Google reCAPTCHA authentication which is not supported. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account"}
 )
 
 // This error is returned in cases where we have observed Meta returning an error that is
@@ -620,6 +621,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StatePasskeyPage
 			case "com.bloks.www.two_step_verification.no_op_captcha":
 				newState = StateSilentCaptchaPage
+			case "com.bloks.www.two_step_verification.google_recaptcha":
+				return ErrLoginReCaptcha
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
