@@ -33,8 +33,8 @@ var (
 	ErrLoginPhoneNumber     = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
 	ErrLoginInvalidUsername = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
 	ErrLoginAFADStopped     = bridgev2.RespError{ErrCode: "FI.MAU.META_AFAD_STOPPED", Err: "The approval request expired or was denied, please try logging in again", StatusCode: http.StatusBadRequest}
-	ErrLoginMandatoryOAuth  = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from another device", StatusCode: http.StatusBadRequest}
-	ErrLoginNoSupportedMFA  = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SUPPORTED_MFA", Err: "None of the available MFA methods are supported. Please try adding a different MFA method to your Facebook account from another device", StatusCode: http.StatusBadRequest}
+	ErrLoginMandatoryOAuth  = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
+	ErrLoginNoSupportedMFA  = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SUPPORTED_MFA", Err: "None of the available MFA methods are supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
 )
 
 // This error is returned in cases where we have observed Meta returning an error that is
@@ -51,7 +51,7 @@ var (
 func ErrLoginUninformative(callsite string) bridgev2.RespError {
 	return bridgev2.RespError{
 		ErrCode:       "FI.MAU.META_UNINFORMATIVE_ERROR",
-		Err:           "Facebook rejected the login without providing a reason, please try again",
+		Err:           "Facebook rejected the login without providing a reason. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account",
 		StatusCode:    http.StatusBadRequest,
 		InternalError: "Uninformative login rejection at callsite: " + callsite,
 	}

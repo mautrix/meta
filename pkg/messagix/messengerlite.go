@@ -227,5 +227,5 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		)
 	}
 
-	return nil, m.convertCookies(&loginRespPayload), nil
+	return nil, nil, fmt.Errorf("login succeeded, but aborting for debugging convenience")
 }
