@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
@@ -14,6 +15,8 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
+
+const SyncResponseTimeout = 30 * time.Second
 
 type SyncManager struct {
 	client *Client
@@ -157,6 +160,9 @@ func (sm *SyncManager) recursivelySyncSocketData(
 		}
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-time.After(SyncResponseTimeout):
+		sm.client.socketSyncWaiters.Delete(packetID)
+		return fmt.Errorf("timeout waiting for database sync response")
 	}
 
 	tbl, err := resp.Parse(ctx)
