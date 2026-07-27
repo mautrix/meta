@@ -1501,7 +1501,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		delete(userInput, "sms_code")
 		b.LastError = "Facebook rejected that code"
 
-		err := b.CurrentPage.
+		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -1509,8 +1509,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return comp.FindDescendant(FilterByAttribute(
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
-			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, smsCode)
+			})
+
+		if input == nil {
+			input = b.CurrentPage.
+				FindDescendant(func(comp *BloksTreeComponent) bool {
+					if comp.ComponentID != "bk.components.TextInput" {
+						return false
+					}
+					return comp.GetAttribute("type") == "number"
+				})
+		}
+
+		err := input.FillInput(ctx, b.CurrentPage.Interpreter, smsCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling sms code input: %w", err)
 		}
@@ -1630,7 +1641,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		delete(userInput, "whatsapp_code")
 		b.LastError = "Facebook rejected that code"
 
-		err := b.CurrentPage.
+		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -1638,8 +1649,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return comp.FindDescendant(FilterByAttribute(
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
-			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, whatsAppCode)
+			})
+
+		if input == nil {
+			input = b.CurrentPage.
+				FindDescendant(func(comp *BloksTreeComponent) bool {
+					if comp.ComponentID != "bk.components.TextInput" {
+						return false
+					}
+					return comp.GetAttribute("type") == "number"
+				})
+		}
+
+		err := input.FillInput(ctx, b.CurrentPage.Interpreter, whatsAppCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling whatsapp code input: %w", err)
 		}
