@@ -634,7 +634,7 @@ func mainE() error {
 			FindDescendants(func(comp *bloks.BloksTreeComponent) bool {
 				switch comp.ComponentID {
 				case "bk.components.AccessibilityExtension", "accessibilityExtension":
-					return strings.HasPrefix(comp.GetAttribute("label"), "+")
+					return strings.HasPrefix(comp.GetAttribute("label"), "+") || strings.Contains(comp.GetAttribute("label"), "@")
 				}
 				return false
 			})

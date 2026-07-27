@@ -300,27 +300,27 @@ type BrowserState string
 // MFA = Multi-Factor Authentication
 // AP = Authentication Platform
 const (
-	StateUnknown               BrowserState = ""
-	StateTestCaptcha           BrowserState = "test-captcha"
-	StateInitial               BrowserState = "initial"
-	StateEmailPasswordPage     BrowserState = "enter-email-and-password-page"
-	StateCodeEntryPage         BrowserState = "enter-code-page"
-	StateCaptchaPage           BrowserState = "captcha-page"
-	StateMFALandingPage        BrowserState = "mfa-landing-page"
-	StateChooseMFAPage         BrowserState = "choose-mfa-type-page"
-	StateAFADPage              BrowserState = "afad-page"
-	StateAFADPageWaiting       BrowserState = "afad-waiting"
-	StateTOTPPage              BrowserState = "totp-page"
-	StateOAuthPage             BrowserState = "oauth-page"
-	StateSMSPage               BrowserState = "sms-page"
-	StateSMSPageAfterSend      BrowserState = "sms-page-after-send"
-	StateBackupCodePage        BrowserState = "backup-code-page"
-	StateChooseNumberPage      BrowserState = "choose-number-page"
-	StateWhatsAppPage          BrowserState = "whatsapp-page"
-	StateWhatsAppPageAfterSend BrowserState = "whatsapp-page-after-send"
-	StatePasskeyPage           BrowserState = "passkey"
-	StateSilentCaptchaPage     BrowserState = "noop-captcha"
-	StateSuccess               BrowserState = "success"
+	StateUnknown                BrowserState = ""
+	StateTestCaptcha            BrowserState = "test-captcha"
+	StateInitial                BrowserState = "initial"
+	StateEmailPasswordPage      BrowserState = "enter-email-and-password-page"
+	StateCodeEntryPage          BrowserState = "enter-code-page"
+	StateCaptchaPage            BrowserState = "captcha-page"
+	StateMFALandingPage         BrowserState = "mfa-landing-page"
+	StateChooseMFAPage          BrowserState = "choose-mfa-type-page"
+	StateAFADPage               BrowserState = "afad-page"
+	StateAFADPageWaiting        BrowserState = "afad-waiting"
+	StateTOTPPage               BrowserState = "totp-page"
+	StateOAuthPage              BrowserState = "oauth-page"
+	StateSMSPage                BrowserState = "sms-page"
+	StateSMSPageAfterSend       BrowserState = "sms-page-after-send"
+	StateBackupCodePage         BrowserState = "backup-code-page"
+	StateChooseContactPointPage BrowserState = "choose-contact-point-page"
+	StateWhatsAppPage           BrowserState = "whatsapp-page"
+	StateWhatsAppPageAfterSend  BrowserState = "whatsapp-page-after-send"
+	StatePasskeyPage            BrowserState = "passkey"
+	StateSilentCaptchaPage      BrowserState = "noop-captcha"
+	StateSuccess                BrowserState = "success"
 )
 
 type BrowserConfig struct {
@@ -612,7 +612,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_factor_login.enter_backup_code":
 				newState = StateBackupCodePage
 			case "com.bloks.www.ap.two_step_verification.contactpoint_chooser":
-				newState = StateChooseNumberPage
+				newState = StateChooseContactPointPage
 			case "com.bloks.www.approve_from_another_device.xmds.challenged_device_denied":
 				return ErrLoginAFADStopped
 			case "com.bloks.www.two_step_verification.enter_whatsapp_code":
@@ -721,13 +721,14 @@ func (b *Browser) getCodeInstructions() string {
 		GetAttribute("text")
 }
 
-func (b *Browser) getContactNumberInstructions() string {
+func (b *Browser) getContactPointInstructions() string {
 	return b.CurrentPage.
 		FindDescendant(func(comp *BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.data.TextSpan" {
 				return false
 			}
-			return strings.HasPrefix(comp.GetAttribute("text"), "Which number")
+			// "Which number" or "Which email"
+			return strings.HasPrefix(comp.GetAttribute("text"), "Which ")
 		}).
 		GetAttribute("text")
 }
@@ -1537,46 +1538,46 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 
-	case StateChooseNumberPage:
+	case StateChooseContactPointPage:
 		buttons := b.CurrentPage.
 			FindDescendants(func(comp *BloksTreeComponent) bool {
 				switch comp.ComponentID {
 				case "bk.components.AccessibilityExtension", "accessibilityExtension":
-					return strings.HasPrefix(comp.GetAttribute("label"), "+")
+					return strings.HasPrefix(comp.GetAttribute("label"), "+") || strings.Contains(comp.GetAttribute("label"), "@")
 				}
 				return false
 			})
 
-		foundNumbers := map[string]*BloksTreeComponent{}
-		numberNames := []string{}
+		foundPoints := map[string]*BloksTreeComponent{}
+		pointNames := []string{}
 		for _, btn := range buttons {
-			number := btn.GetAttribute("label")
-			foundNumbers[number] = btn
-			numberNames = append(numberNames, number)
+			point := btn.GetAttribute("label")
+			foundPoints[point] = btn
+			pointNames = append(pointNames, point)
 		}
 
-		if len(numberNames) == 0 {
-			return nil, fmt.Errorf("failed to find any numbers on contact select page")
+		if len(pointNames) == 0 {
+			return nil, fmt.Errorf("failed to find any contact points on selection page")
 		}
 
-		contactNumber := userInput["contact_number"]
-		if contactNumber == "" && len(foundNumbers) == 1 {
-			contactNumber = numberNames[0]
+		contactPoint := userInput["contact_point"]
+		if contactPoint == "" && len(foundPoints) == 1 {
+			contactPoint = pointNames[0]
 		}
-		if contactNumber == "" {
-			instructions := b.getContactNumberInstructions()
+		if contactPoint == "" {
+			instructions := b.getContactPointInstructions()
 			if instructions == "" {
-				instructions = "Choose the phone number to receive an MFA code"
+				instructions = "Choose where to receive an MFA code"
 			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
-				StepID:       "fi.mau.meta.messengerlite.choose_number",
+				StepID:       "fi.mau.meta.messengerlite.choose_contact_point",
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{
-							ID: "contact_number", Name: "Phone number", Type: bridgev2.LoginInputFieldTypeSelect,
-							Options: numberNames,
+							ID: "contact_point", Name: "Phone number or email", Type: bridgev2.LoginInputFieldTypeSelect,
+							Options: pointNames,
 						},
 					},
 				},
@@ -1584,13 +1585,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 
-		if foundNumbers[contactNumber] == nil {
-			return nil, fmt.Errorf("not a valid contact number: %s", contactNumber)
+		if foundPoints[contactPoint] == nil {
+			return nil, fmt.Errorf("not a valid contact point: %s", contactPoint)
 		}
 
-		err := foundNumbers[contactNumber].FindContainingButton().TapButton(ctx, b.CurrentPage.Interpreter)
+		err := foundPoints[contactPoint].FindContainingButton().TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			return nil, fmt.Errorf("tap selected number: %w", err)
+			return nil, fmt.Errorf("tap selected point: %w", err)
 		}
 		err = b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
