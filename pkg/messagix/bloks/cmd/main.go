@@ -632,13 +632,11 @@ func mainE() error {
 	} else if *doWhatsAppNumbers {
 		buttons := bundle.
 			FindDescendants(func(comp *bloks.BloksTreeComponent) bool {
-				if comp.ComponentID != "bk.components.AccessibilityExtension" {
-					return false
+				switch comp.ComponentID {
+				case "bk.components.AccessibilityExtension", "accessibilityExtension":
+					return strings.HasPrefix(comp.GetAttribute("label"), "+")
 				}
-				if !strings.HasPrefix(comp.GetAttribute("label"), "+") {
-					return false
-				}
-				return true
+				return false
 			})
 		foundNumbers := map[string]*bloks.BloksTreeComponent{}
 		fmt.Printf("Found %d WhatsApp number(s):\n", len(buttons))

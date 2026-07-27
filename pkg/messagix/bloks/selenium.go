@@ -1540,13 +1540,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateChooseNumberPage:
 		buttons := b.CurrentPage.
 			FindDescendants(func(comp *BloksTreeComponent) bool {
-				if comp.ComponentID != "bk.components.AccessibilityExtension" {
-					return false
+				switch comp.ComponentID {
+				case "bk.components.AccessibilityExtension", "accessibilityExtension":
+					return strings.HasPrefix(comp.GetAttribute("label"), "+")
 				}
-				if !strings.HasPrefix(comp.GetAttribute("label"), "+") {
-					return false
-				}
-				return true
+				return false
 			})
 
 		foundNumbers := map[string]*BloksTreeComponent{}

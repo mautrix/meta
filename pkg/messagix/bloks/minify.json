@@ -1704,7 +1704,8 @@
     "㐘": "bk.components.TextInput",
     "㐅": "bk.components.Collection",
     "㐟": "action",
-    "㚮": "buttonExtension"
+    "㚮": "buttonExtension",
+    "㚱": "accessibilityExtension"
   },
   "properties": {
     "bk.components.FoaTouchExtension": {
@@ -1861,6 +1862,11 @@
     "buttonExtension": {
       "9": "label",
       "10": "state"
+    },
+    "accessibilityExtension": {
+      "3": "label",
+      "13": "role",
+      "103": "on_bind"
     }
   }
 }
