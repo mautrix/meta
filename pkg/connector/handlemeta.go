@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -139,14 +140,20 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 
 func (m *MetaClient) parseAndQueueTable(ctx context.Context, tbl *table.LSTable, isInitial bool) {
 	evts := m.parseTable(ctx, tbl)
+	pending := m.pendingTables.Load()
 	wrapped := &parsedTable{
 		Table:     tbl,
 		Events:    evts,
 		IsInitial: isInitial,
+		Pending:   pending,
 	}
 	if ctx.Err() != nil {
 		zerolog.Ctx(ctx).Warn().Err(ctx.Err()).Msg("Not dispatching parsed table, context is canceled")
 	}
+	// Count the table before returning: the sync manager advances the cursor past it as soon as
+	// this returns, so the reconnection state mustn't be saved until the events are handled.
+	// The dropped-table branch below deliberately doesn't undo this.
+	pending.Add(1)
 	select {
 	case m.parsedTables <- wrapped:
 	default:
@@ -163,6 +170,7 @@ type parsedTable struct {
 	Table     *table.LSTable
 	Events    []bridgev2.RemoteEvent
 	IsInitial bool
+	Pending   *atomic.Int64
 }
 
 func (m *MetaClient) handleTableLoop(ctx context.Context) {
@@ -177,7 +185,9 @@ func (m *MetaClient) handleTableLoop(ctx context.Context) {
 		select {
 		case evt := <-m.parsedTables:
 			m.notifyBackgroundConnAboutEvent(true)
-			m.handleParsedTable(ctx, evt.IsInitial, evt.Table, evt.Events)
+			if m.handleParsedTable(ctx, evt.IsInitial, evt.Table, evt.Events) {
+				evt.Pending.Add(-1)
+			}
 			m.saveConnectionState(ctx, nil)
 			m.notifyBackgroundConnAboutEvent(false)
 		case <-ctx.Done():
@@ -185,27 +195,31 @@ func (m *MetaClient) handleTableLoop(ctx context.Context) {
 		}
 	}
 }
-func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl *table.LSTable, innerQueue []bridgev2.RemoteEvent) {
+
+// handleParsedTable returns whether every event in the table was handled. The caller must not
+// persist the reconnection state unless it did, as the sync cursor has already moved past this
+// table and anything dropped here would never be delivered again.
+func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl *table.LSTable, innerQueue []bridgev2.RemoteEvent) bool {
 	for _, contact := range tbl.LSDeleteThenInsertContact {
 		if ctx.Err() != nil {
-			return
+			return false
 		}
 		m.syncGhost(ctx, contact)
 	}
 	for _, contact := range tbl.LSVerifyContactRowExists {
 		if ctx.Err() != nil {
-			return
+			return false
 		}
 		m.syncGhost(ctx, contact)
 	}
 	if ctx.Err() != nil {
-		return
+		return false
 	}
 	if m.Client.GetPlatform() == types.Instagram {
 		contactsWithoutIGID := []int64{}
 		for _, contact := range tbl.LSVerifyContactRowExists {
 			if ctx.Err() != nil {
-				return
+				return false
 			}
 			igid, err := m.Main.DB.GetIGUserForFBID(ctx, contact.GetFBID())
 			if err != nil {
@@ -257,23 +271,25 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 	}
 	for _, evt := range innerQueue {
 		if ctx.Err() != nil {
-			return
+			return false
 		}
 		res := m.UserLogin.QueueRemoteEvent(evt)
 		if !res.Success {
 			zerolog.Ctx(ctx).Warn().
 				Any("queue_result", res).
 				Msg("Queue remote event returned non-success status, cancelling table handling")
-			return
+			return false
 		}
 	}
-	if ctx.Err() == nil {
-		if isInitial {
-			m.initialTableHandled.Store(true)
-		} else {
-			m.Client.PostHandlePublishResponse(tbl)
-		}
+	if ctx.Err() != nil {
+		return false
 	}
+	if isInitial {
+		m.initialTableHandled.Store(true)
+	} else {
+		m.Client.PostHandlePublishResponse(tbl)
+	}
+	return true
 }
 
 func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
