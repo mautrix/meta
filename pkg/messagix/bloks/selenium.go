@@ -30,13 +30,14 @@ import (
 )
 
 var (
-	ErrLoginPhoneNumber     = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
-	ErrLoginInvalidUsername = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
-	ErrLoginAFADStopped     = bridgev2.RespError{ErrCode: "FI.MAU.META_AFAD_STOPPED", Err: "The approval request expired or was denied, please try logging in again", StatusCode: http.StatusBadRequest}
-	ErrLoginMandatoryOAuth  = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
-	ErrLoginNoSupportedMFA  = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SUPPORTED_MFA", Err: "None of the available MFA methods are supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
-	ErrLoginReCaptcha       = bridgev2.RespError{ErrCode: "FI.MAU.META_GOOGLE_RECAPTCHA", Err: "Meta is requiring Google reCAPTCHA authentication which is not supported. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account"}
-	ErrLoginNoSMSAvailable  = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SMS_AVAILABLE", Err: "Meta is refusing to send SMS codes right now. Try again later, or use/add a different MFA method for your Facebook account"}
+	ErrLoginPhoneNumber      = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
+	ErrLoginInvalidUsername  = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
+	ErrLoginAFADStopped      = bridgev2.RespError{ErrCode: "FI.MAU.META_AFAD_STOPPED", Err: "The approval request expired or was denied, please try logging in again", StatusCode: http.StatusBadRequest}
+	ErrLoginMandatoryOAuth   = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
+	ErrLoginNoSupportedMFA   = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SUPPORTED_MFA", Err: "None of the available MFA methods are supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
+	ErrLoginReCaptcha        = bridgev2.RespError{ErrCode: "FI.MAU.META_GOOGLE_RECAPTCHA", Err: "Meta is requiring Google reCAPTCHA authentication which is not supported. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account"}
+	ErrLoginNoSMSAvailable   = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SMS_AVAILABLE", Err: "Meta is refusing to send SMS codes right now. Try again later, or use/add a different MFA method for your Facebook account"}
+	ErrLoginMandatoryPasskey = bridgev2.RespError{ErrCode: "FI.MAU.META_PASSKEY_MANDATORY", Err: "Meta is requiring passkey sign-in which is not supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
 )
 
 // This error is returned in cases where we have observed Meta returning an error that is
@@ -1699,6 +1700,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		btn := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
 			FindContainingButton()
+		if btn == nil {
+			return nil, ErrLoginMandatoryPasskey
+		}
 		err := btn.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping try another way button: %w", err)
