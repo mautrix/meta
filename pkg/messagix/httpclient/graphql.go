@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
@@ -25,11 +26,23 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
+var lastTrackingTimestamp time.Time = time.Unix(0, 0)
+
 // This has some overlap with makeGraphQLRequest but it's really a
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
 func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID string, familyDeviceID string) (*bloks.BloksBundle, error) {
+	if time.Now().After(lastTrackingTimestamp.Add(5 * time.Second)) {
+		lastTrackingTimestamp = time.Now()
+		c.log.Debug().Msg("Checking current public IP")
+		_, respData, err := c.MakeRequest(ctx, "https://ipv4.icanhazip.com", "GET", nil, nil, types.NONE)
+		if err != nil {
+			c.log.Error().Err(err).Msg("Failed to check current public IP")
+		}
+		c.log.Debug().Str("public_ip", strings.TrimSpace(string(respData))).Msg("Checked current public IP")
+	}
+
 	c.log.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
 
 	variables := bloks.NewBloksRequest(doc, appID, inner)
