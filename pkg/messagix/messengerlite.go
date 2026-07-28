@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	ErrLoginMissingCookies = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Meta returned incomplete credentials after login. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account"}
+	ErrLoginMissingCookies = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Meta returned incomplete credentials after login. If you don't have MFA enabled, please turn it on for your Facebook account. Otherwise, it may help to try again, log in from the official app/website first, or change the MFA settings for your Facebook account"}
 )
 
 type MessengerLiteMethods struct {
