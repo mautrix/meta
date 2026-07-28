@@ -683,6 +683,9 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				if !ok {
 					return fmt.Errorf("non-string code error: %T", value.Value())
 				}
+				if msg == "" {
+					return nil
+				}
 				b.LastError = msg
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
 				if b.State != StateCodeEntryPage {
@@ -691,6 +694,15 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				msg, ok := value.Value().(string)
 				if !ok {
 					return fmt.Errorf("non-string email code error: %T", value.Value())
+				}
+				// Sometimes Facebook will set an empty string to this variable,
+				// resetting it, just before making a request that might fail.
+				// Except, we already take care of resetting LastError before we
+				// trigger Bloks code, and we might have already set up LastError
+				// with a default value that we don't want to have reset. So,
+				// require a non-empty string.
+				if msg == "" {
+					return nil
 				}
 				b.LastError = msg
 			}
