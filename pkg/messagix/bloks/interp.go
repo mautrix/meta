@@ -1227,6 +1227,12 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s", msg)
+	case "bk.action.io.Toast":
+		msg, err := evalAs[string](ctx, i, &call.Args[0], "toast")
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%s", msg)
 	case "bk.action.navigation.OpenUrl":
 		url, err := evalAs[string](ctx, i, &call.Args[0], "openurl")
 		if err != nil {
