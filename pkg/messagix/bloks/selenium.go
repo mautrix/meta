@@ -1003,7 +1003,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		delete(userInput, "backup_code")
 		b.LastError = "Facebook rejected that code"
 
-		err := b.CurrentPage.
+		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.components.TextInput" {
 					return false
@@ -1011,8 +1011,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return comp.FindDescendant(FilterByAttribute(
 					"bk.components.AccessibilityExtension", "label", "Code",
 				)) != nil
-			}).
-			FillInput(ctx, b.CurrentPage.Interpreter, backupCode)
+			})
+		if input == nil {
+			input = b.CurrentPage.FindDescendant(FilterByComponent("bk.components.TextInput"))
+		}
+		err := input.FillInput(ctx, b.CurrentPage.Interpreter, backupCode)
 		if err != nil {
 			return nil, fmt.Errorf("filling backup code input: %w", err)
 		}
