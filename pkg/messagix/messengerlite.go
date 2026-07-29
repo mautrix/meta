@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -21,6 +23,7 @@ import (
 
 var (
 	ErrLoginMissingCookies = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Meta returned incomplete credentials after login. If you don't have MFA enabled, please turn it on for your Facebook account. Otherwise, it may help to try again, log in from the official app/website first, or change the MFA settings for your Facebook account"}
+	ErrLoginTokenExchange  = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_EXCHANGE_FAILED", Err: "Meta returned a temporary credential after login which could not be exchanged for a usable session. It may help to try again, or to log in from the official app/website first"}
 )
 
 type MessengerLiteMethods struct {
@@ -64,25 +67,42 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 	}
 }
 
+// messengerLiteApp is the first-party app that we pretend to be when making
+// non-Bloks messenger lite requests.
+type messengerLiteApp struct {
+	AppID       string
+	AccessToken string
+	UserAgent   string
+}
+
+func (c *Client) getMessengerLiteApp() (*messengerLiteApp, error) {
+	switch c.Platform {
+	case types.MessengerLiteIOS:
+		return &messengerLiteApp{
+			AppID:       useragent.MessengerLiteIOSAppID,
+			AccessToken: useragent.MessengerLiteIOSAccessToken,
+			UserAgent:   useragent.MessengerLiteIOSUserAgent,
+		}, nil
+	case types.MessengerLiteAndroid:
+		return &messengerLiteApp{
+			AppID:       useragent.MessengerLiteAndroidAppID,
+			AccessToken: useragent.MessengerLiteAndroidAccessToken,
+			UserAgent:   useragent.MessengerLiteAndroidUserAgent,
+		}, nil
+	default:
+		return nil, fmt.Errorf("platform %s does not support messenger lite auth requests", c.Platform.String())
+	}
+}
+
 func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse, error) {
 	endpoint := c.GetEndpoint("pwd_key")
 
-	var accessToken, appID, userAgent string
-	switch c.Platform {
-	case types.MessengerLiteIOS:
-		accessToken = useragent.MessengerLiteIOSAccessToken
-		appID = useragent.MessengerLiteIOSAppID
-		userAgent = useragent.MessengerLiteIOSUserAgent
-	case types.MessengerLiteAndroid:
-		accessToken = useragent.MessengerLiteAndroidAccessToken
-		appID = useragent.MessengerLiteAndroidAppID
-		userAgent = useragent.MessengerLiteAndroidUserAgent
-	default:
-		return nil, fmt.Errorf("platform %s does not support lightspeed key fetch", c.Platform.String())
+	app, err := c.getMessengerLiteApp()
+	if err != nil {
+		return nil, err
 	}
-
 	params := map[string]any{
-		"access_token": accessToken,
+		"access_token": app.AccessToken,
 		"device_id":    strings.ToUpper(c.MessengerLite.deviceID.String()),
 		"machine_id":   c.MessengerLite.machineID,
 		"version":      "3",
@@ -94,16 +114,16 @@ func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 	}
 	fullURL := endpoint + "?" + query.Encode()
 
-	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader(appID)
+	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader(app.AppID)
 	if err != nil {
 		return nil, err
 	}
 
 	headers := map[string]string{
 		"accept":                      "*/*",
-		"x-fb-appid":                  appID,
+		"x-fb-appid":                  app.AppID,
 		"x-fb-request-analytics-tags": analyticsTags,
-		"user-agent":                  userAgent,
+		"user-agent":                  app.UserAgent,
 		"accept-language":             "en-US,en;q=0.9",
 		"request_token":               uuid.New().String(),
 	}
@@ -165,18 +185,142 @@ type BloksLoginActionResponsePayload struct {
 	SessionCookies []RawCookie `json:"session_cookies"`
 }
 
-func (m *MessengerLiteMethods) convertCookies(payload *BloksLoginActionResponsePayload) *cookies.Cookies {
+func (m *MessengerLiteMethods) convertCookies(rawCookies []RawCookie) *cookies.Cookies {
 	newCookies := &cookies.Cookies{Platform: m.client.Platform}
 	newCookies.UpdateValues(make(map[cookies.MetaCookieName]string))
-	for _, raw := range payload.SessionCookies {
+	for _, raw := range rawCookies {
 		newCookies.Set(cookies.MetaCookieName(raw.Name), raw.Value)
 	}
 	return newCookies
 }
 
+// SessionForAppOptions overrides the parameters of the create_session_for_app
+// request. The zero value makes the same request the official app does.
+type SessionForAppOptions struct {
+	Endpoint string
+	NewAppID string
+	AppAuth  bool
+}
+
+type SessionForAppResponse struct {
+	AccessToken    string      `json:"access_token"`
+	SessionKey     string      `json:"session_key"`
+	Secret         string      `json:"secret"`
+	MachineID      string      `json:"machine_id"`
+	AnalyticsClaim string      `json:"analytics_claim"`
+	UID            json.Number `json:"uid"`
+	SessionCookies []RawCookie `json:"session_cookies"`
+
+	// The legacy REST API returns errors in the body with a 200 status
+	ErrorCode    int    `json:"error_code"`
+	ErrorSubcode int    `json:"error_subcode"`
+	ErrorMsg     string `json:"error_msg"`
+	// ...while the graph API uses the usual graph error object
+	Error *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    int    `json:"code"`
+		Subcode int    `json:"error_subcode"`
+	} `json:"error"`
+}
+
+func (resp *SessionForAppResponse) Err() error {
+	if resp.Error != nil {
+		return fmt.Errorf("session-for-app error %d/%d: %s", resp.Error.Code, resp.Error.Subcode, resp.Error.Message)
+	} else if resp.ErrorCode != 0 {
+		return fmt.Errorf("session-for-app error %d/%d: %s", resp.ErrorCode, resp.ErrorSubcode, resp.ErrorMsg)
+	}
+	return nil
+}
+
+func (m *MessengerLiteMethods) GetSessionForApp(ctx context.Context, accessToken string, opts SessionForAppOptions) (*SessionForAppResponse, error) {
+	app, err := m.client.getMessengerLiteApp()
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := opts.Endpoint
+	if endpoint == "" {
+		endpoint = m.client.GetEndpoint("session_for_app")
+	}
+	newAppID := opts.NewAppID
+	if newAppID == "" {
+		newAppID = app.AppID
+	}
+
+	params := url.Values{}
+	params.Set("format", "json")
+	params.Set("access_token", accessToken)
+	params.Set("new_app_id", newAppID)
+	params.Set("generate_session_cookies", "1")
+	params.Set("generate_analytics_claim", "1")
+	if m.deviceID != uuid.Nil {
+		params.Set("device_id", strings.ToUpper(m.deviceID.String()))
+	}
+	if m.machineID != "" {
+		params.Set("machine_id", m.machineID)
+	} else {
+		params.Set("generate_machine_id", "1")
+	}
+
+	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader(app.AppID)
+	if err != nil {
+		return nil, err
+	}
+
+	headers := http.Header{}
+	for k, v := range map[string]string{
+		"accept":                      "*/*",
+		"x-fb-appid":                  app.AppID,
+		"x-fb-request-analytics-tags": analyticsTags,
+		"user-agent":                  app.UserAgent,
+		"accept-language":             "en-US,en;q=0.9",
+		"request_token":               uuid.New().String(),
+	} {
+		headers.Set(k, v)
+	}
+	if opts.AppAuth {
+		headers.Set("authorization", "OAuth "+app.AccessToken)
+	}
+
+	// The legacy REST host answers with a 200 and the error in the body, while
+	// the graph hosts use a normal HTTP error status, so parse the body first
+	// either way and only fall back to the HTTP error if it isn't usable.
+	_, responseBytes, reqErr := m.client.http.MakeRequest(ctx, endpoint, "POST", headers, []byte(params.Encode()), types.FORM)
+
+	var response SessionForAppResponse
+	err = json.Unmarshal(responseBytes, &response)
+	switch {
+	case err == nil && response.Err() != nil:
+		return nil, response.Err()
+	case reqErr != nil:
+		return nil, fmt.Errorf("requesting session for app: %w", reqErr)
+	case err != nil:
+		return nil, fmt.Errorf("parsing session-for-app response: %w", err)
+	}
+	return &response, nil
+}
+
+func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, accessToken string) (*cookies.Cookies, error) {
+	resp, err := m.GetSessionForApp(ctx, accessToken, SessionForAppOptions{})
+	if err != nil {
+		return nil, err
+	}
+	newCookies := m.convertCookies(resp.SessionCookies)
+	if !newCookies.IsLoggedIn() {
+		return nil, fmt.Errorf("session-for-app response is missing cookies: %v", newCookies.GetMissingCookieNames())
+	}
+	return newCookies, nil
+}
+
 // For testing only
 func (m *MessengerLiteMethods) SetDeviceIdentifiers(deviceID uuid.UUID) {
 	m.deviceID = deviceID
+}
+
+// For testing only
+func (m *MessengerLiteMethods) SetMachineID(machineID string) {
+	m.machineID = machineID
 }
 
 func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, *cookies.Cookies, error) {
@@ -216,18 +360,26 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		return nil, nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
-	if loginRespPayload.CredentialType == "transient_token" {
-		// There is an extra step for getting cookies when the credential_type
-		// field is transient_token, which the bridge does not currently
-		// implement. Until then, add a warning log. Normally the credential_type
-		// is two_factor. It depends on the account, not on the MFA method
-		// selected.
-		m.client.Logger.Warn().Msg("Got credential_type transient_token, login will fail")
-	}
-
 	if len(loginRespPayload.SessionCookies) == 0 {
-		return nil, nil, ErrLoginMissingCookies
+		if loginRespPayload.AccessToken == "" {
+			return nil, nil, ErrLoginMissingCookies
+		}
+		m.client.Logger.Debug().
+			Str("credential_type", loginRespPayload.CredentialType).
+			Msg("Login response didn't include session cookies, exchanging access token for a session")
+		newCookies, err := m.ExchangeTransientToken(ctx, loginRespPayload.AccessToken)
+		if err != nil {
+			m.client.Logger.Warn().Err(err).
+				Str("credential_type", loginRespPayload.CredentialType).
+				Msg("Failed to exchange access token for session cookies")
+			return nil, nil, ErrLoginTokenExchange
+		}
+		m.client.Logger.Debug().
+			Str("credential_type", loginRespPayload.CredentialType).
+			Any("cookie_names", slices.Collect(maps.Keys(newCookies.GetAll()))).
+			Msg("Exchanged access token for session cookies")
+		return nil, newCookies, nil
 	}
 
-	return nil, m.convertCookies(&loginRespPayload), nil
+	return nil, m.convertCookies(loginRespPayload.SessionCookies), nil
 }
