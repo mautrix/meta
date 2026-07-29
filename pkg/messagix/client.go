@@ -393,7 +393,7 @@ func (c *Client) ForceReconnect() {
 	if c == nil {
 		return
 	}
-	c.socket.Disconnect()
+	c.socket.ForceReconnect()
 }
 
 func (c *Client) FetchMoreThreads(ctx context.Context, syncGroup int64) (*socket.KeyStoreData, *table.LSTable, error) {
