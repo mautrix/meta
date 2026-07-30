@@ -52,6 +52,27 @@ var selectedWhatsAppNumber = flag.String("whatsapp-number", "", "Pick a WhatsApp
 var cancelPasskey = flag.Bool("cancel-passkey", false, "Tap the 'try another way' passkey button")
 var isAndroid = flag.Bool("android", false, "Use Android instead of iOS")
 var doPageFromAction = flag.Bool("new-page", false, "Act on new page rendered by action")
+var exchangeToken = flag.String("exchange-token", "", "Exchange an access token for session cookies (auth/create_session_for_app)")
+var machineID = flag.String("machine-id", "", "Machine ID to send with -exchange-token")
+var sessionEndpoint = flag.String("session-endpoint", "", "Override the create_session_for_app endpoint")
+var newAppID = flag.String("new-app-id", "", "Request the session for this app instead of our own")
+var appAuth = flag.Bool("app-auth", false, "Send the first-party app authorization header with -exchange-token")
+var sweepAppIDs = flag.Bool("sweep-app-ids", false, "Try -exchange-token against every known first-party app ID")
+
+// Known first-party app IDs, for finding one that the session exchange accepts.
+var knownAppIDs = []struct{ ID, Name string }{
+	{"", "ourselves"},
+	{"350685531728", "Facebook Android"},
+	{"6628568379", "Facebook iPhone"},
+	{"275254692598279", "Facebook Lite"},
+	{"256002347743983", "Messenger Android"},
+	{"237759909591655", "Messenger iPhone"},
+	{"200424423651082", "Messenger Lite"},
+	{"437626316973788", "Messenger Lite iOS"},
+	{"165907476854626", "Pages Manager iOS"},
+	{"121876164619130", "Pages Manager Android"},
+	{"124024574287414", "Instagram"},
+}
 
 func main() {
 	err := mainE()
@@ -123,6 +144,42 @@ func mainE() error {
 		}
 
 		fmt.Println(enc)
+		return nil
+	}
+	if *exchangeToken != "" {
+		cl := messagix.NewClient(&cookies.Cookies{
+			Platform: plat,
+		}, log, &messagix.Config{
+			ClientSettings: exhttp.SensibleClientSettings,
+		})
+		if *deviceID != "" {
+			cl.MessengerLite.SetDeviceIdentifiers(uuid.MustParse(*deviceID))
+		}
+		cl.MessengerLite.SetMachineID(*machineID)
+
+		apps := []struct{ ID, Name string }{{*newAppID, "requested app"}}
+		if *sweepAppIDs {
+			apps = knownAppIDs
+		}
+		for _, app := range apps {
+			resp, err := cl.MessengerLite.GetSessionForApp(ctx, *exchangeToken, messagix.SessionForAppOptions{
+				Endpoint: *sessionEndpoint,
+				NewAppID: app.ID,
+				AppAuth:  *appAuth,
+			})
+			if err != nil {
+				fmt.Printf("%s %s: %v\n", app.ID, app.Name, err)
+				continue
+			}
+			cookieNames := make([]string, len(resp.SessionCookies))
+			for i, cookie := range resp.SessionCookies {
+				cookieNames[i] = cookie.Name
+			}
+			fmt.Printf("%s %s: uid=%s cookies=[%s]\n", app.ID, app.Name, resp.UID, strings.Join(cookieNames, " "))
+			// The token may well be single use, so don't keep going once
+			// something has worked.
+			break
+		}
 		return nil
 	}
 	if *doRPC != "" {

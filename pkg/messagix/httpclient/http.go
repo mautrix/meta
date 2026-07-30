@@ -406,14 +406,14 @@ func (c *HTTPClient) makeRequest(
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, giving up")
-			return resp, nil, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
+			return resp, respDat, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
 		} else if IsPermanentRequestError(err) || (resp != nil && resp.StatusCode < 500 && resp.StatusCode != 429) || ctx.Err() != nil {
 			logContext(c.log.Err(err)).
 				Str("url", url).
 				Str("method", method).
 				Dur("duration", dur).
 				Msg("Request failed, cannot be retried")
-			return resp, nil, err
+			return resp, respDat, err
 		}
 		backoff := time.Duration(attempts) * 3 * time.Second
 		if resp != nil && resp.StatusCode == 429 {
@@ -462,7 +462,8 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 	}
 
 	if response.StatusCode >= 400 {
-		return response, nil, fmt.Errorf("%w %d", ErrUnexpectedError, response.StatusCode)
+		// Return the body as well: some APIs only explain what went wrong there.
+		return response, responseBody, fmt.Errorf("%w %d", ErrUnexpectedError, response.StatusCode)
 	}
 
 	return response, responseBody, nil
