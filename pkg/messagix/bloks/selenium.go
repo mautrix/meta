@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -329,6 +328,7 @@ type BrowserConfig struct {
 	Platform         types.Platform
 	EncryptPassword  func(context.Context, string) (string, error)
 	MakeBloksRequest func(context.Context, *BloksDoc, string, BloksParamsInner, string, string) (*BloksBundle, error)
+	FetchAsset       func(ctx context.Context, url string) ([]byte, string, error)
 }
 
 type Browser struct {
@@ -1080,31 +1080,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			audioURL := strings.Replace(b.DisplayedURL, "/player/", "/", 1)
 			log.Trace().Str("audio_url", audioURL).Msg("Found audio captcha")
 
-			imageResp, err := http.Get(imageURL)
+			imageBytes, imageMime, err := b.Config.FetchAsset(ctx, imageURL)
 			if err != nil {
 				return nil, fmt.Errorf("error fetching image response: %w", err)
 			}
-			defer imageResp.Body.Close()
-			imageBytes, err := io.ReadAll(imageResp.Body)
-			if err != nil {
-				return nil, fmt.Errorf("error reading image response body: %w", err)
-			}
-			imageMime := imageResp.Header.Get("content-type")
 			if !strings.HasPrefix(imageMime, "image/") {
 				return nil, fmt.Errorf("bad image captcha mime type %s", imageMime)
 			}
 			imageFilename := "captcha" + exmime.ExtensionFromMimetype(imageMime)
 
-			audioResp, err := http.Get(audioURL)
+			audioBytes, audioMime, err := b.Config.FetchAsset(ctx, audioURL)
 			if err != nil {
 				return nil, fmt.Errorf("error fetching audio response: %w", err)
 			}
-			defer audioResp.Body.Close()
-			audioBytes, err := io.ReadAll(audioResp.Body)
-			if err != nil {
-				return nil, fmt.Errorf("error reading audio response body: %w", err)
-			}
-			audioMime := audioResp.Header.Get("content-type")
 			if !strings.HasPrefix(audioMime, "audio/") {
 				return nil, fmt.Errorf("bad audio captcha mime type %s", audioMime)
 			}

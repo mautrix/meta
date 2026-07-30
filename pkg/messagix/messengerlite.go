@@ -64,7 +64,26 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 			return encryptedPW, nil
 		},
 		MakeBloksRequest: fb.client.http.MakeBloksRequest,
+		FetchAsset:       fb.fetchAsset,
 	}
+}
+
+// fetch arbitrary assets (CAPTCHA text/audio) using the same HTTP client as the main Client instance
+func (fb *MessengerLiteMethods) fetchAsset(ctx context.Context, url string) ([]byte, string, error) {
+	app, err := fb.client.getMessengerLiteApp()
+	if err != nil {
+		return nil, "", err
+	}
+	headers := http.Header{}
+	headers.Set("accept", "*/*")
+	headers.Set("accept-language", "en-US,en;q=0.9")
+	headers.Set("user-agent", app.UserAgent)
+
+	resp, body, err := fb.client.http.MakeRequest(ctx, url, http.MethodGet, headers, nil, types.NONE)
+	if err != nil {
+		return nil, "", err
+	}
+	return body, resp.Header.Get("Content-Type"), nil
 }
 
 // messengerLiteApp is the first-party app that we pretend to be when making
