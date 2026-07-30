@@ -1233,7 +1233,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s", msg)
-	case "bk.action.navigation.OpenUrl":
+	case "bk.action.navigation.OpenUrl", "bk.action.navigation.OpenUrlV2":
+		// V2 has a second argument which is always null in the flows we see,
+		// presumably some kind of navigation options.
 		url, err := evalAs[string](ctx, i, &call.Args[0], "openurl")
 		if err != nil {
 			return nil, err
