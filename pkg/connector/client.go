@@ -40,6 +40,7 @@ type MetaClient struct {
 	initialTable        atomic.Pointer[table.LSTable]
 	initialTableHandled atomic.Bool
 	parsedTables        chan *parsedTable
+	pendingTables       atomic.Pointer[atomic.Int64]
 	backfillCollectors  map[int64]*BackfillCollector
 	backfillLock        sync.Mutex
 	connectLock         sync.Mutex
@@ -95,6 +96,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		e2eeConnectWaiter: exsync.NewEvent(),
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
+	c.pendingTables.Store(&atomic.Int64{})
 	login.Client = c
 	return nil
 }
@@ -143,6 +145,10 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 
 func (m *MetaClient) ensureMessagixClient() {
 	if m.LoginMeta.Cookies != nil && m.Client == nil {
+		// The new client will replay from the last saved state, so tables counted for the old one
+		// are no longer relevant. Swapping the counter rather than resetting it means a late
+		// decrement from the old table loop can't make the new one look up to date.
+		m.pendingTables.Store(&atomic.Int64{})
 		m.LoginMeta.Cookies.Platform = m.LoginMeta.Platform
 		m.Client = messagix.NewClient(
 			m.LoginMeta.Cookies,
@@ -498,6 +504,12 @@ func (m *MetaClient) connectE2EE() error {
 
 func (m *MetaClient) saveConnectionState(ctx context.Context, state json.RawMessage) {
 	if !m.Main.Config.CacheConnectionState {
+		return
+	}
+	if pending := m.pendingTables.Load().Load(); pending != 0 {
+		zerolog.Ctx(ctx).Warn().
+			Int64("pending_tables", pending).
+			Msg("Not saving reconnection state, some events haven't been handled yet")
 		return
 	}
 	m.lastStateSaveLock.Lock()
