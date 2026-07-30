@@ -80,7 +80,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 		id := BloksVariableID(item.ID)
 		switch item.Type {
-		case "gs", "bloks_android_system_insets":
+		case "gs", "bloks_android_system_insets", "bloks_ios_view_insets":
 			// Check if global var was already set
 			if globals[id] != nil {
 				break
@@ -201,7 +201,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 		id := BloksVariableID(item.ID)
 		switch item.Type {
-		case "gs", "bloks_android_system_insets":
+		case "gs", "bloks_android_system_insets", "bloks_ios_view_insets":
 			if globals[id] != nil {
 				break
 			}
