@@ -568,7 +568,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			// any variable updates in the callback will be lost.
 			err = b.CurrentPage.Interpreter.MergeActionBundle(ctx, bundle)
 			if err != nil {
-				return nil, fmt.Errorf("merging interpreter with new action")
+				return nil, fmt.Errorf("merging interpreter with new action: %w", err)
 			}
 			return action, nil
 		},
