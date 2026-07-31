@@ -1,3 +1,12 @@
+# v26.08 (unreleased)
+
+* Removed Instagram support from the mautrix-meta bridge.
+  Only mautrix-instagram can be used for Instagram now.
+* Added notices for calls from Instagram.
+* Improved iOS Messenger login mode and added Android Messenger as an option.
+* Fixed Instagram ghost profiles not being updated when receiving a message.
+* Fixed bridging edits from Instagram.
+
 # v26.07
 
 * Updated Docker image to Alpine 3.24.
