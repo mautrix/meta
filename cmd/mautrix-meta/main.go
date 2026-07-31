@@ -15,7 +15,8 @@ var (
 )
 
 var m = mxmain.BridgeMain{
-	Name:        "mautrix-meta",
+	Name:        "mautrix-facebook",
+	DBOwner:     "megabridge/mautrix-meta",
 	URL:         "https://github.com/mautrix/meta",
 	Description: "A Matrix-Facebook Messenger puppeting bridge.",
 	Version:     "26.07",
