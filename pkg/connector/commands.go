@@ -20,11 +20,7 @@ var cmdToggleEncryption = &commands.FullHandler{
 }
 
 func fnToggleEncryption(ce *commands.Event) {
-	conn := ce.Bridge.Network.(*MetaConnector)
-	if !conn.Config.Mode.IsMessenger() {
-		ce.Reply("Instagram does not support encryption")
-		return
-	} else if ce.Portal.RoomType != database.RoomTypeDM {
+	if ce.Portal.RoomType != database.RoomTypeDM {
 		ce.Reply("Only private chats can be toggled between encrypted and unencrypted")
 		return
 	}

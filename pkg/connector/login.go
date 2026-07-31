@@ -28,7 +28,6 @@ import (
 const (
 	FlowIDFacebookCookies      = "facebook"
 	FlowIDMessengerCookies     = "messenger"
-	FlowIDInstagramCookies     = "instagram"
 	FlowIDMessengerLiteIOS     = "messenger-lite"
 	FlowIDMessengerLiteAndroid = "messenger-lite-android"
 
@@ -48,8 +47,6 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 		}
 	case FlowIDMessengerCookies:
 		plat = types.Messenger
-	//case FlowIDInstagramCookies:
-	//	plat = types.Instagram
 	case FlowIDMessengerLiteIOS:
 		plat = types.MessengerLiteIOS
 		return &MetaNativeLogin{
@@ -113,11 +110,6 @@ var (
 		Description: "Login using cookies from messenger.com",
 		ID:          FlowIDMessengerCookies,
 	}
-	loginFlowInstagram = bridgev2.LoginFlow{
-		Name:        "instagram.com",
-		Description: "Login using cookies from instagram.com",
-		ID:          FlowIDInstagramCookies,
-	}
 	loginFlowMessengerLiteIOS = bridgev2.LoginFlow{
 		Name:        "Messenger iOS",
 		Description: "Login in using Messenger iOS API",
@@ -141,8 +133,6 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 				flows = append(flows, loginFlowFacebook)
 			case types.Messenger:
 				flows = append(flows, loginFlowMessenger)
-			case types.Instagram:
-				//flows = append(flows, loginFlowInstagram)
 			case types.MessengerLiteIOS:
 				flows = append(flows, loginFlowMessengerLiteIOS)
 			case types.MessengerLiteAndroid:
@@ -155,7 +145,7 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	}
 	switch m.Config.Mode {
 	case types.Unset:
-		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowInstagram, loginFlowMessengerLiteIOS, loginFlowMessengerLiteAndroid}
+		return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowMessengerLiteIOS, loginFlowMessengerLiteAndroid}
 	case types.Facebook:
 		if m.Config.AllowMessengerComOnFB {
 			return []bridgev2.LoginFlow{loginFlowMessenger, loginFlowFacebook}
@@ -165,8 +155,6 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 		return []bridgev2.LoginFlow{loginFlowFacebook}
 	case types.Messenger:
 		return []bridgev2.LoginFlow{loginFlowMessenger}
-	case types.Instagram:
-		return []bridgev2.LoginFlow{}
 	case types.MessengerLiteIOS:
 		return []bridgev2.LoginFlow{loginFlowMessengerLiteIOS}
 	case types.MessengerLiteAndroid:
@@ -220,10 +208,6 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		step.CookiesParams.URL = "https://www.messenger.com/?no_redirect=true"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
 		step.CookiesParams.WaitForURLPattern = "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?(?:\\?.*)?$"
-	case types.Instagram:
-		step.CookiesParams.URL = "https://www.instagram.com/accounts/login/"
-		step.CookiesParams.Fields = cookieListToFields(cookies.IGRequiredCookies, "instagram.com")
-		step.CookiesParams.WaitForURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$"
 	default:
 		return nil, fmt.Errorf("unknown mode %s", m.Mode)
 	}
@@ -281,13 +265,6 @@ func loginWithCookies(
 	}
 
 	id := user.GetFBID()
-	if client.Instagram != nil {
-		id, err = client.Instagram.ExtractFBID(user, tbl)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch FBID: %w", err)
-		}
-	}
-
 	loginID := metaid.MakeUserLoginID(id)
 	var loginUA string
 	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {

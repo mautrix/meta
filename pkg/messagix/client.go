@@ -37,7 +37,6 @@ type Config struct {
 type Client struct {
 	http *httpclient.HTTPClient
 
-	Instagram     *InstagramMethods
 	Facebook      *FacebookMethods
 	MessengerLite *MessengerLiteMethods
 	Logger        zerolog.Logger
@@ -182,12 +181,7 @@ func (c *Client) LoadMessagesPage(ctx context.Context) (types.UserInfo, *table.L
 	if err != nil {
 		return nil, nil, err
 	}
-	var currentUser types.UserInfo
-	if c.Platform.IsMessenger() {
-		currentUser = &c.configs.BrowserConfigTable.CurrentUserInitialData
-	} else {
-		currentUser = &c.configs.BrowserConfigTable.PolarisViewer
-	}
+	currentUser := &c.configs.BrowserConfigTable.CurrentUserInitialData
 	return currentUser, ls, nil
 }
 
@@ -218,9 +212,6 @@ func (c *Client) configurePlatformClient() {
 		selectedEndpoints = endpoints.MessengerLiteAndroidEndpoints
 		c.Facebook = &FacebookMethods{client: c}
 		c.MessengerLite = &MessengerLiteMethods{client: c}
-	case types.Instagram:
-		selectedEndpoints = endpoints.InstagramEndpoints
-		c.Instagram = &InstagramMethods{client: c}
 	}
 
 	c.endpoints = selectedEndpoints
@@ -340,13 +331,7 @@ func (c *Client) IsAuthenticated() bool {
 	if c == nil {
 		return false
 	}
-	var isAuthenticated bool
-	if c.Platform.IsMessenger() {
-		isAuthenticated = c.configs.BrowserConfigTable.CurrentUserInitialData.AccountID != "0"
-	} else {
-		isAuthenticated = c.configs.BrowserConfigTable.PolarisViewer.ID != ""
-	}
-	return isAuthenticated
+	return c.configs.BrowserConfigTable.CurrentUserInitialData.AccountID != "0"
 }
 
 func (c *Client) IsAuthenticatedAndLoaded() bool {
@@ -360,11 +345,7 @@ func (c *Client) GetCurrentAccount() (types.UserInfo, error) {
 		return nil, fmt.Errorf("messagix-client: not yet authenticated")
 	}
 
-	if c.Platform.IsMessenger() {
-		return &c.configs.BrowserConfigTable.CurrentUserInitialData, nil
-	} else {
-		return &c.configs.BrowserConfigTable.PolarisViewer, nil
-	}
+	return &c.configs.BrowserConfigTable.CurrentUserInitialData, nil
 }
 
 func (c *Client) getTaskID() int64 {

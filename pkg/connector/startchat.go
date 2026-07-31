@@ -44,7 +44,7 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 
 	var chat *bridgev2.CreateChatResponse
 	if createChat {
-		tableType := table.ONE_TO_ONE
+		tableType := table.ENCRYPTED_OVER_WA_ONE_TO_ONE
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
 			ThreadFBID:                id,
 			ForceUpsert:               0,
@@ -54,12 +54,9 @@ func (m *MetaClient) ResolveIdentifier(ctx context.Context, identifier string, c
 			PreviewOnly:               0,
 		})
 		log.Debug().Any("response_data", resp).Err(err).Msg("Create chat response")
-		if m.LoginMeta.Platform.IsMessenger() {
-			tableType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
-			err = m.CreateWhatsAppDM(ctx, id)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to create WhatsApp DM")
-			}
+		err = m.CreateWhatsAppDM(ctx, id)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to create WhatsApp DM")
 		}
 		chat = &bridgev2.CreateChatResponse{
 			PortalKey:  m.makeFBPortalKey(id, tableType),
@@ -201,13 +198,10 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 			table.SearchTypeContact, table.SearchTypeGroup, table.SearchTypePage, table.SearchTypeNonContact,
 			table.SearchTypeIGContactFollowing, table.SearchTypeIGContactNonFollowing,
 			table.SearchTypeIGNonContactFollowing, table.SearchTypeIGNonContactNonFollowing,
+			table.SearchTypeCommunityMessagingThread,
 		},
-		SurfaceType: 15,
+		SurfaceType: 5,
 		Secondary:   false,
-	}
-	if m.LoginMeta.Platform.IsMessenger() {
-		task.SurfaceType = 5
-		task.SupportedTypes = append(task.SupportedTypes, table.SearchTypeCommunityMessagingThread)
 	}
 	taskCopy := *task
 	taskCopy.Secondary = true

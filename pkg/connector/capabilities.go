@@ -28,7 +28,6 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -174,8 +173,6 @@ var metaCaps = &event.RoomFeatures{
 var metaCapsWithThreads *event.RoomFeatures
 var metaCapsWithE2E *event.RoomFeatures
 var metaCapsWithE2EGroup *event.RoomFeatures
-var igCaps *event.RoomFeatures
-var igCapsGroup *event.RoomFeatures
 var metaCapsGroup *event.RoomFeatures
 
 func init() {
@@ -208,23 +205,6 @@ func init() {
 		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
 	}
 	metaCapsGroup.MemberActions = metaCapsWithE2EGroup.MemberActions.Clone()
-
-	igCaps = metaCaps.Clone()
-	delete(igCaps.File, event.MsgFile)
-	for _, value := range igCaps.File {
-		value.Caption = event.CapLevelDropped
-	}
-	igCaps.MessageRequest = &event.MessageRequestFeatures{
-		AcceptWithButton: event.CapLevelFullySupported,
-	}
-	igCaps.ID += "+instagram"
-	igCapsGroup = igCaps.Clone()
-	igCapsGroup.ID += "+instagram-group"
-	igCapsGroup.State = event.StateFeatureMap{
-		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
-		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
-	}
-	igCapsGroup.MemberActions = metaCapsWithE2EGroup.MemberActions.Clone()
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
@@ -235,12 +215,6 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 		return metaCapsWithE2E
 	case table.ENCRYPTED_OVER_WA_GROUP:
 		return metaCapsWithE2EGroup
-	}
-	if m.Client.GetPlatform() == types.Instagram || m.Main.Config.Mode == types.Instagram {
-		if portal.RoomType == database.RoomTypeDM {
-			return igCaps
-		}
-		return igCapsGroup
 	}
 	if portal.RoomType == database.RoomTypeDM {
 		return metaCaps

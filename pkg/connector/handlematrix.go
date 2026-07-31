@@ -123,13 +123,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			}
 			return nil, err
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
-			code := IGConsentRequired
-			if m.LoginMeta.Platform.IsMessenger() {
-				code = FBConsentRequired
-			}
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
-				Error:      code,
+				Error:      FBConsentRequired,
 				UserAction: status.UserActionRestart,
 			})
 			return nil, err
@@ -665,22 +661,17 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		Bool("is_whatsapp_e2ee", portalMeta.ThreadType.IsWhatsApp()).
 		Msg("Deleting chat")
 
-	if platform.IsInstagram() {
-		return t.Client.Instagram.DeleteThread(ctx, strconv.FormatInt(threadID, 10))
-	} else if platform.IsMessenger() {
-		syncGroup := int64(1)
-		if portalMeta.ThreadType.IsWhatsApp() && portalMeta.FBThreadKey != 0 {
-			threadID = portalMeta.FBThreadKey
-			syncGroup = 95
-		}
-		_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
-			ThreadKey:  threadID,
-			RemoveType: 0,
-			SyncGroup:  syncGroup,
-		})
-		return err
+	syncGroup := int64(1)
+	if portalMeta.ThreadType.IsWhatsApp() && portalMeta.FBThreadKey != 0 {
+		threadID = portalMeta.FBThreadKey
+		syncGroup = 95
 	}
-	return fmt.Errorf("unknown platform for deleting chat: %v", platform)
+	_, err := t.Client.ExecuteTasks(ctx, &socket.DeleteThreadTask{
+		ThreadKey:  threadID,
+		RemoveType: 0,
+		SyncGroup:  syncGroup,
+	})
+	return err
 }
 
 func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *bridgev2.MatrixAcceptMessageRequest) error {
@@ -693,54 +684,33 @@ func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *
 		Bool("implicit", msg.Content != nil && msg.Content.IsImplicit).
 		Msg("Accepting message request")
 
-	if platform.IsInstagram() {
-		return m.Client.Instagram.AcceptMessageRequest(ctx, strconv.FormatInt(threadID, 10))
-	} else if platform.IsMessenger() {
-		// Message-request threads live in sync group 95, and hybrid (E2EE) threads must be accepted
-		// using their original Facebook thread key rather than the WhatsApp thread JID the portal is
-		// keyed by.
-		threadKey := threadID
-		if fbKey := msg.Portal.Metadata.(*metaid.PortalMetadata).FBThreadKey; fbKey != 0 {
-			threadKey = fbKey
-		}
-		_, err := m.Client.ExecuteTasks(ctx, &socket.AcceptMessageRequestTask{
-			ThreadKey: threadKey,
-			SyncGroup: 95,
-		})
-		return err
+	// Message-request threads live in sync group 95, and hybrid (E2EE) threads must be accepted
+	// using their original Facebook thread key rather than the WhatsApp thread JID the portal is
+	// keyed by.
+	threadKey := threadID
+	if fbKey := msg.Portal.Metadata.(*metaid.PortalMetadata).FBThreadKey; fbKey != 0 {
+		threadKey = fbKey
 	}
-
-	return bridgev2.WrapErrorInStatus(fmt.Errorf("accepting message requests is not implemented for %v", platform)).
-		WithIsCertain(true).
-		WithErrorAsMessage().
-		WithSendNotice(false).
-		WithErrorReason(event.MessageStatusUnsupported)
+	_, err := m.Client.ExecuteTasks(ctx, &socket.AcceptMessageRequestTask{
+		ThreadKey: threadKey,
+		SyncGroup: 95,
+	})
+	return err
 }
 
 func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
 	if msg.Portal.RoomType == database.RoomTypeDM {
 		return false, fmt.Errorf("renaming not supported in DMs")
 	}
-	platform := m.LoginMeta.Platform
-	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
-	if platform == types.Instagram {
-		err := m.Client.Instagram.EditGroupTitle(ctx, strconv.FormatInt(threadID, 10), msg.Content.Name)
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	} else if platform.IsMessenger() {
-		_, err := m.Client.ExecuteTasks(ctx, &socket.RenameThreadTask{
-			ThreadKey:  threadID,
-			ThreadName: msg.Content.Name,
-			SyncGroup:  1,
-		})
-		if err != nil {
-			return false, err
-		}
-		return true, nil
+	_, err := m.Client.ExecuteTasks(ctx, &socket.RenameThreadTask{
+		ThreadKey:  metaid.ParseFBPortalID(msg.Portal.ID),
+		ThreadName: msg.Content.Name,
+		SyncGroup:  1,
+	})
+	if err != nil {
+		return false, err
 	}
-	return false, fmt.Errorf("unknown platform for renaming chat: %v", platform)
+	return true, nil
 }
 
 func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
@@ -748,24 +718,6 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		return false, fmt.Errorf("changing avatar not supported in DMs")
 	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
-	if m.LoginMeta.Platform == types.Instagram {
-		if msg.Content.URL == "" {
-			err := m.Client.Instagram.RemoveGroupAvatar(ctx, strconv.FormatInt(threadID, 10))
-			if err != nil {
-				return false, fmt.Errorf("failed to remove Instagram avatar: %w", err)
-			}
-			return true, nil
-		}
-		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
-		if err != nil {
-			return false, fmt.Errorf("failed to download avatar: %w", err)
-		}
-		err = m.Client.Instagram.EditGroupAvatar(ctx, strconv.FormatInt(threadID, 10), data)
-		if err != nil {
-			return false, fmt.Errorf("failed to set Instagram avatar: %w", err)
-		}
-		return true, nil
-	}
 	var imageID int64
 	if msg.Content.URL == "" {
 		// TODO: handle removing avatar. Messenger web doesn't have a remove option?

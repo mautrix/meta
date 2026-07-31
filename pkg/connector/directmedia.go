@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -16,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/mediaproxy"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -133,86 +131,11 @@ func (m *MetaConnector) refreshMediaURL(
 	}
 	client := ul.Client.(*MetaClient)
 
-	// Route to appropriate refresh method based on attachment type
-	if info.XMATargetID != 0 || info.XMAShortcode != "" || info.StoryMediaID != "" {
-		return m.refreshXMAMedia(ctx, client, info)
-	}
 	if info.AttachmentFBID != "" {
 		return m.refreshBlobMedia(ctx, client, msg, info)
 	}
 
 	return "", fmt.Errorf("no refresh identifiers available")
-}
-
-// refreshXMAMedia fetches fresh URLs using Instagram API for XMA attachments
-func (m *MetaConnector) refreshXMAMedia(
-	ctx context.Context,
-	client *MetaClient,
-	info *mediadl.DirectMediaMeta,
-) (string, error) {
-	ig := client.Client.Instagram
-	if ig == nil {
-		return "", fmt.Errorf("instagram client not available")
-	}
-
-	log := zerolog.Ctx(ctx)
-
-	// Handle story refresh (type 1: has both StoryMediaID and StoryReelID)
-	if info.StoryMediaID != "" && info.StoryReelID != "" {
-		log.Debug().
-			Str("story_media_id", info.StoryMediaID).
-			Str("story_reel_id", info.StoryReelID).
-			Msg("Refreshing story media (type 1)")
-		resp, err := ig.FetchReel(ctx, []string{info.StoryReelID}, info.StoryMediaID)
-		if err != nil {
-			return "", fmt.Errorf("failed to fetch reel: %w", err)
-		}
-		reel, ok := resp.Reels[info.StoryReelID]
-		if !ok || len(reel.Items) == 0 {
-			return "", fmt.Errorf("reel not found in response")
-		}
-		// Find the item matching the media ID
-		for _, item := range reel.Items {
-			if item.Pk == info.StoryMediaID {
-				return extractBestURL(&item.Items)
-			}
-		}
-		// If exact match not found, use first item
-		return extractBestURL(&reel.Items[0].Items)
-	}
-
-	// Handle story refresh (type 2: has StoryMediaID but not StoryReelID)
-	if info.StoryMediaID != "" {
-		log.Debug().
-			Str("story_media_id", info.StoryMediaID).
-			Msg("Refreshing story media (type 2)")
-		resp, err := ig.FetchMedia(ctx, info.StoryMediaID, "")
-		if err != nil {
-			return "", fmt.Errorf("failed to fetch media: %w", err)
-		}
-		if len(resp.Items) == 0 {
-			return "", fmt.Errorf("empty response from FetchMedia")
-		}
-		return extractBestURL(resp.Items[0])
-	}
-
-	// Handle post/reel refresh using TargetId and/or Shortcode
-	if info.XMATargetID != 0 || info.XMAShortcode != "" {
-		log.Debug().
-			Int64("target_id", info.XMATargetID).
-			Str("shortcode", info.XMAShortcode).
-			Msg("Refreshing XMA media")
-		resp, err := ig.FetchMedia(ctx, strconv.FormatInt(info.XMATargetID, 10), info.XMAShortcode)
-		if err != nil {
-			return "", fmt.Errorf("failed to fetch media: %w", err)
-		}
-		if len(resp.Items) == 0 {
-			return "", fmt.Errorf("empty response from FetchMedia")
-		}
-		return extractBestURL(resp.Items[0])
-	}
-
-	return "", fmt.Errorf("no XMA identifiers available for refresh")
 }
 
 // refreshBlobMedia re-fetches messages to get fresh attachment URLs.
@@ -393,34 +316,4 @@ func (m *MetaConnector) refreshBlobMedia(
 	}
 
 	return "", fmt.Errorf("target attachment not found in re-fetched messages")
-}
-
-func extractBestURL(item *responses.Items) (string, error) {
-	var bestURL string
-	var bestRes int
-
-	// Find the highest resolution video, if any
-	for _, ver := range item.VideoVersions {
-		res := ver.Width * ver.Height
-		if res > bestRes {
-			bestURL = ver.URL
-			bestRes = res
-		}
-	}
-
-	// Find the highest resolution image if no video
-	if bestURL == "" {
-		for _, ver := range item.ImageVersions2.Candidates {
-			res := ver.Width * ver.Height
-			if res > bestRes {
-				bestURL = ver.URL
-				bestRes = res
-			}
-		}
-	}
-
-	if bestURL == "" {
-		return "", fmt.Errorf("no URL found in response")
-	}
-	return bestURL, nil
 }

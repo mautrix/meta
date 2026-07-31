@@ -21,8 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -96,21 +94,13 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 	if cli == nil {
 		return messagix.ErrClientIsNil
 	}
-	err := doRegisterPush(ctx, cli, token, keys)
+	err := cli.Facebook.RegisterPushNotifications(ctx, token, keys)
 	if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
 		zerolog.Ctx(ctx).Debug().Msg("Doing full reconnect and retrying push registration")
 		m.FullReconnect()
-		err = doRegisterPush(ctx, cli, token, keys)
+		err = cli.Facebook.RegisterPushNotifications(ctx, token, keys)
 	}
 	return err
-}
-
-func doRegisterPush(ctx context.Context, cli *messagix.Client, token string, keys messagix.PushKeys) error {
-	if cli.Platform.IsMessenger() {
-		return cli.Facebook.RegisterPushNotifications(ctx, token, keys)
-	} else {
-		return cli.Instagram.RegisterPushNotifications(ctx, token, keys)
-	}
 }
 
 func (m *MetaClient) notifyBackgroundConnAboutEvent(isProcessing bool) {
@@ -124,35 +114,6 @@ func (m *MetaClient) notifyBackgroundConnAboutEvent(isProcessing bool) {
 
 type connectBackgroundEvent struct {
 	isProcessing bool
-}
-
-func (m *MetaClient) igPushToMessageID(pd *pushcrypto.DecryptedPushData) (*methods.MetaMessageID, error) {
-	ts, err := strconv.ParseInt(pd.Params["ts"], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ts param: %w", err)
-	}
-	cc, err := strconv.ParseInt(pd.Params["cc"], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse cc param: %w", err)
-	}
-	chatID, err := strconv.ParseInt(pd.Params["f"], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse f param: %w", err)
-	}
-	isGroup := pd.Params["aud_gn"] != "" || strings.Contains(pd.Params["network_classification"], "group")
-	chatType := 'c'
-	if isGroup {
-		chatType = 'g'
-	} else {
-		// For DMs, the chat ID is our ID XOR their ID
-		chatID ^= metaid.ParseUserLoginID(m.UserLogin.ID)
-	}
-	return &methods.MetaMessageID{
-		ChatType: chatType,
-		ChatID:   chatID,
-		Time:     time.UnixMilli(ts),
-		TxnID:    cc,
-	}, nil
 }
 
 func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypto.DecryptedPushData, parsed *methods.MetaMessageID) {
@@ -221,11 +182,7 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
-		if strings.HasPrefix(data.MessageID, "mid.") {
-			parsedMsgID, err = methods.ParseMessageIDFull(data.MessageID)
-		} else {
-			parsedMsgID, err = m.igPushToMessageID(data)
-		}
+		parsedMsgID, err = methods.ParseMessageIDFull(data.MessageID)
 		if err != nil || parsedMsgID == nil {
 			log.Warn().
 				Err(err).

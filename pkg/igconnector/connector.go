@@ -61,12 +61,13 @@ func (ic *IGConnector) SetMaxFileSize(maxSize int64) {
 
 func (ic *IGConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{
-		DisplayName:      "Instagram",
-		NetworkURL:       "https://instagram.com",
-		NetworkIcon:      "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv",
-		NetworkID:        "instagram",
-		BeeperBridgeType: "instagramgo",
-		DefaultPort:      29330,
+		DisplayName:          "Instagram",
+		NetworkURL:           "https://instagram.com",
+		NetworkIcon:          "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv",
+		NetworkID:            "instagram",
+		BeeperBridgeType:     "instagramgo",
+		DefaultPort:          29330,
+		DefaultCommandPrefix: "!ig",
 	}
 }
 

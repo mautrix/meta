@@ -27,7 +27,6 @@ type ReconnectedEvent struct{}
 type ConnectedEvent struct{}
 
 var (
-	minimalIGSync = []int64{1, 2, 95}
 	minimalFBSync = []int64{1, 2, 95, 104}
 
 	shouldRecurseDatabase = map[int64]bool{
@@ -56,11 +55,7 @@ func (c *Client) onSocketConnect(ctx context.Context) error {
 		}
 	}
 
-	initialSync := minimalFBSync
-	if c.Platform.IsInstagram() {
-		initialSync = minimalIGSync
-	}
-	err := c.syncManager.ensureSyncedSocket(ctx, initialSync)
+	err := c.syncManager.ensureSyncedSocket(ctx, minimalFBSync)
 	if err != nil {
 		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
 	}

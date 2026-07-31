@@ -178,7 +178,7 @@ func (evt *FBMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.
 	if cli == nil {
 		return nil, messagix.ErrClientIsNil
 	}
-	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, cli, evt.m.UserLogin, intent, evt.GetID(), evt.WrappedMessage, evt.m.Main.Config.DisableXMAAlways), nil
+	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, cli, evt.m.UserLogin, intent, evt.GetID(), evt.WrappedMessage), nil
 }
 
 type FBEditEvent struct {

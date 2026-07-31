@@ -115,10 +115,6 @@ func (c *Client) refreshCAT(ctx context.Context) error {
 
 func (c *Client) getClientPayload() *waWa6.ClientPayload {
 	userID, _ := strconv.ParseUint(c.device.ID.User, 10, 64)
-	platform := waWa6.ClientPayload_UserAgent_BLUE_WEB
-	if !c.Platform.IsMessenger() {
-		platform = waWa6.ClientPayload_UserAgent_WEB
-	}
 	return &waWa6.ClientPayload{
 		Device:      proto.Uint32(uint32(c.device.ID.Device)),
 		FbCat:       []byte(c.configs.BrowserConfigTable.MessengerWebInitData.CryptoAuthToken.EncryptedSerializedCat),
@@ -148,7 +144,7 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 			//SimMcc: proto.String("000"),
 			//SimMnc: proto.String("000"),
 
-			Platform:       platform.Enum(),
+			Platform:       waWa6.ClientPayload_UserAgent_BLUE_WEB.Enum(),
 			ReleaseChannel: waWa6.ClientPayload_UserAgent_DEBUG.Enum(),
 		},
 	}

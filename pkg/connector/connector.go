@@ -58,33 +58,14 @@ func (m *MetaConnector) SetMaxFileSize(maxSize int64) {
 }
 
 func (m *MetaConnector) GetName() bridgev2.BridgeName {
-	if m.Config.Mode.IsMessenger() {
-		return bridgev2.BridgeName{
-			DisplayName:      "Facebook Messenger",
-			NetworkURL:       "https://www.facebook.com/messenger",
-			NetworkIcon:      "mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak",
-			NetworkID:        "facebook",
-			BeeperBridgeType: "facebookgo",
-			DefaultPort:      29319,
-		}
-	}
-	if m.Config.Mode.IsInstagram() {
-		return bridgev2.BridgeName{
-			DisplayName:      "Instagram",
-			NetworkURL:       "https://instagram.com",
-			NetworkIcon:      "mxc://maunium.net/JxjlbZUlCPULEeHZSwleUXQv",
-			NetworkID:        "instagram",
-			BeeperBridgeType: "instagramgo",
-			DefaultPort:      29319,
-		}
-	}
 	return bridgev2.BridgeName{
-		DisplayName:      "Meta",
-		NetworkURL:       "https://meta.com",
-		NetworkIcon:      "mxc://maunium.net/DxpVrwwzPUwaUSazpsjXgcKB",
-		NetworkID:        "meta",
-		BeeperBridgeType: "meta",
-		DefaultPort:      29319,
+		DisplayName:          "Facebook Messenger",
+		NetworkURL:           "https://www.facebook.com/messenger",
+		NetworkIcon:          "mxc://maunium.net/ygtkteZsXnGJLJHRchUwYWak",
+		NetworkID:            "facebook",
+		BeeperBridgeType:     "facebookgo",
+		DefaultPort:          29319,
+		DefaultCommandPrefix: "!fb",
 	}
 }
 

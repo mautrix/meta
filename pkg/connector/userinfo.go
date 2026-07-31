@@ -47,13 +47,7 @@ const (
 )
 
 func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
-	var identifiers []string
-	if m.LoginMeta.Platform == types.Instagram {
-		identifiers = append(identifiers, fmt.Sprintf("instagram:%s", info.GetUsername()))
-	}
-
 	return &bridgev2.UserInfo{
-		Identifiers: identifiers,
 		Name: ptr.Ptr(m.Main.Config.FormatDisplayname(DisplaynameParams{
 			DisplayName: info.GetName(),
 			Username:    info.GetUsername(),
@@ -61,14 +55,6 @@ func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 		})),
 		Avatar: wrapAvatar(info.GetAvatarURL()),
 		IsBot:  ptr.Ptr(info.GetFBID() == MetaAIInstagramID || info.GetFBID() == MetaAIMessengerID), // TODO do this in a less hardcoded way?
-		ExtraUpdates: func(ctx context.Context, ghost *bridgev2.Ghost) (changed bool) {
-			meta := ghost.Metadata.(*metaid.GhostMetadata)
-			if m.LoginMeta.Platform == types.Instagram && meta.Username != info.GetUsername() {
-				meta.Username = info.GetUsername()
-				changed = true
-			}
-			return
-		},
 	}
 }
 
