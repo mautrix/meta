@@ -18,7 +18,7 @@ var m = mxmain.BridgeMain{
 	Name:        "mautrix-instagram",
 	DBOwner:     "megabridge/mautrix-meta",
 	URL:         "https://github.com/mautrix/meta",
-	Description: "A Matrix-Instagram puppeting bridge.",
+	Description: "A Matrix-Instagram DM puppeting bridge.",
 	Version:     "26.07",
 	SemCalVer:   true,
 	Connector:   &igconnector.IGConnector{},
