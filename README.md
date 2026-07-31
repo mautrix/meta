@@ -1,6 +1,11 @@
 # mautrix-meta
 A Matrix-Facebook Messenger and Instagram DM puppeting bridge.
 
+This repo contains two bridges: mautrix-meta for Facebook Messenger and
+mautrix-instagram for Instagram DMs. When setting up the Instagram bridge,
+note the differences in setup instructions (different build script, different
+docker tags, etc).
+
 ## Documentation
 All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
 

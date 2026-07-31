@@ -1,6 +1,6 @@
 # Features & roadmap
 
-## Unencrypted Messenger & Legacy Instagram
+## Unencrypted Messenger
 
 ### Matrix → Messenger
 * [ ] Message content
@@ -139,7 +139,7 @@
 * [x] Chat metadata changes
 * [x] Initial chat metadata
 
-## New Instagram
+## Instagram
 
 ### Matrix → Instagram
 * [x] Message content
