@@ -77,8 +77,10 @@ func (mc *MessageConverter) ToMatrix(
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
 			MessageID: metaid.MakeFBMessageID(msg.RepliedToMessageID),
 		}
-		cm.ReplyToUser = metaid.MakeUserID(msg.RepliedToMessage.SenderFBID)
-		cm.ReplyToLogin = metaid.MakeUserLoginID(msg.RepliedToMessage.SenderFBID)
+		if msg.RepliedToMessage != nil {
+			cm.ReplyToUser = metaid.MakeUserID(msg.RepliedToMessage.SenderFBID)
+			cm.ReplyToLogin = metaid.MakeUserLoginID(msg.RepliedToMessage.SenderFBID)
+		}
 	}
 	switch content := msg.Content.Content.(type) {
 	case *slidetypes.MessageContentText:
