@@ -249,6 +249,12 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
 		*slidetypes.ParticipantLeaveEvent:
 		allowCreate = false
+	case *slidetypes.NewMessageEvent:
+		// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
+		// so extract it from the message for finding the portal.
+		if d.ThreadIGID == "" && evt.Message != nil && evt.Message.ThreadFBID != "" {
+			d.ThreadIGID = evt.Message.ThreadFBID
+		}
 	case *slidetypes.AdminMessageEvent:
 		if ic.pendingGroupCreations.Has(evt.Message.OfflineThreadingID) {
 			log.Debug().
