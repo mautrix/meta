@@ -318,16 +318,10 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		}
 		return false
 	})
-	if anchor != nil {
-		if forward {
-			upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
-				return message.TimestampMs <= anchor.Timestamp.UnixMilli()
-			})
-		} else {
-			upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
-				return message.TimestampMs >= anchor.Timestamp.UnixMilli()
-			})
-		}
+	if anchor != nil && !forward {
+		upsert.Messages = slices.DeleteFunc(upsert.Messages, func(message *table.WrappedMessage) bool {
+			return message.TimestampMs >= anchor.Timestamp.UnixMilli()
+		})
 	}
 	wrappedMessages := make([]*bridgev2.BackfillMessage, len(upsert.Messages))
 	for i, msg := range upsert.Messages {
@@ -371,5 +365,9 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		Messages: wrappedMessages,
 		HasMore:  upsert.Range.HasMoreBefore,
 		MarkRead: upsert.MarkRead,
+		// Forward backfill can fetch a range covering never-bridged mid-timeline messages (older than
+		// the anchor) that a reconnect snapshot skipped. Deduplicate by message ID instead of trimming
+		// on timestamp so those messages are recovered while genuine duplicates are still dropped.
+		AggressiveDeduplication: forward,
 	}
 }
