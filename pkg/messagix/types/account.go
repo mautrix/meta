@@ -40,6 +40,17 @@ type CurrentBusinessAccount struct {
 	ShouldShowAccountSwitchComponents                bool   `json:"shouldShowAccountSwitchComponents,omitempty"`
 }
 
+// SwitchableProfile is a Facebook identity that the current personal account
+// can act as. Facebook Pages are exposed in the web app's profile switcher and
+// use i_user as the active actor while c_user remains the owning account.
+type SwitchableProfile struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Username  string `json:"username,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	Type      string `json:"type,omitempty"`
+}
+
 type MessengerWebInitData struct {
 	AccountKey string `json:"accountKey,omitempty"`
 	//ActiveThreadKeys

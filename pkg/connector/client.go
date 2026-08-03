@@ -36,15 +36,16 @@ type MetaClient struct {
 	UserLogin *bridgev2.UserLogin
 	Ghost     *bridgev2.Ghost
 
-	stopHandlingTables  atomic.Pointer[context.CancelFunc]
-	initialTable        atomic.Pointer[table.LSTable]
-	initialTableHandled atomic.Bool
-	parsedTables        chan *parsedTable
-	backfillCollectors  map[int64]*BackfillCollector
-	backfillLock        sync.Mutex
-	connectLock         sync.Mutex
-	stopConnectAttempt  atomic.Pointer[context.CancelFunc]
-	permanentErrored    atomic.Bool
+	stopHandlingTables            atomic.Pointer[context.CancelFunc]
+	initialTable                  atomic.Pointer[table.LSTable]
+	initialTableHandled           atomic.Bool
+	parsedTables                  chan *parsedTable
+	backfillCollectors            map[int64]*BackfillCollector
+	backfillLock                  sync.Mutex
+	businessSuiteInstagramThreads sync.Map
+	connectLock                   sync.Mutex
+	stopConnectAttempt            atomic.Pointer[context.CancelFunc]
+	permanentErrored              atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -144,10 +145,19 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 func (m *MetaClient) ensureMessagixClient() {
 	if m.LoginMeta.Cookies != nil && m.Client == nil {
 		m.LoginMeta.Cookies.Platform = m.LoginMeta.Platform
+		config := m.Main.getMessagixConfig()
+		if m.LoginMeta.Platform == types.BusinessSuite {
+			config.BusinessSuite = &messagix.BusinessSuiteContext{
+				BusinessID: m.LoginMeta.BusinessID,
+				AssetID:    m.LoginMeta.AssetID,
+				PageID:     m.LoginMeta.PageID,
+				PageName:   m.LoginMeta.ActorName,
+			}
+		}
 		m.Client = messagix.NewClient(
 			m.LoginMeta.Cookies,
 			m.UserLogin.Log.With().Str("component", "messagix").Logger(),
-			m.Main.getMessagixConfig(),
+			config,
 		)
 		m.Client.SetEventHandler(m.handleMetaEvent)
 	}

@@ -231,21 +231,34 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 }
 
 func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
+	m.rememberBusinessSuiteThreadChannels(tbl)
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
 	folderResyncs := make(map[int64]*FBFolderResync, len(tbl.LSUpsertFolder))
 	waThreadMap := make(map[int64]int64, len(tbl.LSVerifyHybridThreadExists))
 	activeThreads := make(exmaps.Set[int64])
 	for _, vte := range tbl.LSVerifyThreadExists {
+		if m.shouldIgnoreBusinessSuiteThread(vte.ThreadKey) {
+			continue
+		}
 		activeThreads.Add(vte.ThreadKey)
 	}
 	for _, uoi := range tbl.LSUpdateOrInsertThread {
+		if m.shouldIgnoreBusinessSuiteThread(uoi.ThreadKey) {
+			continue
+		}
 		activeThreads.Add(uoi.ThreadKey)
 	}
 	for _, inr := range tbl.LSInsertNewMessageRange {
+		if m.shouldIgnoreBusinessSuiteThread(inr.ThreadKey) {
+			continue
+		}
 		activeThreads.Add(inr.ThreadKey)
 	}
 	for _, dit := range tbl.LSDeleteThenInsertThread {
+		if m.shouldIgnoreBusinessSuiteThread(dit.ThreadKey) {
+			continue
+		}
 		activeThreads.Add(dit.ThreadKey)
 	}
 	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
@@ -282,6 +295,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	}
 
 	for _, thread := range tbl.LSVerifyThreadExists {
+		if m.shouldIgnoreBusinessSuiteThread(thread.ThreadKey) {
+			continue
+		}
 		threadExists[thread.ThreadKey] = thread
 	}
 	for _, folder := range tbl.LSUpsertFolder {
@@ -294,6 +310,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		innerQueue = append(innerQueue, rs)
 	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
+		if m.shouldIgnoreBusinessSuiteThread(thread.ThreadKey) {
+			continue
+		}
 		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
 		info := m.wrapChatInfo(thread)
@@ -314,6 +333,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		}
 	}
 	for _, thread := range tbl.LSUpdateOrInsertThread {
+		if m.shouldIgnoreBusinessSuiteThread(thread.ThreadKey) {
+			continue
+		}
 		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
 		if _, ok := threadResyncs[thread.ThreadKey]; ok {
@@ -386,6 +408,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	// TODO request more inbox if applicable
 
 	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
+		if m.shouldIgnoreBusinessSuiteThread(igThread.ThreadKey) {
+			continue
+		}
 		err := m.Main.DB.PutFBIDForIGThread(ctx, igThread.IgThreadId, igThread.ThreadKey, m.UserLogin.ID)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to save FBID for IG thread")
@@ -812,6 +837,9 @@ func collectPortalEvents[T ThreadKeyable](
 ) {
 	for _, msg := range msgs {
 		threadKey := p.MapWhatsAppThreadKey(msg.GetThreadKey())
+		if p.m.shouldIgnoreBusinessSuiteThread(threadKey) {
+			continue
+		}
 		sync, syncOK := p.syncs[threadKey]
 		v, ok := p.vtes[threadKey]
 		var threadType table.ThreadType

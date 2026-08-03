@@ -34,13 +34,13 @@ func (c *Client) newSyncManager() *SyncManager {
 			1: {SendSyncParams: false, SyncChannel: socket.MailBox},
 			2: {SendSyncParams: true, SyncChannel: socket.Contact}, // FB/IG sync params (previously null?): {"locale": "en_US"}
 			//2:   {SendSyncParams: false, SyncChannel: socket.Contact},
-			5:   {SendSyncParams: true}, // FB sync params: {"locale": "en_US"} TODO may be removed
-			6:   {SendSyncParams: true}, // IG sync params: {"locale": "en_US"}
-			7:   {SendSyncParams: true}, // IG sync params: {"mnet_rank_types": [44]}
-			16:  {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
-			26:  {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
-			28:  {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
-			89:  {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
+			5:   {SendSyncParams: true},                              // FB sync params: {"locale": "en_US"} TODO may be removed
+			6:   {SendSyncParams: true},                              // IG sync params: {"locale": "en_US"}
+			7:   {SendSyncParams: true},                              // IG sync params: {"mnet_rank_types": [44]}
+			16:  {SendSyncParams: true},                              // FB/IG sync params: {"locale": "en_US"}
+			26:  {SendSyncParams: true, SyncChannel: socket.Contact}, // Business Inbox contact data: {"locale": "en_US"}
+			28:  {SendSyncParams: true},                              // FB sync params: {"locale": "en_US"}
+			89:  {SendSyncParams: true},                              // FB/IG sync params: {"locale": "en_US"}
 			95:  {SendSyncParams: false, SyncChannel: socket.Contact},
 			104: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
 			120: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
@@ -53,6 +53,10 @@ func (c *Client) newSyncManager() *SyncManager {
 			197: {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 			198: {SendSyncParams: true}, // FB/IG sync params: {"locale": "en_US"}
 			202: {SendSyncParams: true}, // FB sync params: {"locale": "en_US"}
+			// Meta Business Suite's Page/linked-Instagram inbox databases.
+			// These are distinct from personal Messenger databases 1 and 95.
+			127: {SendSyncParams: false, SyncChannel: socket.MailBox},
+			205: {SendSyncParams: false, SyncChannel: socket.MailBox},
 		},
 		keyStore: map[int64]*socket.KeyStoreData{
 			1:  {MinThreadKey: 0, ParentThreadKey: -1, MinLastActivityTimestampMs: 9999999999999, HasMoreBefore: false},
@@ -124,20 +128,25 @@ func (sm *SyncManager) recursivelySyncSocketData(
 	if err != nil {
 		return fmt.Errorf("failed to marshal database query: %w", err)
 	}
-	req, packetID, err := sm.client.encodeLSRequest(jsonPayload, t)
-	if err != nil {
-		return fmt.Errorf("failed to encode lightspeed request: %w", err)
-	}
-	ch := make(chan *PublishResponseData)
-	if oldCh, swapped := sm.client.socketSyncWaiters.Swap(packetID, ch); swapped {
-		close(oldCh)
-	}
-
 	sm.client.Logger.Trace().
 		RawJSON("payload", jsonPayload).
 		Int64("database_id", databaseID).
 		Msg("Syncing database via socket")
-	if stream == nil {
+	var resp *PublishResponseData
+	if sm.client.Platform == types.BusinessSuite {
+		resp, err = sm.client.makeLSRequest(ctx, jsonPayload, t)
+		if err != nil {
+			return fmt.Errorf("failed to sync through Business Suite MQTT: %w", err)
+		}
+	} else if stream == nil {
+		req, packetID, encodeErr := sm.client.encodeLSRequest(jsonPayload, t)
+		if encodeErr != nil {
+			return fmt.Errorf("failed to encode lightspeed request: %w", encodeErr)
+		}
+		ch := make(chan *PublishResponseData)
+		if oldCh, swapped := sm.client.socketSyncWaiters.Swap(packetID, ch); swapped {
+			close(oldCh)
+		}
 		stream, err = sm.client.socket.EstablishStream(ctx, dgw.StreamInit{
 			InitPayload:  req,
 			LogName:      fmt.Sprintf("db %d", databaseID),
@@ -146,23 +155,41 @@ func (sm *SyncManager) recursivelySyncSocketData(
 		if err != nil {
 			return fmt.Errorf("failed to establish stream: %w", err)
 		}
+		select {
+		case resp = <-ch:
+			if resp == nil {
+				return fmt.Errorf("publish response data not received")
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(SyncResponseTimeout):
+			sm.client.socketSyncWaiters.Delete(packetID)
+			return fmt.Errorf("timeout waiting for database sync response")
+		}
 	} else {
+		req, packetID, encodeErr := sm.client.encodeLSRequest(jsonPayload, t)
+		if encodeErr != nil {
+			return fmt.Errorf("failed to encode lightspeed request: %w", encodeErr)
+		}
+		ch := make(chan *PublishResponseData)
+		if oldCh, swapped := sm.client.socketSyncWaiters.Swap(packetID, ch); swapped {
+			close(oldCh)
+		}
 		err = stream.SendData(ctx, req)
 		if err != nil {
 			return fmt.Errorf("failed to send recursive query: %w", err)
 		}
-	}
-	var resp *PublishResponseData
-	select {
-	case resp = <-ch:
-		if resp == nil {
-			return fmt.Errorf("publish response data not received")
+		select {
+		case resp = <-ch:
+			if resp == nil {
+				return fmt.Errorf("publish response data not received")
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(SyncResponseTimeout):
+			sm.client.socketSyncWaiters.Delete(packetID)
+			return fmt.Errorf("timeout waiting for database sync response")
 		}
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(SyncResponseTimeout):
-		sm.client.socketSyncWaiters.Delete(packetID)
-		return fmt.Errorf("timeout waiting for database sync response")
 	}
 
 	tbl, err := resp.Parse(ctx)

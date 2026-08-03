@@ -12,6 +12,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 type TransientDisconnectEvent struct {
@@ -28,14 +29,28 @@ type ConnectedEvent struct{}
 
 var (
 	minimalFBSync = []int64{1, 2, 95, 104}
+	// Business Inbox thread groups 127 and 205 are hydrated by the embedded
+	// Page snapshot and continued with task 313. Asking the socket to sync them
+	// as databases stalls because Meta only accepts its browser-owned cursors.
+	businessSuiteSync = []int64{2, 26}
 
 	shouldRecurseDatabase = map[int64]bool{
 		1:   true,
 		2:   true,
 		95:  true,
 		104: true,
+		26:  true,
+		127: true,
+		205: true,
 	}
 )
+
+func initialSyncDatabases(platform types.Platform) []int64 {
+	if platform == types.BusinessSuite {
+		return businessSuiteSync
+	}
+	return minimalFBSync
+}
 
 type SocketLSRequestPayload struct {
 	AppID     string `json:"app_id"`
@@ -48,16 +63,17 @@ func (c *Client) onSocketConnect(ctx context.Context) error {
 	c.canSendMessages.Set()
 
 	reconnect := c.socketWasSynced.Load()
+	initialSync := initialSyncDatabases(c.Platform)
+	err := c.syncManager.ensureSyncedSocket(ctx, initialSync)
+	if err != nil {
+		return fmt.Errorf("failed to ensure initial databases are synced: %w", err)
+	}
+
 	if !reconnect {
-		err := c.sendInitialThreadFetch(ctx)
+		err = c.sendInitialThreadFetch(ctx)
 		if err != nil {
 			return err
 		}
-	}
-
-	err := c.syncManager.ensureSyncedSocket(ctx, minimalFBSync)
-	if err != nil {
-		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
 	}
 
 	if reconnect {
@@ -73,6 +89,23 @@ func (c *Client) onSocketConnect(ctx context.Context) error {
 
 func (c *Client) sendInitialThreadFetch(ctx context.Context) error {
 	tskm := c.newTaskManager()
+	if c.Platform == types.BusinessSuite {
+		// The embedded Business Suite snapshot is unified and its group-127 cursor
+		// may have advanced through Instagram rows. Start the Messenger-only fetch
+		// without that mixed cursor so Page threads are not skipped.
+		for _, task := range businessSuiteInitialThreadTasks("") {
+			tskm.AddNewTask(task)
+		}
+		payload, err := tskm.FinalizePayload()
+		if err != nil {
+			return fmt.Errorf("failed to finalize Business Inbox sync tasks: %w", err)
+		}
+		response, err := c.makeLSRequest(ctx, payload, 3)
+		if err != nil {
+			return fmt.Errorf("failed to send Business Inbox sync tasks: %w", err)
+		}
+		return c.dispatchRequestedTable(ctx, response)
+	}
 	ptks := c.configs.ParentThreadKeys
 	if len(ptks) == 0 {
 		zerolog.Ctx(ctx).Warn().Msg("Parent thread keys are not known")
@@ -135,6 +168,42 @@ func (c *Client) sendInitialThreadFetch(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to send sync tasks: %w", err)
 	}
+	return nil
+}
+
+func businessSuiteInitialThreadTasks(messengerCursor string) []socket.Task {
+	const (
+		messengerSyncGroup = 205
+		messengerFilter    = 24
+	)
+	makeTask := func(syncGroup, secondaryFilter int, cursor string) socket.Task {
+		return &socket.FetchBusinessInboxThreadsTask{
+			Cursor:                     cursor,
+			Filter:                     0,
+			FilterValue:                "",
+			IsAfter:                    0,
+			ParentThreadKey:            0,
+			ReferenceActivityTimestamp: 9999999999999,
+			ReferenceThreadKey:         0,
+			SecondaryFilter:            secondaryFilter,
+			SyncGroup:                  syncGroup,
+		}
+	}
+	return []socket.Task{
+		makeTask(messengerSyncGroup, messengerFilter, messengerCursor),
+	}
+}
+
+func (c *Client) dispatchRequestedTable(ctx context.Context, response *PublishResponseData) error {
+	if response == nil {
+		return nil
+	}
+	tbl, err := response.Parse(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to parse requested Business Inbox threads: %w", err)
+	}
+	c.PostHandlePublishResponse(tbl)
+	c.HandleEvent(ctx, tbl)
 	return nil
 }
 
@@ -215,6 +284,17 @@ func (c *Client) makeLSRequest(ctx context.Context, payload []byte, t int) (*Pub
 	jsonPayload, _, err := c.encodeLSRequest(payload, t)
 	if err != nil {
 		return nil, err
+	}
+	if c.Platform == types.BusinessSuite {
+		var request SocketLSRequestPayload
+		if err = json.Unmarshal(jsonPayload, &request); err != nil {
+			return nil, err
+		}
+		if t == 4 {
+			err = c.businessSocket.publish(ctx, "/ls_req", jsonPayload, int64(request.RequestID))
+			return nil, err
+		}
+		return c.businessSocket.request(ctx, jsonPayload, int64(request.RequestID))
 	}
 
 	resp, err := c.socket.DoOneOffStream(ctx, jsonPayload, t == 4)

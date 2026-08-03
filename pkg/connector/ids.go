@@ -6,6 +6,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	messagixtypes "go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -41,8 +42,12 @@ func (m *MetaClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey {
 
 func (m *MetaClient) makeFBPortalKey(threadID int64, threadType table.ThreadType) networkid.PortalKey {
 	key := networkid.PortalKey{ID: metaid.MakeFBPortalID(threadID)}
-	if m.Main.Bridge.Config.SplitPortals || threadType == table.UNKNOWN_THREAD_TYPE || threadType.IsOneToOne() {
+	if shouldScopeFBPortal(m.LoginMeta.Platform, m.Main.Bridge.Config.SplitPortals, threadType) {
 		key.Receiver = m.UserLogin.ID
 	}
 	return key
+}
+
+func shouldScopeFBPortal(platform messagixtypes.Platform, splitPortals bool, threadType table.ThreadType) bool {
+	return platform == messagixtypes.BusinessSuite || splitPortals || threadType == table.UNKNOWN_THREAD_TYPE || threadType.IsOneToOne()
 }

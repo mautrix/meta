@@ -34,6 +34,12 @@ type UserLoginMetadata struct {
 	PushKeys   *pushcrypto.PushKeys `json:"push_keys,omitempty"`
 	LoginUA    string               `json:"login_ua,omitempty"`
 	IGID       string               `json:"igid,omitempty"`
+	ActorID    int64                `json:"actor_id,omitempty"`
+	ActorName  string               `json:"actor_name,omitempty"`
+	ActorType  string               `json:"actor_type,omitempty"`
+	BusinessID string               `json:"business_id,omitempty"`
+	AssetID    string               `json:"asset_id,omitempty"`
+	PageID     string               `json:"page_id,omitempty"`
 
 	// Thread backfill state
 	BackfillCompleted bool `json:"backfill_completed,omitempty"`

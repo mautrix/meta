@@ -215,6 +215,18 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 	if !ok {
 		return nil, nil, fmt.Errorf("could not find graphql doc by the name of: %s", name)
 	}
+	return c.makeGraphQLRequest(ctx, name, graphQLDoc, variables)
+}
+
+func (c *HTTPClient) MakeGraphQLRequestWithDoc(ctx context.Context, name, docID string, variables interface{}) (*http.Response, []byte, error) {
+	return c.makeGraphQLRequest(ctx, name, graphql.GraphQLDoc{
+		DocID:        docID,
+		CallerClass:  "RelayModern",
+		FriendlyName: name,
+	}, variables)
+}
+
+func (c *HTTPClient) makeGraphQLRequest(ctx context.Context, name string, graphQLDoc graphql.GraphQLDoc, variables interface{}) (*http.Response, []byte, error) {
 
 	vBytes, err := json.Marshal(variables)
 	if err != nil {
