@@ -140,12 +140,14 @@ func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req 
 	} else if allowReload && wrappedResp.ErrorCode == types.ErrPleaseReloadPage.ErrorCode {
 		zerolog.Ctx(ctx).Warn().Err(wrappedResp.AsError()).
 			Msg("Got please reload page error, reloading index and retrying")
-		reloadErr := c.ReloadIndex(ctx)
+		didReload, reloadErr := c.ReloadIndex(ctx)
 		if reloadErr != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reload page to retry GraphQL request")
-		} else {
+		} else if didReload {
 			zerolog.Ctx(ctx).Debug().Msg("Successfully reloaded index, retrying GraphQL request")
 			return makeGraphQLRequest[T](ctx, c, name, req, false)
+		} else {
+			zerolog.Ctx(ctx).Debug().Msg("Didn't reload index, not retrying GraphQL request")
 		}
 	}
 	return wrappedResp.Data, wrappedResp.AsError()

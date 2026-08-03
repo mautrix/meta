@@ -268,7 +268,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 	var err error
 	if cli.HasSeqID() {
 		zerolog.Ctx(ctx).Debug().Msg("Seq ID already stored, only reloading index")
-		err = cli.ReloadIndex(ctx)
+		_, err = cli.ReloadIndex(ctx)
 	} else {
 		currentUser, mailbox, err = cli.LoadIndex(ctx)
 	}

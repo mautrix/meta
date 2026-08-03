@@ -139,9 +139,9 @@ func (c *Client) loadIndex(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) ReloadIndex(ctx context.Context) error {
+func (c *Client) ReloadIndex(ctx context.Context) (bool, error) {
 	if c == nil {
-		return ErrClientIsNil
+		return false, ErrClientIsNil
 	}
 	c.loadIndexLock.Lock()
 	defer c.loadIndexLock.Unlock()
@@ -149,11 +149,11 @@ func (c *Client) ReloadIndex(ctx context.Context) error {
 		zerolog.Ctx(ctx).Debug().
 			Time("last_reload", c.lastReload).
 			Msg("Not reloading again as last reload was recent")
-		return nil
+		return false, nil
 	}
 	err := c.loadIndex(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if s := c.socket.Load(); s != nil {
 		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
@@ -168,7 +168,7 @@ func (c *Client) ReloadIndex(ctx context.Context) error {
 	} else {
 		c.makeNewSocket()
 	}
-	return nil
+	return true, nil
 }
 
 func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetypes.Mailbox, error) {

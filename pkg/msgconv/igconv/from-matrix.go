@@ -101,12 +101,14 @@ func (mc *MessageConverter) ToInstagram(
 		if errors.Is(err, types.ErrPleaseReloadPage) {
 			zerolog.Ctx(ctx).Warn().Err(err).
 				Msg("Got please reload page error while reuploading media, reloading index and retrying")
-			reloadErr := client.ReloadIndex(ctx)
+			didReload, reloadErr := client.ReloadIndex(ctx)
 			if reloadErr != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to reload page to retry media upload")
-			} else {
+			} else if didReload {
 				zerolog.Ctx(ctx).Debug().Msg("Successfully reloaded index, retrying media upload")
 				attachmentID, err = mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), portal, content)
+			} else {
+				zerolog.Ctx(ctx).Debug().Msg("Didn't reload index, not retrying media upload")
 			}
 		}
 		if err != nil {
