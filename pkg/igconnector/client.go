@@ -277,6 +277,14 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		if state := ic.errorToBridgeState(ctx, err); state != nil {
 			ic.UserLogin.BridgeState.Send(*state)
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
+			if errors.Is(err, types.ErrPleaseReloadPage) {
+				err = ic.Main.DB.DeleteReconnectionState(ctx, ic.UserLogin.ID)
+				if err != nil {
+					zerolog.Ctx(ctx).Err(err).Msg("Failed to delete reconnection state after please reload page error")
+				} else {
+					zerolog.Ctx(ctx).Debug().Msg("Deleted reconnection state after please reload page error")
+				}
+			}
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {
 				stateEvt = status.StateBadCredentials
