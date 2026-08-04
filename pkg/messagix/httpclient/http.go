@@ -377,6 +377,11 @@ func (c *HTTPClient) MakeRequest(
 	})
 }
 
+func isClientHTTP(resp *http.Response, err error) bool {
+	return (err != nil && strings.Contains(err.Error(), "error from client: ")) ||
+		(resp != nil && resp.Proto == "MauClientHTTP/1.0")
+}
+
 func (c *HTTPClient) makeRequest(
 	ctx context.Context,
 	url string,
@@ -407,7 +412,10 @@ func (c *HTTPClient) makeRequest(
 				Dur("duration", dur).
 				Msg("Request failed, giving up")
 			return resp, respDat, fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
-		} else if IsPermanentRequestError(err) || (resp != nil && resp.StatusCode < 500 && resp.StatusCode != 429) || ctx.Err() != nil {
+		} else if IsPermanentRequestError(err) ||
+			(resp != nil && resp.StatusCode < 500 && resp.StatusCode != 429) ||
+			ctx.Err() != nil ||
+			isClientHTTP(resp, err) {
 			logContext(c.log.Err(err)).
 				Str("url", url).
 				Str("method", method).
