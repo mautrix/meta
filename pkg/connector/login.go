@@ -168,6 +168,7 @@ type MetaCookieLogin struct {
 	Mode types.Platform
 	User *bridgev2.User
 	Main *MetaConnector
+	HTTP http.RoundTripper
 }
 
 var _ bridgev2.LoginProcessCookies = (*MetaCookieLogin)(nil)
@@ -340,8 +341,14 @@ type MetaNativeLogin struct {
 func (m *MetaNativeLogin) Cancel() {}
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	return m.StartWithParams(ctx, bridgev2.LoginStartParams{})
+}
+
+func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
 	log := m.User.Log.With().Str("component", "messagix").Logger()
-	log.Debug().Msg("Starting Messenger Lite login flow")
+	log.Debug().
+		Bool("client_http", params.HTTP != nil).
+		Msg("Starting Messenger Lite login flow")
 
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
@@ -349,6 +356,10 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	client, err := getMessagixClient(log, m.Main, fakeCookies, m.Main.Config.ProxyMessengerLite)
 	if err != nil {
 		return nil, err
+	}
+	if params.HTTP != nil {
+		client.GetHTTP().GetNewProxy = nil
+		client.GetHTTP().HTTP.Transport = params.HTTP
 	}
 	m.SavedClient = client
 
