@@ -49,6 +49,21 @@ type Client interface {
 	IsAuthenticated() bool
 }
 
+type requestActorProvider interface {
+	GetRequestActorID() string
+}
+
+func requestActorID(client Client) string {
+	if client.GetPlatform() != types.BusinessSuite {
+		return ""
+	}
+	provider, ok := client.(requestActorProvider)
+	if !ok {
+		return ""
+	}
+	return provider.GetRequestActorID()
+}
+
 func NewHTTPClient(cli Client, configs *Configs, settings exhttp.ClientSettings) *HTTPClient {
 	c := &HTTPClient{
 		parent:          cli,
@@ -268,6 +283,7 @@ func (c *HTTPClient) NewHTTPQuery() *HTTPQuery {
 	siteConfig := c.configs.BrowserConfigTable.SiteData
 	dpr := strconv.FormatFloat(siteConfig.Pr, 'g', 4, 64)
 	query := &HTTPQuery{
+		Av:       requestActorID(c.parent),
 		User:     c.configs.BrowserConfigTable.CurrentUserInitialData.UserID,
 		A:        "1",
 		Req:      strconv.FormatInt(int64(c.graphQLRequests), 36),

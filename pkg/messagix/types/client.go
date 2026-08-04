@@ -21,6 +21,7 @@ const (
 	MessengerLiteIOS
 	MessengerLiteAndroid
 	FacebookTor
+	BusinessSuite
 )
 
 func PlatformFromString(s string) Platform {
@@ -37,6 +38,8 @@ func PlatformFromString(s string) Platform {
 		return MessengerLiteIOS
 	case "messenger-lite-android":
 		return MessengerLiteAndroid
+	case "business-suite":
+		return BusinessSuite
 	default:
 		return Unset
 	}
@@ -56,6 +59,8 @@ func (p *Platform) UnmarshalJSON(data []byte) error {
 		*p = MessengerLiteIOS
 	case `"messenger-lite-android"`, `6`:
 		*p = MessengerLiteAndroid
+	case `"business-suite"`, `7`:
+		*p = BusinessSuite
 	default:
 		*p = Unset
 	}
@@ -76,6 +81,8 @@ func (p Platform) String() string {
 		return "messenger-lite"
 	case MessengerLiteAndroid:
 		return "messenger-lite-android"
+	case BusinessSuite:
+		return "business-suite"
 	default:
 		return ""
 	}
@@ -94,7 +101,7 @@ func (p Platform) IsViaMessenger() bool {
 }
 
 func (p Platform) IsMessenger() bool {
-	return p.IsViaFacebook() || p.IsViaMessenger()
+	return p.IsViaFacebook() || p.IsViaMessenger() || p == BusinessSuite
 }
 
 func (p Platform) IsMessengerLite() bool {
@@ -106,5 +113,5 @@ func (p Platform) IsInstagram() bool {
 }
 
 func (p Platform) IsValid() bool {
-	return p == Instagram || p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLiteIOS || p == MessengerLiteAndroid
+	return p == Instagram || p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLiteIOS || p == MessengerLiteAndroid || p == BusinessSuite
 }

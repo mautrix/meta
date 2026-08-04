@@ -7,7 +7,12 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
+
+func shouldBootstrapViaGraphQL(platform types.Platform) bool {
+	return platform != types.BusinessSuite
+}
 
 func (c *Client) updateSocketIDs() {
 	c.socket.AppID = c.configs.BrowserConfigTable.DGWWebConfig.AppID
@@ -24,8 +29,25 @@ func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LS
 	}
 
 	c.updateSocketIDs()
-	c.syncManager.syncParams = &c.configs.BrowserConfigTable.LSPlatformMessengerSyncParams
+	if c.Platform == types.BusinessSuite {
+		biz := c.configs.BrowserConfigTable.LSPlatformBizInboxSyncParams
+		c.syncManager.syncParams = &types.LSPlatformMessengerSyncParams{
+			Mailbox: biz.Mailbox,
+			Contact: biz.Contact,
+			E2Ee:    biz.E2Ee,
+		}
+	} else {
+		c.syncManager.syncParams = &c.configs.BrowserConfigTable.LSPlatformMessengerSyncParams
+	}
 	if len(ls.LSExecuteFinallyBlockForSyncTransaction) == 0 {
+		if !shouldBootstrapViaGraphQL(c.Platform) {
+			// The generic GraphQL bootstrap targets Messenger databases 1 and
+			// 95, which belong to the signed-in person's inbox. Business Suite
+			// bootstraps its Page-scoped databases after the MQTT connection is
+			// established instead.
+			c.Logger.Debug().Msg("Deferring Business Inbox database sync to the Page-scoped socket")
+			return ls, nil
+		}
 		c.Logger.Warn().Msg("Syncing initial data via graphql")
 		err := c.syncManager.UpdateDatabaseSyncParams(
 			[]*socket.QueryMetadata{

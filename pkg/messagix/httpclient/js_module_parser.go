@@ -37,6 +37,15 @@ import (
 
 // var jsDatrPattern = regexp.MustCompile(`"_js_datr","([^"]+)"`)
 var versionPattern = regexp.MustCompile(`__d\("LSVersion"[^)]+\)\{\w\.exports="(\d+)"\}`)
+var profileSwitcherDocPattern = regexp.MustCompile(`params:\{id:"(\d+)",metadata:\{\},name:"CometSettingsDropdownListQuery"`)
+
+func findProfileSwitcherDocID(jsContent []byte) string {
+	matches := profileSwitcherDocPattern.FindSubmatch(jsContent)
+	if len(matches) < 2 {
+		return ""
+	}
+	return string(matches[1])
+}
 
 type BBoxContainer struct {
 	BBox *BBox `json:"__bbox,omitempty"`
@@ -88,6 +97,12 @@ type ModuleParser struct {
 	http    *HTTPClient
 
 	LS *table.LSTable
+	// SwitchableProfiles is populated from Facebook's preloaded profile
+	// switcher query. It does not use the public Graph API.
+	SwitchableProfiles       []types.SwitchableProfile
+	profileSwitcherDocID     string
+	profileSwitcherVariables json.RawMessage
+	assetURLs                []string
 }
 
 func NewModuleParser(client Client, http *HTTPClient, configs *Configs) *ModuleParser {
@@ -115,6 +130,17 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 	}
 
 	scriptTags := m.findScriptTags(doc)
+	linkTags := m.findLinkTags(doc)
+	for _, tag := range scriptTags {
+		if href := tag.Attributes["src"]; strings.HasPrefix(href, "https://") {
+			m.assetURLs = append(m.assetURLs, href)
+		}
+	}
+	for _, tag := range linkTags {
+		if tag.Attributes["as"] == "script" && tag.Attributes["href"] != "" {
+			m.assetURLs = append(m.assetURLs, tag.Attributes["href"])
+		}
+	}
 	for _, tag := range scriptTags {
 		id := tag.Attributes["id"]
 		switch id {
@@ -162,7 +188,6 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 	} else if m.configs.VersionID == 0 && authenticated {
 		m.log.Warn().Msg("Version ID not found in index page")
 		var doneCrawling bool
-		linkTags := m.findLinkTags(doc)
 		for _, tag := range linkTags {
 			as := tag.Attributes["as"]
 			href := tag.Attributes["href"]
@@ -300,6 +325,61 @@ func (m *ModuleParser) crawlJavascriptFile(ctx context.Context, href string) (bo
 		return true, nil
 	}
 	return false, nil
+}
+
+func (m *ModuleParser) discoverProfileSwitcherDoc(ctx context.Context) error {
+	seen := make(map[string]bool, len(m.assetURLs))
+	for _, href := range m.assetURLs {
+		if href == "" || seen[href] {
+			continue
+		}
+		seen[href] = true
+		_, jsContent, err := m.http.MakeRequest(ctx, href, "GET", http.Header{}, nil, types.NONE)
+		if err != nil {
+			continue
+		}
+		if docID := findProfileSwitcherDocID(jsContent); docID != "" {
+			m.profileSwitcherDocID = docID
+			m.log.Info().Msg("Found Facebook profile switcher query")
+			return nil
+		}
+	}
+	return fmt.Errorf("Facebook profile switcher query was not found")
+}
+
+func (m *ModuleParser) DiscoverSwitchableProfiles(ctx context.Context, page string) error {
+	if err := m.Load(ctx, page); err != nil {
+		return err
+	}
+	if len(m.SwitchableProfiles) > 0 {
+		return nil
+	}
+	if m.profileSwitcherDocID == "" {
+		if err := m.discoverProfileSwitcherDoc(ctx); err != nil {
+			return err
+		}
+	}
+	variables := any(map[string]any{
+		"fetchTestUserProfileListCell": false,
+		"includeHorizBadging":          false,
+		"inProfileSwitcherEntry":       false,
+		"inSimpleHeaderEntry":          true,
+		"scale":                        2,
+	})
+	if len(m.profileSwitcherVariables) > 0 {
+		variables = m.profileSwitcherVariables
+	}
+	_, response, err := m.http.MakeGraphQLRequestWithDoc(
+		ctx,
+		"CometSettingsDropdownListQuery",
+		m.profileSwitcherDocID,
+		variables,
+	)
+	if err != nil {
+		return err
+	}
+	m.parseSwitchableProfiles(response)
+	return nil
 }
 
 func (m *ModuleParser) handleModule(data *ModuleEntry) error {

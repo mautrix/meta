@@ -24,6 +24,7 @@ type Config struct {
 	AllowedModes    []types.Platform `yaml:"-"`
 
 	AllowMessengerComOnFB bool `yaml:"allow_messenger_com_on_fb"`
+	RequirePageSelection  bool `yaml:"require_page_selection"`
 
 	Proxy              string `yaml:"proxy"`
 	GetProxyFrom       string `yaml:"get_proxy_from"`
@@ -89,6 +90,7 @@ func (c *Config) PostProcess() (err error) {
 func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "mode")
 	helper.Copy(up.Bool, "allow_messenger_com_on_fb")
+	helper.Copy(up.Bool, "require_page_selection")
 	helper.Copy(up.List, "allowed_modes")
 	helper.Copy(up.Str, "displayname_template")
 	helper.Copy(up.Str|up.Null, "proxy")

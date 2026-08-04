@@ -92,6 +92,15 @@ type LSPlatformMessengerSyncParams struct {
 	E2Ee    string `json:"e2ee,omitempty"`
 }
 
+// LSPlatformBizInboxSyncParams is the Page mailbox sync configuration emitted
+// by business.facebook.com. It has the same wire shape as Messenger sync
+// params, but points at the selected Page rather than the human account.
+type LSPlatformBizInboxSyncParams struct {
+	Mailbox string `json:"mailbox,omitempty"`
+	Contact string `json:"contact,omitempty"`
+	E2Ee    string `json:"e2ee,omitempty"`
+}
+
 type InitialCookieConsent struct {
 	DeferCookies           bool  `json:"deferCookies,omitempty"`
 	InitialConsent         []int `json:"initialConsent,omitempty"`
@@ -241,6 +250,7 @@ type SchedulerJSDefineConfig struct {
 	DTSGInitialData               DTSGInitialData
 	CurrentUserInitialData        CurrentUserInitialData
 	LSPlatformMessengerSyncParams LSPlatformMessengerSyncParams
+	LSPlatformBizInboxSyncParams  LSPlatformBizInboxSyncParams
 	ServerNonce                   ServerNonce
 	InitialCookieConsent          InitialCookieConsent
 	InstagramPasswordEncryption   InstagramPasswordEncryption

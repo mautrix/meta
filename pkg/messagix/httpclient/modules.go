@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -102,6 +103,11 @@ func (rpsc *RelayPrefetchedStreamCache) UnmarshalJSON(data []byte) error {
 func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 	if strings.HasPrefix(data.Name, "CometPlatformRootClient@") {
 		data.Name = "CometPlatformRootClient"
+	} else if strings.HasPrefix(data.Name, "RelayPrefetchedStreamCache@") {
+		// Business Suite emits the Relay module with a build hash suffix.
+		// Without normalizing it, the embedded Page inbox snapshot is
+		// silently skipped and the connector falls back to an empty table.
+		data.Name = "RelayPrefetchedStreamCache"
 	}
 	switch data.Name {
 	case "CometPlatformRootClient":
@@ -144,16 +150,25 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 			return fmt.Errorf("failed to parse graphql preload requests from CometPlatformRootClient: %w", err)
 		}
 		for _, req := range requests {
-			if !strings.HasPrefix(req.PreloaderID, "adp_LSPlatformGraphQLLightspeedRequest") {
+			if strings.Contains(req.PreloaderID, "CometSettingsDropdownListQuery") && req.QueryID != "" {
+				m.profileSwitcherDocID = req.QueryID
+				m.profileSwitcherVariables = req.Variables
+			}
+			if !strings.HasPrefix(req.PreloaderID, "adp_LSPlatformGraphQLLightspeedRequest") &&
+				!strings.HasPrefix(req.PreloaderID, "adp_LSBizInboxGraphQLLightspeedRequest") {
 				continue
 			}
-			vars, err := req.ParseVariables()
-			if err != nil {
+			// Business Inbox serializes requestId as a string while the
+			// Messenger preloader uses a number. Only requestPayload is needed
+			// here, so avoid imposing the Messenger-only shape on both.
+			var vars struct {
+				RequestPayload string `json:"requestPayload"`
+			}
+			if err := json.Unmarshal(req.Variables, &vars); err != nil {
 				return fmt.Errorf("failed to parse graphql lightspeed preload request variables: %w", err)
 			}
 			var syncData *graphql.LSPlatformGraphQLLightspeedVariables
-			err = json.Unmarshal([]byte(vars.RequestPayload), &syncData)
-			if err != nil {
+			if err := json.Unmarshal([]byte(vars.RequestPayload), &syncData); err != nil {
 				return fmt.Errorf("failed to parse graphql lightspeed preload request payload: %w", err)
 			}
 			m.configs.VersionID = syncData.Version
@@ -180,6 +195,9 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFun
 	var lsPayloadStr string
 	var deps lightspeed.DependencyList
 	switch parserFunc {
+	case "CometSettingsDropdownListQuery", "CometSettingsDropdownTriggerQuery":
+		m.parseSwitchableProfiles(data)
+		return nil
 	case "LSPlatformGraphQLLightspeedRequestForIGDQuery":
 		var lsData *graphql.LSPlatformGraphQLLightspeedRequestQuery
 		err := json.Unmarshal(data, &lsData)
@@ -202,6 +220,17 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFun
 		}
 		lsPayloadStr = lsData.Data.Viewer.LightspeedWebRequest.Payload
 		deps = lsData.Data.Viewer.LightspeedWebRequest.Dependencies
+	case "LSBizInboxGraphQLLightspeedRequestQuery":
+		var lsData *graphql.LSPlatformGraphQLLightspeedRequestQuery
+		err := json.Unmarshal(data, &lsData)
+		if err != nil {
+			return fmt.Errorf("messagix-moduleparser: failed to parse Business Inbox LightSpeed request data: %w", err)
+		}
+		if lsData.Data.Viewer.UnifiedInboxLightspeedWebRequest == nil {
+			return nil
+		}
+		lsPayloadStr = lsData.Data.Viewer.UnifiedInboxLightspeedWebRequest.Payload
+		deps = lsData.Data.Viewer.UnifiedInboxLightspeedWebRequest.Dependencies
 	default:
 		//m.handleGraphQLData(parserFunc, data)
 		return nil
@@ -220,6 +249,88 @@ func (m *ModuleParser) handleLightSpeedQLRequest(data json.RawMessage, parserFun
 	decoder := lightspeed.NewLightSpeedDecoder(deps.ToMap(), m.LS)
 	decoder.Decode(payload.Steps)
 	return nil
+}
+
+type switchableProfileNode struct {
+	Typename string `json:"__typename,omitempty"`
+	ID       string `json:"id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Username string `json:"username,omitempty"`
+	TypeName string `json:"profile_type_name_for_content,omitempty"`
+	Picture  struct {
+		URI string `json:"uri,omitempty"`
+	} `json:"profile_picture,omitempty"`
+	SettingsPicture struct {
+		URI string `json:"uri,omitempty"`
+	} `json:"settings_dropdown_profile_picture,omitempty"`
+}
+
+// parseSwitchableProfiles walks the preloaded profile-switcher response rather
+// than relying on a persisted GraphQL document ID. Meta changes those IDs
+// frequently, while the response field is already shipped with the page.
+func (m *ModuleParser) parseSwitchableProfiles(data json.RawMessage) {
+	var root any
+	if err := json.Unmarshal(data, &root); err != nil {
+		m.log.Debug().Err(err).Msg("Failed to parse Facebook profile switcher preload")
+		return
+	}
+
+	seen := make(map[string]bool, len(m.SwitchableProfiles))
+	for _, profile := range m.SwitchableProfiles {
+		seen[profile.ID] = true
+	}
+	var collect func(any)
+	collect = func(value any) {
+		switch typed := value.(type) {
+		case []any:
+			for _, item := range typed {
+				collect(item)
+			}
+		case map[string]any:
+			if rawID, ok := typed["id"].(string); ok && rawID != "" {
+				raw, _ := json.Marshal(typed)
+				var node switchableProfileNode
+				if json.Unmarshal(raw, &node) == nil {
+					if node.Name != "" && !seen[node.ID] {
+						seen[node.ID] = true
+						m.SwitchableProfiles = append(m.SwitchableProfiles, types.SwitchableProfile{
+							ID:        node.ID,
+							Name:      node.Name,
+							Username:  node.Username,
+							AvatarURL: cmp.Or(node.Picture.URI, node.SettingsPicture.URI),
+							Type:      cmp.Or(node.TypeName, node.Typename),
+						})
+					}
+				}
+			}
+			for _, item := range typed {
+				collect(item)
+			}
+		}
+	}
+
+	// Facebook currently labels Page identities as `User` in some profile
+	// switcher responses. Only trust identities nested under the switcher's
+	// eligible-profile collection, instead of relying on __typename.
+	var findCollections func(any)
+	findCollections = func(value any) {
+		switch typed := value.(type) {
+		case []any:
+			for _, item := range typed {
+				findCollections(item)
+			}
+		case map[string]any:
+			for key, item := range typed {
+				switch key {
+				case "profile_switcher_eligible_profiles", "profiles", "first_profiles", "first_profile":
+					collect(item)
+				default:
+					findCollections(item)
+				}
+			}
+		}
+	}
+	findCollections(root)
 }
 
 func (m *ModuleParser) parseGraphMethodName(name string) string {

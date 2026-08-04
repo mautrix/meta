@@ -24,6 +24,10 @@ const (
 	FBCookieXS MetaCookieName = "xs"
 	// FBCookieCUser contains the user ID for Facebook
 	FBCookieCUser MetaCookieName = "c_user"
+	// FBCookieIUser contains the currently selected Facebook profile/Page ID.
+	// Facebook keeps c_user as the owning personal account while i_user selects
+	// the actor used by web requests and the Messenger inbox.
+	FBCookieIUser MetaCookieName = "i_user"
 
 	FBCookieSB               MetaCookieName = "sb"
 	FBCookieFR               MetaCookieName = "fr"
@@ -124,7 +128,10 @@ func (c *Cookies) GetUserID() int64 {
 	defer c.lock.RUnlock()
 	var cookieKey MetaCookieName
 	if c.Platform.IsMessenger() {
-		cookieKey = FBCookieCUser
+		cookieKey = FBCookieIUser
+		if c.values[cookieKey] == "" {
+			cookieKey = FBCookieCUser
+		}
 	} else {
 		cookieKey = IGCookieDSUserID
 	}
@@ -154,12 +161,21 @@ func (c *Cookies) Set(key MetaCookieName, value string) {
 	c.values[key] = value
 }
 
+func (c *Cookies) Delete(key MetaCookieName) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	delete(c.values, key)
+}
+
 func (c *Cookies) UpdateFromResponse(r *http.Response) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	// Note: this will fail to parse rur, shbid and shbts because they have quotes and backslashes
 	for _, cookie := range r.Cookies() {
-		if cookie.MaxAge == 0 || cookie.Expires.Before(time.Now()) {
+		// MaxAge == 0 means the Set-Cookie header did not specify Max-Age. It is
+		// a normal session cookie, not a deletion. Negative MaxAge explicitly
+		// deletes a cookie. An unset Expires value must also be preserved.
+		if cookie.MaxAge < 0 || (!cookie.Expires.IsZero() && cookie.Expires.Before(time.Now())) {
 			delete(c.values, MetaCookieName(cookie.Name))
 		} else {
 			c.values[MetaCookieName(cookie.Name)] = cookie.Value

@@ -7,7 +7,8 @@ import (
 
 type LSPlatformGraphQLLightspeedRequestQuery = Response[*struct {
 	Viewer struct {
-		LightspeedWebRequest *LightspeedWebRequest `json:"lightspeed_web_request,omitempty"`
+		LightspeedWebRequest             *LightspeedWebRequest `json:"lightspeed_web_request,omitempty"`
+		UnifiedInboxLightspeedWebRequest *LightspeedWebRequest `json:"unified_inbox_lightspeed_web_request,omitempty"`
 	} `json:"viewer,omitempty"`
 	LightspeedWebRequestForIG *LightspeedWebRequest `json:"lightspeed_web_request_for_igd,omitempty"`
 }]

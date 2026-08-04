@@ -1,5 +1,7 @@
 package socket
 
+const BusinessInboxFetchThreadsLabel = "313"
+
 type SyncChannel int64
 
 const (
@@ -38,5 +40,30 @@ func (t *FetchThreadsTask) GetLabel() string {
 }
 
 func (t *FetchThreadsTask) Create() (any, string) {
+	return t, "trq"
+}
+
+// FetchBusinessInboxThreadsTask is the thread-range request used by Meta
+// Business Suite. It is intentionally separate from FetchThreadsTask: the
+// latter addresses the personal Messenger mailbox (sync groups 1 and 95),
+// while Business Suite routes Page and linked Instagram threads through
+// business inbox sync groups with channel-specific secondary filters.
+type FetchBusinessInboxThreadsTask struct {
+	Cursor                     string `json:"cursor"`
+	Filter                     int    `json:"filter"`
+	FilterValue                string `json:"filter_value"`
+	IsAfter                    int    `json:"is_after"`
+	ParentThreadKey            int64  `json:"parent_thread_key"`
+	ReferenceActivityTimestamp int64  `json:"reference_activity_timestamp"`
+	ReferenceThreadKey         int64  `json:"reference_thread_key"`
+	SecondaryFilter            int    `json:"secondary_filter"`
+	SyncGroup                  int    `json:"sync_group"`
+}
+
+func (t *FetchBusinessInboxThreadsTask) GetLabel() string {
+	return BusinessInboxFetchThreadsLabel
+}
+
+func (t *FetchBusinessInboxThreadsTask) Create() (any, string) {
 	return t, "trq"
 }

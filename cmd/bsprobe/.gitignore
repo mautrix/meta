@@ -1,0 +1,12 @@
+# Live session material. Never commit.
+.bsprobe/
+*.curl
+session.txt
+
+# Raw captures and dumps contain unredacted tokens and customer data.
+# Only fixtures/operations.json, fixtures/roles.json and fixtures/shapes/
+# are safe to commit, and only after review.
+*.har
+*.html
+fixtures/raw/
+fixtures/frames.jsonl
