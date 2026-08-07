@@ -143,7 +143,7 @@ func (ic *IGClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCreat
 			return nil, fmt.Errorf("failed to update room ID after creating group: %w", err)
 		}
 	}
-	_, err = ic.getAndResyncThread(ctx, resp.Data.ID)
+	_, err = ic.getAndResyncThread(ctx, resp.Data.ID, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync thread after creating group: %w", err)
 	}

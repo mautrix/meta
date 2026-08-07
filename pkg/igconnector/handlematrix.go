@@ -136,7 +136,7 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if ic.LoginMeta.Cookies == nil {
 		return nil, bridgev2.ErrNotLoggedIn
 	}
-	_, err := ic.ensureIGID(ctx, msg.Portal)
+	portalMeta, err := ic.ensureIGID(ctx, msg.Portal)
 	if errors.Is(err, instameow.ErrThreadNotFound) && msg.Content.MsgType == event.MsgText && msg.Portal.RoomType == database.RoomTypeDM {
 		// Allow sending text DMs even if the thread isn't known
 	} else if err != nil {
@@ -171,6 +171,9 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 
 	respMsg := resp.GetMessage()
+	if portalMeta != nil && respMsg.ID != "" {
+		ic.mobileThreadLatest.Store(portalMeta.IGID, respMsg.ID)
+	}
 	return &bridgev2.MatrixMessageResponse{
 		DB: &database.Message{
 			ID:        metaid.MakeFBMessageID(respMsg.ID),

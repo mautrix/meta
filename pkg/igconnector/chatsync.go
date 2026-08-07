@@ -43,6 +43,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 			done()
 			return
 		}
+		ic.rememberMobileThreadLatest(node.Node.AsIGDirectThread)
 		err := ic.saveThreadMappings(ctx, node.Node.AsIGDirectThread)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save thread mappings")

@@ -28,6 +28,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -308,13 +309,31 @@ func (mc *MessageConverter) wrapMedia(
 	}
 	ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 
-	res, err := mediadl.ReuploadFileToMatrix(ctx, params)
+	var fallbackCtx context.Context
+	if mc.Bridge != nil && mc.Bridge.Bot != nil {
+		fallbackCtx = context.WithValue(ctx, mediadl.ContextKeyIntent, mc.Bridge.Bot)
+	}
+	res, err := reuploadWithUnknownTokenFallback(ctx, fallbackCtx, func(reuploadCtx context.Context) (*bridgev2.ConvertedMessagePart, error) {
+		return mediadl.ReuploadFileToMatrix(reuploadCtx, params)
+	})
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload attachment")
 		return errorToNotice(err, typeName, params)
 	}
 	res.ID = partID
 	return res
+}
+
+func reuploadWithUnknownTokenFallback(
+	ctx context.Context,
+	fallbackCtx context.Context,
+	reupload func(context.Context) (*bridgev2.ConvertedMessagePart, error),
+) (*bridgev2.ConvertedMessagePart, error) {
+	result, err := reupload(ctx)
+	if fallbackCtx != nil && errors.Is(err, mautrix.MUnknownToken) {
+		return reupload(fallbackCtx)
+	}
+	return result, err
 }
 
 func (mc *MessageConverter) attachmentReuploadParams(att *slidetypes.Attachment, typ table.AttachmentType) mediadl.ReuploadParams {

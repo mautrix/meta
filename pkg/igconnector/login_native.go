@@ -243,7 +243,7 @@ func completeInstagramNativeLogin(
 	igClient.Client = client
 
 	backgroundCtx := ul.Log.WithContext(igClient.Main.Bridge.BackgroundCtx)
-	go client.Connect(backgroundCtx)
+	go igClient.Connect(backgroundCtx)
 	log.Info().Msg("Completed native Instagram mobile login")
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
