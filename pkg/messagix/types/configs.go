@@ -105,6 +105,44 @@ type InstagramPasswordEncryption struct {
 	Version   string `json:"version,omitempty"`
 }
 
+type InstagramSecurityConfig struct {
+	CSRFToken string `json:"csrf_token,omitempty"`
+}
+
+// InstagramLoginDevice contains the installation-scoped identifiers used by the
+// native Android login flow. The official app persists these values across
+// account logins and app restarts.
+type InstagramLoginDevice struct {
+	PhoneID         string `json:"phone_id,omitempty"`
+	DeviceID        string `json:"device_id,omitempty"`
+	AdvertisingID   string `json:"advertising_id,omitempty"`
+	AndroidDeviceID string `json:"android_device_id,omitempty"`
+	MachineID       string `json:"machine_id,omitempty"`
+}
+
+// InstagramMobileSession contains the authenticated Android session state that
+// cannot be represented by instagram.com cookies. In particular, first-party
+// realtime uses the complete IGT authorization value as its MQTT credential.
+type InstagramMobileSession struct {
+	Authorization    string               `json:"authorization"`
+	UserID           string               `json:"user_id"`
+	Username         string               `json:"username,omitempty"`
+	RUR              string               `json:"rur,omitempty"`
+	SHBID            string               `json:"shbid,omitempty"`
+	SHBTS            string               `json:"shbts,omitempty"`
+	DirectRegionHint string               `json:"direct_region_hint,omitempty"`
+	WWWClaim         string               `json:"www_claim,omitempty"`
+	Device           InstagramLoginDevice `json:"device"`
+}
+
+type PolarisSiteData struct {
+	CountryCode        string `json:"country_code,omitempty"`
+	DeviceID           string `json:"device_id,omitempty"`
+	MachineID          string `json:"machine_id,omitempty"`
+	SendDeviceIDHeader bool   `json:"send_device_id_header,omitempty"`
+	UseServerMachineID bool   `json:"use_server_machine_id,omitempty"`
+}
+
 type XIGSharedData struct {
 	ConfigData *XIGConfigData
 	Raw        string `json:"raw,omitempty"`
@@ -244,9 +282,11 @@ type SchedulerJSDefineConfig struct {
 	ServerNonce                   ServerNonce
 	InitialCookieConsent          InitialCookieConsent
 	InstagramPasswordEncryption   InstagramPasswordEncryption
+	InstagramSecurityConfig       InstagramSecurityConfig
 	XIGSharedData                 XIGSharedData
 	RelayAPIConfigDefaults        RelayAPIConfigDefaults
 	PolarisViewer                 PolarisViewer
+	PolarisSiteData               PolarisSiteData
 	DGWWebConfig                  DGWWebConfig
 }
 

@@ -1589,6 +1589,7 @@
     "i4u": "bk.action.oxygen.OpenSystemSettings",
     "i4y": "bk.action.ig.reels.ScrollReelsView",
     "i54": "autofill.action.UpdateMcDogfooding",
+    "i5f": "bk.action.gms.flashcall.IncomingCallRetrieverEligibilityChecker",
     "i5p": "bk.action.frx.ExecuteMessengerBlockActorActionWithCallback",
     "i6i": "bk.versioning.SupportsFunctionTables",
     "i6o": "bk.action.waffle.FetchWaDataBundle",
@@ -1679,7 +1680,9 @@
     "jbv": "bk.action.caa.ShowLoggedInResetPasswordV2",
     "jcq": "bk.action.oxygen.TriggerSync",
     "jfy": "bk.versioning.bloks.SupportsPureBloksBANI",
-    "jix": "bk.action.io.CurrentTimeMillisV2"
+    "jix": "bk.action.io.CurrentTimeMillisV2",
+    "jmu": "bk.action.num.Add",
+    "jn3": "bk.action.num.Sub"
   },
   "components": {
     "㐈": "bk.components.Flexbox",
