@@ -25,6 +25,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -32,7 +33,21 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
-var _ bridgev2.BackfillingNetworkAPI = (*IGClient)(nil)
+var (
+	_ bridgev2.BackfillingNetworkAPI           = (*IGClient)(nil)
+	_ bridgev2.BackfillingNetworkAPIWithLimits = (*IGClient)(nil)
+)
+
+func (ic *IGClient) GetBackfillMaxBatchCount(_ context.Context, portal *bridgev2.Portal, _ *database.BackfillTask) int {
+	switch portal.RoomType {
+	case database.RoomTypeDM:
+		return portal.Bridge.Config.Backfill.Queue.GetOverride("dm")
+	case database.RoomTypeDefault, database.RoomTypeGroupDM:
+		return portal.Bridge.Config.Backfill.Queue.GetOverride("group_dm")
+	default:
+		return portal.Bridge.Config.Backfill.Queue.MaxBatches
+	}
+}
 
 func (ic *IGClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
 	meta, err := ic.ensureIGID(ctx, params.Portal)

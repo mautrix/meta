@@ -52,8 +52,10 @@ var instagramMQTTBrokers = []string{
 var instagramMQTTTopics = []int32{
 	88,  // /pubsub
 	133, // /ig_send_message_response
+	135, // /ig_sub_iris_response
 	146, // /ig_message_sync
 	149, // /ig_realtime_sub
+	150, // /t_region_hint
 	279, // /ig_large_scale_fire_and_forget_sync
 	283, // /disable_presence_reporting
 }
@@ -483,10 +485,23 @@ func (c *Client) connectMobileRealtimeOnce(ctx context.Context) error {
 	}()
 	defer close(closeOnCancel)
 
+	if err = connection.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
+	if err = sendMobileIrisSubscription(connection, c.seqID, c.seqIDTS); err != nil {
+		return fmt.Errorf("failed to subscribe to Instagram mobile message sync: %w", err)
+	}
+	if err = c.waitForMobileIrisSubscription(ctx, connection); err != nil {
+		return fmt.Errorf("failed to confirm Instagram mobile message sync subscription: %w", err)
+	}
 	c.connected.Set()
-	if err = c.eventHandler(ctx, &slidetypes.Connected{}); err != nil {
+	if err = c.eventHandler(ctx, &slidetypes.Connected{
+		SubscribedSeqID: c.seqID,
+		LatestSeqID:     c.seqID,
+	}); err != nil {
 		return fmt.Errorf("failed to dispatch Instagram mobile connected event: %w", err)
 	}
+	c.log.Info().Msg("Subscribed to Instagram mobile message sync")
 	c.log.Info().Msg("Connected to Instagram mobile realtime")
 
 	for {
@@ -508,7 +523,10 @@ func (c *Client) connectMobileRealtimeOnce(ctx context.Context) error {
 		}
 		switch header >> 4 {
 		case 3:
-			if err = acknowledgeMobilePublish(connection, header, body); err != nil {
+			if err = connection.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				return err
+			}
+			if err = c.handleMobilePublish(ctx, connection, header, body); err != nil {
 				return err
 			}
 		case 13:
@@ -568,35 +586,4 @@ func dialMobileRealtime(ctx context.Context, session *types.InstagramMobileSessi
 	}
 	_ = connection.SetDeadline(time.Time{})
 	return connection, nil
-}
-
-func acknowledgeMobilePublish(connection net.Conn, header byte, body []byte) error {
-	if len(body) < 2 {
-		return errors.New("instagram MQTToT PUBLISH had no topic")
-	}
-	topicLength := int(binary.BigEndian.Uint16(body[:2]))
-	if len(body) < 2+topicLength {
-		return errors.New("instagram MQTToT PUBLISH had a truncated topic")
-	}
-	qos := (header >> 1) & 0x03
-	if qos == 0 {
-		return nil
-	}
-	packetIDOffset := 2 + topicLength
-	if len(body) < packetIDOffset+2 {
-		return errors.New("instagram MQTToT PUBLISH had no packet ID")
-	}
-	if qos == 1 {
-		if err := connection.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			return err
-		}
-		_, err := connection.Write([]byte{
-			0x40,
-			0x02,
-			body[packetIDOffset],
-			body[packetIDOffset+1],
-		})
-		return err
-	}
-	return fmt.Errorf("unsupported Instagram MQTToT PUBLISH QoS %d", qos)
 }
