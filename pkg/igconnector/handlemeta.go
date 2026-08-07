@@ -147,18 +147,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		go ic.FullReconnect(true)
 		return nil
 	case *slidetypes.MobileThreadSync:
-		if err := ic.doWaitMailboxProcessed(ctx); err != nil {
-			return err
-		}
-		threadIGID, resolution, err := ic.resolveMobileThreadIGID(ctx, evt.ThreadIGID)
-		if err != nil {
-			return fmt.Errorf("failed to resolve Instagram mobile thread: %w", err)
-		}
-		zerolog.Ctx(ctx).Debug().
-			Str("resolution", resolution).
-			Msg("Resolved Instagram mobile realtime thread")
-		_, err = ic.getAndResyncThread(ctx, threadIGID, true)
-		return err
+		return ic.resyncMobileThread(ctx, evt.ThreadIGID)
 	case *slidetypes.Delta:
 		if err := ic.doWaitMailboxProcessed(ctx); err != nil {
 			return err
@@ -169,6 +158,21 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	default:
 		return fmt.Errorf("unrecognized event type: %T", rawEvt)
 	}
+}
+
+func (ic *IGClient) resyncMobileThread(ctx context.Context, threadID string) error {
+	if err := ic.doWaitMailboxProcessed(ctx); err != nil {
+		return err
+	}
+	threadIGID, resolution, err := ic.resolveMobileThreadIGID(ctx, threadID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve Instagram mobile thread: %w", err)
+	}
+	zerolog.Ctx(ctx).Debug().
+		Str("resolution", resolution).
+		Msg("Resolved Instagram mobile realtime thread")
+	_, err = ic.getAndResyncThread(ctx, threadIGID, true)
+	return err
 }
 
 func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool) *simplevent.ChatResync {

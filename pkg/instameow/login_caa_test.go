@@ -204,3 +204,158 @@ func TestParseInstagramCAAResponseHeadersRejectsStructuredValues(t *testing.T) {
 		t.Fatal("expected structured header value to be rejected")
 	}
 }
+
+func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *testing.T) {
+	currentAuthorization := "Bearer IGT:2:current-authorization"
+	targetAuthorization := "Bearer IGT:2:" + base64.StdEncoding.EncodeToString(
+		[]byte(`{"sessionid":"222%3Atarget-session","ds_user_id":"222"}`),
+	)
+	loginCookies := &cookies.Cookies{Platform: types.Instagram}
+	loginCookies.UpdateValues(map[cookies.MetaCookieName]string{
+		cookies.IGCookieCSRFToken: "test-csrf",
+		cookies.IGCookieMachineID: "test-mid",
+		cookies.IGCookieDeviceID:  "test-device-id",
+		cookies.IGCookieSessionID: "111%3Acurrent-session",
+		cookies.IGCookieDSUserID:  "111",
+	})
+	session := &types.InstagramMobileSession{
+		Authorization: currentAuthorization,
+		UserID:        "111",
+		Username:      "current_user",
+		Device: types.InstagramLoginDevice{
+			PhoneID:         "phone-id",
+			DeviceID:        "device-id",
+			AdvertisingID:   "advertising-id",
+			AndroidDeviceID: "android-0123456789abcdef",
+		},
+	}
+	client := NewClient(ClientParams{
+		Cookies:       loginCookies,
+		Log:           zerolog.Nop(),
+		MobileSession: session,
+	})
+	mobile := &mobileLoginState{
+		PhoneID:         session.Device.PhoneID,
+		DeviceID:        session.Device.DeviceID,
+		AdvertisingID:   session.Device.AdvertisingID,
+		AndroidDeviceID: session.Device.AndroidDeviceID,
+	}
+	requestCount := 0
+	client.http.HTTP.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requestCount++
+		if request.Method != http.MethodPost ||
+			request.Header.Get("Authorization") != currentAuthorization {
+			t.Fatalf("unexpected Account Manager request: %s %v", request.Method, request.Header)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("failed to read Account Manager request: %v", err)
+		}
+		form, err := url.ParseQuery(string(body))
+		if err != nil {
+			t.Fatalf("failed to parse Account Manager request: %v", err)
+		}
+		switch request.URL.Path {
+		case "/api/v1/fxcal/get_sso_accounts/":
+			var tokens []instagramAccountManagerToken
+			if err = json.Unmarshal([]byte(form.Get("tokens")), &tokens); err != nil {
+				t.Fatalf("invalid Account Manager discovery token: %v", err)
+			}
+			expectedToken := newInstagramAccountManagerToken(session)
+			if len(tokens) != 1 || tokens[0] != expectedToken ||
+				form.Get("surface") != "account_switcher" ||
+				form.Get("include_social_context") != "false" {
+				t.Fatalf("unexpected Account Manager discovery form: %v", form)
+			}
+			return mobileLoginTestResponse(request, http.StatusOK, nil, `{
+				"result": [
+					{
+						"token": {"account_type": "Instagram"},
+						"connected_accounts": [
+							{
+								"is_sso_enabled": true,
+								"user_fbid": "222",
+								"user": {"pk": 222, "pk_id": "222", "id": "222", "username": "linked_user"}
+							},
+							{
+								"is_sso_enabled": true,
+								"user_fbid": "111",
+								"user": {"pk": 111, "pk_id": "111", "id": "111", "username": "current_user"}
+							}
+						]
+					},
+					{
+						"token": {"account_type": "Threads"},
+						"connected_accounts": [
+							{
+								"is_sso_enabled": true,
+								"user_fbid": "333",
+								"user": {"pk": 333, "pk_id": "333", "id": "333", "username": "current_user"}
+							}
+						]
+					}
+				]
+			}`), nil
+		case "/api/v1/fxcal/sso_login/":
+			var token instagramAccountManagerToken
+			if err = json.Unmarshal([]byte(form.Get("token")), &token); err != nil {
+				t.Fatalf("invalid Account Manager login token: %v", err)
+			}
+			if token != newInstagramAccountManagerToken(session) ||
+				form.Get("pk") != "222" ||
+				form.Get("adid") != mobile.AdvertisingID ||
+				form.Get("device_id") != mobile.AndroidDeviceID ||
+				form.Get("guid") != mobile.DeviceID ||
+				form.Get("phone_id") != mobile.PhoneID ||
+				form.Get("surface") != "account_switcher" {
+				t.Fatalf("unexpected Account Manager login form: %v", form)
+			}
+			return mobileLoginTestResponse(request, http.StatusOK, http.Header{
+				"Ig-Set-Authorization": {targetAuthorization},
+			}, `{"status":"ok","logged_in_user":{"pk":"222","username":"linked_user"}}`), nil
+		default:
+			t.Fatalf("unexpected Account Manager path %q", request.URL.Path)
+			return nil, nil
+		}
+	})
+
+	accounts, err := client.getInstagramAccountManagerAccounts(context.Background())
+	if err != nil {
+		t.Fatalf("failed to discover Account Manager profiles: %v", err)
+	}
+	expectedAccounts := []instagramAccountManagerAccount{
+		{UserID: "111", Username: "current_user"},
+		{UserID: "222", Username: "linked_user"},
+	}
+	if !reflect.DeepEqual(accounts, expectedAccounts) {
+		t.Fatalf("unexpected Account Manager profiles: %#v", accounts)
+	}
+	step := instagramAccountManagerSelectionStep(accounts)
+	if step.StepID != "fi.mau.meta.instagram.account_manager" ||
+		step.UserInputParams == nil ||
+		len(step.UserInputParams.Fields) != 1 ||
+		!reflect.DeepEqual(step.UserInputParams.Fields[0].Options, []string{"current_user", "linked_user"}) {
+		t.Fatalf("unexpected Account Manager selection step: %#v", step)
+	}
+	if err = client.switchInstagramAccountManagerAccount(
+		context.Background(),
+		mobile,
+		accounts[1],
+	); err != nil {
+		t.Fatalf("failed to switch Account Manager profile: %v", err)
+	}
+	switchedSession := client.GetMobileSession()
+	if switchedSession == nil ||
+		switchedSession.UserID != "222" ||
+		switchedSession.Username != "linked_user" ||
+		switchedSession.Authorization != targetAuthorization ||
+		loginCookies.Get(cookies.IGCookieSessionID) != "222%3Atarget-session" ||
+		loginCookies.Get(cookies.IGCookieDSUserID) != "222" ||
+		requestCount != 2 {
+		t.Fatalf(
+			"Account Manager switch did not persist the target session: session=%#v requests=%d",
+			switchedSession,
+			requestCount,
+		)
+	}
+}

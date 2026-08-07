@@ -335,10 +335,27 @@ func (c *Client) handleMobilePublish(
 			Msg("Failed to parse Instagram mobile realtime payload")
 		return nil
 	}
+	usedPendingInbox := false
+	if publish.Topic == instagramMQTTMessageSyncTopic &&
+		len(threadIDs) == 0 &&
+		seqID > c.seqID {
+		pendingThreadIDs, pendingErr := c.GetMobilePendingThreadIDs(ctx)
+		if pendingErr != nil {
+			if c.log != nil {
+				c.log.Warn().
+					Err(pendingErr).
+					Msg("Failed to resolve sequence-only Instagram message update")
+			}
+		} else {
+			threadIDs = pendingThreadIDs
+			usedPendingInbox = true
+		}
+	}
 	if c.log != nil {
 		c.log.Debug().
 			Str("topic", publish.Topic).
 			Int("thread_count", len(threadIDs)).
+			Bool("used_pending_inbox", usedPendingInbox).
 			Bool("has_sequence_update", seqID > c.seqID).
 			Msg("Processed Instagram mobile realtime update")
 	}
