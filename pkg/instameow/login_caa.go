@@ -48,9 +48,12 @@ func instagramDeviceNetworkInfo() map[string]any {
 }
 
 type instagramCAALoginState struct {
-	Browser  *bloks.Browser
-	Mobile   *mobileLoginState
-	Complete bool
+	Browser                *bloks.Browser
+	Mobile                 *mobileLoginState
+	AccountManagerAccounts []instagramAccountManagerAccount
+	Complete               bool
+	AccountManagerChecked  bool
+	AccountManagerComplete bool
 }
 
 type instagramCAALoginResponse struct {
@@ -180,6 +183,41 @@ func (c *Client) DoInstagramCAALoginSteps(
 		}
 		state.Complete = true
 	}
+	if !state.AccountManagerChecked {
+		state.AccountManagerAccounts, err = c.getInstagramAccountManagerAccounts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		state.AccountManagerChecked = true
+		if len(state.AccountManagerAccounts) <= 1 {
+			state.AccountManagerComplete = true
+		}
+	}
+	if !state.AccountManagerComplete {
+		selectedUsername := userInput[instagramAccountManagerField]
+		if selectedUsername == "" {
+			return instagramAccountManagerSelectionStep(state.AccountManagerAccounts), nil
+		}
+		var selectedAccount *instagramAccountManagerAccount
+		for i := range state.AccountManagerAccounts {
+			if state.AccountManagerAccounts[i].Username == selectedUsername {
+				selectedAccount = &state.AccountManagerAccounts[i]
+				break
+			}
+		}
+		if selectedAccount == nil {
+			return nil, errors.New("invalid Instagram Account Manager profile selection")
+		}
+		if selectedAccount.UserID != c.mobileSession.UserID {
+			if err = c.switchInstagramAccountManagerAccount(ctx, state.Mobile, *selectedAccount); err != nil {
+				return nil, err
+			}
+		}
+		state.AccountManagerComplete = true
+	}
+	if c.enableMobileTLSFingerprint {
+		c.http.SetMobileTLSFingerprint(false)
+	}
 	return nil, nil
 }
 
@@ -269,9 +307,6 @@ func (c *Client) applyInstagramCAALogin(ctx context.Context, state *instagramCAA
 	}
 	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
 		return fmt.Errorf("instagram CAA login succeeded without required cookies: %v", missing)
-	}
-	if c.enableMobileTLSFingerprint {
-		c.http.SetMobileTLSFingerprint(false)
 	}
 	return nil
 }

@@ -381,6 +381,12 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 
 	zerolog.Ctx(ctx).Debug().Msg("Processing inbox")
 	ic.processMailbox(ctx, retryCtx, mailbox)
+	if ic.Client.GetMobileSession() != nil {
+		err = ic.syncMobilePendingThreads(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to sync Instagram message requests")
+		}
+	}
 }
 
 func (ic *IGClient) Disconnect() {

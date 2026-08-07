@@ -89,6 +89,22 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 	}()
 }
 
+func (ic *IGClient) syncMobilePendingThreads(ctx context.Context) error {
+	threadIDs, err := ic.Client.GetMobilePendingThreadIDs(ctx)
+	if err != nil {
+		return err
+	}
+	zerolog.Ctx(ctx).Debug().
+		Int("thread_count", len(threadIDs)).
+		Msg("Syncing Instagram mobile message requests")
+	for _, threadID := range threadIDs {
+		if err = ic.resyncMobileThread(ctx, threadID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
 	viewerFBID := metaid.ParseUserLoginID(ic.UserLogin.ID)
 	if viewerFBID == 0 {
