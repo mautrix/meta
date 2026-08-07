@@ -1,4 +1,4 @@
--- v0 -> v12 (compatible with v11+): Latest schema
+-- v0 -> v13 (compatible with v11+): Latest schema
 CREATE TABLE meta_thread (
     parent_key BIGINT NOT NULL,
     thread_key BIGINT NOT NULL,
@@ -88,4 +88,13 @@ CREATE TABLE meta_hybrid_thread (
     PRIMARY KEY (bridge_id, login_id, fb_thread_key),
     CONSTRAINT meta_hybrid_thread_user_login_fkey FOREIGN KEY (bridge_id, login_id)
         REFERENCES user_login (bridge_id, id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE meta_instagram_login_device (
+    bridge_id         TEXT NOT NULL PRIMARY KEY,
+    phone_id          TEXT NOT NULL,
+    device_id         TEXT NOT NULL,
+    advertising_id    TEXT NOT NULL,
+    android_device_id TEXT NOT NULL,
+    machine_id        TEXT NOT NULL DEFAULT ''
 );

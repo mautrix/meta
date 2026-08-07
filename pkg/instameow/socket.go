@@ -56,6 +56,10 @@ func (c *Client) makeNewSocket() {
 }
 
 func (c *Client) Connect(ctx context.Context) {
+	if c.mobileSession != nil {
+		c.connectMobileRealtime(ctx)
+		return
+	}
 	sock := c.socket.Load()
 	if sock == nil {
 		c.log.Error().Msg("Connect() called without initializing socket")

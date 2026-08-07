@@ -126,6 +126,7 @@ func (ic *IGClient) ensureIGClient() {
 			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
+			MobileSession: ic.LoginMeta.MobileSession,
 		})
 	}
 }
@@ -179,6 +180,7 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		}
 		ic.Disconnect()
 		ic.LoginMeta.Cookies = nil
+		ic.LoginMeta.MobileSession = nil
 		err = ic.UserLogin.Save(ctx)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after clearing cookies")
@@ -260,6 +262,11 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		zerolog.Ctx(ctx).Debug().
 			Time("last_used", lastUsed).
 			Msg("Reconnecting with cached state")
+		go cli.Connect(ctx)
+		return
+	}
+	if cli.GetMobileSession() != nil {
+		zerolog.Ctx(ctx).Debug().Msg("Connecting authenticated Instagram mobile session")
 		go cli.Connect(ctx)
 		return
 	}
@@ -389,6 +396,7 @@ func (ic *IGClient) LogoutRemote(ctx context.Context) {
 	// TODO actual logout request?
 	ic.Disconnect()
 	ic.LoginMeta.Cookies = nil
+	ic.LoginMeta.MobileSession = nil
 }
 
 func (ic *IGClient) FullReconnect(seqIDOnly bool) {

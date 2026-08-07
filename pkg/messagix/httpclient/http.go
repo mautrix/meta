@@ -39,6 +39,7 @@ type HTTPClient struct {
 	GetNewProxy     func(reason string) (string, error)
 
 	LogRedactedBloksPayloads bool
+	mobileTLSFingerprint     bool
 }
 
 type Client interface {
@@ -78,7 +79,13 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	if c.proxyAddr != "" {
 		c.HTTPSettings, _ = c.HTTPSettings.WithProxy(c.proxyAddr)
 	}
-	reqClient := req.C().ImpersonateChrome()
+	var reqClient *req.Client
+	if c.mobileTLSFingerprint {
+		reqClient = req.C()
+		forceAndroidFingerprint(reqClient)
+	} else {
+		reqClient = req.C().ImpersonateChrome()
+	}
 	wsClient := req.C().ImpersonateChrome()
 	forceHTTP1ChromeFingerprint(wsClient)
 	if DisableTLSVerification {
@@ -103,6 +110,58 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 			InsecureSkipVerify: true,
 		}
 	}
+}
+
+// SetMobileTLSFingerprint switches ordinary HTTP requests between the default
+// Chromium profile used by the web client and an Android/OkHttp profile used by
+// first-party mobile API requests. Websocket connections always retain the
+// Chromium profile.
+func (c *HTTPClient) SetMobileTLSFingerprint(enabled bool) {
+	if c == nil || c.mobileTLSFingerprint == enabled {
+		return
+	}
+	c.mobileTLSFingerprint = enabled
+	c.SetConfig(c.HTTPSettings)
+}
+
+func forceAndroidFingerprint(c *req.Client) {
+	c.SetTLSHandshake(func(ctx context.Context, addr string, plainConn net.Conn) (net.Conn, *tls.ConnectionState, error) {
+		hostname := addr
+		if i := strings.LastIndex(addr, ":"); i != -1 {
+			hostname = addr[:i]
+		}
+
+		spec, err := utls.UTLSIdToSpec(utls.HelloAndroid_11_OkHttp)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to build Android uTLS spec: %w", err)
+		}
+
+		tlsConfig := c.GetTLSClientConfig()
+		uconn := utls.UClient(plainConn, &utls.Config{
+			ServerName:         hostname,
+			RootCAs:            tlsConfig.RootCAs,
+			InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
+			KeyLogWriter:       tlsConfig.KeyLogWriter,
+		}, utls.HelloCustom)
+		if err = uconn.ApplyPreset(&spec); err != nil {
+			return nil, nil, fmt.Errorf("failed to apply Android uTLS spec: %w", err)
+		}
+		if err = uconn.HandshakeContext(ctx); err != nil {
+			return nil, nil, err
+		}
+
+		cs := uconn.ConnectionState()
+		return uconn, &tls.ConnectionState{
+			Version:            cs.Version,
+			HandshakeComplete:  cs.HandshakeComplete,
+			DidResume:          cs.DidResume,
+			CipherSuite:        cs.CipherSuite,
+			NegotiatedProtocol: cs.NegotiatedProtocol,
+			ServerName:         cs.ServerName,
+			PeerCertificates:   cs.PeerCertificates,
+			VerifiedChains:     cs.VerifiedChains,
+		}, nil
+	})
 }
 
 // TODO deduplicate this with mautrix-discord (and maybe shorten it, looks to be duplicating too much of req)

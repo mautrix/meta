@@ -108,10 +108,25 @@ func (c *Client) RemoveGroupAvatar(ctx context.Context, threadID string) error {
 
 func (c *Client) buildAndroidHeaders() http.Header {
 	h := http.Header{}
-	h.Set("authorization", c.http.GetRUploadToken())
-	h.Set("user-agent", useragent.AndroidUserAgent)
-	h.Set("ig-intended-user-id", strconv.FormatInt(c.cookies.GetUserID(), 10))
-	h.Set("ig-u-ds-user-id", strconv.FormatInt(c.cookies.GetUserID(), 10))
+	if c.mobileSession != nil && c.mobileSession.Authorization != "" {
+		h.Set("authorization", c.mobileSession.Authorization)
+		h.Set("user-agent", instagramMobileUserAgent)
+		h.Set("ig-u-ds-user-id", c.mobileSession.UserID)
+		h.Set("ig-intended-user-id", c.mobileSession.UserID)
+		h.Set("ig-u-rur", c.mobileSession.RUR)
+		h.Set("ig-u-shbid", c.mobileSession.SHBID)
+		h.Set("ig-u-shbts", c.mobileSession.SHBTS)
+		h.Set("ig-u-ig-direct-region-hint", c.mobileSession.DirectRegionHint)
+		h.Set("x-ig-www-claim", c.mobileSession.WWWClaim)
+		h.Set("x-ig-device-id", c.mobileSession.Device.DeviceID)
+		h.Set("x-ig-family-device-id", c.mobileSession.Device.PhoneID)
+		h.Set("x-ig-android-id", c.mobileSession.Device.AndroidDeviceID)
+	} else {
+		h.Set("authorization", c.http.GetRUploadToken())
+		h.Set("user-agent", useragent.AndroidUserAgent)
+		h.Set("ig-intended-user-id", strconv.FormatInt(c.cookies.GetUserID(), 10))
+		h.Set("ig-u-ds-user-id", strconv.FormatInt(c.cookies.GetUserID(), 10))
+	}
 	h.Set("x-mid", c.cookies.Get(cookies.IGCookieMachineID))
 	h.Set("x-ig-app-id", useragent.IGAndroidAppID)
 	return h

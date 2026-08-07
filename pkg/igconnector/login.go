@@ -31,6 +31,11 @@ const (
 
 func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	switch flowID {
+	case FlowIDInstagramPassword:
+		return &MetaNativeLogin{
+			User: user,
+			Main: ic,
+		}, nil
 	case FlowIDInstagramCookies:
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
@@ -51,7 +56,7 @@ var (
 )
 
 func (ic *IGConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	return []bridgev2.LoginFlow{loginFlowInstagram}
+	return []bridgev2.LoginFlow{loginFlowInstagramPassword, loginFlowInstagram}
 }
 
 type MetaCookieLogin struct {
