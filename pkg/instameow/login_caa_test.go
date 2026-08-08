@@ -21,21 +21,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-func TestInstagramDeviceNetworkInfoMatchesWiFiDeviceContract(t *testing.T) {
-	expected := map[string]any{
-		"active_subscriptions_info":  []any{},
-		"default_subscription_info":  nil,
-		"is_airplane_mode":           false,
-		"is_active_network_cellular": false,
-		"is_device_sms_capable":      true,
-		"sim_count":                  2,
-		"is_wifi":                    true,
-	}
-	if actual := instagramDeviceNetworkInfo(); !reflect.DeepEqual(actual, expected) {
-		t.Fatalf("unexpected Instagram device-network info:\nactual: %#v\nexpected: %#v", actual, expected)
-	}
-}
-
 func TestInstagramCAALoginUsesClientLoggerWithoutContextLogger(t *testing.T) {
 	var output bytes.Buffer
 	logger := zerolog.New(&output).Level(zerolog.DebugLevel)
@@ -144,10 +129,11 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 
 func TestApplyInstagramCAALoginConvertsAuthorizationToCookies(t *testing.T) {
 	authorization := base64.StdEncoding.EncodeToString(
-		[]byte(`{"sessionid":"456%3Acaa-session","ds_user_id":"456"}`),
+		[]byte(`{"sessionid":"456%3Acaa-session","ds_user_id":"456","shbid":"caa-shbid"}`),
 	)
 	headers, err := json.Marshal(map[string]any{
 		"IG-Set-Authorization": "Bearer IGT:2:" + authorization,
+		"IG-Set-Ig-U-Rur":      `"NAO\054456\054caa-rur"`,
 		"IG-Set-X-Mid":         "caa-mid",
 		"X-Response-Code":      200,
 		"X-Response-Flags":     []any{"native", true},
@@ -192,6 +178,12 @@ func TestApplyInstagramCAALoginConvertsAuthorizationToCookies(t *testing.T) {
 	if got := loginCookies.Get(cookies.IGCookieMachineID); got != "caa-mid" {
 		t.Fatalf("unexpected CAA machine ID cookie %q", got)
 	}
+	if got := loginCookies.Get(cookies.IGCookieRUR); got != `"NAO\054456\054caa-rur"` {
+		t.Fatalf("unexpected CAA routing cookie %q", got)
+	}
+	if got := loginCookies.Get(cookies.IGCookieSHBID); got != "caa-shbid" {
+		t.Fatalf("unexpected CAA shbid cookie %q", got)
+	}
 	if loginCookies.Get(cookies.IGCookieCSRFToken) == "" ||
 		loginCookies.Get(cookies.IGCookieDeviceID) == "" {
 		t.Fatal("CAA login did not create the required web-session cookies")
@@ -218,7 +210,7 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 		cookies.IGCookieSessionID: "111%3Acurrent-session",
 		cookies.IGCookieDSUserID:  "111",
 	})
-	session := &types.InstagramMobileSession{
+	session := &instagramMobileSession{
 		Authorization: currentAuthorization,
 		UserID:        "111",
 		Username:      "current_user",
@@ -230,10 +222,10 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 		},
 	}
 	client := NewClient(ClientParams{
-		Cookies:       loginCookies,
-		Log:           zerolog.Nop(),
-		MobileSession: session,
+		Cookies: loginCookies,
+		Log:     zerolog.Nop(),
 	})
+	client.mobileSession = session
 	mobile := &mobileLoginState{
 		PhoneID:         session.Device.PhoneID,
 		DeviceID:        session.Device.DeviceID,
@@ -337,14 +329,14 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 		!reflect.DeepEqual(step.UserInputParams.Fields[0].Options, []string{"current_user", "linked_user"}) {
 		t.Fatalf("unexpected Account Manager selection step: %#v", step)
 	}
-	if err = client.switchInstagramAccountManagerAccount(
+	if err = client.switchInstagramAccountManagerMobileAccount(
 		context.Background(),
 		mobile,
 		accounts[1],
 	); err != nil {
 		t.Fatalf("failed to switch Account Manager profile: %v", err)
 	}
-	switchedSession := client.GetMobileSession()
+	switchedSession := client.mobileSession
 	if switchedSession == nil ||
 		switchedSession.UserID != "222" ||
 		switchedSession.Username != "linked_user" ||
@@ -357,5 +349,82 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 			switchedSession,
 			requestCount,
 		)
+	}
+}
+
+func TestInstagramAccountManagerWebSwitchUsesCurrentContract(t *testing.T) {
+	loginCookies := &cookies.Cookies{Platform: types.Instagram}
+	loginCookies.UpdateValues(map[cookies.MetaCookieName]string{
+		cookies.IGCookieCSRFToken: "test-csrf",
+		cookies.IGCookieMachineID: "test-mid",
+		cookies.IGCookieDeviceID:  "test-device-id",
+		cookies.IGCookieSessionID: "111%3Aprimary-session",
+		cookies.IGCookieDSUserID:  "111",
+	})
+	client := NewClient(ClientParams{
+		Cookies: loginCookies,
+		Log:     zerolog.Nop(),
+	})
+	client.configs.BrowserConfigTable.DTSGInitData.Token = "test-dtsg"
+	client.configs.Jazoest = "test-jazoest"
+
+	requestSeen := false
+	client.http.HTTP.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requestSeen = true
+		if request.Method != http.MethodPost ||
+			request.URL.Path != "/api/v1/web/fxcal/ig_sso_login/" {
+			t.Fatalf("unexpected Account Manager web request: %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("X-Requested-With") != "XMLHttpRequest" ||
+			request.Header.Get("Origin") != client.GetEndpoint("base_url") ||
+			request.Header.Get("Referer") != client.GetEndpoint("messages") {
+			t.Fatalf("unexpected Account Manager web headers: %v", request.Header)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("failed to read Account Manager web request: %v", err)
+		}
+		form, err := url.ParseQuery(string(body))
+		if err != nil {
+			t.Fatalf("failed to parse Account Manager web request: %v", err)
+		}
+		if form.Get("igUsername") != "linked_user" ||
+			form.Get("fb_dtsg") != "test-dtsg" ||
+			form.Get("jazoest") != "test-jazoest" {
+			t.Fatalf("unexpected Account Manager web form: %v", form)
+		}
+		return mobileLoginTestResponse(request, http.StatusOK, http.Header{
+			"Set-Cookie": {
+				"sessionid=222%3Atarget-session; Path=/; Secure; HttpOnly",
+				"ds_user_id=222; Path=/; Secure",
+			},
+		}, `{"status":"ok","authenticated":true,"failure_message":null}`), nil
+	})
+
+	if err := client.switchInstagramAccountManagerWebAccount(
+		context.Background(),
+		"linked_user",
+	); err != nil {
+		t.Fatalf("failed to switch Account Manager web profile: %v", err)
+	}
+	if !requestSeen ||
+		loginCookies.Get(cookies.IGCookieSessionID) != "222%3Atarget-session" ||
+		loginCookies.Get(cookies.IGCookieDSUserID) != "222" {
+		t.Fatal("Account Manager web switch did not retain the selected web session")
+	}
+
+	client.http.HTTP.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return mobileLoginTestResponse(
+			request,
+			http.StatusOK,
+			nil,
+			`{"status":"ok","authenticated":false,"failure_message":null}`,
+		), nil
+	})
+	if err := client.switchInstagramAccountManagerWebAccount(
+		context.Background(),
+		"linked_user",
+	); err == nil {
+		t.Fatal("expected an unauthenticated Account Manager web response to be rejected")
 	}
 }

@@ -160,7 +160,7 @@ func (ic *IGClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypt
 		return
 	}
 
-	_, err = ic.getAndResyncThread(ctx, meta.IGID, false)
+	_, err = ic.getAndResyncThread(ctx, meta.IGID)
 	if err != nil {
 		log.Err(err).
 			Int64("chat_id", chatID).

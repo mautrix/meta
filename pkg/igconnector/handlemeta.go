@@ -146,8 +146,6 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		_ = ic.doWaitMailboxProcessed(ctx)
 		go ic.FullReconnect(true)
 		return nil
-	case *slidetypes.MobileThreadSync:
-		return ic.resyncMobileThread(ctx, evt.ThreadIGID)
 	case *slidetypes.Delta:
 		if err := ic.doWaitMailboxProcessed(ctx); err != nil {
 			return err
@@ -158,21 +156,6 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	default:
 		return fmt.Errorf("unrecognized event type: %T", rawEvt)
 	}
-}
-
-func (ic *IGClient) resyncMobileThread(ctx context.Context, threadID string) error {
-	if err := ic.doWaitMailboxProcessed(ctx); err != nil {
-		return err
-	}
-	threadIGID, resolution, err := ic.resolveMobileThreadIGID(ctx, threadID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve Instagram mobile thread: %w", err)
-	}
-	zerolog.Ctx(ctx).Debug().
-		Str("resolution", resolution).
-		Msg("Resolved Instagram mobile realtime thread")
-	_, err = ic.getAndResyncThread(ctx, threadIGID, true)
-	return err
 }
 
 func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool) *simplevent.ChatResync {
@@ -194,95 +177,25 @@ func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool
 	}
 }
 
-func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string, deduplicateMobile bool) (networkid.PortalKey, error) {
+func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (networkid.PortalKey, error) {
 	resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(threadIGID))
 	if err != nil {
-		return networkid.PortalKey{}, fmt.Errorf("failed to get Instagram thread info: %w", err)
+		return networkid.PortalKey{}, fmt.Errorf("failed to get thread info for %s: %w", threadIGID, err)
 	}
-	if resp == nil || resp.ThreadInfo.AsIGDirectThread == nil {
-		return networkid.PortalKey{}, fmt.Errorf("instagram thread detail response did not contain a thread")
-	}
-	thread := resp.ThreadInfo.AsIGDirectThread
 	zerolog.Ctx(ctx).Trace().
-		Any("thread_resp", thread).
+		Any("thread_resp", resp.ThreadInfo.AsIGDirectThread).
 		Msg("Response for thread resync fetch")
 	// This should be done by extra updates in the chat resync anyway, but do it here just to be safe
-	err = ic.saveThreadMappings(ctx, thread)
+	err = ic.saveThreadMappings(ctx, resp.ThreadInfo.AsIGDirectThread)
 	if err != nil {
-		return networkid.PortalKey{}, fmt.Errorf("failed to save Instagram thread mappings: %w", err)
+		return networkid.PortalKey{}, fmt.Errorf("failed to save FBID for IG thread %s: %w", threadIGID, err)
 	}
-	evt := ic.wrapChatResync(thread, true)
-	if deduplicateMobile && ic.isLatestMobileThreadMessage(thread) {
-		zerolog.Ctx(ctx).Debug().Msg("Skipping Instagram mobile thread resync with no new message")
-		return evt.PortalKey, nil
-	}
+	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread, true)
 	res := ic.UserLogin.QueueRemoteEvent(evt)
 	if !res.Success {
 		return evt.PortalKey, res.Error
 	}
-	if deduplicateMobile {
-		ic.rememberMobileThreadLatest(thread)
-	}
 	return evt.PortalKey, nil
-}
-
-func latestThreadMessageID(thread *slidetypes.ThreadInfo) string {
-	if thread == nil || thread.SlideMessages == nil ||
-		len(thread.SlideMessages.Edges) == 0 || thread.SlideMessages.Edges[0].Node == nil {
-		return ""
-	}
-	return thread.SlideMessages.Edges[0].Node.ID
-}
-
-func (ic *IGClient) rememberMobileThreadLatest(thread *slidetypes.ThreadInfo) {
-	if messageID := latestThreadMessageID(thread); messageID != "" {
-		ic.mobileThreadLatest.Store(thread.ID, messageID)
-	}
-}
-
-func (ic *IGClient) isLatestMobileThreadMessage(thread *slidetypes.ThreadInfo) bool {
-	messageID := latestThreadMessageID(thread)
-	if messageID == "" {
-		return false
-	}
-	previous, ok := ic.mobileThreadLatest.Load(thread.ID)
-	return ok && previous == messageID
-}
-
-func (ic *IGClient) resolveMobileThreadIGID(
-	ctx context.Context,
-	incomingID string,
-) (threadIGID, resolution string, err error) {
-	if incomingID == "" {
-		return "", "", fmt.Errorf("empty Instagram mobile thread ID")
-	}
-	fbid, err := ic.Main.DB.GetFBIDForIGChat(ctx, incomingID, ic.UserLogin.ID)
-	if err != nil {
-		return "", "", err
-	} else if fbid != 0 {
-		return incomingID, "chat_id", nil
-	}
-	fbid, err = ic.Main.DB.GetFBIDForIGThread(ctx, incomingID, ic.UserLogin.ID)
-	if err != nil {
-		return "", "", err
-	} else if fbid != 0 {
-		threadIGID, err = ic.Main.DB.GetIGChatForFBID(ctx, fbid, ic.UserLogin.ID)
-		if err != nil {
-			return "", "", err
-		} else if threadIGID != "" {
-			return threadIGID, "thread_id", nil
-		}
-	}
-	fbid, parseErr := strconv.ParseInt(incomingID, 10, 64)
-	if parseErr == nil && fbid > 0 {
-		threadIGID, err = ic.Main.DB.GetIGChatForFBID(ctx, fbid, ic.UserLogin.ID)
-		if err != nil {
-			return "", "", err
-		} else if threadIGID != "" {
-			return threadIGID, "thread_key", nil
-		}
-	}
-	return incomingID, "unmapped", nil
 }
 
 func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool) (networkid.PortalKey, bool, error) {
@@ -302,7 +215,7 @@ func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCr
 	if !allowCreate {
 		return networkid.PortalKey{}, false, nil
 	}
-	key, err := ic.getAndResyncThread(ctx, threadIGID, false)
+	key, err := ic.getAndResyncThread(ctx, threadIGID)
 	return key, true, err
 }
 
@@ -394,7 +307,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	case *slidetypes.AdminChangeEvent:
 		// The event shape isn't great for making a chat info change event, just resync the chat info entirely
 		if !didResync {
-			_, err = ic.getAndResyncThread(ctx, d.ThreadIGID, false)
+			_, err = ic.getAndResyncThread(ctx, d.ThreadIGID)
 		}
 		return err
 	case *slidetypes.MarkReadEvent:

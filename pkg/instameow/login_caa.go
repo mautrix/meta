@@ -209,7 +209,7 @@ func (c *Client) DoInstagramCAALoginSteps(
 			return nil, errors.New("invalid Instagram Account Manager profile selection")
 		}
 		if selectedAccount.UserID != c.mobileSession.UserID {
-			if err = c.switchInstagramAccountManagerAccount(ctx, state.Mobile, *selectedAccount); err != nil {
+			if err = c.switchInstagramAccountManagerProfile(ctx, state.Mobile, *selectedAccount); err != nil {
 				return nil, err
 			}
 		}

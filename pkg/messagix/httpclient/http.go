@@ -389,6 +389,7 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 	if req.Response == nil {
 		return nil
 	}
+	c.parent.GetCookies().UpdateFromResponse(req.Response)
 	if len(via) > 5 {
 		return ErrTooManyRedirects
 	}
@@ -522,6 +523,7 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
 		return nil, nil, fmt.Errorf("%w: %w", ErrRequestFailed, err)
 	}
+	c.parent.GetCookies().UpdateFromResponse(response)
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {

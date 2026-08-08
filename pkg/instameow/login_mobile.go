@@ -44,10 +44,9 @@ const (
 
 	// These values match the current first-party Android profile used by the
 	// official Instagram APK. They must be updated together.
-	instagramMobileAppVersion   = "440.0.0.19.86"
-	instagramMobileVersionCode  = "384608963"
-	instagramMobileBloksVersion = bloks.BloksVersionInstagram
-	instagramMobileUserAgent    = "Instagram " + instagramMobileAppVersion +
+	instagramMobileAppVersion  = "440.0.0.19.86"
+	instagramMobileVersionCode = "384608963"
+	instagramMobileUserAgent   = "Instagram " + instagramMobileAppVersion +
 		" Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " +
 		instagramMobileVersionCode + ")"
 )
@@ -61,6 +60,18 @@ type mobileLoginState struct {
 	MachineID         string
 	PasswordKeyID     int
 	PasswordPublicKey string
+}
+
+type instagramMobileSession struct {
+	Authorization    string
+	UserID           string
+	Username         string
+	RUR              string
+	SHBID            string
+	SHBTS            string
+	DirectRegionHint string
+	WWWClaim         string
+	Device           types.InstagramLoginDevice
 }
 
 type instagramMobileLoginResponse struct {
@@ -229,7 +240,7 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 		strconv.FormatFloat(float64(time.Now().UnixMilli())/1000, 'f', 3, 64),
 	)
 	headers.Set("x-ig-app-startup-country", "US")
-	headers.Set("x-bloks-version-id", instagramMobileBloksVersion)
+	headers.Set("x-bloks-version-id", bloks.BloksVersionInstagram)
 	headers.Set("x-ig-www-claim", "0")
 	headers.Set("x-bloks-is-layout-rtl", "false")
 	headers.Set("x-bloks-is-panorama-enabled", "true")
@@ -259,7 +270,7 @@ func (c *Client) updateMobileLoginResponseState(
 	state *mobileLoginState,
 	response *http.Response,
 ) error {
-	c.updateMobileResponseCookies(response)
+	c.cookies.UpdateFromResponse(response)
 	if machineID := response.Header.Get("ig-set-x-mid"); machineID != "" {
 		state.MachineID = machineID
 		c.cookies.Set(cookies.IGCookieMachineID, machineID)
@@ -269,27 +280,6 @@ func (c *Client) updateMobileLoginResponseState(
 		return fmt.Errorf("failed to persist Instagram app installation identity: %w", err)
 	}
 	return nil
-}
-
-func (c *Client) updateMobileResponseCookies(response *http.Response) {
-	if response == nil {
-		return
-	}
-	values := c.cookies.GetAll()
-	now := time.Now()
-	for _, cookie := range response.Cookies() {
-		if cookie.MaxAge < 0 ||
-			(!cookie.Expires.IsZero() && cookie.Expires.Before(now)) {
-			delete(values, cookies.MetaCookieName(cookie.Name))
-		} else {
-			values[cookies.MetaCookieName(cookie.Name)] = cookie.Value
-		}
-	}
-	c.cookies.UpdateValues(values)
-
-	responseWithoutCookies := &http.Response{Header: response.Header.Clone()}
-	responseWithoutCookies.Header.Del("Set-Cookie")
-	c.cookies.UpdateFromResponse(responseWithoutCookies)
 }
 
 func firstMobileResponseHeader(header http.Header, names ...string) string {
@@ -309,7 +299,7 @@ func (c *Client) updateMobileSessionHeaders(response *http.Response, state *mobi
 	if authorization == "" && c.mobileSession == nil {
 		return
 	}
-	session := types.InstagramMobileSession{}
+	session := instagramMobileSession{}
 	if c.mobileSession != nil {
 		session = *c.mobileSession
 	}
@@ -318,12 +308,15 @@ func (c *Client) updateMobileSessionHeaders(response *http.Response, state *mobi
 	}
 	if value := response.Header.Get("ig-set-ig-u-rur"); value != "" {
 		session.RUR = value
+		c.cookies.Set(cookies.IGCookieRUR, value)
 	}
 	if value := response.Header.Get("ig-set-ig-u-shbid"); value != "" {
 		session.SHBID = value
+		c.cookies.Set(cookies.IGCookieSHBID, value)
 	}
 	if value := response.Header.Get("ig-set-ig-u-shbts"); value != "" {
 		session.SHBTS = value
+		c.cookies.Set(cookies.IGCookieSHBTS, value)
 	}
 	if value := firstMobileResponseHeader(
 		response.Header,
@@ -352,7 +345,7 @@ func (c *Client) applyMobileAuthorization(
 	state *mobileLoginState,
 ) error {
 	if c.mobileSession == nil {
-		c.mobileSession = &types.InstagramMobileSession{Device: state.device()}
+		c.mobileSession = &instagramMobileSession{Device: state.device()}
 	}
 	authorization := response.Header.Get("ig-set-authorization")
 	if authorization != "" {
@@ -380,6 +373,21 @@ func (c *Client) applyMobileAuthorization(
 		if userID := mobileAuthorizationValue(authData["ds_user_id"]); userID != "" {
 			c.cookies.Set(cookies.IGCookieDSUserID, userID)
 			c.mobileSession.UserID = userID
+		}
+		for _, route := range []struct {
+			authorizationKey string
+			responseHeader   string
+			cookieName       cookies.MetaCookieName
+		}{
+			{"rur", "ig-set-ig-u-rur", cookies.IGCookieRUR},
+			{"shbid", "ig-set-ig-u-shbid", cookies.IGCookieSHBID},
+			{"shbts", "ig-set-ig-u-shbts", cookies.IGCookieSHBTS},
+		} {
+			if response.Header.Get(route.responseHeader) == "" {
+				if value := mobileAuthorizationValue(authData[route.authorizationKey]); value != "" {
+					c.cookies.Set(route.cookieName, value)
+				}
+			}
 		}
 	}
 	if c.cookies.Get(cookies.IGCookieDSUserID) == "" && loginResponse.LoggedInUser != nil {

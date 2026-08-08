@@ -28,7 +28,9 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 const instagramAccountManagerField = "account"
@@ -71,7 +73,11 @@ type instagramAccountManagerError struct {
 	Message   string `json:"message"`
 }
 
-func newInstagramAccountManagerToken(session *types.InstagramMobileSession) instagramAccountManagerToken {
+type instagramAccountManagerWebLoginResponse struct {
+	Authenticated bool `json:"authenticated"`
+}
+
+func newInstagramAccountManagerToken(session *instagramMobileSession) instagramAccountManagerToken {
 	return instagramAccountManagerToken{
 		AccountType: "Instagram",
 		TokenID:     0,
@@ -81,6 +87,26 @@ func newInstagramAccountManagerToken(session *types.InstagramMobileSession) inst
 		TokenApp:    "Instagram",
 		TokenSource: "active_account",
 	}
+}
+
+func (c *Client) instagramAccountManagerHeaders() http.Header {
+	session := c.mobileSession
+	headers := http.Header{}
+	headers.Set("authorization", session.Authorization)
+	headers.Set("user-agent", instagramMobileUserAgent)
+	headers.Set("ig-u-ds-user-id", session.UserID)
+	headers.Set("ig-intended-user-id", session.UserID)
+	headers.Set("ig-u-rur", session.RUR)
+	headers.Set("ig-u-shbid", session.SHBID)
+	headers.Set("ig-u-shbts", session.SHBTS)
+	headers.Set("ig-u-ig-direct-region-hint", session.DirectRegionHint)
+	headers.Set("x-ig-www-claim", session.WWWClaim)
+	headers.Set("x-ig-device-id", session.Device.DeviceID)
+	headers.Set("x-ig-family-device-id", session.Device.PhoneID)
+	headers.Set("x-ig-android-id", session.Device.AndroidDeviceID)
+	headers.Set("x-mid", c.cookies.Get(cookies.IGCookieMachineID))
+	headers.Set("x-ig-app-id", useragent.IGAndroidAppID)
+	return headers
 }
 
 func parseInstagramAccountManagerAccounts(
@@ -198,7 +224,7 @@ func (c *Client) getInstagramAccountManagerAccounts(
 		ctx,
 		instagramMobileAPIBase+"fxcal/get_sso_accounts/",
 		http.MethodPost,
-		c.buildAndroidHeaders(),
+		c.instagramAccountManagerHeaders(),
 		[]byte(form.Encode()),
 		types.FORM,
 	)
@@ -221,7 +247,56 @@ func (c *Client) getInstagramAccountManagerAccounts(
 	return accounts, nil
 }
 
-func (c *Client) switchInstagramAccountManagerAccount(
+func (c *Client) switchInstagramAccountManagerProfile(
+	ctx context.Context,
+	state *mobileLoginState,
+	account instagramAccountManagerAccount,
+) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
+	if state == nil {
+		return errors.New("instagram Account Manager is missing the mobile login state")
+	}
+
+	if c.enableMobileTLSFingerprint {
+		c.http.SetMobileTLSFingerprint(false)
+		defer c.http.SetMobileTLSFingerprint(false)
+	}
+	if err := c.loadIndex(ctx); err != nil {
+		return fmt.Errorf("failed to prepare the primary Instagram web session: %w", err)
+	}
+	primaryCookies := c.cookies.GetAll()
+	primaryWWWClaim := c.cookies.IGWWWClaim
+
+	if c.enableMobileTLSFingerprint {
+		c.http.SetMobileTLSFingerprint(true)
+	}
+	if err := c.switchInstagramAccountManagerMobileAccount(ctx, state, account); err != nil {
+		return err
+	}
+	if c.enableMobileTLSFingerprint {
+		c.http.SetMobileTLSFingerprint(false)
+	}
+
+	// The mobile FXCAL login authorizes API calls, but the web realtime stream is
+	// provisioned separately. Switch the already authenticated primary web session
+	// through Instagram's matching FXCAL endpoint before persisting the selection.
+	c.cookies.UpdateValues(primaryCookies)
+	c.cookies.IGWWWClaim = primaryWWWClaim
+	if err := c.switchInstagramAccountManagerWebAccount(ctx, account.Username); err != nil {
+		return err
+	}
+	if err := c.loadIndex(ctx); err != nil {
+		return fmt.Errorf("failed to load the selected Instagram web session: %w", err)
+	}
+	if !strings.EqualFold(c.configs.BrowserConfigTable.PolarisViewer.GetUsername(), account.Username) {
+		return errors.New("instagram Account Manager web login returned the wrong profile")
+	}
+	return nil
+}
+
+func (c *Client) switchInstagramAccountManagerMobileAccount(
 	ctx context.Context,
 	state *mobileLoginState,
 	account instagramAccountManagerAccount,
@@ -253,7 +328,7 @@ func (c *Client) switchInstagramAccountManagerAccount(
 		ctx,
 		instagramMobileAPIBase+"fxcal/sso_login/",
 		http.MethodPost,
-		c.buildAndroidHeaders(),
+		c.instagramAccountManagerHeaders(),
 		[]byte(form.Encode()),
 		types.FORM,
 	)
@@ -286,6 +361,53 @@ func (c *Client) switchInstagramAccountManagerAccount(
 			"instagram Account Manager login succeeded without required cookies: %v",
 			missing,
 		)
+	}
+	return nil
+}
+
+func (c *Client) switchInstagramAccountManagerWebAccount(
+	ctx context.Context,
+	username string,
+) error {
+	queryParams := c.http.NewHTTPQuery()
+	form := url.Values{
+		"igUsername": {username},
+	}
+	if queryParams.FbDtsg != "" {
+		form.Set("fb_dtsg", queryParams.FbDtsg)
+	}
+	if queryParams.Jazoest != "" {
+		form.Set("jazoest", queryParams.Jazoest)
+	}
+	headers := c.http.BuildHeaders(true, false)
+	headers.Set("origin", c.GetEndpoint("base_url"))
+	headers.Set("referer", c.GetEndpoint("messages"))
+	headers.Set("x-requested-with", "XMLHttpRequest")
+	headers.Set("sec-fetch-dest", "empty")
+	headers.Set("sec-fetch-mode", "cors")
+	headers.Set("sec-fetch-site", "same-origin")
+	response, body, requestErr := c.http.MakeRequest(
+		ctx,
+		c.GetEndpoint("base_url")+"/api/v1/web/fxcal/ig_sso_login/",
+		http.MethodPost,
+		headers,
+		[]byte(form.Encode()),
+		types.FORM,
+	)
+	if requestErr != nil {
+		return instagramAccountManagerRequestError(
+			"failed to switch the Instagram Account Manager web session",
+			response,
+			body,
+			requestErr,
+		)
+	}
+	var result instagramAccountManagerWebLoginResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("failed to parse the Instagram Account Manager web login: %w", err)
+	}
+	if !result.Authenticated {
+		return errors.New("instagram Account Manager did not authenticate the selected web profile")
 	}
 	return nil
 }

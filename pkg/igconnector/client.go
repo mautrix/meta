@@ -59,8 +59,6 @@ type IGClient struct {
 	mailboxProcessed      atomic.Bool
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
-	selfFBID              atomic.Int64
-	mobileThreadLatest    sync.Map
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -128,7 +126,6 @@ func (ic *IGClient) ensureIGClient() {
 			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
-			MobileSession: ic.LoginMeta.MobileSession,
 		})
 	}
 }
@@ -182,7 +179,6 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		}
 		ic.Disconnect()
 		ic.LoginMeta.Cookies = nil
-		ic.LoginMeta.MobileSession = nil
 		err = ic.UserLogin.Save(ctx)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after clearing cookies")
@@ -260,7 +256,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		zerolog.Ctx(ctx).Debug().Err(err).
 			Time("last_used", lastUsed).
 			Msg("Failed to load reconnection state")
-	} else if cli.HasSeqID() && cli.GetMobileSession() == nil {
+	} else if cli.HasSeqID() {
 		zerolog.Ctx(ctx).Debug().
 			Time("last_used", lastUsed).
 			Msg("Reconnecting with cached state")
@@ -270,10 +266,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 	var currentUser *types.PolarisViewer
 	var mailbox *slidetypes.Mailbox
 	var err error
-	if cli.GetMobileSession() != nil {
-		zerolog.Ctx(ctx).Debug().Msg("Refreshing inbox for authenticated Instagram mobile session")
-		currentUser, mailbox, err = cli.LoadIndex(ctx)
-	} else if cli.HasSeqID() {
+	if cli.HasSeqID() {
 		zerolog.Ctx(ctx).Debug().Msg("Seq ID already stored, only reloading index")
 		_, err = cli.ReloadIndex(ctx)
 	} else {
@@ -336,11 +329,6 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled")
 		return
 	}
-	if cli.GetMobileSession() != nil {
-		zerolog.Ctx(ctx).Debug().Msg("Processed inbox, connecting authenticated Instagram mobile session")
-		go cli.Connect(ctx)
-		return
-	}
 	zerolog.Ctx(ctx).Debug().Msg("Processed index, connecting to DGW")
 	go ic.Client.Connect(ctx)
 }
@@ -363,14 +351,6 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 	// TODO update ghost avatar first?
 	ic.UserLogin.RemoteProfile.Avatar = ic.Ghost.AvatarMXC
 	meta := ic.UserLogin.Metadata.(*metaid.UserLoginMetadata)
-	viewerFBID := currentUser.GetFBID()
-	if viewerFBID != 0 {
-		ic.selfFBID.Store(viewerFBID)
-		err = ic.Main.DB.PutFBIDForIGUser(ctx, currentUser.ID, viewerFBID)
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to save own Instagram interop user ID mapping")
-		}
-	}
 	if meta.IGID == "" {
 		meta.IGID = currentUser.ID
 		err = ic.UserLogin.Save(ctx)
@@ -381,12 +361,6 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 
 	zerolog.Ctx(ctx).Debug().Msg("Processing inbox")
 	ic.processMailbox(ctx, retryCtx, mailbox)
-	if ic.Client.GetMobileSession() != nil {
-		err = ic.syncMobilePendingThreads(ctx)
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to sync Instagram message requests")
-		}
-	}
 }
 
 func (ic *IGClient) Disconnect() {
@@ -415,7 +389,6 @@ func (ic *IGClient) LogoutRemote(ctx context.Context) {
 	// TODO actual logout request?
 	ic.Disconnect()
 	ic.LoginMeta.Cookies = nil
-	ic.LoginMeta.MobileSession = nil
 }
 
 func (ic *IGClient) FullReconnect(seqIDOnly bool) {

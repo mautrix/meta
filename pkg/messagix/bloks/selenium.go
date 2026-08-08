@@ -366,9 +366,6 @@ type Browser struct {
 	AFADInterval     time.Duration
 	AFADCallback     func() error
 
-	NotificationDeliveryInterval time.Duration
-	NotificationDeliveryCallback func() error
-
 	LoginData    string
 	DisplayedURL string
 
@@ -988,11 +985,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				}
 				// Instagram schedules this after sending a phone login
 				// notification. It is delivery-status polling, not the
-				// authentication continuation itself, so retain the timer
-				// without blocking the current Bloks action or running the
-				// callback synchronously.
-				b.NotificationDeliveryInterval = interval
-				b.NotificationDeliveryCallback = callback
+				// authentication continuation itself, so there is no work for
+				// the bridge to schedule.
 			default:
 				return fmt.Errorf("unexpected timer %s", name)
 			}
@@ -1007,8 +1001,6 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				if !b.Config.Platform.IsInstagram() {
 					return fmt.Errorf("unexpected timer cancel %s", name)
 				}
-				b.NotificationDeliveryInterval = 0
-				b.NotificationDeliveryCallback = nil
 			default:
 				return fmt.Errorf("unexpected timer cancel %s", name)
 			}
