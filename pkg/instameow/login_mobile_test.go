@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rs/zerolog"
 
@@ -94,42 +93,6 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 			firstSaveCalls,
 			saveCalls,
 		)
-	}
-}
-
-func TestMobileResponseCookiesDoNotChangeSharedCookieSemantics(t *testing.T) {
-	loginCookies := &cookies.Cookies{Platform: types.Instagram}
-	loginCookies.UpdateValues(map[cookies.MetaCookieName]string{
-		cookies.IGCookieSessionID: "old-session",
-		cookies.IGCookieCSRFToken: "old-csrf",
-	})
-	client := NewClient(ClientParams{
-		Cookies: loginCookies,
-		Log:     zerolog.Nop(),
-	})
-	response := &http.Response{Header: make(http.Header)}
-	response.Header.Add("Set-Cookie", "sessionid=new-session; Path=/; Secure")
-	response.Header.Add("Set-Cookie", "csrftoken=deleted; Path=/; Max-Age=0")
-	response.Header.Add(
-		"Set-Cookie",
-		"ds_user_id=123; Path=/; Expires="+
-			time.Now().Add(time.Hour).UTC().Format(http.TimeFormat),
-	)
-	response.Header.Set("x-ig-set-www-claim", "claim")
-
-	client.updateMobileResponseCookies(response)
-
-	if got := loginCookies.Get(cookies.IGCookieSessionID); got != "new-session" {
-		t.Fatalf("expected mobile session cookie to be retained, got %q", got)
-	}
-	if got := loginCookies.Get(cookies.IGCookieCSRFToken); got != "" {
-		t.Fatalf("expected deleted mobile CSRF cookie to be absent, got %q", got)
-	}
-	if got := loginCookies.Get(cookies.IGCookieDSUserID); got != "123" {
-		t.Fatalf("expected mobile user ID cookie, got %q", got)
-	}
-	if loginCookies.IGWWWClaim != "claim" {
-		t.Fatalf("expected mobile www claim to be updated, got %q", loginCookies.IGWWWClaim)
 	}
 }
 

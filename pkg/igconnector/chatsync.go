@@ -43,7 +43,6 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 			done()
 			return
 		}
-		ic.rememberMobileThreadLatest(node.Node.AsIGDirectThread)
 		err := ic.saveThreadMappings(ctx, node.Node.AsIGDirectThread)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save thread mappings")
@@ -87,22 +86,6 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save reconnection state after mailbox processing")
 		}
 	}()
-}
-
-func (ic *IGClient) syncMobilePendingThreads(ctx context.Context) error {
-	threadIDs, err := ic.Client.GetMobilePendingThreadIDs(ctx)
-	if err != nil {
-		return err
-	}
-	zerolog.Ctx(ctx).Debug().
-		Int("thread_count", len(threadIDs)).
-		Msg("Syncing Instagram mobile message requests")
-	for _, threadID := range threadIDs {
-		if err = ic.resyncMobileThread(ctx, threadID); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {

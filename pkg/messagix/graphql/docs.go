@@ -9,7 +9,7 @@ type GraphQLDoc struct {
 	Jsessw string
 }
 
-const IGDSlideDeltaProcessorQuery = "28239922265610241"
+const IGDSlideDeltaProcessorQuery = "27931342966497053"
 const IGDTypingIndicatorClientSubscription = "27563068933278040"
 
 var GraphQLDocs = map[string]GraphQLDoc{

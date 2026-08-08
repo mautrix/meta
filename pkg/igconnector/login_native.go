@@ -20,18 +20,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
-	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 const (
@@ -48,29 +44,6 @@ var loginFlowInstagramPassword = bridgev2.LoginFlow{
 	Description: "Log in with your Instagram email or username and password",
 	ID:          FlowIDInstagramPassword,
 }
-
-type instagramCAASubmitter func(
-	context.Context,
-	*instameow.Client,
-	map[string]string,
-) (*bridgev2.LoginStep, error)
-
-type instagramLoginCompleter func(
-	context.Context,
-	zerolog.Logger,
-	*instameow.Client,
-	*bridgev2.User,
-	*IGConnector,
-	*cookies.Cookies,
-) (*bridgev2.LoginStep, error)
-
-type instagramLoginClientFactory func(
-	context.Context,
-	zerolog.Logger,
-	*IGConnector,
-	*cookies.Cookies,
-	bool,
-) (*instameow.Client, error)
 
 func getInstaNativeClient(
 	ctx context.Context,
@@ -116,10 +89,6 @@ type MetaNativeLogin struct {
 
 	client     *instameow.Client
 	caaStarted bool
-
-	submitCAA instagramCAASubmitter
-	complete  instagramLoginCompleter
-	newClient instagramLoginClientFactory
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
@@ -131,11 +100,7 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	loginCookies := &cookies.Cookies{Platform: types.Instagram}
 	loginCookies.UpdateValues(nil)
 	log := m.User.Log.With().Str("component", "instagram_login").Logger()
-	factory := m.newClient
-	if factory == nil {
-		factory = getInstaNativeClient
-	}
-	client, err := factory(ctx, log, m.Main, loginCookies, m.Main.Config.ProxyOther)
+	client, err := getInstaNativeClient(ctx, log, m.Main, loginCookies, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
@@ -169,91 +134,23 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	}
 	m.caaStarted = true
 
-	submit := m.submitCAA
-	if submit == nil {
-		submit = func(
-			ctx context.Context,
-			client *instameow.Client,
-			userInput map[string]string,
-		) (*bridgev2.LoginStep, error) {
-			return client.DoInstagramCAALoginSteps(ctx, userInput)
-		}
-	}
-	step, err := submit(ctx, m.client, input)
+	step, err := m.client.DoInstagramCAALoginSteps(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to log in to Instagram through CAA: %w", err)
 	}
 	if step != nil {
 		return step, nil
 	}
-	return m.completeLogin(ctx)
-}
-
-func (m *MetaNativeLogin) completeLogin(ctx context.Context) (*bridgev2.LoginStep, error) {
-	complete := m.complete
-	if complete == nil {
-		complete = completeInstagramNativeLogin
-	}
 	log := m.User.Log.With().Str("component", "instameow").Logger()
-	return complete(ctx, log, m.client, m.User, m.Main, m.client.GetCookies())
-}
-
-func completeInstagramNativeLogin(
-	ctx context.Context,
-	log zerolog.Logger,
-	client *instameow.Client,
-	bridgeUser *bridgev2.User,
-	_ *IGConnector,
-	c *cookies.Cookies,
-) (*bridgev2.LoginStep, error) {
-	mobileSession := client.GetMobileSession()
-	if mobileSession == nil {
-		return nil, errors.New("instagram native login did not return a mobile session")
+	loginCookies := m.client.GetCookies()
+	if missingCookies := loginCookies.GetMissingCookieNames(); len(missingCookies) > 0 {
+		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
 	}
-	userID, err := strconv.ParseInt(mobileSession.UserID, 10, 64)
-	if err != nil || userID <= 0 {
-		return nil, errors.New("instagram mobile login returned an invalid user ID")
-	}
-	remoteName := mobileSession.Username
-	if remoteName == "" {
-		remoteName = "Instagram"
-	}
-	loginID := metaid.MakeUserLoginID(userID)
-	ul, err := bridgeUser.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		RemoteProfile: status.RemoteProfile{
-			Name:     remoteName,
-			Username: mobileSession.Username,
-		},
-		Metadata: &metaid.UserLoginMetadata{
-			Platform:      c.Platform,
-			Cookies:       c,
-			MobileSession: mobileSession,
-			IGID:          mobileSession.UserID,
-		},
-	}, nil)
+	client, err := getInstaClient(log, m.Main, loginCookies, m.Main.Config.ProxyOther)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save Instagram mobile login: %w", err)
+		return nil, err
 	}
-
-	igClient := ul.Client.(*IGClient)
-	client.SetLogger(ul.Log.With().Str("component", "instameow").Logger())
-	client.SetEventHandler(igClient.handleIGEvent)
-	igClient.Client = client
-
-	backgroundCtx := ul.Log.WithContext(igClient.Main.Bridge.BackgroundCtx)
-	go igClient.Connect(backgroundCtx)
-	log.Info().Msg("Completed native Instagram mobile login")
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeComplete,
-		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Logged in as %s (%s)", remoteName, ul.ID),
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: ul.ID,
-			UserLogin:   ul,
-		},
-	}, nil
+	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies)
 }
 
 func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {

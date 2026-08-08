@@ -120,7 +120,6 @@ const (
 )
 
 func (ic *IGClient) saveThreadMappings(ctx context.Context, info *slidetypes.ThreadInfo) error {
-	ic.rememberViewerInteropID(info.Viewer)
 	err := ic.Main.DB.PutFBIDForIGThread(ctx, info.ThreadID, info.ThreadKey, ic.UserLogin.ID)
 	if err != nil {
 		return fmt.Errorf("failed to save IG thread ID mapping %s<->%d: %w", info.ThreadID, info.ThreadKey, err)
@@ -133,17 +132,6 @@ func (ic *IGClient) saveThreadMappings(ctx context.Context, info *slidetypes.Thr
 		err = ic.Main.DB.PutFBIDForIGUser(ctx, user.ID, user.InteropMessagingUserFBID)
 		if err != nil {
 			return fmt.Errorf("failed to save IG user ID mapping %s<->%d: %w", user.ID, user.InteropMessagingUserFBID, err)
-		}
-	}
-	if info.Viewer != nil && info.Viewer.ID != "" && info.Viewer.InteropMessagingUserFBID != 0 {
-		err = ic.Main.DB.PutFBIDForIGUser(ctx, info.Viewer.ID, info.Viewer.InteropMessagingUserFBID)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to save own IG user ID mapping %s<->%d: %w",
-				info.Viewer.ID,
-				info.Viewer.InteropMessagingUserFBID,
-				err,
-			)
 		}
 	}
 	return nil
@@ -167,7 +155,6 @@ func (ic *IGClient) makeMinimalDMInfo(userID int64) *bridgev2.ChatInfo {
 }
 
 func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo {
-	ic.rememberViewerInteropID(info.Viewer)
 	if info.ThreadFBID != info.ID ||
 		(info.IsGroup && strconv.FormatInt(info.ThreadKey, 10) != info.ID) ||
 		(!info.IsGroup && len(info.Users) == 1 && info.ThreadKey != info.Users[0].InteropMessagingUserFBID) {
@@ -223,7 +210,7 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 	for _, nick := range info.Nicknames {
 		nickMap[nick.EIMUID] = &nick.Nickname
 	}
-	addMember := func(member *slidetypes.User, sender bridgev2.EventSender) {
+	addMember := func(member *slidetypes.User) {
 		var powerLevel *int
 		if info.AdminUserIDs != nil {
 			powerLevel = ptr.Ptr(powerDefault)
@@ -232,7 +219,7 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 			}
 		}
 		members.MemberMap.Add(bridgev2.ChatMember{
-			EventSender: sender,
+			EventSender: ic.makeEventSender(member.InteropMessagingUserFBID),
 			Membership:  event.MembershipJoin,
 			Nickname:    nickMap[member.InteropMessagingUserFBID],
 			PowerLevel:  powerLevel,
@@ -240,9 +227,9 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 		})
 	}
 	for _, member := range info.Users {
-		addMember(member, ic.makeEventSender(member.InteropMessagingUserFBID))
+		addMember(member)
 	}
-	addMember(info.Viewer, ic.selfEventSender())
+	addMember(info.Viewer)
 	if len(info.Users) == 1 && info.ThreadKey == info.Users[0].InteropMessagingUserFBID {
 		members.OtherUserID = metaid.MakeUserID(info.ThreadKey)
 	} else if len(info.Users) == 0 && info.ThreadKey == info.Viewer.InteropMessagingUserFBID {

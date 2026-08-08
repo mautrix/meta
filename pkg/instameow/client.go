@@ -48,7 +48,7 @@ type Client struct {
 	caaLogin                   *instagramCAALoginState
 	enableMobileTLSFingerprint bool
 	mobileLoginDevice          *types.InstagramLoginDevice
-	mobileSession              *types.InstagramMobileSession
+	mobileSession              *instagramMobileSession
 	saveMobileLoginDevice      func(context.Context, types.InstagramLoginDevice) error
 
 	socket        atomic.Pointer[dgw.Socket]
@@ -98,7 +98,6 @@ type ClientParams struct {
 	// MobileLoginDevice and SaveMobileLoginDevice retain the installation-scoped
 	// Android identity across Bridgev2 login processes and bridge restarts.
 	MobileLoginDevice     *types.InstagramLoginDevice
-	MobileSession         *types.InstagramMobileSession
 	SaveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
 }
 
@@ -122,14 +121,6 @@ func NewClient(params ClientParams) *Client {
 	if params.MobileLoginDevice != nil {
 		device := *params.MobileLoginDevice
 		c.mobileLoginDevice = &device
-	}
-	if params.MobileSession != nil {
-		session := *params.MobileSession
-		c.mobileSession = &session
-		if c.mobileLoginDevice == nil {
-			device := session.Device
-			c.mobileLoginDevice = &device
-		}
 	}
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)
@@ -258,17 +249,7 @@ func (c *Client) GetPlatform() types.Platform {
 }
 
 func (c *Client) IsAuthenticated() bool {
-	return c != nil &&
-		((c.mobileSession != nil && c.mobileSession.Authorization != "" && c.mobileSession.UserID != "") ||
-			(c.cookies.IsLoggedIn() && c.configs.BrowserConfigTable.PolarisViewer.ID != ""))
-}
-
-func (c *Client) GetMobileSession() *types.InstagramMobileSession {
-	if c == nil || c.mobileSession == nil {
-		return nil
-	}
-	session := *c.mobileSession
-	return &session
+	return c != nil && c.cookies.IsLoggedIn() && c.configs.BrowserConfigTable.PolarisViewer.ID != ""
 }
 
 func (c *Client) GetLogger() *zerolog.Logger {

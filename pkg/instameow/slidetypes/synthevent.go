@@ -33,7 +33,6 @@ func (*SeqIDUpdate) isClientEvent()             {}
 func (*ReconnectionStateUpdate) isClientEvent() {}
 func (*Delta) isClientEvent()                   {}
 func (*TypingNotification) isClientEvent()      {}
-func (*MobileThreadSync) isClientEvent()        {}
 
 type ResnapshotRequired struct{}
 
@@ -57,8 +56,4 @@ type SeqIDUpdate struct {
 
 type ReconnectionStateUpdate struct {
 	State json.RawMessage
-}
-
-type MobileThreadSync struct {
-	ThreadIGID string
 }

@@ -20,7 +20,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -33,18 +32,10 @@ func (ic *IGClient) selfEventSender() bridgev2.EventSender {
 }
 
 func (ic *IGClient) makeEventSender(id int64) bridgev2.EventSender {
-	if metaid.MakeUserLoginID(id) == ic.UserLogin.ID || id == ic.selfFBID.Load() {
-		return ic.selfEventSender()
-	}
 	return bridgev2.EventSender{
+		IsFromMe:    metaid.MakeUserLoginID(id) == ic.UserLogin.ID,
 		Sender:      metaid.MakeUserID(id),
 		SenderLogin: metaid.MakeUserLoginID(id),
-	}
-}
-
-func (ic *IGClient) rememberViewerInteropID(viewer *slidetypes.User) {
-	if viewer != nil && viewer.InteropMessagingUserFBID != 0 {
-		ic.selfFBID.Store(viewer.InteropMessagingUserFBID)
 	}
 }
 

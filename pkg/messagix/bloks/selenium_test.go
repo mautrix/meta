@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
@@ -367,33 +366,6 @@ func TestInstagramAccountSelectionStep(t *testing.T) {
 	}
 }
 
-func TestInstagramNativeStepIDs(t *testing.T) {
-	browser, err := NewBrowser(&BrowserConfig{Platform: types.Instagram})
-	if err != nil {
-		t.Fatalf("failed to create Bloks browser: %v", err)
-	}
-	for suffix, expected := range map[string]string{
-		"otp_code":             "fi.mau.meta.instagram.caa.otp_code",
-		"mfa_type":             "fi.mau.meta.instagram.caa.mfa_type",
-		"totp":                 "fi.mau.meta.instagram.caa.totp",
-		"sms":                  "fi.mau.meta.instagram.caa.sms",
-		"backup_code":          "fi.mau.meta.instagram.caa.backup_code",
-		"choose_contact_point": "fi.mau.meta.instagram.caa.choose_contact_point",
-		"whatsapp":             "fi.mau.meta.instagram.caa.whatsapp",
-		"afad_wait":            "fi.mau.meta.instagram.caa.afad_wait",
-	} {
-		if actual := browser.stepID(suffix); actual != expected {
-			t.Errorf("unexpected %s step ID %q", suffix, actual)
-		}
-	}
-	if actual := browser.rejectedCodeMessage(); actual != "Instagram rejected that code" {
-		t.Fatalf("unexpected Instagram error copy %q", actual)
-	}
-	if actual := browser.codeNotSentMessage(); actual != "That code was not sent to Instagram; please try again" {
-		t.Fatalf("unexpected Instagram local retry copy %q", actual)
-	}
-}
-
 func TestPlatformLoginErrors(t *testing.T) {
 	facebookBrowser, err := NewBrowser(&BrowserConfig{Platform: types.MessengerLiteIOS})
 	if err != nil {
@@ -675,41 +647,6 @@ func TestTOTPSubmissionResetsPendingAndUsesLocalRetryError(t *testing.T) {
 	}
 	if browser.ActionRPCCount != 0 {
 		t.Fatalf("local TOTP submission invoked %d action RPCs", browser.ActionRPCCount)
-	}
-}
-
-func TestInstagramNotificationDeliveryTimer(t *testing.T) {
-	browser, err := NewBrowser(&BrowserConfig{Platform: types.Instagram})
-	if err != nil {
-		t.Fatalf("failed to create Bloks browser: %v", err)
-	}
-	callbackCalled := false
-	callback := func() error {
-		callbackCalled = true
-		return nil
-	}
-	const interval = 1500 * time.Millisecond
-	if err = browser.Bridge.StartTimer("notif_delivery_status_polling", interval, callback); err != nil {
-		t.Fatalf("notification delivery timer was rejected: %v", err)
-	}
-	if browser.NotificationDeliveryInterval != interval {
-		t.Fatalf(
-			"unexpected notification delivery interval %s",
-			browser.NotificationDeliveryInterval,
-		)
-	}
-	if browser.NotificationDeliveryCallback == nil {
-		t.Fatal("notification delivery callback was not retained")
-	}
-	if callbackCalled {
-		t.Fatal("notification delivery callback ran synchronously")
-	}
-
-	if err = browser.Bridge.CancelTimer("notif_delivery_status_polling"); err != nil {
-		t.Fatalf("notification delivery timer cancellation was rejected: %v", err)
-	}
-	if browser.NotificationDeliveryInterval != 0 || browser.NotificationDeliveryCallback != nil {
-		t.Fatal("notification delivery timer was not cleared")
 	}
 }
 

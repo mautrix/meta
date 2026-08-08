@@ -8,23 +8,10 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/pem"
 	"strings"
 	"testing"
-
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
-
-func TestEncryptPasswordUsesInstagramEnvelope(t *testing.T) {
-	encrypted, err := EncryptPassword(types.Instagram, 145, hex.EncodeToString(make([]byte, 32)), "secret")
-	if err != nil {
-		t.Fatalf("EncryptPassword returned error: %v", err)
-	}
-	if !strings.HasPrefix(encrypted, "#PWD_INSTAGRAM_BROWSER:10:") {
-		t.Fatalf("unexpected Instagram password envelope %q", encrypted)
-	}
-}
 
 func TestEncryptInstagramAppPasswordRoundTrips(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)

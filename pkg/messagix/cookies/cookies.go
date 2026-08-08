@@ -40,10 +40,14 @@ const (
 
 	IGCookieMachineID MetaCookieName = "mid"
 	IGCookieDeviceID  MetaCookieName = "ig_did"
+	IGCookieRUR       MetaCookieName = "rur"
+	IGCookieSHBID     MetaCookieName = "shbid"
+	IGCookieSHBTS     MetaCookieName = "shbts"
 )
 
 var FBRequiredCookies = []MetaCookieName{FBCookieXS, FBCookieCUser, MetaCookieDatr}
 var IGRequiredCookies = []MetaCookieName{IGCookieSessionID, IGCookieCSRFToken, IGCookieDSUserID, IGCookieMachineID, IGCookieDeviceID}
+var IGOptionalCookies = []MetaCookieName{IGCookieRUR, IGCookieSHBID, IGCookieSHBTS}
 
 type Cookies struct {
 	Platform types.Platform
@@ -155,17 +159,65 @@ func (c *Cookies) Set(key MetaCookieName, value string) {
 }
 
 func (c *Cookies) UpdateFromResponse(r *http.Response) {
+	if c == nil || r == nil {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	// Note: this will fail to parse rur, shbid and shbts because they have quotes and backslashes
+	if c.values == nil {
+		c.values = make(map[MetaCookieName]string)
+	}
+	now := time.Now()
 	for _, cookie := range r.Cookies() {
-		if cookie.MaxAge == 0 || cookie.Expires.Before(time.Now()) {
+		if cookie.MaxAge < 0 || (!cookie.Expires.IsZero() && cookie.Expires.Before(now)) {
 			delete(c.values, MetaCookieName(cookie.Name))
 		} else {
 			c.values[MetaCookieName(cookie.Name)] = cookie.Value
 		}
 	}
+	if c.Platform == types.Instagram {
+		for _, rawCookie := range r.Header.Values("Set-Cookie") {
+			c.updateRawIGRoutingCookie(rawCookie, now)
+		}
+	}
 	if wwwClaim := r.Header.Get("x-ig-set-www-claim"); wwwClaim != "" {
 		c.IGWWWClaim = wwwClaim
+	}
+}
+
+func (c *Cookies) updateRawIGRoutingCookie(rawCookie string, now time.Time) {
+	pair, attributes, _ := strings.Cut(rawCookie, ";")
+	name, value, ok := strings.Cut(strings.TrimSpace(pair), "=")
+	if !ok {
+		return
+	}
+	cookieName := MetaCookieName(strings.TrimSpace(name))
+	if !slices.Contains(IGOptionalCookies, cookieName) {
+		return
+	}
+
+	var maxAge *int64
+	expired := false
+	for _, rawAttribute := range strings.Split(attributes, ";") {
+		attribute, attributeValue, hasValue := strings.Cut(strings.TrimSpace(rawAttribute), "=")
+		if !hasValue {
+			continue
+		}
+		switch strings.ToLower(attribute) {
+		case "max-age":
+			parsedMaxAge, err := strconv.ParseInt(strings.TrimSpace(attributeValue), 10, 64)
+			if err == nil {
+				maxAge = &parsedMaxAge
+			}
+		case "expires":
+			expires, err := http.ParseTime(strings.TrimSpace(attributeValue))
+			expired = err == nil && expires.Before(now)
+		}
+	}
+	remove := (maxAge != nil && *maxAge <= 0) || (maxAge == nil && expired)
+	if remove {
+		delete(c.values, cookieName)
+	} else {
+		c.values[cookieName] = strings.TrimSpace(value)
 	}
 }

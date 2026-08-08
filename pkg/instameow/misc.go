@@ -100,8 +100,6 @@ func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string)
 		return nil, fmt.Errorf("failed to fetch the media by id %s: %w", mediaID, err)
 	}
 
-	c.cookies.UpdateFromResponse(resp)
-
 	var mediaInfo *responses.FetchMediaResponse
 	err = json.Unmarshal(respBody, &mediaInfo)
 	if err != nil {
@@ -136,8 +134,6 @@ func (c *Client) FetchReel(ctx context.Context, reelIDs []string, mediaID string
 		c.checkResponseError(err)
 		return nil, fmt.Errorf("failed to fetch reels by ids %v: %w", reelIDs, err)
 	}
-
-	c.cookies.UpdateFromResponse(resp)
 
 	var reelInfo *responses.ReelInfoResponse
 	err = json.Unmarshal(respBody, &reelInfo)

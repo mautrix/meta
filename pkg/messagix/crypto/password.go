@@ -71,7 +71,7 @@ func EncryptPassword(platform types.Platform, pubKeyId int, pubKey, password str
 	finalString := base64.StdEncoding.EncodeToString(buf.Bytes())
 
 	var formattedStr string
-	if platform.IsInstagram() {
+	if platform == 0 {
 		formattedStr = fmt.Sprintf("#PWD_INSTAGRAM_BROWSER:10:%s:%s", string(ts), finalString)
 	} else {
 		formattedStr = fmt.Sprintf("#PWD_BROWSER:5:%s:%s", string(ts), finalString)

@@ -56,10 +56,6 @@ func (c *Client) makeNewSocket() {
 }
 
 func (c *Client) Connect(ctx context.Context) {
-	if c.mobileSession != nil {
-		c.connectMobileRealtime(ctx)
-		return
-	}
 	sock := c.socket.Load()
 	if sock == nil {
 		c.log.Error().Msg("Connect() called without initializing socket")
@@ -154,7 +150,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 		Log:        c.log.With().Str("socket", "main").Logger(),
 		Facebook:   false,
 		AppID:      c.configs.BrowserConfigTable.DGWWebConfig.AppID,
-		UserID:     c.configs.BrowserConfigTable.PolarisViewer.ID,
+		UserID:     c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid,
 		DeviceID:   c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 		OnConnect: func(ctx context.Context) error {
 			_, err := c.socket.Load().EstablishStream(ctx, dgw.StreamInit{

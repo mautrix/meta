@@ -66,12 +66,12 @@ type MetaCookieLogin struct {
 
 var _ bridgev2.LoginProcessCookies = (*MetaCookieLogin)(nil)
 
-func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridgev2.LoginCookieField {
+func cookieListToFields(cookies []cookies.MetaCookieName, domain string, required bool) []bridgev2.LoginCookieField {
 	fields := make([]bridgev2.LoginCookieField, len(cookies))
 	for i, cookie := range cookies {
 		fields[i] = bridgev2.LoginCookieField{
 			ID:       string(cookie),
-			Required: true,
+			Required: required,
 			Sources: []bridgev2.LoginCookieFieldSource{
 				{
 					Type:         bridgev2.LoginCookieTypeCookie,
@@ -91,8 +91,11 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			//UserAgent:         useragent.UserAgent,
-			URL:               "https://www.instagram.com/accounts/login/",
-			Fields:            cookieListToFields(cookies.IGRequiredCookies, "instagram.com"),
+			URL: "https://www.instagram.com/accounts/login/",
+			Fields: append(
+				cookieListToFields(cookies.IGRequiredCookies, "instagram.com", true),
+				cookieListToFields(cookies.IGOptionalCookies, "instagram.com", false)...,
+			),
 			WaitForURLPattern: "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$",
 		},
 	}, nil
