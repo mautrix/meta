@@ -104,6 +104,10 @@ func (c *Client) GetProfile(ctx context.Context, igid string) (*slidetypes.Profi
 	return makeGraphQLRequest[*slidetypes.ProfilePageResponse](ctx, c, "PolarisProfilePageContentQuery", slidetypes.MakeProfilePageRequest(igid), true)
 }
 
+func (c *Client) GetUserForNewDM(ctx context.Context, fbid int64) (*slidetypes.UserInfoResponse, error) {
+	return makeGraphQLRequest[*slidetypes.UserInfoResponse](ctx, c, "useIGDCreateOptimisticThreadUserQuery", &slidetypes.GetUserInfoByFBIDRequest{MessagingUserFBID: fbid}, true)
+}
+
 func (c *Client) SearchUsers(ctx context.Context, query string) (*slidetypes.SearchResponse, error) {
 	return makeGraphQLRequest[*slidetypes.SearchResponse](ctx, c, "IGDOmniPickerSearchResultsListQuery", slidetypes.SearchRequest{SearchText: query}, true)
 }

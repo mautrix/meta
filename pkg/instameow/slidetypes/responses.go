@@ -144,3 +144,7 @@ type CreateGroupResponse struct {
 		Thread *FolderOnlyThread `json:"as_ig_direct_thread"`
 	} `json:"xig_ig_direct_create_thread"`
 }
+
+type UserInfoResponse struct {
+	Data *User `json:"xig_user_from_messaging_user_fbid"`
+}

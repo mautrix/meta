@@ -229,3 +229,7 @@ type CreateGroupRequest struct {
 	OfflineThreadingID string   `json:"offline_threading_id"`
 	EntryPoint         any      `json:"entry_point"`
 }
+
+type GetUserInfoByFBIDRequest struct {
+	MessagingUserFBID int64 `json:"messaging_user_fbid,string"`
+}

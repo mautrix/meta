@@ -75,6 +75,13 @@ func (ic *IGClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 	} else if createChat {
 		igChatID, err := ic.ensureIGIDDirect(ctx, id)
 		if errors.Is(err, instameow.ErrThreadNotFound) {
+			userResp, err := ic.Client.GetUserForNewDM(ctx, id)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get user info for new DM")
+			} else {
+				userInfo = ic.wrapUserInfo(userResp.Data)
+				userInfo.IsBot = nil
+			}
 			chat = &bridgev2.CreateChatResponse{
 				PortalKey:  portalKey,
 				Portal:     portal,
