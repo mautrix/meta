@@ -102,15 +102,9 @@ func (ic *IGClient) ensureIGIDDirect(ctx context.Context, fbid int64) (string, e
 }
 
 func (ic *IGClient) fetchIGIDsDirect(ctx context.Context, fbid int64) (*instameow.ThreadIGIDs, error) {
-	resp, err := ic.Client.FetchThreadIDs(ctx, fbid)
+	res, err := ic.Client.FetchThreadID(ctx, fbid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch IGIDs: %w", err)
-	}
-	res, ok := resp[fbid]
-	if !ok {
-		return nil, fmt.Errorf("server didn't return route definition for %d", fbid)
-	} else if res == nil {
-		return nil, fmt.Errorf("server returned nil route definition for %d", fbid)
 	}
 	err = ic.Main.DB.PutFBIDForIGThread(ctx, res.LongID, fbid, ic.UserLogin.ID)
 	if err != nil {

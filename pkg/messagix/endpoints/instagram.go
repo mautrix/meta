@@ -26,11 +26,12 @@ var InstagramEndpoints = map[string]string{
 	"icdc_fetch":    "https://reg-e2ee.instagram.com/v2/fb_icdc_fetch",
 	"icdc_register": "https://reg-e2ee.instagram.com/v2/fb_register_v2",
 
-	"media_upload":     instaBaseUrl + "/ajax/mercury/upload.php?",
-	"rupload_ig":       "https://rupload.facebook.com/messenger_image/",
-	"i_graphql":        "https://i.instagram.com/graphql_www",
-	"route_definition": instaBaseUrl + "/ajax/route-definition/",
+	"media_upload": instaBaseUrl + "/ajax/mercury/upload.php?",
+	"rupload_ig":   "https://rupload.facebook.com/messenger_image/",
+	"i_graphql":    "https://i.instagram.com/graphql_www",
 
+	"navigation":            instaBaseUrl + "/ajax/navigation/",
+	"route_definition":      instaBaseUrl + "/ajax/route-definition/",
 	"bulk_route_definition": instaBaseUrl + "/ajax/bulk-route-definitions/",
 
 	"web_profile_info": instaApiV1Url + "/users/web_profile_info/?",
