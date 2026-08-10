@@ -263,11 +263,7 @@ func evalAs[T any](ctx context.Context, i *Interpreter, form *BloksScriptNode, w
 	return cast, nil
 }
 
-func evalFloat(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (float64, error) {
-	val, err := i.Evaluate(ctx, form)
-	if err != nil {
-		return 0, err
-	}
+func castFloat(val *BloksScriptLiteral, where string) (float64, error) {
 	if cast, ok := val.Value().(float64); ok {
 		return cast, nil
 	}
@@ -275,6 +271,14 @@ func evalFloat(ctx context.Context, i *Interpreter, form *BloksScriptNode, where
 		return float64(cast), nil
 	}
 	return 0, fmt.Errorf("expected int64 or float64 in %s, got %T", where, val.Value())
+}
+
+func evalFloat(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (float64, error) {
+	val, err := i.Evaluate(ctx, form)
+	if err != nil {
+		return 0, err
+	}
+	return castFloat(val, where)
 }
 
 func evalTreeProp35(ctx context.Context, i *Interpreter, form *BloksScriptNode, where string) (string, error) {
@@ -557,6 +561,29 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(first + second), nil
+	case "jmu":
+		lhs, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		rhs, err := i.Evaluate(ctx, &call.Args[1])
+		if err != nil {
+			return nil, err
+		}
+		lhsInt, lhsIsInt := lhs.Value().(int64)
+		rhsInt, rhsIsInt := rhs.Value().(int64)
+		if lhsIsInt && rhsIsInt {
+			return BloksLiteralOf(lhsInt + rhsInt), nil
+		}
+		lhsFloat, err := castFloat(lhs, "jmu lhs")
+		if err != nil {
+			return nil, err
+		}
+		rhsFloat, err := castFloat(rhs, "jmu rhs")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(lhsFloat + rhsFloat), nil
 	case "bk.action.bloks.GetScript":
 		name, err := evalAs[string](ctx, i, &call.Args[0], "getscript")
 		if err != nil {
