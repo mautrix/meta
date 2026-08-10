@@ -36,7 +36,20 @@ func EncryptPassword(platform types.Platform, pubKeyId int, pubKey, password str
 	if platform.IsMessengerLite() {
 		return encryptPasswordLightspeed(pubKeyId, pubKey, password)
 	}
+	format := "#PWD_BROWSER:5"
+	if platform == types.Unset {
+		format = "#PWD_INSTAGRAM_BROWSER:10"
+	}
+	return encryptPasswordNacl(pubKeyId, pubKey, password, format)
+}
 
+// EncryptInstagramWebPassword creates the password envelope used by
+// Instagram's current web login endpoint.
+func EncryptInstagramWebPassword(pubKeyId int, pubKey, password string) (string, error) {
+	return encryptPasswordNacl(pubKeyId, pubKey, password, "#PWD_BROWSER:10")
+}
+
+func encryptPasswordNacl(pubKeyId int, pubKey, password, format string) (string, error) {
 	pubKeyBytes, err := hex.DecodeString(pubKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode pubKey, must be a hex-encoded string: %w", err)
@@ -70,14 +83,7 @@ func EncryptPassword(platform types.Platform, pubKeyId int, pubKey, password str
 
 	finalString := base64.StdEncoding.EncodeToString(buf.Bytes())
 
-	var formattedStr string
-	if platform == 0 {
-		formattedStr = fmt.Sprintf("#PWD_INSTAGRAM_BROWSER:10:%s:%s", string(ts), finalString)
-	} else {
-		formattedStr = fmt.Sprintf("#PWD_BROWSER:5:%s:%s", string(ts), finalString)
-	}
-
-	return formattedStr, nil
+	return fmt.Sprintf("%s:%s:%s", format, string(ts), finalString), nil
 }
 
 // EncryptInstagramAppPassword creates the password envelope used by the

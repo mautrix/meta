@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -27,6 +28,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -51,6 +53,7 @@ func getInstaNativeClient(
 	conn *IGConnector,
 	c *cookies.Cookies,
 	useProxy bool,
+	transport http.RoundTripper,
 ) (*instameow.Client, error) {
 	var loginDevice *types.InstagramLoginDevice
 	if conn.DB != nil {
@@ -74,7 +77,9 @@ func getInstaNativeClient(
 			return conn.DB.PutInstagramLoginDevice(ctx, device)
 		},
 	})
-	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
+	if transport != nil {
+		client.GetHTTP().SetLoginHTTPTransport(transport)
+	} else if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
 		client.GetHTTP().GetNewProxy = conn.getProxy
 		if !client.GetHTTP().UpdateProxy("login") {
 			return nil, errors.New("failed to update proxy")
@@ -89,29 +94,62 @@ type MetaNativeLogin struct {
 
 	client     *instameow.Client
 	caaStarted bool
+	transport  http.RoundTripper
+	identifier string
+	password   string
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
+var _ bridgev2.LoginProcessWithParams = (*MetaNativeLogin)(nil)
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	return m.StartWithParams(ctx, bridgev2.LoginStartParams{})
+}
+
+func (m *MetaNativeLogin) StartWithParams(
+	ctx context.Context,
+	params bridgev2.LoginStartParams,
+) (*bridgev2.LoginStep, error) {
+	m.transport = params.HTTP
+	return m.start(ctx, "Enter your Instagram email or username and password.")
+}
+
+func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*bridgev2.LoginStep, error) {
+	m.client = nil
+	m.caaStarted = false
+	m.clearCredentials()
 	if m.User == nil || m.Main == nil {
 		return nil, errors.New("instagram login is not initialized")
 	}
 	loginCookies := &cookies.Cookies{Platform: types.Instagram}
 	loginCookies.UpdateValues(nil)
 	log := m.User.Log.With().Str("component", "instagram_login").Logger()
-	client, err := getInstaNativeClient(ctx, log, m.Main, loginCookies, m.Main.Config.ProxyOther)
+	log.Debug().Bool("client_http", m.transport != nil).Msg("Starting Instagram native login flow")
+	client, err := getInstaNativeClient(
+		ctx,
+		log,
+		m.Main,
+		loginCookies,
+		m.Main.Config.ProxyOther,
+		m.transport,
+	)
 	if err != nil {
 		return nil, err
 	}
 	m.client = client
-	m.caaStarted = false
-	return instagramCredentialsStep("Enter your Instagram email or username and password."), nil
+	return instagramCredentialsStep(instructions), nil
 }
 
 func (m *MetaNativeLogin) Cancel() {
 	m.client = nil
 	m.caaStarted = false
+	m.transport = nil
+	m.clearCredentials()
+}
+
+func (m *MetaNativeLogin) clearCredentials() {
+	m.identifier = ""
+	m.password = ""
 }
 
 func (m *MetaNativeLogin) SubmitUserInput(
@@ -131,15 +169,34 @@ func (m *MetaNativeLogin) SubmitUserInput(
 				"Enter both your Instagram email or username and password.",
 			), nil
 		}
+		m.identifier = identifier
+		m.password = password
 	}
 	m.caaStarted = true
 
 	step, err := m.client.DoInstagramCAALoginSteps(ctx, input)
 	if err != nil {
+		if httpclient.IsClientHTTPError(err) {
+			m.User.Log.Warn().Err(err).Msg("Instagram login request failed on the client")
+			return m.start(ctx, "The request did not complete on this device. Please try again.")
+		}
+		m.clearCredentials()
 		return nil, fmt.Errorf("failed to log in to Instagram through CAA: %w", err)
 	}
 	if step != nil {
 		return step, nil
+	}
+	identifier, password := m.identifier, m.password
+	m.clearCredentials()
+	if !m.client.IsAuthenticated() {
+		err = m.client.CreateInstagramWebSession(ctx, identifier, password)
+		if err != nil {
+			if httpclient.IsClientHTTPError(err) {
+				m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
+				return m.start(ctx, "The request did not complete on this device. Please try again.")
+			}
+			return nil, fmt.Errorf("failed to create Instagram web session: %w", err)
+		}
 	}
 	log := m.User.Log.With().Str("component", "instameow").Logger()
 	loginCookies := m.client.GetCookies()
@@ -150,6 +207,10 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	if err != nil {
 		return nil, err
 	}
+	loginTransport := m.transport
+	m.transport = nil
+	client.GetHTTP().SetLoginHTTPTransport(loginTransport)
+	defer client.GetHTTP().SetLoginHTTPTransport(nil)
 	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies)
 }
 

@@ -25,6 +25,13 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
+// These values mirror bridgev2/matrix. The upstream constants explicitly allow
+// bridges to check the wire values without importing the Matrix package.
+const (
+	clientHTTPErrorPrefix = "error from client: "
+	clientHTTPProto       = "MauClientHTTP/1.0"
+)
+
 type HTTPClient struct {
 	parent          Client
 	log             *zerolog.Logger
@@ -37,6 +44,7 @@ type HTTPClient struct {
 	websocketClient *http.Client
 	proxyAddr       string
 	GetNewProxy     func(reason string) (string, error)
+	loginTransport  http.RoundTripper
 
 	LogRedactedBloksPayloads bool
 	mobileTLSFingerprint     bool
@@ -109,6 +117,27 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 		c.HTTP.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true,
 		}
+	}
+	if c.loginTransport != nil {
+		c.HTTP.Transport = c.loginTransport
+	}
+}
+
+// SetLoginHTTPTransport replaces the transport used for ordinary HTTP requests
+// during login. The override is retained when the client switches between its
+// web and mobile TLS profiles. Websocket transports are not affected.
+func (c *HTTPClient) SetLoginHTTPTransport(transport http.RoundTripper) {
+	if c == nil {
+		return
+	}
+	if transport == nil && c.loginTransport == nil {
+		return
+	}
+	c.loginTransport = transport
+	if transport == nil || c.HTTP == nil {
+		c.SetConfig(c.HTTPSettings)
+	} else {
+		c.HTTP.Transport = transport
 	}
 }
 
@@ -390,6 +419,10 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 		return nil
 	}
 	c.parent.GetCookies().UpdateFromResponse(req.Response)
+	if c.parent.GetPlatform() == types.Instagram && isClientHTTP(req.Response, nil) &&
+		isInstagramRedirect(req, via) {
+		req.Header.Set("Cookie", c.parent.GetCookies().String())
+	}
 	if len(via) > 5 {
 		return ErrTooManyRedirects
 	}
@@ -424,6 +457,16 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 	return nil
 }
 
+func isInstagramHost(host string) bool {
+	return strings.EqualFold(host, "instagram.com") ||
+		strings.HasSuffix(strings.ToLower(host), ".instagram.com")
+}
+
+func isInstagramRedirect(req *http.Request, via []*http.Request) bool {
+	return len(via) > 0 && isInstagramHost(req.URL.Hostname()) &&
+		isInstagramHost(via[len(via)-1].URL.Hostname())
+}
+
 func (c *HTTPClient) MakeRequest(
 	ctx context.Context,
 	url string,
@@ -437,9 +480,15 @@ func (c *HTTPClient) MakeRequest(
 	})
 }
 
+// IsClientHTTPError reports whether the Beeper client failed to execute a
+// request delegated through the Bridgev2 client HTTP transport.
+func IsClientHTTPError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), clientHTTPErrorPrefix)
+}
+
 func isClientHTTP(resp *http.Response, err error) bool {
-	return (err != nil && strings.Contains(err.Error(), "error from client: ")) ||
-		(resp != nil && resp.Proto == "MauClientHTTP/1.0")
+	return IsClientHTTPError(err) ||
+		(resp != nil && resp.Proto == clientHTTPProto)
 }
 
 func (c *HTTPClient) makeRequest(

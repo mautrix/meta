@@ -2,12 +2,20 @@ package igconnector
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 )
+
+type nativeLoginRoundTripper struct{}
+
+func (*nativeLoginRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, nil
+}
 
 func TestInstagramLoginFlowsExposeNativeFirstAndKeepCookies(t *testing.T) {
 	connector := &IGConnector{}
@@ -60,6 +68,28 @@ func TestInstagramCookieLoginIncludesOptionalRoutingCookies(t *testing.T) {
 
 func TestInstagramNativeCredentialsStep(t *testing.T) {
 	assertInstagramCredentialsStep(t, instagramCredentialsStep("Enter your credentials"))
+}
+
+func TestInstagramNativeLoginUsesClientHTTPTransport(t *testing.T) {
+	transport := &nativeLoginRoundTripper{}
+	login := &MetaNativeLogin{
+		User: &bridgev2.User{Log: zerolog.Nop()},
+		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
+	}
+	step, err := login.StartWithParams(context.Background(), bridgev2.LoginStartParams{
+		HTTP: transport,
+	})
+	if err != nil {
+		t.Fatalf("failed to start native login: %v", err)
+	}
+	assertInstagramCredentialsStep(t, step)
+	if login.client.GetHTTP().HTTP.Transport != transport {
+		t.Fatal("native login did not install the client HTTP transport")
+	}
+	login.Cancel()
+	if login.transport != nil {
+		t.Fatal("cancel did not clear the client HTTP transport")
+	}
 }
 
 func assertInstagramCredentialsStep(t *testing.T, step *bridgev2.LoginStep) {

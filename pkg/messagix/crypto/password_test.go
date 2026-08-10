@@ -11,7 +11,34 @@ import (
 	"encoding/pem"
 	"strings"
 	"testing"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
+
+func TestInstagramWebPasswordUsesCurrentPrefixWithoutChangingLegacyFormat(t *testing.T) {
+	publicKey := strings.Repeat("00", 32)
+	webPassword, err := EncryptInstagramWebPassword(1, publicKey, "test-password")
+	if err != nil {
+		t.Fatalf("failed to encrypt Instagram web password: %v", err)
+	}
+	if !strings.HasPrefix(webPassword, "#PWD_BROWSER:10:") {
+		t.Fatalf("unexpected Instagram web password prefix: %q", webPassword)
+	}
+	legacyPassword, err := EncryptPassword(types.Unset, 1, publicKey, "test-password")
+	if err != nil {
+		t.Fatalf("failed to encrypt legacy Instagram password: %v", err)
+	}
+	if !strings.HasPrefix(legacyPassword, "#PWD_INSTAGRAM_BROWSER:10:") {
+		t.Fatalf("unexpected legacy Instagram password prefix: %q", legacyPassword)
+	}
+	defaultPassword, err := EncryptPassword(types.Instagram, 1, publicKey, "test-password")
+	if err != nil {
+		t.Fatalf("failed to encrypt default browser password: %v", err)
+	}
+	if !strings.HasPrefix(defaultPassword, "#PWD_BROWSER:5:") {
+		t.Fatalf("unexpected default browser password prefix: %q", defaultPassword)
+	}
+}
 
 func TestEncryptInstagramAppPasswordRoundTrips(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
