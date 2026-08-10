@@ -355,8 +355,10 @@ func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridge
 
 func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.MatrixDeleteChat) error {
 	meta, err := ic.ensureIGID(ctx, chat.Portal)
-	if err != nil {
-		// TODO treat 404 as success? (thread already deleted)
+	if errors.Is(err, instameow.ErrThreadNotFound) {
+		zerolog.Ctx(ctx).Debug().Err(err).Msg("Ignoring thread not found error on delete chat request")
+		return nil
+	} else if err != nil {
 		return err
 	}
 
