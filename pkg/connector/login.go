@@ -322,7 +322,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
 	}
 
-	log := m.User.Log.With().Str("component", "messagix").Logger()
+	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 	client, err := getMessagixClient(log, m.Main, c, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
@@ -345,7 +345,7 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 }
 
 func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
-	log := m.User.Log.With().Str("component", "messagix").Logger()
+	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 	log.Debug().
 		Bool("client_http", params.HTTP != nil).
 		Msg("Starting Messenger Lite login flow")
@@ -375,7 +375,7 @@ func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error)
 }
 
 func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
-	log := m.User.Log.With().Str("component", "messagix").Logger()
+	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
