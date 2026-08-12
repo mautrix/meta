@@ -489,26 +489,8 @@ func mainE() error {
 			return err
 		}
 	} else if *doMethods {
-		foundMethods := map[string]*bloks.BloksTreeComponent{}
-		methodNames := []string{}
-
-		items := bundle.FindDescendant(bloks.FilterByAttribute(
-			"bk.data.TextSpan", "text", "Choose a way to confirm it’s you",
-		)).
-			FindAncestor(bloks.FilterByComponent("bk.components.Collection")).
-			FindDescendant(bloks.FilterByAttribute("bk.components.BoxDecoration", "border_width", "1dp")).
-			FindAncestor(bloks.FilterByComponent("bk.components.Flexbox")).
-			GetChildren("children")
-
-		for _, item := range items {
-			span := item.
-				FindDescendant(bloks.FilterByComponent("bk.components.RichText")).
-				GetChildren("spans")[0].
-				FindDescendant(bloks.FilterByComponent("bk.data.TextSpan"))
-			method := span.GetAttribute("text")
-			foundMethods[method] = span
-			methodNames = append(methodNames, method)
-		}
+		log := zerolog.Ctx(ctx)
+		foundMethods, methodNames, _ := bundle.FindMFAMethods(log)
 
 		fmt.Printf("Found %d MFA method(s):\n", len(foundMethods))
 		for _, methodName := range methodNames {

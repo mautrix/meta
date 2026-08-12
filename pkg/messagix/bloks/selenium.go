@@ -601,7 +601,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.ap.two_step_verification.limbo_proactive":
 				newState = StateAFADPage
 			case "com.bloks.www.ap.two_step_verification.challenge_picker",
-				"com.bloks.www.two_step_verification.method_picker":
+				"com.bloks.www.two_step_verification.method_picker",
+				"com.bloks.www.caa.ar.initiate_view":
 				newState = StateChooseMFAPage
 			case "com.bloks.www.caa.ar.auth_method", "com.bloks.www.ap.two_step_verification.google_oauth":
 				newState = StateMFALandingPage
@@ -715,6 +716,78 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 }
 
 var definitelyNotPhoneNumberRegexp = regexp.MustCompile(`^.*[@a-zA-Z].*$`)
+
+var mfaPickerMethods = map[string]bool{
+	"Notification on another device": true,
+	"Authentication app":             true,
+	"Email":                          true,
+	"Text message":                   true,
+	"Backup code":                    true,
+	"WhatsApp":                       true,
+	"Verify with Google":             false,
+}
+
+// caa.ar.initiate_view renders the same picker with its own labels, and puts a
+// profile photo behind the same 1dp border as the rows.
+var initiateViewMethods = map[string]string{
+	"Get code or link via WhatsApp": "WhatsApp",
+	"Get code via email":            "Email",
+	"Get code via SMS":              "Text message",
+	"Enter password to log in":      "",
+	"Log into another account":      "",
+}
+
+// FindMFAMethods returns the supported methods on an MFA picker page keyed by
+// canonical name, the names in display order, and how many recognised but
+// unsupported methods were skipped.
+func (bb *BloksBundle) FindMFAMethods(log *zerolog.Logger) (map[string]*BloksTreeComponent, []string, int) {
+	foundMethods := map[string]*BloksTreeComponent{}
+	methodNames := []string{}
+	numIgnored := 0
+
+	if bb.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Choose a way to log in.")) != nil {
+		for _, span := range bb.FindDescendants(FilterByComponent("bk.data.TextSpan")) {
+			label := span.GetAttribute("text")
+			method, isMethod := initiateViewMethods[label]
+			if !isMethod {
+				continue
+			} else if method == "" {
+				log.Warn().Str("mfa_method", label).Msg("Ignoring unsupported MFA method")
+				numIgnored += 1
+				continue
+			} else if foundMethods[method] != nil {
+				continue
+			}
+			foundMethods[method] = span
+			methodNames = append(methodNames, method)
+		}
+		return foundMethods, methodNames, numIgnored
+	}
+
+	listItems := bb.FindDescendant(FilterByAttribute(
+		"bk.data.TextSpan", "text", "Choose a way to confirm it’s you",
+	)).
+		FindAncestor(FilterByComponent("bk.components.Collection")).
+		FindDescendant(FilterByAttribute("bk.components.BoxDecoration", "border_width", "1dp")).
+		FindAncestor(FilterByComponent("bk.components.Flexbox")).
+		GetChildren("children")
+
+	for _, item := range listItems {
+		span := item.
+			FindDescendant(FilterByComponent("bk.components.RichText")).
+			GetChildren("spans")[0].
+			FindDescendant(FilterByComponent("bk.data.TextSpan"))
+		method := span.GetAttribute("text")
+		if !mfaPickerMethods[method] {
+			log.Warn().Str("mfa_method", method).Msg("Ignoring unsupported MFA method")
+			numIgnored += 1
+			continue
+		}
+		foundMethods[method] = span
+		methodNames = append(methodNames, method)
+	}
+	return foundMethods, methodNames, numIgnored
+}
 
 func (b *Browser) getCodeInstructions() string {
 	return b.CurrentPage.
@@ -1214,42 +1287,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateChooseMFAPage:
-		foundMethods := map[string]*BloksTreeComponent{}
-		methodNames := []string{}
-
-		knownMethods := map[string]bool{
-			"Notification on another device": true,
-			"Authentication app":             true,
-			"Email":                          true,
-			"Text message":                   true,
-			"Backup code":                    true,
-			"WhatsApp":                       true,
-			"Verify with Google":             false,
-		}
-
-		listItems := b.CurrentPage.FindDescendant(FilterByAttribute(
-			"bk.data.TextSpan", "text", "Choose a way to confirm it’s you",
-		)).
-			FindAncestor(FilterByComponent("bk.components.Collection")).
-			FindDescendant(FilterByAttribute("bk.components.BoxDecoration", "border_width", "1dp")).
-			FindAncestor(FilterByComponent("bk.components.Flexbox")).
-			GetChildren("children")
-
-		numIgnored := 0
-		for _, item := range listItems {
-			span := item.
-				FindDescendant(FilterByComponent("bk.components.RichText")).
-				GetChildren("spans")[0].
-				FindDescendant(FilterByComponent("bk.data.TextSpan"))
-			method := span.GetAttribute("text")
-			if !knownMethods[method] {
-				log.Warn().Str("mfa_method", method).Msg("Ignoring unsupported MFA method")
-				numIgnored += 1
-				continue
-			}
-			foundMethods[method] = span
-			methodNames = append(methodNames, method)
-		}
+		foundMethods, methodNames, numIgnored := b.CurrentPage.FindMFAMethods(log)
 
 		if len(foundMethods) == 0 {
 			if numIgnored == 0 {
