@@ -1322,6 +1322,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.bloks.DismissKeyboard",
 		"bk.action.bloks.ShowKeyboard",
 		"bk.action.accessibility.Announcement",
+		"bk.action.toast.ShowToastV2",
 		"bk.action.accessibility.SetFocus",
 		"bk.action.qpl.userflow.MarkPointV2",
 		"bk.action.qpl.userflow.EndFlowSuccessV2",
