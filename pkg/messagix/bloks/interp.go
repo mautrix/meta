@@ -45,10 +45,11 @@ type InterpBridge struct {
 type Interpreter struct {
 	Bridge InterpBridge
 
-	Scripts    map[BloksScriptID]*BloksLambda
-	Payloads   map[BloksPayloadID]*BloksBundleRef
-	LocalVars  map[BloksVariableID]*BloksScriptLiteral
-	GlobalVars map[BloksVariableID]*BloksScriptLiteral
+	Scripts      map[BloksScriptID]*BloksLambda
+	Payloads     map[BloksPayloadID]*BloksBundleRef
+	LocalVars    map[BloksVariableID]*BloksScriptLiteral
+	GlobalVars   map[BloksVariableID]*BloksScriptLiteral
+	SessionStore map[string]*BloksScriptLiteral
 }
 
 func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *Interpreter, clearLocals bool) (*Interpreter, error) {
@@ -57,11 +58,13 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	payloads := map[BloksPayloadID]*BloksBundleRef{}
 	globals := map[BloksVariableID]*BloksScriptLiteral{}
 	locals := map[BloksVariableID]*BloksScriptLiteral{}
+	sessionStore := map[string]*BloksScriptLiteral{}
 	if old != nil {
 		maps.Copy(scripts, old.Scripts)
 		maps.Copy(payloads, old.Payloads)
 		maps.Copy(globals, old.GlobalVars)
 		maps.Copy(locals, old.LocalVars)
+		maps.Copy(sessionStore, old.SessionStore)
 	}
 	for id, script := range p.Scripts {
 		scripts[id] = &BloksLambda{
@@ -99,10 +102,11 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 	interp := Interpreter{
 		Bridge: *br,
 
-		Scripts:    scripts,
-		Payloads:   payloads,
-		GlobalVars: globals,
-		LocalVars:  locals,
+		Scripts:      scripts,
+		Payloads:     payloads,
+		GlobalVars:   globals,
+		LocalVars:    locals,
+		SessionStore: sessionStore,
 	}
 	br = &interp.Bridge
 	if br.DeviceID == "" {
@@ -561,7 +565,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(first + second), nil
-	case "jmu":
+	case "jmu", "jn3":
 		lhs, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
 			return nil, err
@@ -570,18 +574,25 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
+		subtract := call.Function == "jn3"
 		lhsInt, lhsIsInt := lhs.Value().(int64)
 		rhsInt, rhsIsInt := rhs.Value().(int64)
 		if lhsIsInt && rhsIsInt {
+			if subtract {
+				return BloksLiteralOf(lhsInt - rhsInt), nil
+			}
 			return BloksLiteralOf(lhsInt + rhsInt), nil
 		}
-		lhsFloat, err := castFloat(lhs, "jmu lhs")
+		lhsFloat, err := castFloat(lhs, string(call.Function)+" lhs")
 		if err != nil {
 			return nil, err
 		}
-		rhsFloat, err := castFloat(rhs, "jmu rhs")
+		rhsFloat, err := castFloat(rhs, string(call.Function)+" rhs")
 		if err != nil {
 			return nil, err
+		}
+		if subtract {
+			return BloksLiteralOf(lhsFloat - rhsFloat), nil
 		}
 		return BloksLiteralOf(lhsFloat + rhsFloat), nil
 	case "bk.action.bloks.GetScript":
@@ -1254,6 +1265,23 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s", msg)
+	case "bk.action.callback.MakeWithScopeOnly":
+		return i.Evaluate(ctx, &call.Args[0])
+	case "bk.action.session_store.Get":
+		return BloksLiteralOf(i.SessionStore), nil
+	case "bk.action.map.Update":
+		target, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.update target")
+		if err != nil {
+			return nil, err
+		}
+		updates, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[1], "map.update source")
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(target, updates)
+		return BloksLiteralOf(target), nil
+	case "bk.action.io.CurrentTimeMillis":
+		return BloksLiteralOf(time.Now().UnixMilli()), nil
 	case "bk.action.io.Toast":
 		msg, err := evalAs[string](ctx, i, &call.Args[0], "toast")
 		if err != nil {
