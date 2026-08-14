@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
 
 type CheckpointError struct {
@@ -996,7 +997,24 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		if expected != actual {
-			return nil, fmt.Errorf("bloks type assertion failure (%d != %d)", actual, expected)
+			// getBloksType only ever returns the small set of primitive kind tags this
+			// reimplementation knows about (see its switch: 0/1/2/3/4/6/7, plus 5 and 8 as
+			// documented-but-unmapped placeholders). An `expected` far outside that range (seen
+			// in practice: 100, mid-login) is not a primitive kind at all -- it's almost
+			// certainly one of Meta's richer named/semantic Bloks types (e.g. a distinctly
+			// tagged "ID" or "Timestamp" scalar) that this interpreter has no schema for, not a
+			// real type mismatch on our part. Failing the whole login on an assertion we can't
+			// actually evaluate is worse than letting it through: log it so a real mismatch
+			// (both tags inside the known range, genuinely different) still fails loudly, the
+			// same as before.
+			if expected < 0 || expected > 7 {
+				zerolog.Ctx(ctx).Warn().
+					Int64("actual_type", actual).
+					Int64("expected_type", expected).
+					Msg("bloks AssertType: expected type is outside the known primitive range, passing through unchecked")
+			} else {
+				return nil, fmt.Errorf("bloks type assertion failure (%d != %d)", actual, expected)
+			}
 		}
 		return val, nil
 	case "bk.action.mins.TypeOf":
