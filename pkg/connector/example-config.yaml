@@ -1,18 +1,3 @@
-# Which service is this bridge for? Available options:
-# * unset - allow users to pick any service when logging in (except facebook-tor)
-# * facebook - connect to FB Messenger via facebook.com
-# * facebook-tor - connect to FB Messenger via facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion
-# * messenger - connect to FB Messenger via messenger.com (can be used with the facebook side deactivated)
-# * messenger-lite - log into FB Messenger via Messenger iOS API, use facebook.com for main connection
-# * messenger-lite-android - log into FB Messenger via Messenger Android API, use facebook.com for main connection
-#
-# Remember to change the appservice id, bot profile info, bridge username_template and management_room_text too.
-mode:
-# Should users be allowed to pick messenger.com login when mode is set to `facebook`?
-allow_messenger_com_on_fb: false
-# Explicit list of allowed login methods. Overrides other login method options if non-empty.
-allowed_modes: []
-
 # Displayname template for FB users. Available variables:
 #  .DisplayName - The display name set by the user.
 #  .Username - The username set by the user.
@@ -21,6 +6,9 @@ displayname_template: '{{or .DisplayName .Username "Unknown user"}}'
 
 # Static proxy address (HTTP or SOCKS5) for connecting to Meta.
 proxy:
+# If using a Tor proxy in the field above, you can set this to connect to
+# facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion instead of facebook.com.
+tor: false
 # HTTP endpoint to request new proxy address from, for dynamically assigned proxies.
 # The endpoint must return a JSON body with a string field called proxy_url.
 get_proxy_from:

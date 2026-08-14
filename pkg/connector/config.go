@@ -2,30 +2,20 @@ package connector
 
 import (
 	_ "embed"
-	"fmt"
 	"strings"
 	"text/template"
 	"time"
 
 	up "go.mau.fi/util/configupgrade"
 	"gopkg.in/yaml.v3"
-
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 //go:embed example-config.yaml
 var ExampleConfig string
 
 type Config struct {
-	RawMode string         `yaml:"mode"`
-	Mode    types.Platform `yaml:"-"`
-
-	RawAllowedModes []string         `yaml:"allowed_modes"`
-	AllowedModes    []types.Platform `yaml:"-"`
-
-	AllowMessengerComOnFB bool `yaml:"allow_messenger_com_on_fb"`
-
 	Proxy              string `yaml:"proxy"`
+	Tor                bool   `yaml:"tor"`
 	GetProxyFrom       string `yaml:"get_proxy_from"`
 	ProxyMedia         bool   `yaml:"proxy_media"`
 	ProxyE2EE          bool   `yaml:"proxy_e2ee"`
@@ -64,34 +54,18 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (c *Config) PostProcess() (err error) {
-	c.Mode = types.PlatformFromString(c.RawMode)
-	if c.Mode == types.Instagram {
-		return fmt.Errorf("instagram is no longer supported in this bridge")
-	}
-	c.AllowedModes = []types.Platform{}
-	for _, rawMode := range c.RawAllowedModes {
-		mode := types.PlatformFromString(rawMode)
-		if !mode.IsValid() {
-			return fmt.Errorf("unknown mode in allowed_modes: %q", rawMode)
-		}
-		if mode == types.FacebookTor {
-			return fmt.Errorf("cannot use facebook-tor in allowed_modes, set mode instead")
-		}
-		if mode == types.Instagram {
-			return fmt.Errorf("instagram (in allowed_modes) is no longer supported in this bridge")
-		}
-		c.AllowedModes = append(c.AllowedModes, mode)
-	}
 	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
 	return err
 }
 
 func upgradeConfig(helper up.Helper) {
-	helper.Copy(up.Str, "mode")
-	helper.Copy(up.Bool, "allow_messenger_com_on_fb")
-	helper.Copy(up.List, "allowed_modes")
 	helper.Copy(up.Str, "displayname_template")
 	helper.Copy(up.Str|up.Null, "proxy")
+	if val, ok := helper.Get(up.Str|up.Null, "mode"); ok && val == "facebook-tor" {
+		helper.Set(up.Bool, "true", "tor")
+	} else {
+		helper.Copy(up.Bool, "tor")
+	}
 	helper.Copy(up.Str|up.Null, "get_proxy_from")
 	helper.Copy(up.Bool, "proxy_media")
 	helper.Copy(up.Bool, "proxy_e2ee")
@@ -110,13 +84,6 @@ func upgradeConfig(helper up.Helper) {
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
 	return ExampleConfig, &m.Config, up.SimpleUpgrader(upgradeConfig)
-}
-
-func (m *MetaConnector) ValidateConfig() error {
-	if m.Config.Mode == types.Unset && m.Config.RawMode != "" {
-		return fmt.Errorf("invalid mode %q", m.Config.RawMode)
-	}
-	return nil
 }
 
 type DisplaynameParams struct {
