@@ -132,5 +132,5 @@ gotest.tools/v3 v3.5.1 h1:EENdUnS3pdur5nybKYIh2Vfgc8IUNBjxDPSjtiJcOzU=
 gotest.tools/v3 v3.5.1/go.mod h1:isy3WKz7GK6uNw/sbHzfKBLvlvXwUyV06n6brMxxopU=
 maunium.net/go/mauflag v1.0.0 h1:YiaRc0tEI3toYtJMRIfjP+jklH45uDHtT80nUamyD4M=
 maunium.net/go/mauflag v1.0.0/go.mod h1:nLivPOpTpHnpzEh8jEdSL9UqO9+/KBJFmNRlwKfkPeA=
-maunium.net/go/mautrix v0.29.1-0.20260811114840-3e65f58bc022 h1:g6mfG2ZZTI1x9wy/vJBB3R6/gLKq6+tR6h4FDnuW82E=
-maunium.net/go/mautrix v0.29.1-0.20260811114840-3e65f58bc022/go.mod h1:PeLuIih5jnbwb2xKNNi0Te7AtINEQE2Uv3p6iG3RV80=
+maunium.net/go/mautrix v0.29.1-0.20260814191632-e2b65eac4ac5 h1:/X9UBoAEDPIvx1gcV6H4iEaCrpRAhETEyyVapCNCYMY=
+maunium.net/go/mautrix v0.29.1-0.20260814191632-e2b65eac4ac5/go.mod h1:PeLuIih5jnbwb2xKNNi0Te7AtINEQE2Uv3p6iG3RV80=
