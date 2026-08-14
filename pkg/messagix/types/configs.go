@@ -65,6 +65,15 @@ type SprinkleConfig struct {
 	Version         int    `json:"version,omitempty"`
 }
 
+type InstagramWebPushInfo struct {
+	RolloutHash string `json:"rollout_hash,omitempty"`
+}
+
+type PolarisSiteData struct {
+	DeviceID           string `json:"device_id,omitempty"`
+	SendDeviceIDHeader bool   `json:"send_device_id_header,omitempty"`
+}
+
 type WebConnectionClassServerGuess struct {
 	ConnectionClass string `json:"connectionClass,omitempty"`
 }
@@ -240,6 +249,8 @@ type SchedulerJSDefineConfig struct {
 	BootloaderConfig              BootLoaderConfig
 	CurrentBusinessUser           CurrentBusinessAccount
 	SiteData                      SiteData
+	InstagramWebPushInfo          InstagramWebPushInfo
+	PolarisSiteData               PolarisSiteData
 	SprinkleConfig                SprinkleConfig
 	USIDMetadata                  USIDMetadata
 	WebConnectionClassServerGuess WebConnectionClassServerGuess

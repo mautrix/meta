@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"go.mau.fi/util/random"
 	"golang.org/x/crypto/nacl/box"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -110,10 +111,7 @@ func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (stri
 		return "", errors.New("instagram app public key is not RSA")
 	}
 
-	sessionKey := make([]byte, 32)
-	if _, err = rand.Read(sessionKey); err != nil {
-		return "", ErrRandomReadFailed
-	}
+	sessionKey := random.Bytes(32)
 	block, err := aes.NewCipher(sessionKey)
 	if err != nil {
 		return "", ErrAESCreation
@@ -122,10 +120,7 @@ func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (stri
 	if err != nil {
 		return "", ErrGCMCreation
 	}
-	iv := make([]byte, aead.NonceSize())
-	if _, err = rand.Read(iv); err != nil {
-		return "", ErrRandomReadFailed
-	}
+	iv := random.Bytes(aead.NonceSize())
 
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	encryptedSessionKey, err := rsa.EncryptPKCS1v15(rand.Reader, rsaKey, sessionKey)
@@ -163,10 +158,7 @@ func encryptPasswordLightspeed(pubKeyId int, pubKey, password string) (string, e
 	buf.WriteByte(1)
 	buf.WriteByte(byte(pubKeyId))
 
-	encryptionKey := make([]byte, 32)
-	if _, err := rand.Read(encryptionKey); err != nil {
-		return "", err
-	}
+	encryptionKey := random.Bytes(32)
 
 	var pubKeyArray [32]byte
 	copy(pubKeyArray[:], pubKeyBytes)

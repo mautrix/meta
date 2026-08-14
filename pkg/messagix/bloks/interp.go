@@ -838,62 +838,6 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return BloksLiteralOf(lhsFloat - rhsFloat), nil
 		}
 		return BloksLiteralOf(lhsFloat + rhsFloat), nil
-	case "bk.action.num.Add":
-		first, err := i.Evaluate(ctx, &call.Args[0])
-		if err != nil {
-			return nil, err
-		}
-		second, err := i.Evaluate(ctx, &call.Args[1])
-		if err != nil {
-			return nil, err
-		}
-		firstFloat, firstInt, firstIsInt, err := genericBloksNumber(first, "num.add lhs")
-		if err != nil {
-			return nil, err
-		}
-		secondFloat, secondInt, secondIsInt, err := genericBloksNumber(second, "num.add rhs")
-		if err != nil {
-			return nil, err
-		}
-		if firstIsInt && secondIsInt {
-			sum := firstInt + secondInt
-			if (secondInt >= 0 && sum >= firstInt) || (secondInt < 0 && sum < firstInt) {
-				return BloksLiteralOf(sum), nil
-			}
-		}
-		sum := firstFloat + secondFloat
-		if sum >= -2147483648 && sum <= 2147483647 && float64(int64(sum)) == sum {
-			return BloksLiteralOf(int64(sum)), nil
-		}
-		return BloksLiteralOf(sum), nil
-	case "bk.action.num.Sub":
-		first, err := i.Evaluate(ctx, &call.Args[0])
-		if err != nil {
-			return nil, err
-		}
-		second, err := i.Evaluate(ctx, &call.Args[1])
-		if err != nil {
-			return nil, err
-		}
-		firstFloat, firstInt, firstIsInt, err := genericBloksNumber(first, "num.sub lhs")
-		if err != nil {
-			return nil, err
-		}
-		secondFloat, secondInt, secondIsInt, err := genericBloksNumber(second, "num.sub rhs")
-		if err != nil {
-			return nil, err
-		}
-		if firstIsInt && secondIsInt {
-			difference := firstInt - secondInt
-			if (secondInt >= 0 && difference <= firstInt) || (secondInt < 0 && difference > firstInt) {
-				return BloksLiteralOf(difference), nil
-			}
-		}
-		difference := firstFloat - secondFloat
-		if difference >= -2147483648 && difference <= 2147483647 && float64(int64(difference)) == difference {
-			return BloksLiteralOf(int64(difference)), nil
-		}
-		return BloksLiteralOf(difference), nil
 	case "bk.action.f32.Sub":
 		first, err := evalFloat(ctx, i, &call.Args[0], "sub lhs")
 		if err != nil {
@@ -1342,24 +1286,31 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		return BloksLiteralOf(string(encoded)), nil
 	case "bk.action.string.Concat":
 		parts := make([]string, 0, len(call.Args))
-		for idx := range call.Args {
-			value, err := i.Evaluate(ctx, &call.Args[idx])
+		if len(call.Args) == 1 {
+			value, err := i.Evaluate(ctx, &call.Args[0])
 			if err != nil {
 				return nil, err
 			}
-			if array, ok := value.Value().([]*BloksScriptLiteral); ok && len(call.Args) == 1 {
+			if array, ok := value.Value().([]*BloksScriptLiteral); ok {
 				for itemIdx, item := range array {
-					part, ok := item.Value().(string)
-					if !ok {
-						return nil, fmt.Errorf("string.concat item %d has type %T", itemIdx, item.Value())
+					part, err := literalString(item, fmt.Sprintf("string.concat item %d", itemIdx))
+					if err != nil {
+						return nil, err
 					}
 					parts = append(parts, part)
 				}
-				continue
+				return BloksLiteralOf(strings.Join(parts, "")), nil
 			}
-			part, ok := value.Value().(string)
-			if !ok {
-				return nil, fmt.Errorf("string.concat arg %d has type %T", idx, value.Value())
+			part, err := literalString(value, "string.concat arg 0")
+			if err != nil {
+				return nil, err
+			}
+			return BloksLiteralOf(part), nil
+		}
+		for idx := range call.Args {
+			part, err := evalAs[string](ctx, i, &call.Args[idx], fmt.Sprintf("string.concat arg %d", idx))
+			if err != nil {
+				return nil, err
 			}
 			parts = append(parts, part)
 		}
@@ -1775,10 +1726,10 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.template.Make",
 		"bk.action.bloks.Find",
 		"bk.action.ig.identitysafety.livechat.GetStartChatParams",
-		"bk.action.context.Get":
-		// These produce Android UI/runtime objects which are not part of the
-		// server-side login state. Returning null mirrors an unavailable Android
-		// presentation context and keeps guarded UI-only branches deterministic.
+		"bk.action.context.Get",
+		"bk.fx.action.FetchAllAvailableNativeAuthDataForCaller",
+		"bk.action.cds.internal.GetContainerMode",
+		"bk.action.caa.GetSPIEligibility":
 		return BloksNull, nil
 	case "bk.action.core.Delay":
 		// First argument is time delay in milliseconds. It seems to be for
@@ -1797,10 +1748,6 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return BloksLiteralOf(int64(val)), nil
 		}
 		return nil, fmt.Errorf("can't convert %T to i64", arg.Value())
-	case "bk.fx.action.FetchAllAvailableNativeAuthDataForCaller",
-		"bk.action.cds.internal.GetContainerMode",
-		"bk.action.caa.GetSPIEligibility":
-		return BloksNull, nil
 	case
 		"bk.action.animated.Start",
 		"bk.action.animated.Build",
@@ -1832,23 +1779,4 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))
-}
-
-func genericBloksNumber(
-	value *BloksScriptLiteral,
-	where string,
-) (floatValue float64, intValue int64, isInt bool, err error) {
-	switch typed := value.Value().(type) {
-	case bool:
-		if typed {
-			return 1, 1, false, nil
-		}
-		return 0, 0, false, nil
-	case int64:
-		return float64(typed), typed, true, nil
-	case float64:
-		return typed, 0, false, nil
-	default:
-		return 0, 0, false, fmt.Errorf("expected number in %s, got %T", where, value.Value())
-	}
 }

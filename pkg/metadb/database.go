@@ -29,6 +29,7 @@ import (
 	"go.mau.fi/util/dbutil"
 	"go.mau.fi/util/exsync"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -65,13 +66,13 @@ var table = dbutil.BuildUpgradeTable().WithFS(upgrades).Finish()
 //go:embed *.sql
 var upgrades embed.FS
 
-func (db *MetaDB) GetInstagramLoginDevice(ctx context.Context) (*types.InstagramLoginDevice, error) {
+func (db *MetaDB) GetInstagramLoginDevice(ctx context.Context, userID id.UserID) (*types.InstagramLoginDevice, error) {
 	device := &types.InstagramLoginDevice{}
 	err := db.QueryRow(ctx, `
 		SELECT phone_id, device_id, advertising_id, android_device_id, machine_id
 		FROM meta_instagram_login_device
-		WHERE bridge_id = $1
-	`, db.BridgeID).Scan(
+		WHERE bridge_id = $1 AND user_mxid = $2
+	`, db.BridgeID, userID).Scan(
 		&device.PhoneID,
 		&device.DeviceID,
 		&device.AdvertisingID,
@@ -87,18 +88,18 @@ func (db *MetaDB) GetInstagramLoginDevice(ctx context.Context) (*types.Instagram
 	return device, nil
 }
 
-func (db *MetaDB) PutInstagramLoginDevice(ctx context.Context, device types.InstagramLoginDevice) error {
+func (db *MetaDB) PutInstagramLoginDevice(ctx context.Context, userID id.UserID, device types.InstagramLoginDevice) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO meta_instagram_login_device (
-			bridge_id, phone_id, device_id, advertising_id, android_device_id, machine_id
-		) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (bridge_id) DO UPDATE SET
+			bridge_id, user_mxid, phone_id, device_id, advertising_id, android_device_id, machine_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (bridge_id, user_mxid) DO UPDATE SET
 			phone_id = excluded.phone_id,
 			device_id = excluded.device_id,
 			advertising_id = excluded.advertising_id,
 			android_device_id = excluded.android_device_id,
 			machine_id = excluded.machine_id
-	`, db.BridgeID, device.PhoneID, device.DeviceID, device.AdvertisingID, device.AndroidDeviceID, device.MachineID)
+	`, db.BridgeID, userID, device.PhoneID, device.DeviceID, device.AdvertisingID, device.AndroidDeviceID, device.MachineID)
 	return err
 }
 

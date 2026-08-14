@@ -73,7 +73,7 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		if request.URL.Path != expectedPath {
 			t.Fatalf("unexpected CAA path %q", request.URL.Path)
 		}
-		if request.Header.Get("X-Bloks-Version-Id") != bloks.BloksVersionInstagram ||
+		if request.Header.Get("X-Bloks-Version-Id") != bloks.BloksVersionInstagramAndroid ||
 			request.Header.Get("X-Ig-App-Id") != useragent.IGAndroidAppID ||
 			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 440.0.0.19.86 Android") {
 			t.Fatal("Instagram CAA headers do not match the current signed APK profile")
@@ -87,14 +87,14 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 			t.Fatalf("failed to parse CAA request: %v", err)
 		}
 		if form.Get("_uuid") != "qe-device-id" ||
-			form.Get("bloks_versioning_id") != bloks.BloksVersionInstagram {
+			form.Get("bloks_versioning_id") != bloks.BloksVersionInstagramAndroid {
 			t.Fatalf("CAA request did not retain the login-scoped device/version: %v", form)
 		}
 		var clientContext map[string]string
 		if err = json.Unmarshal([]byte(form.Get("bk_client_context")), &clientContext); err != nil {
 			t.Fatalf("invalid CAA client context: %v", err)
 		}
-		if clientContext["bloks_version"] != bloks.BloksVersionInstagram ||
+		if clientContext["bloks_version"] != bloks.BloksVersionInstagramAndroid ||
 			clientContext["styles_id"] != "instagram" {
 			t.Fatalf("unexpected CAA client context: %+v", clientContext)
 		}
@@ -259,7 +259,9 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 				form.Get("include_social_context") != "false" {
 				t.Fatalf("unexpected Account Manager discovery form: %v", form)
 			}
-			return mobileLoginTestResponse(request, http.StatusOK, nil, `{
+			return mobileLoginTestResponse(request, http.StatusOK, http.Header{
+				"Set-Cookie": {"mid=rotated-mid; Path=/; Secure"},
+			}, `{
 				"result": [
 					{
 						"token": {"account_type": "Instagram"},
@@ -321,6 +323,9 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 	}
 	if !reflect.DeepEqual(accounts, expectedAccounts) {
 		t.Fatalf("unexpected Account Manager profiles: %#v", accounts)
+	}
+	if got := loginCookies.Get(cookies.IGCookieMachineID); got != "rotated-mid" {
+		t.Fatalf("Account Manager discovery did not retain rotated machine ID: %q", got)
 	}
 	step := instagramAccountManagerSelectionStep(accounts)
 	if step.StepID != "fi.mau.meta.instagram.account_manager" ||

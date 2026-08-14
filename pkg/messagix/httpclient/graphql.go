@@ -256,6 +256,9 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 	resp, respData, err := c.makeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM, func(e *zerolog.Event) *zerolog.Event {
 		return e.Str("graphql_method", name)
 	})
+	if err == nil && resp != nil {
+		c.parent.GetCookies().UpdateFromResponse(resp)
+	}
 	respData = bytes.TrimPrefix(respData, AntiJSPrefix)
 	return resp, respData, err
 }

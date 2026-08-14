@@ -96,9 +96,6 @@ func (c *Client) prepareInstagramCAALogin(ctx context.Context) (*instagramCAALog
 	if c.caaLogin != nil {
 		return c.caaLogin, nil
 	}
-	if c.enableMobileTLSFingerprint {
-		c.http.SetMobileTLSFingerprint(true)
-	}
 	mobile, err := c.prepareMobilePasswordLogin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare Instagram CAA login: %w", err)
@@ -215,9 +212,6 @@ func (c *Client) DoInstagramCAALoginSteps(
 		}
 		state.AccountManagerComplete = true
 	}
-	if c.enableMobileTLSFingerprint {
-		c.http.SetMobileTLSFingerprint(false)
-	}
 	return nil, nil
 }
 
@@ -240,7 +234,7 @@ func (c *Client) makeInstagramBloksRequest(
 		return nil, fmt.Errorf("failed to marshal Instagram Bloks parameters: %w", err)
 	}
 	clientContext, err := json.Marshal(map[string]string{
-		"bloks_version": bloks.BloksVersionInstagram,
+		"bloks_version": bloks.BloksVersionInstagramAndroid,
 		"styles_id":     "instagram",
 	})
 	if err != nil {
@@ -249,7 +243,7 @@ func (c *Client) makeInstagramBloksRequest(
 	form := url.Values{
 		"_uuid":               {c.mobileLogin.DeviceID},
 		"bk_client_context":   {string(clientContext)},
-		"bloks_versioning_id": {bloks.BloksVersionInstagram},
+		"bloks_versioning_id": {bloks.BloksVersionInstagramAndroid},
 		"params":              {string(params)},
 	}
 	route := "bloks/apps/"

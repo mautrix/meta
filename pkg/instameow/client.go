@@ -44,12 +44,12 @@ type Client struct {
 	cookies *cookies.Cookies
 	log     *zerolog.Logger
 
-	mobileLogin                *mobileLoginState
-	caaLogin                   *instagramCAALoginState
-	enableMobileTLSFingerprint bool
-	mobileLoginDevice          *types.InstagramLoginDevice
-	mobileSession              *instagramMobileSession
-	saveMobileLoginDevice      func(context.Context, types.InstagramLoginDevice) error
+	mobileLogin           *mobileLoginState
+	caaLogin              *instagramCAALoginState
+	webTwoFactor          *instagramWebTwoFactorState
+	mobileLoginDevice     *types.InstagramLoginDevice
+	mobileSession         *instagramMobileSession
+	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
 
 	socket        atomic.Pointer[dgw.Socket]
 	cancelSocket  atomic.Pointer[context.CancelFunc]
@@ -91,12 +91,8 @@ type ClientParams struct {
 	EventHandler  EventHandler
 	DisableTyping bool
 
-	// EnableMobileTLSFingerprint keeps the native Android login transport
-	// coherent with its user agent without changing the normal web transport.
-	EnableMobileTLSFingerprint bool
-
-	// MobileLoginDevice and SaveMobileLoginDevice retain the installation-scoped
-	// Android identity across Bridgev2 login processes and bridge restarts.
+	// MobileLoginDevice and SaveMobileLoginDevice retain one Android installation
+	// identity across login processes for the same bridge user.
 	MobileLoginDevice     *types.InstagramLoginDevice
 	SaveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
 }
@@ -115,8 +111,7 @@ func NewClient(params ClientParams) *Client {
 
 		enableTyping: !params.DisableTyping,
 
-		enableMobileTLSFingerprint: params.EnableMobileTLSFingerprint,
-		saveMobileLoginDevice:      params.SaveMobileLoginDevice,
+		saveMobileLoginDevice: params.SaveMobileLoginDevice,
 	}
 	if params.MobileLoginDevice != nil {
 		device := *params.MobileLoginDevice

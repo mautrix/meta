@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 )
 
@@ -68,6 +69,21 @@ func TestInstagramCookieLoginIncludesOptionalRoutingCookies(t *testing.T) {
 
 func TestInstagramNativeCredentialsStep(t *testing.T) {
 	assertInstagramCredentialsStep(t, instagramCredentialsStep("Enter your credentials"))
+}
+
+func TestInstagramNativeWebTwoFactorStep(t *testing.T) {
+	step := instagramWebTwoFactorStep(&instameow.InstagramWebTwoFactorChallenge{TOTP: true}, "")
+	if step == nil ||
+		step.Type != bridgev2.LoginStepTypeUserInput ||
+		step.StepID != LoginStepIDWebTwoFactor ||
+		step.UserInputParams == nil ||
+		len(step.UserInputParams.Fields) != 1 {
+		t.Fatalf("unexpected Instagram web two-factor step: %+v", step)
+	}
+	field := step.UserInputParams.Fields[0]
+	if field.ID != loginFieldWebTwoFactorCode || field.Type != bridgev2.LoginInputFieldType2FACode {
+		t.Fatalf("unexpected Instagram web two-factor field: %+v", field)
+	}
 }
 
 func TestInstagramNativeLoginUsesClientHTTPTransport(t *testing.T) {

@@ -228,6 +228,9 @@ func (c *Client) getInstagramAccountManagerAccounts(
 		[]byte(form.Encode()),
 		types.FORM,
 	)
+	if response != nil {
+		c.cookies.UpdateFromResponse(response)
+	}
 	if requestErr != nil {
 		return nil, instagramAccountManagerRequestError(
 			"failed to load Instagram Account Manager profiles",
@@ -259,24 +262,14 @@ func (c *Client) switchInstagramAccountManagerProfile(
 		return errors.New("instagram Account Manager is missing the mobile login state")
 	}
 
-	if c.enableMobileTLSFingerprint {
-		c.http.SetMobileTLSFingerprint(false)
-		defer c.http.SetMobileTLSFingerprint(false)
-	}
 	if err := c.loadIndex(ctx); err != nil {
 		return fmt.Errorf("failed to prepare the primary Instagram web session: %w", err)
 	}
 	primaryCookies := c.cookies.GetAll()
 	primaryWWWClaim := c.cookies.IGWWWClaim
 
-	if c.enableMobileTLSFingerprint {
-		c.http.SetMobileTLSFingerprint(true)
-	}
 	if err := c.switchInstagramAccountManagerMobileAccount(ctx, state, account); err != nil {
 		return err
-	}
-	if c.enableMobileTLSFingerprint {
-		c.http.SetMobileTLSFingerprint(false)
 	}
 
 	// The mobile FXCAL login authorizes API calls, but the web realtime stream is
@@ -388,12 +381,15 @@ func (c *Client) switchInstagramAccountManagerWebAccount(
 	headers.Set("sec-fetch-site", "same-origin")
 	response, body, requestErr := c.http.MakeRequest(
 		ctx,
-		c.GetEndpoint("base_url")+"/api/v1/web/fxcal/ig_sso_login/",
+		c.GetEndpoint("fxcal_sso_login"),
 		http.MethodPost,
 		headers,
 		[]byte(form.Encode()),
 		types.FORM,
 	)
+	if response != nil {
+		c.cookies.UpdateFromResponse(response)
+	}
 	if requestErr != nil {
 		return instagramAccountManagerRequestError(
 			"failed to switch the Instagram Account Manager web session",

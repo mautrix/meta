@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
+	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -103,15 +104,6 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaCookieLogin) Cancel() {}
 
-var (
-	ErrLoginMissingCookies   = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Missing cookies", StatusCode: http.StatusBadRequest}
-	ErrLoginChallenge        = bridgev2.RespError{ErrCode: "FI.MAU.META_CHALLENGE_ERROR", Err: "Challenge required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
-	ErrLoginConsent          = bridgev2.RespError{ErrCode: "FI.MAU.META_CONSENT_ERROR", Err: "Consent required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
-	ErrLoginCheckpoint       = bridgev2.RespError{ErrCode: "FI.MAU.META_CHECKPOINT_ERROR", Err: "Checkpoint required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
-	ErrLoginTokenInvalidated = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_ERROR", Err: "Got logged out immediately", StatusCode: http.StatusBadRequest}
-	ErrLoginUnknown          = bridgev2.RespError{ErrCode: "M_UNKNOWN", Err: "Internal error logging in", StatusCode: http.StatusInternalServerError}
-)
-
 func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
 	client := instameow.NewClient(instameow.ClientParams{
 		Cookies:       c,
@@ -143,15 +135,15 @@ func loginWithCookies(
 	if err != nil {
 		log.Err(err).Msg("Failed to load messages page for login")
 		if errors.Is(err, httpclient.ErrChallengeRequired) {
-			return nil, ErrLoginChallenge
+			return nil, loginerrors.Challenge
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
-			return nil, ErrLoginCheckpoint
+			return nil, loginerrors.Checkpoint
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
-			return nil, ErrLoginConsent
+			return nil, loginerrors.Consent
 		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
-			return nil, ErrLoginTokenInvalidated
+			return nil, loginerrors.TokenInvalidated
 		} else {
-			return nil, fmt.Errorf("%w: %w", ErrLoginUnknown, err)
+			return nil, fmt.Errorf("%w: %w", loginerrors.Unknown, err)
 		}
 	}
 
@@ -223,7 +215,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 
 	missingCookies := c.GetMissingCookieNames()
 	if len(missingCookies) > 0 {
-		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
+		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missingCookies)
 	}
 
 	log := m.User.Log.With().Str("component", "instameow").Logger()

@@ -25,13 +25,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-// These values mirror bridgev2/matrix. The upstream constants explicitly allow
-// bridges to check the wire values without importing the Matrix package.
-const (
-	clientHTTPErrorPrefix = "error from client: "
-	clientHTTPProto       = "MauClientHTTP/1.0"
-)
-
 type HTTPClient struct {
 	parent          Client
 	log             *zerolog.Logger
@@ -44,10 +37,8 @@ type HTTPClient struct {
 	websocketClient *http.Client
 	proxyAddr       string
 	GetNewProxy     func(reason string) (string, error)
-	loginTransport  http.RoundTripper
 
 	LogRedactedBloksPayloads bool
-	mobileTLSFingerprint     bool
 }
 
 type Client interface {
@@ -87,13 +78,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	if c.proxyAddr != "" {
 		c.HTTPSettings, _ = c.HTTPSettings.WithProxy(c.proxyAddr)
 	}
-	var reqClient *req.Client
-	if c.mobileTLSFingerprint {
-		reqClient = req.C()
-		forceAndroidFingerprint(reqClient)
-	} else {
-		reqClient = req.C().ImpersonateChrome()
-	}
+	reqClient := req.C().ImpersonateChrome()
 	wsClient := req.C().ImpersonateChrome()
 	forceHTTP1ChromeFingerprint(wsClient)
 	if DisableTLSVerification {
@@ -118,79 +103,6 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 			InsecureSkipVerify: true,
 		}
 	}
-	if c.loginTransport != nil {
-		c.HTTP.Transport = c.loginTransport
-	}
-}
-
-// SetLoginHTTPTransport replaces the transport used for ordinary HTTP requests
-// during login. The override is retained when the client switches between its
-// web and mobile TLS profiles. Websocket transports are not affected.
-func (c *HTTPClient) SetLoginHTTPTransport(transport http.RoundTripper) {
-	if c == nil {
-		return
-	}
-	if transport == nil && c.loginTransport == nil {
-		return
-	}
-	c.loginTransport = transport
-	if transport == nil || c.HTTP == nil {
-		c.SetConfig(c.HTTPSettings)
-	} else {
-		c.HTTP.Transport = transport
-	}
-}
-
-// SetMobileTLSFingerprint switches ordinary HTTP requests between the default
-// Chromium profile used by the web client and an Android/OkHttp profile used by
-// first-party mobile API requests. Websocket connections always retain the
-// Chromium profile.
-func (c *HTTPClient) SetMobileTLSFingerprint(enabled bool) {
-	if c == nil || c.mobileTLSFingerprint == enabled {
-		return
-	}
-	c.mobileTLSFingerprint = enabled
-	c.SetConfig(c.HTTPSettings)
-}
-
-func forceAndroidFingerprint(c *req.Client) {
-	c.SetTLSHandshake(func(ctx context.Context, addr string, plainConn net.Conn) (net.Conn, *tls.ConnectionState, error) {
-		hostname := addr
-		if i := strings.LastIndex(addr, ":"); i != -1 {
-			hostname = addr[:i]
-		}
-
-		spec, err := utls.UTLSIdToSpec(utls.HelloAndroid_11_OkHttp)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to build Android uTLS spec: %w", err)
-		}
-
-		tlsConfig := c.GetTLSClientConfig()
-		uconn := utls.UClient(plainConn, &utls.Config{
-			ServerName:         hostname,
-			RootCAs:            tlsConfig.RootCAs,
-			InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
-			KeyLogWriter:       tlsConfig.KeyLogWriter,
-		}, utls.HelloCustom)
-		if err = uconn.ApplyPreset(&spec); err != nil {
-			return nil, nil, fmt.Errorf("failed to apply Android uTLS spec: %w", err)
-		}
-		if err = uconn.HandshakeContext(ctx); err != nil {
-			return nil, nil, err
-		}
-
-		cs := uconn.ConnectionState()
-		return uconn, &tls.ConnectionState{
-			Version:            cs.Version,
-			HandshakeComplete:  cs.HandshakeComplete,
-			DidResume:          cs.DidResume,
-			CipherSuite:        cs.CipherSuite,
-			NegotiatedProtocol: cs.NegotiatedProtocol,
-			ServerName:         cs.ServerName,
-			PeerCertificates:   cs.PeerCertificates,
-			VerifiedChains:     cs.VerifiedChains,
-		}, nil
-	})
 }
 
 // TODO deduplicate this with mautrix-discord (and maybe shorten it, looks to be duplicating too much of req)
@@ -418,11 +330,6 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 	if req.Response == nil {
 		return nil
 	}
-	c.parent.GetCookies().UpdateFromResponse(req.Response)
-	if c.parent.GetPlatform() == types.Instagram && isClientHTTP(req.Response, nil) &&
-		isInstagramRedirect(req, via) {
-		req.Header.Set("Cookie", c.parent.GetCookies().String())
-	}
 	if len(via) > 5 {
 		return ErrTooManyRedirects
 	}
@@ -457,16 +364,6 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 	return nil
 }
 
-func isInstagramHost(host string) bool {
-	return strings.EqualFold(host, "instagram.com") ||
-		strings.HasSuffix(strings.ToLower(host), ".instagram.com")
-}
-
-func isInstagramRedirect(req *http.Request, via []*http.Request) bool {
-	return len(via) > 0 && isInstagramHost(req.URL.Hostname()) &&
-		isInstagramHost(via[len(via)-1].URL.Hostname())
-}
-
 func (c *HTTPClient) MakeRequest(
 	ctx context.Context,
 	url string,
@@ -480,15 +377,9 @@ func (c *HTTPClient) MakeRequest(
 	})
 }
 
-// IsClientHTTPError reports whether the Beeper client failed to execute a
-// request delegated through the Bridgev2 client HTTP transport.
-func IsClientHTTPError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), clientHTTPErrorPrefix)
-}
-
 func isClientHTTP(resp *http.Response, err error) bool {
-	return IsClientHTTPError(err) ||
-		(resp != nil && resp.Proto == clientHTTPProto)
+	return (err != nil && strings.Contains(err.Error(), "error from client: ")) ||
+		(resp != nil && resp.Proto == "MauClientHTTP/1.0")
 }
 
 func (c *HTTPClient) makeRequest(
@@ -572,7 +463,6 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
 		return nil, nil, fmt.Errorf("%w: %w", ErrRequestFailed, err)
 	}
-	c.parent.GetCookies().UpdateFromResponse(response)
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -590,7 +480,10 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, error) {
 	headers := c.BuildHeaders(true, true)
 	//headers.Set("host", m.client.getEndpoint("host"))
-	_, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
+	response, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
+	if response != nil {
+		c.parent.GetCookies().UpdateFromResponse(response)
+	}
 	return responseBody, err
 }
 

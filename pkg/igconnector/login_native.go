@@ -25,20 +25,23 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
+	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
-	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 const (
 	FlowIDInstagramPassword = "instagram-password"
 
-	LoginStepIDCredentials = "fi.mau.meta.instagram.credentials"
+	LoginStepIDCredentials  = "fi.mau.meta.instagram.credentials"
+	LoginStepIDWebTwoFactor = "fi.mau.meta.instagram.web_two_factor"
 
-	loginFieldIdentifier = "username"
-	loginFieldPassword   = "password"
+	loginFieldIdentifier       = "username"
+	loginFieldPassword         = "password"
+	loginFieldWebTwoFactorCode = "verification_code"
 )
 
 var loginFlowInstagramPassword = bridgev2.LoginFlow{
@@ -52,33 +55,34 @@ func getInstaNativeClient(
 	log zerolog.Logger,
 	conn *IGConnector,
 	c *cookies.Cookies,
+	userID id.UserID,
 	useProxy bool,
 	transport http.RoundTripper,
 ) (*instameow.Client, error) {
 	var loginDevice *types.InstagramLoginDevice
 	if conn.DB != nil {
 		var err error
-		loginDevice, err = conn.DB.GetInstagramLoginDevice(ctx)
+		loginDevice, err = conn.DB.GetInstagramLoginDevice(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load Instagram app installation identity: %w", err)
 		}
 	}
 	client := instameow.NewClient(instameow.ClientParams{
-		Cookies:                    c,
-		Log:                        log,
-		Settings:                   conn.Bridge.GetHTTPClientSettings(),
-		DisableTyping:              conn.Config.DisableTyping,
-		EnableMobileTLSFingerprint: true,
-		MobileLoginDevice:          loginDevice,
+		Cookies:           c,
+		Log:               log,
+		Settings:          conn.Bridge.GetHTTPClientSettings(),
+		DisableTyping:     conn.Config.DisableTyping,
+		MobileLoginDevice: loginDevice,
 		SaveMobileLoginDevice: func(ctx context.Context, device types.InstagramLoginDevice) error {
 			if conn.DB == nil {
 				return nil
 			}
-			return conn.DB.PutInstagramLoginDevice(ctx, device)
+			return conn.DB.PutInstagramLoginDevice(ctx, userID, device)
 		},
 	})
 	if transport != nil {
-		client.GetHTTP().SetLoginHTTPTransport(transport)
+		client.GetHTTP().GetNewProxy = nil
+		client.GetHTTP().HTTP.Transport = transport
 	} else if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
 		client.GetHTTP().GetNewProxy = conn.getProxy
 		if !client.GetHTTP().UpdateProxy("login") {
@@ -92,11 +96,12 @@ type MetaNativeLogin struct {
 	User *bridgev2.User
 	Main *IGConnector
 
-	client     *instameow.Client
-	caaStarted bool
-	transport  http.RoundTripper
-	identifier string
-	password   string
+	client       *instameow.Client
+	caaStarted   bool
+	transport    http.RoundTripper
+	identifier   string
+	password     string
+	webTwoFactor *instameow.InstagramWebTwoFactorChallenge
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
@@ -117,6 +122,7 @@ func (m *MetaNativeLogin) StartWithParams(
 func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*bridgev2.LoginStep, error) {
 	m.client = nil
 	m.caaStarted = false
+	m.webTwoFactor = nil
 	m.clearCredentials()
 	if m.User == nil || m.Main == nil {
 		return nil, errors.New("instagram login is not initialized")
@@ -125,11 +131,18 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 	loginCookies.UpdateValues(nil)
 	log := m.User.Log.With().Str("component", "instagram_login").Logger()
 	log.Debug().Bool("client_http", m.transport != nil).Msg("Starting Instagram native login flow")
+	var userID id.UserID
+	if m.User.User != nil {
+		userID = m.User.MXID
+	} else if m.Main.DB != nil {
+		return nil, errors.New("instagram login user is missing database state")
+	}
 	client, err := getInstaNativeClient(
 		ctx,
 		log,
 		m.Main,
 		loginCookies,
+		userID,
 		m.Main.Config.ProxyOther,
 		m.transport,
 	)
@@ -143,6 +156,7 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 func (m *MetaNativeLogin) Cancel() {
 	m.client = nil
 	m.caaStarted = false
+	m.webTwoFactor = nil
 	m.transport = nil
 	m.clearCredentials()
 }
@@ -161,6 +175,33 @@ func (m *MetaNativeLogin) SubmitUserInput(
 			"This Instagram login session expired. Start the login again.",
 		), nil
 	}
+	if m.webTwoFactor != nil {
+		verificationCode := strings.TrimSpace(input[loginFieldWebTwoFactorCode])
+		if verificationCode == "" {
+			return instagramWebTwoFactorStep(
+				m.webTwoFactor,
+				"Enter the verification code to continue creating the Instagram messaging session.",
+			), nil
+		}
+		err := m.client.CompleteInstagramWebSessionTwoFactor(ctx, verificationCode)
+		if err != nil {
+			if isClientHTTPError(err) {
+				m.User.Log.Warn().Err(err).Msg("Instagram web two-factor request failed on the client")
+				return instagramWebTwoFactorStep(
+					m.webTwoFactor,
+					"The request did not complete on this device. Enter a fresh verification code and try again.",
+				), nil
+			} else if errors.Is(err, instameow.ErrInstagramWebTwoFactorCodeRejected) {
+				return instagramWebTwoFactorStep(
+					m.webTwoFactor,
+					"Instagram did not accept that code. Enter a new code and try again.",
+				), nil
+			}
+			return nil, fmt.Errorf("failed to complete Instagram web two-factor login: %w", err)
+		}
+		m.webTwoFactor = nil
+		return m.complete(ctx)
+	}
 	if !m.caaStarted {
 		identifier := strings.TrimSpace(input[loginFieldIdentifier])
 		password := input[loginFieldPassword]
@@ -176,7 +217,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 
 	step, err := m.client.DoInstagramCAALoginSteps(ctx, input)
 	if err != nil {
-		if httpclient.IsClientHTTPError(err) {
+		if isClientHTTPError(err) {
 			m.User.Log.Warn().Err(err).Msg("Instagram login request failed on the client")
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
 		}
@@ -187,21 +228,32 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		return step, nil
 	}
 	identifier, password := m.identifier, m.password
-	m.clearCredentials()
 	if !m.client.IsAuthenticated() {
-		err = m.client.CreateInstagramWebSession(ctx, identifier, password)
+		var challenge *instameow.InstagramWebTwoFactorChallenge
+		challenge, err = m.client.CreateInstagramWebSession(ctx, identifier, password)
+		m.clearCredentials()
 		if err != nil {
-			if httpclient.IsClientHTTPError(err) {
+			if isClientHTTPError(err) {
 				m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
 				return m.start(ctx, "The request did not complete on this device. Please try again.")
 			}
 			return nil, fmt.Errorf("failed to create Instagram web session: %w", err)
 		}
+		if challenge != nil {
+			m.webTwoFactor = challenge
+			return instagramWebTwoFactorStep(challenge, ""), nil
+		}
+	} else {
+		m.clearCredentials()
 	}
+	return m.complete(ctx)
+}
+
+func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, error) {
 	log := m.User.Log.With().Str("component", "instameow").Logger()
 	loginCookies := m.client.GetCookies()
 	if missingCookies := loginCookies.GetMissingCookieNames(); len(missingCookies) > 0 {
-		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
+		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missingCookies)
 	}
 	client, err := getInstaClient(log, m.Main, loginCookies, m.Main.Config.ProxyOther)
 	if err != nil {
@@ -209,9 +261,18 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	}
 	loginTransport := m.transport
 	m.transport = nil
-	client.GetHTTP().SetLoginHTTPTransport(loginTransport)
-	defer client.GetHTTP().SetLoginHTTPTransport(nil)
+	if loginTransport != nil {
+		originalTransport := client.GetHTTP().HTTP.Transport
+		client.GetHTTP().HTTP.Transport = loginTransport
+		defer func() {
+			client.GetHTTP().HTTP.Transport = originalTransport
+		}()
+	}
 	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies)
+}
+
+func isClientHTTPError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "error from client: ")
 }
 
 func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {
@@ -232,6 +293,37 @@ func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {
 					ID:          loginFieldPassword,
 					Name:        "Password",
 					Description: "Your Instagram password.",
+				},
+			},
+		},
+	}
+}
+
+func instagramWebTwoFactorStep(
+	challenge *instameow.InstagramWebTwoFactorChallenge,
+	instructions string,
+) *bridgev2.LoginStep {
+	if instructions == "" {
+		switch {
+		case challenge != nil && challenge.TOTP:
+			instructions = "Enter the verification code from your authenticator app."
+		case challenge != nil && (challenge.SMS || challenge.WhatsApp):
+			instructions = "Enter the verification code Instagram sent to you."
+		default:
+			instructions = "Enter your Instagram verification code."
+		}
+	}
+	return &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeUserInput,
+		StepID:       LoginStepIDWebTwoFactor,
+		Instructions: instructions,
+		UserInputParams: &bridgev2.LoginUserInputParams{
+			Fields: []bridgev2.LoginInputDataField{
+				{
+					Type:        bridgev2.LoginInputFieldType2FACode,
+					ID:          loginFieldWebTwoFactorCode,
+					Name:        "Verification code",
+					Description: "The verification code for your Instagram account.",
 				},
 			},
 		},

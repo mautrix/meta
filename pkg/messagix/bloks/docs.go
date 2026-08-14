@@ -35,7 +35,7 @@ var BloksActionDocAndroid BloksDoc = BloksDoc{
 var BloksActionDocInstagram = BloksDoc{
 	Name:      "IGBloksActionRootQuery",
 	RootField: "bloks_action",
-	Version:   BloksVersionInstagram,
+	Version:   BloksVersionInstagramAndroid,
 }
 
 func GetBloksActionDoc(p types.Platform) (*BloksDoc, error) {
@@ -70,7 +70,7 @@ var BloksAppDocAndroid BloksDoc = BloksDoc{
 var BloksAppDocInstagram = BloksDoc{
 	Name:      "IGBloksAppRootQuery",
 	RootField: "bloks_app",
-	Version:   BloksVersionInstagram,
+	Version:   BloksVersionInstagramAndroid,
 }
 
 func GetBloksAppDoc(p types.Platform) (*BloksDoc, error) {

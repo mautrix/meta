@@ -1680,9 +1680,7 @@
     "jbv": "bk.action.caa.ShowLoggedInResetPasswordV2",
     "jcq": "bk.action.oxygen.TriggerSync",
     "jfy": "bk.versioning.bloks.SupportsPureBloksBANI",
-    "jix": "bk.action.io.CurrentTimeMillisV2",
-    "jmu": "bk.action.num.Add",
-    "jn3": "bk.action.num.Sub"
+    "jix": "bk.action.io.CurrentTimeMillisV2"
   },
   "components": {
     "㐈": "bk.components.Flexbox",

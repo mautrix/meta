@@ -240,7 +240,7 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 		strconv.FormatFloat(float64(time.Now().UnixMilli())/1000, 'f', 3, 64),
 	)
 	headers.Set("x-ig-app-startup-country", "US")
-	headers.Set("x-bloks-version-id", bloks.BloksVersionInstagram)
+	headers.Set("x-bloks-version-id", bloks.BloksVersionInstagramAndroid)
 	headers.Set("x-ig-www-claim", "0")
 	headers.Set("x-bloks-is-layout-rtl", "false")
 	headers.Set("x-bloks-is-panorama-enabled", "true")

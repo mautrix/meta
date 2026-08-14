@@ -10,13 +10,19 @@ const (
 )
 
 var InstagramEndpoints = map[string]string{
-	"host":            instaWWWHost,
-	"base_url":        instaBaseUrl, //+ "/",
-	"messages":        instaBaseUrl + "/direct/inbox/",
-	"thread":          instaBaseUrl + "/direct/t/",
-	"graphql":         instaBaseUrl + "/api/graphql",
-	"cookie_consent":  "https://graphql.instagram.com/graphql/",
-	"default_graphql": "https://graphql.instagram.com/graphql/",
+	"host":                        instaWWWHost,
+	"base_url":                    instaBaseUrl, //+ "/",
+	"messages":                    instaBaseUrl + "/direct/inbox/",
+	"login":                       instaBaseUrl + "/accounts/login/",
+	"login_ajax":                  instaWebApiV1Url + "/accounts/login/ajax/",
+	"login_two_factor":            instaBaseUrl + "/accounts/login/two_factor/",
+	"login_two_factor_ajax":       instaWebApiV1Url + "/accounts/login/ajax/two_factor/",
+	"login_two_step_verification": instaBaseUrl + "/accounts/login/two_step_verification/",
+	"fxcal_sso_login":             instaWebApiV1Url + "/fxcal/ig_sso_login/",
+	"thread":                      instaBaseUrl + "/direct/t/",
+	"graphql":                     instaBaseUrl + "/api/graphql",
+	"cookie_consent":              "https://graphql.instagram.com/graphql/",
+	"default_graphql":             "https://graphql.instagram.com/graphql/",
 
 	"dgw_lightspeed":       instaDGWBase + "/ws/lightspeed",
 	"dgw_mqttbypass":       instaDGWBase + "/ws/mqttbypass",
