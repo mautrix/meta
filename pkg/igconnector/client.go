@@ -56,9 +56,14 @@ type IGClient struct {
 	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
 	stopChatBackfill      atomic.Pointer[context.CancelFunc]
 	chatBackfillLock      sync.Mutex
-	mailboxProcessed      atomic.Bool
-	waitMailboxProcessed  chan struct{}
-	permanentErrored      atomic.Bool
+	// Two Connect calls overlapping would run two index-load flows against the
+	// same account with the same cookies at once, which is exactly what a
+	// second-device login looks like. MetaClient already guards this; the
+	// Instagram client did not.
+	connectLock          sync.Mutex
+	mailboxProcessed     atomic.Bool
+	waitMailboxProcessed chan struct{}
+	permanentErrored     atomic.Bool
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -138,6 +143,11 @@ func (ic *IGClient) ExportCredentials(ctx context.Context) any {
 }
 
 func (ic *IGClient) Connect(ctx context.Context) {
+	if !ic.connectLock.TryLock() {
+		zerolog.Ctx(ctx).Error().Msg("Connect called multiple times in parallel")
+		return
+	}
+	defer ic.connectLock.Unlock()
 	if ic.LoginMeta.Platform != types.Instagram {
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: MetaNotInstagram})
 		return
