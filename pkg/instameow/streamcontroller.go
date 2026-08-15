@@ -42,8 +42,12 @@ func (c *Client) connectStreamController(ctx context.Context) {
 	}
 	ctx = sock.Log.WithContext(ctx)
 	for {
+		connectStart := time.Now()
 		err := sock.Connect(ctx)
-		wasConnected := c.streamControllerConnected.Swap(false)
+		// See the main socket loop: a connection has to hold for a while before
+		// dropping it earns an immediate, un-backed-off reconnect.
+		wasConnected := c.streamControllerConnected.Swap(false) &&
+			time.Since(connectStart) >= MinStableConnectionForImmediateReconnect
 		if err == nil {
 			sock.Log.Debug().Msg("Socket closed cleanly")
 			return
@@ -63,11 +67,11 @@ func (c *Client) connectStreamController(ctx context.Context) {
 			case <-ctx.Done():
 				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
 				return
-			case <-time.After(min(time.Duration(1<<sequentialFailures)*time.Second, MaxConnectionRetryInterval)):
+			case <-time.After(reconnectDelay(sequentialFailures)):
 				continue
 			}
 		} else {
-			sock.Log.Debug().Err(err).Msg("Socket disconnected, reconnecting immediately")
+			sock.Log.Debug().Err(err).Msg("Socket disconnected after a stable connection, reconnecting immediately")
 			sequentialFailures = 0
 		}
 	}
