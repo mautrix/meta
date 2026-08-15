@@ -200,7 +200,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		return
 	}
 	if attempts > 0 {
-		retryIn := time.Duration(1<<attempts) * time.Second
+		retryIn := metaid.ConnectRetryDelay(attempts)
 		zerolog.Ctx(ctx).Debug().Stringer("retry_in", retryIn).Msg("Sleeping before retrying connection")
 		select {
 		case <-time.After(retryIn):
