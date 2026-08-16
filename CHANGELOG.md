@@ -1,4 +1,4 @@
-# v26.08 (unreleased)
+# v26.08
 
 * Removed Instagram support from the mautrix-meta bridge.
   Only mautrix-instagram can be used for Instagram now.
