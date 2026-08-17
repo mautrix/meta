@@ -29,8 +29,6 @@ import (
 )
 
 var (
-	ErrLoginPhoneNumber      = bridgev2.RespError{ErrCode: "FI.MAU.META_PHONE_NUMBER", Err: "Phone number login is not supported, please try email address or username", StatusCode: http.StatusBadRequest}
-	ErrLoginInvalidUsername  = bridgev2.RespError{ErrCode: "FI.MAU.META_MATRIX_ID", Err: "That doesn't look like a valid username, please enter your Facebook email address or username", StatusCode: http.StatusBadRequest}
 	ErrLoginAFADStopped      = bridgev2.RespError{ErrCode: "FI.MAU.META_AFAD_STOPPED", Err: "The approval request expired or was denied, please try logging in again", StatusCode: http.StatusBadRequest}
 	ErrLoginMandatoryOAuth   = bridgev2.RespError{ErrCode: "FI.MAU.META_OAUTH_MANDATORY", Err: "Meta is requiring Google sign-in which is not supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
 	ErrLoginNoSupportedMFA   = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SUPPORTED_MFA", Err: "None of the available MFA methods are supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
@@ -946,10 +944,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 		if !definitelyNotPhoneNumberRegexp.MatchString(username) {
-			return nil, ErrLoginPhoneNumber
+			delete(userInput, "username")
+			delete(userInput, "password")
+			b.LastError = "Phone number login is not supported, please try email address or username"
+			break
 		}
 		if strings.Contains(username, ":") { // covers MXIDs
-			return nil, ErrLoginInvalidUsername
+			delete(userInput, "username")
+			delete(userInput, "password")
+			b.LastError = "That doesn't look like a valid Facebook email address or username."
+			break
 		}
 
 		// Set up in case we don't navigate to a new page successfully
