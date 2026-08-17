@@ -380,8 +380,6 @@ type checkpointsFlow struct {
 }
 
 func getBloksType(lit *BloksScriptLiteral) (int64, error) {
-	// TBD: What are types 5 and 8?
-	// I get the sense type 8 may be a function closure.
 	switch lit.Value().(type) {
 	case nil:
 		return 0, nil
@@ -397,7 +395,10 @@ func getBloksType(lit *BloksScriptLiteral) (int64, error) {
 		return 6, nil
 	case map[string]*BloksScriptLiteral:
 		return 7, nil
+	case *BloksLambda:
+		return 8, nil
 	}
+	// Native code would return 5 in this case
 	return -1, fmt.Errorf("unexpected bloks typecheck for %T", lit.Value())
 }
 
@@ -1102,6 +1103,14 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
+		// Special case in the native code. 100 means either
+		// int or float. It's never returned by TypeOf.
+		if expected == 100 {
+			switch actual {
+			case 3, 4:
+				actual = expected
+			}
+		}
 		if expected != actual {
 			return nil, fmt.Errorf("bloks type assertion failure (%d != %d)", actual, expected)
 		}
@@ -1304,6 +1313,18 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		// triggering asynchronous execution. I really hope we can get away
 		// without actually doing that.
 		return i.Evaluate(ctx, &call.Args[1])
+	case "bk.action.i64.Convert":
+		arg, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		switch val := arg.Value().(type) {
+		case int64:
+			return BloksLiteralOf(val), nil
+		case float64:
+			return BloksLiteralOf(int64(val)), nil
+		}
+		return nil, fmt.Errorf("can't convert %T to i64", arg.Value())
 	case "bk.fx.action.FetchAllAvailableNativeAuthDataForCaller",
 		"bk.action.cds.internal.GetContainerMode",
 		"bk.action.caa.GetSPIEligibility":
