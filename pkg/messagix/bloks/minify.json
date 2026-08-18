@@ -1705,7 +1705,8 @@
     "㐅": "bk.components.Collection",
     "㐟": "action",
     "㚮": "buttonExtension",
-    "㚱": "accessibilityExtension"
+    "㚱": "accessibilityExtension",
+    "帍": "webview"
   },
   "properties": {
     "bk.components.FoaTouchExtension": {
@@ -1867,6 +1868,10 @@
       "3": "label",
       "13": "role",
       "103": "on_bind"
+    },
+    "webview": {
+      "3": "callback",
+      "4": "url"
     }
   }
 }

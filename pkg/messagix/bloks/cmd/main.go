@@ -58,6 +58,7 @@ var sessionEndpoint = flag.String("session-endpoint", "", "Override the create_s
 var newAppID = flag.String("new-app-id", "", "Request the session for this app instead of our own")
 var appAuth = flag.Bool("app-auth", false, "Send the first-party app authorization header with -exchange-token")
 var sweepAppIDs = flag.Bool("sweep-app-ids", false, "Try -exchange-token against every known first-party app ID")
+var doRecaptcha = flag.Bool("recaptcha", false, "Extract the recaptcha webview url")
 
 // Known first-party app IDs, for finding one that the session exchange accepts.
 var knownAppIDs = []struct{ ID, Name string }{
@@ -706,6 +707,10 @@ func mainE() error {
 		if err != nil {
 			return fmt.Errorf("tapping try another way button: %w", err)
 		}
+	} else if *doRecaptcha {
+		webview := bundle.FindDescendantIncludingEmbedded(bloks.FilterByComponent("webview"))
+		fmt.Println(webview)
+		fmt.Println("URL:", webview.GetAttribute("url"))
 	}
 	return nil
 }

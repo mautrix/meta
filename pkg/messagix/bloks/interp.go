@@ -349,11 +349,17 @@ func evalTreeCallback(ctx context.Context, i *Interpreter, form *BloksScriptNode
 const maxInterpArgs = 100
 
 func InterpBindThis(ctx context.Context, this *BloksTreeComponent) context.Context {
+	return InterpBindArgs(ctx, &BloksElemRef{this})
+}
+
+func InterpBindArgs(ctx context.Context, args ...any) context.Context {
 	ambientArgs, ok := ctx.Value(interpCtxArgs).([]*BloksScriptLiteral)
 	if !ok {
 		ambientArgs = make([]*BloksScriptLiteral, maxInterpArgs)
 	}
-	ambientArgs[0] = BloksLiteralOf(&BloksElemRef{this})
+	for i, arg := range args {
+		ambientArgs[i] = BloksLiteralOf(arg)
+	}
 	return context.WithValue(ctx, interpCtxArgs, ambientArgs)
 }
 

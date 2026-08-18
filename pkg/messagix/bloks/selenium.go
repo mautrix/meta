@@ -61,6 +61,20 @@ func (bb *BloksBundle) FindDescendant(pred func(*BloksTreeComponent) bool) *Blok
 	return bb.Layout.Payload.Tree.FindDescendant(pred)
 }
 
+func (bb *BloksBundle) FindDescendantIncludingEmbedded(pred func(*BloksTreeComponent) bool) *BloksTreeComponent {
+	res := bb.Layout.Payload.Tree.FindDescendant(pred)
+	if res != nil {
+		return res
+	}
+	for _, embedded := range bb.Layout.Payload.Embedded {
+		res := embedded.Contents.FindDescendant(pred)
+		if res != nil {
+			return res
+		}
+	}
+	return nil
+}
+
 func (bb *BloksBundle) FindDescendants(pred func(*BloksTreeComponent) bool) []*BloksTreeComponent {
 	return bb.Layout.Payload.Tree.FindDescendants(pred)
 }
@@ -305,6 +319,7 @@ const (
 	StateEmailPasswordPage      BrowserState = "enter-email-and-password-page"
 	StateCodeEntryPage          BrowserState = "enter-code-page"
 	StateCaptchaPage            BrowserState = "captcha-page"
+	StateReCaptchaPage          BrowserState = "recaptcha-page"
 	StateMFALandingPage         BrowserState = "mfa-landing-page"
 	StateChooseMFAPage          BrowserState = "choose-mfa-type-page"
 	StateAFADPage               BrowserState = "afad-page"
@@ -623,7 +638,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_step_verification.no_op_captcha":
 				newState = StateSilentCaptchaPage
 			case "com.bloks.www.two_step_verification.google_recaptcha":
-				return ErrLoginReCaptcha
+				newState = StateReCaptchaPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
@@ -1285,6 +1300,62 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, ErrLoginUninformative("captcha submit unexpected error")
 			}
 			return nil, fmt.Errorf("tapping continue: %w", err)
+		}
+
+	case StateReCaptchaPage:
+		webview := b.CurrentPage.FindDescendantIncludingEmbedded(FilterByComponent("webview"))
+		if webview == nil {
+			return nil, fmt.Errorf("can't find reCAPTCHA webview")
+		}
+		token := userInput["recaptcha_token"]
+		if token == "" {
+			url := webview.GetDynamicAttribute(ctx, b.CurrentPage.Interpreter, "url")
+			if url == "" {
+				return nil, fmt.Errorf("reCAPTCHA webview has no URL")
+			}
+			initialURL, err := json.Marshal(url)
+			if err != nil {
+				return nil, fmt.Errorf("marshal initial captcha webview url: %w", err)
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeCookies,
+				StepID:       "fi.mau.meta.messengerlite.recaptcha",
+				Instructions: "Complete the Google reCAPTCHA challenge.",
+				CookiesParams: &bridgev2.LoginCookiesParams{
+					URL: url,
+					Fields: []bridgev2.LoginCookieField{{
+						ID:       "recaptcha_token",
+						Required: true,
+						Sources:  []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "recaptcha_token"}},
+					}},
+					// The Android app seems to be just getting a navigation
+					// callback from the webview rather than something more
+					// specific. The argument, which is presumably a url, seems
+					// to be being used as the token itself.
+					//
+					// There's a high probability that I'm missing something
+					// here.
+					ExtractJS: fmt.Sprintf(`new Promise(resolve => {
+						const initialURL = new URL(%s).href;
+						const timer = setInterval(() => {
+							if (location.href !== initialURL) {
+								clearInterval(timer);
+								resolve({recaptcha_token: location.href});
+							}
+						}, 250);
+					})`, string(initialURL)),
+				},
+			}
+			break
+		}
+		log.Debug().Str("recaptcha_token", token).Msg("Got recaptcha token from webview")
+		callback := webview.GetScript("callback")
+		if callback == nil {
+			return nil, fmt.Errorf("reCAPTCHA webview has no callback")
+		}
+		delete(userInput, "recaptcha_token")
+		if _, err = b.CurrentPage.Interpreter.Evaluate(InterpBindArgs(ctx, token), &callback.AST); err != nil {
+			return nil, fmt.Errorf("submitting reCAPTCHA token: %w", err)
 		}
 
 	case StateMFALandingPage:
