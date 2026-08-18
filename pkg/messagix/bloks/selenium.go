@@ -739,6 +739,15 @@ var initiateViewMethods = map[string]string{
 // canonical name, the names in display order, and how many recognised but
 // unsupported methods were skipped.
 func (bb *BloksBundle) FindMFAMethods(log *zerolog.Logger) (map[string]*BloksTreeComponent, []string, int) {
+	if bb.FindDescendant(func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != "bk.data.TextSpan" {
+			return false
+		}
+		return strings.HasPrefix(comp.GetAttribute("text"), "Your session expired")
+	}) != nil {
+		log.Error().Msg("Got session expired warning on MFA screen")
+	}
+
 	foundMethods := map[string]*BloksTreeComponent{}
 	methodNames := []string{}
 	numIgnored := 0
