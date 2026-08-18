@@ -334,6 +334,7 @@ const (
 	StateWhatsAppPageAfterSend  BrowserState = "whatsapp-page-after-send"
 	StatePasskeyPage            BrowserState = "passkey"
 	StateSilentCaptchaPage      BrowserState = "noop-captcha"
+	StateSuggestedAccountPage   BrowserState = "suggested-account-page"
 	StateSuccess                BrowserState = "success"
 )
 
@@ -640,6 +641,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StateSilentCaptchaPage
 			case "com.bloks.www.two_step_verification.google_recaptcha":
 				newState = StateReCaptchaPage
+			case "com.bloks.www.caa.login.password_as_id_confirmation":
+				newState = StateSuggestedAccountPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
@@ -1827,6 +1830,23 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		err := btn.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping try another way button: %w", err)
+		}
+
+	case StateSuggestedAccountPage:
+		// "We couldn't find an account matching the login info you entered, but found an
+		// account that closely matches based on your login history". Identifying details of
+		// the account are shown on screen.
+		//
+		// For now, assume that if Facebook is recommending a specific account and providing
+		// personal information for that account, that they have verified the credentials
+		// sufficiently that we can assume they've picked the right account and we should
+		// just proceed.
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping continue: %w", err)
 		}
 
 	default:
