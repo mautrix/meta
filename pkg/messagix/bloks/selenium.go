@@ -597,7 +597,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StateCodeEntryPage
 			case "com.bloks.www.two_step_verification.entrypoint":
 				newState = StateMFALandingPage
-			case "com.bloks.www.two_step_verification.enter_text_captcha_code":
+			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
+				"com.bloks.www.caa.ar.sms_captcha":
 				newState = StateCaptchaPage
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device",
 				"com.bloks.www.two_step_verification.approve_from_another_device":
@@ -1164,7 +1165,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			log.Trace().Str("image_url", imageURL).Msg("Found image captcha")
 
-			audio := b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+			audio := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.data.TextSpan" {
+					return false
+				}
+				return strings.EqualFold(comp.GetAttribute("text"), "play audio")
+			})
 			if audio == nil {
 				return nil, fmt.Errorf("can't find audio text")
 			}

@@ -560,7 +560,12 @@ func mainE() error {
 			if imageURL == "" {
 				return "", "", fmt.Errorf("captcha image has no url")
 			}
-			audio := bundle.FindDescendant(bloks.FilterByAttribute("bk.data.TextSpan", "text", "play audio"))
+			audio := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+				if comp.ComponentID != "bk.data.TextSpan" {
+					return false
+				}
+				return strings.EqualFold(comp.GetAttribute("text"), "play audio")
+			})
 			if audio == nil {
 				return "", "", fmt.Errorf("can't find audio text")
 			}
