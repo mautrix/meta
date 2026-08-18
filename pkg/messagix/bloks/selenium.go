@@ -743,7 +743,12 @@ func (bb *BloksBundle) FindMFAMethods(log *zerolog.Logger) (map[string]*BloksTre
 	methodNames := []string{}
 	numIgnored := 0
 
-	if bb.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Choose a way to log in.")) != nil {
+	if bb.FindDescendant(func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != "bk.data.TextSpan" {
+			return false
+		}
+		return strings.HasPrefix(comp.GetAttribute("text"), "Choose a way to log in")
+	}) != nil {
 		for _, span := range bb.FindDescendants(FilterByComponent("bk.data.TextSpan")) {
 			label := span.GetAttribute("text")
 			method, isMethod := initiateViewMethods[label]
