@@ -64,6 +64,10 @@ type MediaRefreshMeta struct {
 	StoryReelID  string `json:"story_reel_id,omitempty"`  // user pk (for /stories/direct/ type)
 }
 
+func (mrm *MediaRefreshMeta) IsXMA() bool {
+	return mrm != nil && (mrm.XMATargetID != 0 || mrm.XMAShortcode != "" || mrm.StoryMediaID != "")
+}
+
 type DirectMediaMeta struct {
 	MediaRefreshMeta
 	MimeType string `json:"mime_type,omitempty"`
@@ -190,7 +194,11 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 		if ok {
 			loginID = login.ID
 		}
-		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeMetaV2, loginID, msgID, partID)
+		mediaIDType := metaid.DirectMediaTypeMetaV2
+		if params.RefreshMeta.IsXMA() {
+			mediaIDType = metaid.DirectMediaTypeMetaXMA
+		}
+		mediaID := metaid.MakeMediaID(mediaIDType, loginID, msgID, partID)
 		var err error
 		content.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
 		if err != nil {
@@ -209,14 +217,18 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 		}
 		content.Info.Size = params.FileSize
 		fillMetadata()
+		dbMeta := &metaid.MessageMetadata{}
+		if mediaIDType == metaid.DirectMediaTypeMetaXMA {
+			dbMeta.XMADirectMediaMeta = directMediaMeta
+		} else {
+			dbMeta.DirectMediaMeta = directMediaMeta
+		}
 		return &bridgev2.ConvertedMessagePart{
-			ID:      partID,
-			Type:    eventType,
-			Content: content,
-			Extra:   extra,
-			DBMetadata: &metaid.MessageMetadata{
-				DirectMediaMeta: directMediaMeta,
-			},
+			ID:         partID,
+			Type:       eventType,
+			Content:    content,
+			Extra:      extra,
+			DBMetadata: dbMeta,
 		}, nil
 	}
 

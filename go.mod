@@ -27,7 +27,7 @@ require (
 	golang.org/x/net v0.58.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.30.0
+	maunium.net/go/mautrix v0.30.1-0.20260819140651-ec1e263d73aa
 )
 
 require (

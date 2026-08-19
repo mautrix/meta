@@ -18,8 +18,20 @@ import (
 )
 
 type MessageMetadata struct {
-	EditTimestamp   int64           `json:"edit_timestamp,omitempty"`
+	EditTimestamp int64 `json:"edit_timestamp,omitempty"`
+	// Default direct media meta. Used for blob media, whatsapp media and old XMA media
 	DirectMediaMeta json.RawMessage `json:"direct_media_meta,omitempty"`
+	// New XMA direct media meta.
+	XMADirectMediaMeta json.RawMessage `json:"xma_media_meta,omitempty"`
+	// Metadata for postponed fetching of XMA media.
+	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
+	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+}
+
+type XMAFetchMeta struct {
+	TargetURL string `json:"target_url,omitempty"`
+	TargetID  int64  `json:"target_id,omitempty"`
+	IsStory   bool   `json:"is_story,omitempty"`
 }
 
 type GhostMetadata struct {
