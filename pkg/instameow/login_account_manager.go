@@ -283,6 +283,9 @@ func (c *Client) switchInstagramAccountManagerProfile(
 	if err := c.loadIndex(ctx); err != nil {
 		return fmt.Errorf("failed to load the selected Instagram web session: %w", err)
 	}
+	if c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
+		c.cookies.Set(cookies.IGCookieCSRFToken, state.CSRFToken)
+	}
 	if !strings.EqualFold(c.configs.BrowserConfigTable.PolarisViewer.GetUsername(), account.Username) {
 		return errors.New("instagram Account Manager web login returned the wrong profile")
 	}
