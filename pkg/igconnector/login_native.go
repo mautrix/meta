@@ -261,14 +261,19 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 	}
 	loginTransport := m.transport
 	m.transport = nil
+	var restoreTransport func()
 	if loginTransport != nil {
 		originalTransport := client.GetHTTP().HTTP.Transport
 		client.GetHTTP().HTTP.Transport = loginTransport
-		defer func() {
-			client.GetHTTP().HTTP.Transport = originalTransport
-		}()
+		restoreTransport = func() {
+			if loginTransport != nil {
+				client.GetHTTP().HTTP.Transport = originalTransport
+				loginTransport = nil
+			}
+		}
+		defer restoreTransport()
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies)
+	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, restoreTransport)
 }
 
 func isClientHTTPError(err error) bool {

@@ -127,6 +127,7 @@ func loginWithCookies(
 	bridgeUser *bridgev2.User,
 	conn *IGConnector,
 	c *cookies.Cookies,
+	beforeClientStart func(),
 ) (*bridgev2.LoginStep, error) {
 	log.Debug().
 		Strs("cookie_names", exslices.CastToString[string](slices.Collect(maps.Keys(c.GetAll())))).
@@ -172,6 +173,9 @@ func loginWithCookies(
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save new login: %w", err)
+	}
+	if beforeClientStart != nil {
+		beforeClientStart()
 	}
 
 	igClient := ul.Client.(*IGClient)
@@ -223,5 +227,5 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, c)
+	return loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
 }
