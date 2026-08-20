@@ -48,7 +48,7 @@ func (c *Client) onSocketConnect(ctx context.Context) error {
 	c.canSendMessages.Set()
 
 	reconnect := c.socketWasSynced.Load()
-	if !reconnect {
+	if !c.socketWasConnected.Load() {
 		err := c.sendInitialThreadFetch(ctx)
 		if err != nil {
 			return err
