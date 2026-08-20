@@ -22,11 +22,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/jsontime"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -44,6 +46,20 @@ func (ic *IGConnector) SetUseDirectMedia() {
 	ic.MsgConv.DirectMedia = true
 }
 
+var ErrXMAReloadNeeded = mautrix.RespError{
+	ErrCode:    "COM.BEEPER.MEDIA_RELOAD_NEEDED",
+	Err:        "Story or reel must be refetched from Instagram",
+	StatusCode: http.StatusNotFound,
+}
+
+func (ic *IGClient) ResolveMedia(ctx context.Context, portal *bridgev2.Portal, msg *database.Message, unresolvedMedia json.RawMessage) (*bridgev2.ResolvedMedia, error) {
+	edit, err := ic.Main.MsgConv.FetchUnresolvedXMA(ctx, ic.Client, ic.UserLogin, portal, msg, unresolvedMedia)
+	if err != nil {
+		return nil, err
+	}
+	return &bridgev2.ResolvedMedia{Edit: edit}, nil
+}
+
 func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, params map[string]string) (mediaproxy.GetMediaResponse, error) {
 	mediaInfo, err := metaid.ParseMediaID(mediaID)
 	if err != nil {
@@ -51,7 +67,7 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	}
 
 	switch mediaInfo.Type {
-	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2:
+	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaXMA:
 		// ok
 	default:
 		return nil, fmt.Errorf("unknown media type: %v", mediaInfo.Type)
@@ -70,7 +86,13 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 		return nil, fmt.Errorf("message not found")
 	}
 
-	dmm := msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	var dmm json.RawMessage
+	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+		dmm = msgMeta.XMADirectMediaMeta
+	} else {
+		dmm = msgMeta.DirectMediaMeta
+	}
 	if dmm == nil {
 		return nil, fmt.Errorf("message does not have direct media metadata")
 	}
@@ -86,6 +108,11 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	needsRefresh := !info.ExpiresAt.IsZero() && time.Now().After(info.ExpiresAt.Add(-5*time.Minute))
 	size, reader, err := mediadl.DownloadMedia(ctx, info.MimeType, info.URL, ic.MsgConv.MaxFileSize)
 	if err != nil && (errors.Is(err, mediadl.ErrForbidden) || needsRefresh) {
+		allowXMARefresh := params["com.beeper.interactive_download_request"] != "false"
+		if !allowXMARefresh && info.IsXMA() {
+			return nil, ErrXMAReloadNeeded
+		}
+
 		log.Debug().
 			Bool("needs_refresh", needsRefresh).
 			AnErr("original_error", err).
@@ -127,8 +154,27 @@ func (ic *IGConnector) refreshMediaURL(
 	client := ul.Client.(*IGClient)
 
 	// Route to appropriate refresh method based on attachment type
-	if info.XMATargetID != 0 || info.XMAShortcode != "" || info.StoryMediaID != "" {
-		return ic.refreshXMAMedia(ctx, client, info)
+	if info.IsXMA() {
+		refreshedURL, err := ic.refreshXMAMedia(ctx, client, info)
+		if err != nil {
+			return "", err
+		}
+		info.URL = refreshedURL
+		if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+			msg.Metadata.(*metaid.MessageMetadata).XMADirectMediaMeta, err = json.Marshal(info)
+		} else {
+			msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta, err = json.Marshal(info)
+		}
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to marshal updated direct media metadata")
+		} else if err = ic.Bridge.DB.Message.Update(ctx, msg); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to update message in database after refreshing XMA media")
+		} else {
+			zerolog.Ctx(ctx).Debug().Msg("Updated message in database with refreshed XMA media URL")
+		}
+		return refreshedURL, nil
+	} else if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+		return "", fmt.Errorf("can't refresh blob media for XMA type")
 	}
 	return ic.refreshBlobMedia(ctx, client, msg, info)
 }
@@ -283,8 +329,8 @@ func (ic *IGConnector) refreshBlobMedia(
 			if err := json.Unmarshal(meta.DirectMediaMeta, &dmm); err != nil {
 				continue
 			}
-			// Don't update XMA attachments here (until thumbnailing support is added)
-			if dmm.XMATargetID != 0 || dmm.StoryMediaID != "" {
+			// Don't update old XMA attachments here
+			if dmm.IsXMA() {
 				continue
 			}
 

@@ -19,6 +19,7 @@ package igconv
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"net/url"
@@ -29,7 +30,9 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
@@ -38,6 +41,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
@@ -120,52 +124,143 @@ func isNumeric(str string) bool {
 	return len(str) > 0
 }
 
+type UnresolvedMediaContent struct {
+	Kind string                     `json:"kind"`
+	Base *event.MessageEventContent `json:"fi.mau.instagram.base_part,omitempty"`
+}
+
+func filterUnresolvedMediaContent(content *event.MessageEventContent) *event.MessageEventContent {
+	if content == nil {
+		return nil
+	}
+	return &event.MessageEventContent{
+		MsgType:       content.MsgType,
+		Body:          content.Body,
+		FormattedBody: content.FormattedBody,
+		URL:           content.URL,
+		Info:          content.Info,
+		File:          content.File,
+	}
+}
+
 func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMAContent, basePart *bridgev2.ConvertedMessagePart) *bridgev2.ConvertedMessagePart {
 	if basePart.Extra == nil {
 		basePart.Extra = make(map[string]any)
 	}
 	basePart.Extra["external_url"] = xma.TargetURL
-	if !mediadl.ShouldFetchXMA(ctx) {
-		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "skip"
-		return basePart
-	}
+	targetID, _ := strconv.ParseInt(xma.TargetID, 10, 64)
 	targetURL, _ := url.Parse(xma.TargetURL)
 	if targetURL == nil {
+		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "unrecognized url"
 		return basePart
 	}
-	if strings.HasPrefix(targetURL.Path, "/stories/") && isNumeric(path.Base(targetURL.Path)) {
-		return mc.fetchXMAStory(ctx, targetURL, basePart)
-	} else if targetIDInt, err := strconv.ParseInt(xma.TargetID, 10, 64); err == nil {
-		return mc.fetchXMAMedia(ctx, targetURL, targetIDInt, basePart)
+	isStory := strings.HasPrefix(targetURL.Path, "/stories/") && isNumeric(path.Base(targetURL.Path))
+	isMedia := targetID != 0
+	if !isStory && !isMedia {
+		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "unrecognized type"
+		return basePart
 	}
-	basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "unrecognized type"
-	return basePart
+	if !mediadl.ShouldFetchXMA(ctx) {
+		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "skip"
+		basePart.Extra["com.beeper.unresolved_media"] = &UnresolvedMediaContent{
+			Kind: "permanent",
+			Base: filterUnresolvedMediaContent(basePart.Content),
+		}
+		basePart.DBMetadata.(*metaid.MessageMetadata).XMAFetchMeta = &metaid.XMAFetchMeta{
+			TargetURL: xma.TargetURL,
+			TargetID:  targetID,
+			IsStory:   isStory,
+		}
+		return basePart
+	}
+	baseDMM := basePart.DBMetadata.(*metaid.MessageMetadata).DirectMediaMeta
+	var resultPart *bridgev2.ConvertedMessagePart
+	var fetchStatus string
+	var fetchErr error
+	if isStory {
+		resultPart, fetchStatus, fetchErr = mc.fetchXMAStory(ctx, targetURL, basePart.Content, baseDMM)
+	} else {
+		resultPart, fetchStatus, fetchErr = mc.fetchXMAMedia(ctx, targetURL, targetID, basePart.Content, baseDMM)
+	}
+	if fetchErr != nil {
+		zerolog.Ctx(ctx).Warn().Err(fetchErr).
+			Str("target_url", xma.TargetURL).
+			Int64("target_id", targetID).
+			Msg("Failed to fetch XMA item")
+		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = fetchStatus
+		return basePart
+	}
+	return resultPart
+}
+
+func (mc *MessageConverter) FetchUnresolvedXMA(
+	ctx context.Context,
+	client *instameow.Client,
+	userLogin *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	msg *database.Message,
+	unresolvedMedia json.RawMessage,
+) (*bridgev2.ConvertedEditPart, error) {
+	ctx = context.WithValue(ctx, mediadl.ContextKeyIGClient, client)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, portal.Bridge.Bot)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyUserLogin, userLogin)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyMsgID, msg.ID)
+	var unresolvedMediaContent UnresolvedMediaContent
+	err := json.Unmarshal(unresolvedMedia, &unresolvedMediaContent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal unresolved media: %w", err)
+	} else if unresolvedMediaContent.Base == nil {
+		return nil, fmt.Errorf("unrecognized unresolved media content")
+	}
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	if msgMeta.XMAFetched {
+		zerolog.Ctx(ctx).Debug().Msg("Received fetch request for already resolved XMA item, returning no-op response")
+		return nil, nil
+	}
+	if msgMeta.XMAFetchMeta == nil {
+		return nil, mautrix.MNotFound.WithMessage("Message isn't a fetchable reel or story")
+	}
+	targetURL, err := url.Parse(msgMeta.XMAFetchMeta.TargetURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse target URL: %w", err)
+	}
+	baseContent := unresolvedMediaContent.Base
+	baseDMM := msgMeta.DirectMediaMeta
+	var resultPart *bridgev2.ConvertedMessagePart
+	if msgMeta.XMAFetchMeta.IsStory {
+		resultPart, _, err = mc.fetchXMAStory(ctx, targetURL, baseContent, baseDMM)
+	} else {
+		resultPart, _, err = mc.fetchXMAMedia(ctx, targetURL, msgMeta.XMAFetchMeta.TargetID, baseContent, baseDMM)
+	}
+	// TODO for some errors, there should be an edit part to remove the unresolved status
+	if err != nil {
+		return nil, err
+	}
+	editPart := resultPart.ToEditPart(msg)
+	if editPart.TopLevelExtra == nil {
+		editPart.TopLevelExtra = make(map[string]any)
+	}
+	editPart.TopLevelExtra["com.beeper.dont_render_edited"] = true
+	return editPart, nil
 }
 
 func (mc *MessageConverter) fetchXMAStory(
 	ctx context.Context,
 	targetURL *url.URL,
-	basePart *bridgev2.ConvertedMessagePart,
-) *bridgev2.ConvertedMessagePart {
+	baseContent *event.MessageEventContent,
+	baseDirectMediaMeta json.RawMessage,
+) (*bridgev2.ConvertedMessagePart, string, error) {
 	cli := ctx.Value(mediadl.ContextKeyIGClient).(*instameow.Client)
 	mediaID := path.Base(targetURL.Path)
 	reelID := targetURL.Query().Get("reel_id")
-	log := zerolog.Ctx(ctx).With().
-		Str("action", "fetch xma story").
-		Str("reel_id", reelID).
-		Str("media_id", mediaID).
-		Logger()
 	resp, err := cli.FetchReel(ctx, []string{reelID}, mediaID)
 	if err != nil {
-		log.Err(err).Msg("Failed to fetch XMA story")
-		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "fetch fail"
-		return basePart
+		return nil, "fetch fail", err
 	}
 	reel, ok := resp.Reels[reelID]
 	if !ok {
-		log.Warn().Msg("Got empty XMA story response")
-		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "empty response"
-		return basePart
+		return nil, "empty response", fmt.Errorf("got empty XMA story response")
 	}
 	var targetItem *responses.ReelItem
 	for _, item := range reel.Items {
@@ -175,11 +270,9 @@ func (mc *MessageConverter) fetchXMAStory(
 		}
 	}
 	if targetItem == nil {
-		log.Warn().Msg("No matching reel item found in XMA response")
-		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "item not found in response"
-		return basePart
+		return nil, "item not found in response", fmt.Errorf("no matching reel item found in XMA response")
 	}
-	return mc.wrapXMAItem(ctx, &targetItem.Items, basePart, &mediadl.MediaRefreshMeta{
+	return mc.wrapXMAItem(ctx, &targetItem.Items, targetURL.String(), baseContent, baseDirectMediaMeta, &mediadl.MediaRefreshMeta{
 		StoryMediaID: mediaID,
 		StoryReelID:  reelID,
 	})
@@ -191,9 +284,9 @@ func (mc *MessageConverter) fetchXMAMedia(
 	ctx context.Context,
 	targetURL *url.URL,
 	targetID int64,
-	basePart *bridgev2.ConvertedMessagePart,
-) *bridgev2.ConvertedMessagePart {
-	log := zerolog.Ctx(ctx).With().Str("action", "fetch xma media").Int64("target_id", targetID).Logger()
+	baseContent *event.MessageEventContent,
+	baseDirectMediaMeta json.RawMessage,
+) (*bridgev2.ConvertedMessagePart, string, error) {
 	cli := ctx.Value(mediadl.ContextKeyIGClient).(*instameow.Client)
 	carouselMediaID := targetURL.Query().Get("carousel_share_child_media_id")
 	var mediaShortcode string
@@ -202,13 +295,9 @@ func (mc *MessageConverter) fetchXMAMedia(
 	}
 	resp, err := cli.FetchMedia(ctx, strconv.FormatInt(targetID, 10), mediaShortcode)
 	if err != nil {
-		log.Err(err).Msg("Failed to fetch XMA media")
-		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "fetch fail"
-		return basePart
+		return nil, "fetch fail", err
 	} else if len(resp.Items) == 0 {
-		log.Warn().Msg("No items found in XMA media fetch response")
-		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "empty response"
-		return basePart
+		return nil, "empty response", fmt.Errorf("no items found in XMA media fetch response")
 	}
 	targetItem := resp.Items[0]
 	if carouselMediaID != "" {
@@ -219,7 +308,7 @@ func (mc *MessageConverter) fetchXMAMedia(
 			}
 		}
 	}
-	return mc.wrapXMAItem(ctx, targetItem, basePart, &mediadl.MediaRefreshMeta{
+	return mc.wrapXMAItem(ctx, targetItem, targetURL.String(), baseContent, baseDirectMediaMeta, &mediadl.MediaRefreshMeta{
 		XMATargetID:     targetID,
 		XMAShortcode:    mediaShortcode,
 		CarouselMediaID: carouselMediaID,
@@ -229,9 +318,11 @@ func (mc *MessageConverter) fetchXMAMedia(
 func (mc *MessageConverter) wrapXMAItem(
 	ctx context.Context,
 	targetItem *responses.Items,
-	basePart *bridgev2.ConvertedMessagePart,
+	externalURL string,
+	baseContent *event.MessageEventContent,
+	baseDirectMediaMeta json.RawMessage,
 	refreshMeta *mediadl.MediaRefreshMeta,
-) *bridgev2.ConvertedMessagePart {
+) (*bridgev2.ConvertedMessagePart, string, error) {
 	var width, height int
 	var bestURL string
 	attachmentType := table.AttachmentTypeVideo
@@ -262,21 +353,23 @@ func (mc *MessageConverter) wrapXMAItem(
 		MaxFileSize:    mc.MaxFileSize,
 	})
 	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload XMA media")
-		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "reupload fail"
-		return basePart
+		return nil, "reupload fail", fmt.Errorf("failed to reupload media: %w", err)
 	}
 	part.Content.EnsureHasHTML()
-	part.Extra["external_url"] = basePart.Extra["external_url"]
-	part.Content.Body = basePart.Content.Body
-	part.Content.Format = basePart.Content.Format
-	part.Content.FormattedBody = basePart.Content.FormattedBody
+	part.Extra["external_url"] = externalURL
+	part.Content.Body = baseContent.Body
+	part.Content.FormattedBody = baseContent.FormattedBody
+	if part.Content.FormattedBody != "" {
+		part.Content.Format = event.FormatHTML
+	}
 	info := part.Content.Info
 	// TODO support thumbnails with direct media
-	if info != nil && part.Content.MsgType == event.MsgVideo && basePart.Content.MsgType == event.MsgImage && !mc.DirectMedia {
-		info.ThumbnailURL = basePart.Content.URL
-		info.ThumbnailFile = basePart.Content.File
-		info.ThumbnailInfo = basePart.Content.Info
+	if info != nil && baseContent.MsgType == event.MsgImage {
+		part.DBMetadata.(*metaid.MessageMetadata).DirectMediaMeta = baseDirectMediaMeta
+		info.ThumbnailURL = baseContent.URL
+		info.ThumbnailFile = baseContent.File
+		info.ThumbnailInfo = baseContent.Info
 	}
-	return part
+	part.DBMetadata.(*metaid.MessageMetadata).XMAFetched = true
+	return part, "", nil
 }

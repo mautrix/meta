@@ -18,13 +18,15 @@ const (
 	// recommended for current use
 	DirectMediaTypeMetaV2     DirectMediaType = 4
 	DirectMediaTypeWhatsAppV2 DirectMediaType = 5
+	DirectMediaTypeMetaXMA    DirectMediaType = 6
 )
 
 func (t DirectMediaType) isSupported() bool {
 	switch t {
 	case
 		DirectMediaTypeMetaV1, DirectMediaTypeWhatsAppV1,
-		DirectMediaTypeMetaV2, DirectMediaTypeWhatsAppV2:
+		DirectMediaTypeMetaV2, DirectMediaTypeWhatsAppV2,
+		DirectMediaTypeMetaXMA:
 		return true
 	}
 	return false
