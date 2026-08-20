@@ -307,8 +307,9 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 	}
 	fillMetadata()
 	return &bridgev2.ConvertedMessagePart{
-		Type:    eventType,
-		Content: content,
-		Extra:   extra,
+		Type:       eventType,
+		Content:    content,
+		Extra:      extra,
+		DBMetadata: &metaid.MessageMetadata{},
 	}, nil
 }
