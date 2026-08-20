@@ -662,11 +662,11 @@ func (m *MetaClient) handleAddParticipant(tk handlerParams, evt *table.LSAddPart
 		tk.Sync.Members[evt.ContactId] = m.wrapChatMember(evt)
 		return nil
 	}
+	memberMap := make(bridgev2.ChatMemberMap, 1)
+	memberMap.Add(m.wrapChatMember(evt))
 	return m.wrapChatInfoChange(tk.ID, evt.ContactId, tk.Type, &bridgev2.ChatInfoChange{
 		MemberChanges: &bridgev2.ChatMemberList{
-			Members: []bridgev2.ChatMember{
-				m.wrapChatMember(evt),
-			},
+			MemberMap: memberMap,
 		},
 	}, "LSAddParticipantIdToGroupThread")
 }
@@ -684,13 +684,15 @@ func (m *MetaClient) handleSelfLeaveThread(tk handlerParams, evt *table.LSRemove
 }
 
 func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemoveParticipantFromThread) bridgev2.RemoteEvent {
+	memberMap := make(bridgev2.ChatMemberMap, 1)
+	memberMap.Add(bridgev2.ChatMember{
+		EventSender:    m.makeEventSender(evt.ParticipantId),
+		Membership:     event.MembershipLeave,
+		PrevMembership: event.MembershipJoin,
+	})
 	return m.wrapChatInfoChange(tk.ID, evt.ParticipantId, tk.Type, &bridgev2.ChatInfoChange{
 		MemberChanges: &bridgev2.ChatMemberList{
-			Members: []bridgev2.ChatMember{{
-				EventSender:    m.makeEventSender(evt.ParticipantId),
-				Membership:     event.MembershipLeave,
-				PrevMembership: event.MembershipJoin,
-			}},
+			MemberMap: memberMap,
 		},
 	}, "LSRemoveParticipantFromThread")
 }
