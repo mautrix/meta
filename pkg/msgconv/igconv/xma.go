@@ -160,6 +160,9 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "unrecognized type"
 		return basePart
 	}
+	if basePart.DBMetadata == nil {
+		basePart.DBMetadata = &metaid.MessageMetadata{}
+	}
 	if !mediadl.ShouldFetchXMA(ctx) {
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "skip"
 		basePart.Extra["com.beeper.unresolved_media"] = &UnresolvedMediaContent{
