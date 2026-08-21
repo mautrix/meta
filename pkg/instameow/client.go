@@ -44,6 +44,13 @@ type Client struct {
 	cookies *cookies.Cookies
 	log     *zerolog.Logger
 
+	mobileLogin           *mobileLoginState
+	caaLogin              *instagramCAALoginState
+	webTwoFactor          *instagramWebTwoFactorState
+	mobileLoginDevice     *types.InstagramLoginDevice
+	mobileSession         *instagramMobileSession
+	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
+
 	socket        atomic.Pointer[dgw.Socket]
 	cancelSocket  atomic.Pointer[context.CancelFunc]
 	connectionCtx atomic.Pointer[context.Context]
@@ -83,6 +90,11 @@ type ClientParams struct {
 	SeqIDTS       time.Time
 	EventHandler  EventHandler
 	DisableTyping bool
+
+	// MobileLoginDevice and SaveMobileLoginDevice retain one Android installation
+	// identity across login processes for the same bridge user.
+	MobileLoginDevice     *types.InstagramLoginDevice
+	SaveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
 }
 
 func NewClient(params ClientParams) *Client {
@@ -98,6 +110,12 @@ func NewClient(params ClientParams) *Client {
 		streamControllerStopped: exsync.NewEvent(),
 
 		enableTyping: !params.DisableTyping,
+
+		saveMobileLoginDevice: params.SaveMobileLoginDevice,
+	}
+	if params.MobileLoginDevice != nil {
+		device := *params.MobileLoginDevice
+		c.mobileLoginDevice = &device
 	}
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)

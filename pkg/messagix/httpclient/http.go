@@ -480,7 +480,10 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, error) {
 	headers := c.BuildHeaders(true, true)
 	//headers.Set("host", m.client.getEndpoint("host"))
-	_, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
+	response, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
+	if response != nil {
+		c.parent.GetCookies().UpdateFromResponse(response)
+	}
 	return responseBody, err
 }
 

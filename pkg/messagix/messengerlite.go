@@ -13,17 +13,13 @@ import (
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
-)
-
-var (
-	ErrLoginMissingCookies = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Meta returned incomplete credentials after login. If you don't have MFA enabled, please turn it on for your Facebook account. Otherwise, it may help to try again, log in from the official app/website first, or change the MFA settings for your Facebook account"}
-	ErrLoginTokenExchange  = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_EXCHANGE_FAILED", Err: "Meta returned a temporary credential after login which could not be exchanged for a usable session. It may help to try again, or to log in from the official app/website first"}
 )
 
 type MessengerLiteMethods struct {
@@ -381,7 +377,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 
 	if len(loginRespPayload.SessionCookies) == 0 {
 		if loginRespPayload.AccessToken == "" {
-			return nil, nil, ErrLoginMissingCookies
+			return nil, nil, loginerrors.MissingCookies.AppendMessage(". Meta returned incomplete credentials after login. If you don't have MFA enabled, please turn it on for your Facebook account. Otherwise, it may help to try again, log in from the official app/website first, or change the MFA settings for your Facebook account")
 		}
 		m.client.Logger.Debug().
 			Str("credential_type", loginRespPayload.CredentialType).
@@ -391,7 +387,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 			m.client.Logger.Warn().Err(err).
 				Str("credential_type", loginRespPayload.CredentialType).
 				Msg("Failed to exchange access token for session cookies")
-			return nil, nil, ErrLoginTokenExchange
+			return nil, nil, loginerrors.TokenExchange
 		}
 		m.client.Logger.Debug().
 			Str("credential_type", loginRespPayload.CredentialType).
