@@ -287,6 +287,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Error:      FBConsentRequired,
 				UserAction: status.UserActionRestart,
 			})
+			go m.periodicReconnect()
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {
