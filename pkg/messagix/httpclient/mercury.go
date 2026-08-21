@@ -127,7 +127,7 @@ func (c *HTTPClient) parseMercuryResponse(ctx context.Context, respBody []byte) 
 
 	if strings.Contains(mercuryResponse.Redirect, "/consent/") {
 		zerolog.Ctx(ctx).Warn().Str("redirect", mercuryResponse.Redirect).Msg("Mercury upload returned consent redirect")
-		return nil, fmt.Errorf("%w: mercury upload redirected to %s", ErrConsentRequired, mercuryResponse.Redirect)
+		return nil, fmt.Errorf("mercury upload: %w", RedirectedError{Type: ErrConsentRequired, URL: mercuryResponse.Redirect})
 	}
 
 	mercuryResponse.Raw = jsonData

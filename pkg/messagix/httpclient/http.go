@@ -317,6 +317,26 @@ var (
 	ErrVersionIDNotFound        = errors.New("version ID not found")
 )
 
+type RedirectedError struct {
+	Type error
+	URL  string
+}
+
+func (re RedirectedError) Error() string {
+	return fmt.Sprintf("%v: redirected to %s", re.Type, re.URL)
+}
+
+func (re RedirectedError) Unwrap() error {
+	return re.Type
+}
+
+func GetErrorRedirectURL(err error) string {
+	if re, ok := errors.AsType[RedirectedError](err); ok {
+		return re.URL
+	}
+	return ""
+}
+
 func IsPermanentRequestError(err error) bool {
 	return errors.Is(err, ErrTokenInvalidated) ||
 		errors.Is(err, ErrChallengeRequired) ||
@@ -344,13 +364,13 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 			Msg("HTTP request was redirected")
 	}
 	if strings.HasPrefix(req.URL.Path, "/challenge/") {
-		return fmt.Errorf("%w: redirected to %s", ErrChallengeRequired, req.URL.String())
+		return RedirectedError{Type: ErrChallengeRequired, URL: req.URL.String()}
 	} else if req.URL.Path == "/accounts/suspended/" {
-		return fmt.Errorf("%w: redirected to %s", ErrAccountSuspended, req.URL.String())
+		return RedirectedError{Type: ErrAccountSuspended, URL: req.URL.String()}
 	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
-		return fmt.Errorf("%w: redirected to %s", ErrConsentRequired, req.URL.String())
+		return RedirectedError{Type: ErrConsentRequired, URL: req.URL.String()}
 	} else if strings.HasPrefix(req.URL.Path, "/checkpoint/") {
-		return fmt.Errorf("%w: redirected to %s", ErrCheckpointRequired, req.URL.String())
+		return RedirectedError{Type: ErrCheckpointRequired, URL: req.URL.String()}
 	}
 	respCookies := req.Response.Cookies()
 	for _, cookie := range respCookies {

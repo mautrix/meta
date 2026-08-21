@@ -268,24 +268,28 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				StateEvent: status.StateBadCredentials,
 				Error:      FBChallengeRequired,
 				UserAction: status.UserActionRestart,
+				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			// Note: this is probably exclusive to instagram
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBAccountSuspended,
+				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBCheckpointRequired,
 				UserAction: status.UserActionRestart,
+				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
 				UserAction: status.UserActionRestart,
+				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			stateEvt := status.StateUnknownError
