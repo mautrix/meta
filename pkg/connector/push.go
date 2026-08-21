@@ -98,7 +98,9 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 	if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
 		zerolog.Ctx(ctx).Debug().Msg("Doing full reconnect and retrying push registration")
 		m.FullReconnect()
-		err = cli.Facebook.RegisterPushNotifications(ctx, token, keys)
+		if cli = m.Client; cli != nil {
+			err = cli.Facebook.RegisterPushNotifications(ctx, token, keys)
+		}
 	}
 	return err
 }

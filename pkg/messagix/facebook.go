@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
@@ -65,6 +66,9 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 
 	if !r.Payload.Success {
 		c.Logger.Err(err).Bytes("body", body).Msg("non-success push registration response")
+		if respErr := r.AsError(); respErr != nil {
+			return fmt.Errorf("non-success push registration response: %w", respErr)
+		}
 		return errors.New("non-success response payload")
 	}
 
@@ -72,6 +76,8 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 }
 
 type pushNotificationsResponse struct {
+	types.ErrorResponse
+
 	Ar      int `json:"__ar"`
 	Payload struct {
 		Success bool `json:"success"`
