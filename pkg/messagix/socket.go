@@ -131,9 +131,14 @@ func (c *Client) sendInitialThreadFetch(ctx context.Context) error {
 	}
 
 	c.Logger.Trace().Any("data", string(payload)).Msg("Sync groups tasks")
-	_, err = c.makeLSRequest(ctx, payload, 3)
+	resp, err := c.makeLSRequest(ctx, payload, 3)
 	if err != nil {
 		return fmt.Errorf("failed to send sync tasks: %w", err)
+	}
+	if tbl, err := resp.Parse(ctx); err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to parse sync tasks response")
+	} else {
+		c.HandleEvent(ctx, tbl)
 	}
 	return nil
 }
