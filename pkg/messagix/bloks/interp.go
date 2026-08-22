@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1073,6 +1074,40 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		return BloksNothing, nil
 	case "bk.action.i64.Const":
 		return i.Evaluate(ctx, &call.Args[0])
+	case "bk.action.i64.Convert", "bk.action.i32.Convert":
+		// Both collapse to int64 here: this interpreter has no separate 32-bit integer
+		// representation (BloksScriptLiteralValue only ever holds int64 for whole numbers,
+		// see BloksScriptLiteral.Parse), so i32 vs i64 only mattered in Meta's original typed
+		// VM, not in this reimplementation.
+		val, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		switch v := val.Value().(type) {
+		case int64:
+			return BloksLiteralOf(v), nil
+		case float64:
+			return BloksLiteralOf(int64(v)), nil
+		case string:
+			n, perr := strconv.ParseInt(v, 10, 64)
+			if perr != nil {
+				return nil, fmt.Errorf("%s: cannot convert %q to int: %w", call.Function, v, perr)
+			}
+			return BloksLiteralOf(n), nil
+		case bool:
+			if v {
+				return BloksLiteralOf(int64(1)), nil
+			}
+			return BloksLiteralOf(int64(0)), nil
+		default:
+			return nil, fmt.Errorf("%s: cannot convert %T to int", call.Function, val.Value())
+		}
+	case "bk.action.f32.Convert":
+		n, err := evalFloat(ctx, i, &call.Args[0], "f32.Convert")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(n), nil
 	case "bk.action.map.Get":
 		obj, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "merge")
 		if err != nil {
