@@ -446,6 +446,12 @@ func (c *HTTPClient) makeRequest(
 		backoff := time.Duration(attempts) * 3 * time.Second
 		if resp != nil && resp.StatusCode == 429 {
 			backoff *= 2
+			// When the server says how long to wait, that is the floor. Retrying
+			// on our own shorter schedule through a rate limit is how a throttle
+			// turns into a block.
+			if retryAfter := parseRetryAfter(resp.Header.Get("Retry-After")); retryAfter > backoff {
+				backoff = retryAfter
+			}
 		}
 		logContext(c.log.Err(err)).
 			Str("url", url).
@@ -459,6 +465,25 @@ func (c *HTTPClient) makeRequest(
 			return resp, nil, ctx.Err()
 		}
 	}
+}
+
+// parseRetryAfter reads a Retry-After header as either delta-seconds or an
+// HTTP-date, per RFC 9110 §10.2.3. Anything unparsable is treated as absent so
+// a malformed header can never make things worse than no header at all.
+func parseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if at, err := http.ParseTime(value); err == nil {
+		if until := time.Until(at); until > 0 {
+			return until
+		}
+	}
+	return 0
 }
 
 func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
