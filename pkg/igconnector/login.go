@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
+	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -31,6 +32,11 @@ const (
 
 func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	switch flowID {
+	case FlowIDInstagramPassword:
+		return &MetaNativeLogin{
+			User: user,
+			Main: ic,
+		}, nil
 	case FlowIDInstagramCookies:
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
@@ -51,7 +57,7 @@ var (
 )
 
 func (ic *IGConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	return []bridgev2.LoginFlow{loginFlowInstagram}
+	return []bridgev2.LoginFlow{loginFlowInstagramPassword, loginFlowInstagram}
 }
 
 type MetaCookieLogin struct {
@@ -61,12 +67,12 @@ type MetaCookieLogin struct {
 
 var _ bridgev2.LoginProcessCookies = (*MetaCookieLogin)(nil)
 
-func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridgev2.LoginCookieField {
+func cookieListToFields(cookies []cookies.MetaCookieName, domain string, required bool) []bridgev2.LoginCookieField {
 	fields := make([]bridgev2.LoginCookieField, len(cookies))
 	for i, cookie := range cookies {
 		fields[i] = bridgev2.LoginCookieField{
 			ID:       string(cookie),
-			Required: true,
+			Required: required,
 			Sources: []bridgev2.LoginCookieFieldSource{
 				{
 					Type:         bridgev2.LoginCookieTypeCookie,
@@ -86,23 +92,17 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			//UserAgent:         useragent.UserAgent,
-			URL:               "https://www.instagram.com/accounts/login/",
-			Fields:            cookieListToFields(cookies.IGRequiredCookies, "instagram.com"),
+			URL: "https://www.instagram.com/accounts/login/",
+			Fields: append(
+				cookieListToFields(cookies.IGRequiredCookies, "instagram.com", true),
+				cookieListToFields(cookies.IGOptionalCookies, "instagram.com", false)...,
+			),
 			WaitForURLPattern: "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$",
 		},
 	}, nil
 }
 
 func (m *MetaCookieLogin) Cancel() {}
-
-var (
-	ErrLoginMissingCookies   = bridgev2.RespError{ErrCode: "FI.MAU.META_MISSING_COOKIES", Err: "Missing cookies", StatusCode: http.StatusBadRequest}
-	ErrLoginChallenge        = bridgev2.RespError{ErrCode: "FI.MAU.META_CHALLENGE_ERROR", Err: "Challenge required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
-	ErrLoginConsent          = bridgev2.RespError{ErrCode: "FI.MAU.META_CONSENT_ERROR", Err: "Consent required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
-	ErrLoginCheckpoint       = bridgev2.RespError{ErrCode: "FI.MAU.META_CHECKPOINT_ERROR", Err: "Checkpoint required, please check the official website or app and then try again", StatusCode: http.StatusBadRequest}
-	ErrLoginTokenInvalidated = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_ERROR", Err: "Got logged out immediately", StatusCode: http.StatusBadRequest}
-	ErrLoginUnknown          = bridgev2.RespError{ErrCode: "M_UNKNOWN", Err: "Internal error logging in", StatusCode: http.StatusInternalServerError}
-)
 
 func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
 	client := instameow.NewClient(instameow.ClientParams{
@@ -127,6 +127,7 @@ func loginWithCookies(
 	bridgeUser *bridgev2.User,
 	conn *IGConnector,
 	c *cookies.Cookies,
+	beforeClientStart func(),
 ) (*bridgev2.LoginStep, error) {
 	log.Debug().
 		Strs("cookie_names", exslices.CastToString[string](slices.Collect(maps.Keys(c.GetAll())))).
@@ -135,15 +136,15 @@ func loginWithCookies(
 	if err != nil {
 		log.Err(err).Msg("Failed to load messages page for login")
 		if errors.Is(err, httpclient.ErrChallengeRequired) {
-			return nil, ErrLoginChallenge
+			return nil, loginerrors.Challenge
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
-			return nil, ErrLoginCheckpoint
+			return nil, loginerrors.Checkpoint
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
-			return nil, ErrLoginConsent
+			return nil, loginerrors.Consent
 		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
-			return nil, ErrLoginTokenInvalidated
+			return nil, loginerrors.TokenInvalidated
 		} else {
-			return nil, fmt.Errorf("%w: %w", ErrLoginUnknown, err)
+			return nil, fmt.Errorf("%w: %w", loginerrors.Unknown, err)
 		}
 	}
 
@@ -172,6 +173,9 @@ func loginWithCookies(
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save new login: %w", err)
+	}
+	if beforeClientStart != nil {
+		beforeClientStart()
 	}
 
 	igClient := ul.Client.(*IGClient)
@@ -215,7 +219,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 
 	missingCookies := c.GetMissingCookieNames()
 	if len(missingCookies) > 0 {
-		return nil, ErrLoginMissingCookies.AppendMessage(": %v", missingCookies)
+		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missingCookies)
 	}
 
 	log := m.User.Log.With().Str("component", "instameow").Logger()
@@ -223,5 +227,5 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, c)
+	return loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
 }

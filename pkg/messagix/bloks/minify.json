@@ -1589,6 +1589,7 @@
     "i4u": "bk.action.oxygen.OpenSystemSettings",
     "i4y": "bk.action.ig.reels.ScrollReelsView",
     "i54": "autofill.action.UpdateMcDogfooding",
+    "i5f": "bk.action.gms.flashcall.IncomingCallRetrieverEligibilityChecker",
     "i5p": "bk.action.frx.ExecuteMessengerBlockActorActionWithCallback",
     "i6i": "bk.versioning.SupportsFunctionTables",
     "i6o": "bk.action.waffle.FetchWaDataBundle",

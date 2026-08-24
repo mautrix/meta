@@ -32,12 +32,20 @@ var BloksActionDocAndroid BloksDoc = BloksDoc{
 	Version:     BloksVersionAndroid,
 }
 
+var BloksActionDocInstagram = BloksDoc{
+	Name:      "IGBloksActionRootQuery",
+	RootField: "bloks_action",
+	Version:   BloksVersionInstagramAndroid,
+}
+
 func GetBloksActionDoc(p types.Platform) (*BloksDoc, error) {
 	switch p {
 	case types.MessengerLiteIOS:
 		return &BloksActionDocIOS, nil
 	case types.MessengerLiteAndroid:
 		return &BloksActionDocAndroid, nil
+	case types.Instagram:
+		return &BloksActionDocInstagram, nil
 	default:
 		return nil, fmt.Errorf("platform %s doesn't support bloks", p.String())
 	}
@@ -59,12 +67,20 @@ var BloksAppDocAndroid BloksDoc = BloksDoc{
 	Version:     BloksVersionAndroid,
 }
 
+var BloksAppDocInstagram = BloksDoc{
+	Name:      "IGBloksAppRootQuery",
+	RootField: "bloks_app",
+	Version:   BloksVersionInstagramAndroid,
+}
+
 func GetBloksAppDoc(p types.Platform) (*BloksDoc, error) {
 	switch p {
 	case types.MessengerLiteIOS:
 		return &BloksAppDocIOS, nil
 	case types.MessengerLiteAndroid:
 		return &BloksAppDocAndroid, nil
+	case types.Instagram:
+		return &BloksAppDocInstagram, nil
 	default:
 		return nil, fmt.Errorf("platform %s doesn't support bloks", p.String())
 	}

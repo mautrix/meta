@@ -150,7 +150,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 		Log:        c.log.With().Str("socket", "main").Logger(),
 		Facebook:   false,
 		AppID:      c.configs.BrowserConfigTable.DGWWebConfig.AppID,
-		UserID:     c.configs.BrowserConfigTable.PolarisViewer.ID,
+		UserID:     c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid,
 		DeviceID:   c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 		OnConnect: func(ctx context.Context) error {
 			_, err := c.socket.Load().EstablishStream(ctx, dgw.StreamInit{
