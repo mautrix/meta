@@ -1535,6 +1535,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if onClick == nil {
 				return nil, fmt.Errorf("no on_click on audio text")
 			}
+			b.DisplayedURL = ""
 			_, err := b.CurrentPage.Interpreter.Evaluate(ctx, &onClick.AST)
 			if err != nil {
 				return nil, fmt.Errorf("clicking on audio text: %w", err)
@@ -1924,7 +1925,35 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateOAuthPage:
-		return nil, b.profile.errors.MandatoryOAuth
+		b.DisplayedURL = ""
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Verify with Google")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			return nil, fmt.Errorf("tapping verify: %w", err)
+		}
+
+		if b.DisplayedURL == "" {
+			return nil, fmt.Errorf("oauth button failed to open url")
+		}
+
+		step = &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeCookies,
+			StepID:       "fi.mau.meta.messengerlite.google_oauth",
+			Instructions: "Sign in with your Google account.",
+			CookiesParams: &bridgev2.LoginCookiesParams{
+				URL: b.DisplayedURL,
+				Fields: []bridgev2.LoginCookieField{{
+					ID:       "oauth_token",
+					Required: true,
+					Sources:  []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "oauth_token"}},
+				}},
+				ExtractJS: `new Promise((resolve, reject) => reject("not implemented yet"))`,
+			},
+		}
+		break
 
 	case StateSMSPage:
 		for _, mount := range b.CurrentPage.FindDescendants(FilterByComponent("bk.components.OnMount")) {
@@ -2226,6 +2255,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					if field.Type == bridgev2.LoginInputFieldTypeSelect {
 						fieldOptions = append(fieldOptions, field.Options...)
 					}
+				}
+			}
+			if step.CookiesParams != nil {
+				for _, field := range step.CookiesParams.Fields {
+					fieldIDs = append(fieldIDs, field.ID)
 				}
 			}
 			log.Debug().
