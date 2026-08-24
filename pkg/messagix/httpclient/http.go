@@ -35,6 +35,7 @@ type HTTPClient struct {
 	HTTP            *http.Client
 	HTTPSettings    exhttp.ClientSettings
 	websocketClient *http.Client
+	uploadClient    *http.Client
 	proxyAddr       string
 	GetNewProxy     func(reason string) (string, error)
 
@@ -80,6 +81,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	}
 	reqClient := req.C().ImpersonateChrome()
 	wsClient := req.C().ImpersonateChrome()
+	uploadReqClient := req.C().ImpersonateChrome()
 	forceHTTP1ChromeFingerprint(wsClient)
 	if DisableTLSVerification {
 		reqClient.SetTLSClientConfig(&tls.Config{
@@ -88,18 +90,33 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 		wsClient.SetTLSClientConfig(&tls.Config{
 			InsecureSkipVerify: true,
 		})
+		uploadReqClient.SetTLSClientConfig(&tls.Config{
+			InsecureSkipVerify: true,
+		})
 	}
 
 	oldHTTP := c.HTTP
+	oldUpload := c.uploadClient
 	c.websocketClient = req.WithTransportOverride(c.HTTPSettings.WithGlobalTimeout(WebsocketHandshakeTimeout), wsClient).Compile()
 	c.HTTP = req.WithTransportOverride(c.HTTPSettings, reqClient).Compile()
 	c.HTTP.CheckRedirect = c.checkHTTPRedirect
+	uploadSettings := c.HTTPSettings.
+		WithGlobalTimeout(MediaUploadTimeout).
+		WithResponseHeaderTimeout(MediaUploadTimeout)
+	c.uploadClient = req.WithTransportOverride(uploadSettings, uploadReqClient).Compile()
+	c.uploadClient.CheckRedirect = c.checkHTTPRedirect
 	if oldHTTP != nil {
 		oldHTTP.CloseIdleConnections()
+	}
+	if oldUpload != nil {
+		oldUpload.CloseIdleConnections()
 	}
 
 	if DisableTLSVerification {
 		c.HTTP.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		c.uploadClient.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true,
 		}
 	}
@@ -195,6 +212,12 @@ func (c *HTTPClient) UpdateProxy(reason string) bool {
 
 var DisableTLSVerification = false
 var WebsocketHandshakeTimeout = 20 * time.Second
+
+// MediaUploadTimeout is used instead of the default timeouts for media uploads.
+// Uploading a large file takes much longer than the default global timeout, and the
+// server doesn't send response headers until it has received the entire body, which
+// means the default response header timeout applies to the upload itself.
+var MediaUploadTimeout = 5 * time.Minute
 
 func (c *HTTPClient) GetWebsocketDialer() *websocket.DialOptions {
 	if c == nil {
@@ -392,7 +415,23 @@ func (c *HTTPClient) MakeRequest(
 	payload []byte,
 	contentType types.ContentType,
 ) (*http.Response, []byte, error) {
-	return c.makeRequest(ctx, url, method, headers, payload, contentType, func(e *zerolog.Event) *zerolog.Event {
+	return c.makeRequest(ctx, url, method, headers, payload, contentType, c.HTTP, func(e *zerolog.Event) *zerolog.Event {
+		return e
+	})
+}
+
+// MakeUploadRequest is like MakeRequest, but uses the client with MediaUploadTimeout
+// instead of the default timeouts. It should be used for requests that send a whole
+// media file as the body.
+func (c *HTTPClient) MakeUploadRequest(
+	ctx context.Context,
+	url string,
+	method string,
+	headers http.Header,
+	payload []byte,
+	contentType types.ContentType,
+) (*http.Response, []byte, error) {
+	return c.makeRequest(ctx, url, method, headers, payload, contentType, c.uploadClient, func(e *zerolog.Event) *zerolog.Event {
 		return e
 	})
 }
@@ -409,13 +448,14 @@ func (c *HTTPClient) makeRequest(
 	headers http.Header,
 	payload []byte,
 	contentType types.ContentType,
+	httpClient *http.Client,
 	logContext func(e *zerolog.Event) *zerolog.Event,
 ) (*http.Response, []byte, error) {
 	var attempts int
 	for {
 		attempts++
 		start := time.Now()
-		resp, respDat, err := c.makeRequestDirect(ctx, url, method, headers, payload, contentType)
+		resp, respDat, err := c.makeRequestDirect(ctx, url, method, headers, payload, contentType, httpClient)
 		dur := time.Since(start)
 		if err == nil {
 			logContext(c.log.Debug()).
@@ -461,7 +501,7 @@ func (c *HTTPClient) makeRequest(
 	}
 }
 
-func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType, httpClient *http.Client) (*http.Response, []byte, error) {
 	newRequest, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, nil, err
@@ -473,7 +513,7 @@ func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method s
 
 	newRequest.Header = headers
 
-	response, err := c.HTTP.Do(newRequest)
+	response, err := httpClient.Do(newRequest)
 	defer func() {
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
@@ -568,8 +608,8 @@ func (c *HTTPClient) addInstagramHeaders(h *http.Header) {
 	}
 
 	if c.configs.BrowserConfigTable != nil {
-		if c.parent.GetCookies().IGWWWClaim != "" {
-			h.Set("x-ig-www-claim", c.parent.GetCookies().IGWWWClaim)
+		if wwwClaim := c.parent.GetCookies().GetWWWClaim(); wwwClaim != "" {
+			h.Set("x-ig-www-claim", wwwClaim)
 		}
 		h.Set("x-ig-app-id", c.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
 	}

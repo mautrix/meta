@@ -266,7 +266,7 @@ func (c *Client) switchInstagramAccountManagerProfile(
 		return fmt.Errorf("failed to prepare the primary Instagram web session: %w", err)
 	}
 	primaryCookies := c.cookies.GetAll()
-	primaryWWWClaim := c.cookies.IGWWWClaim
+	primaryWWWClaim := c.cookies.GetWWWClaim()
 
 	if err := c.switchInstagramAccountManagerMobileAccount(ctx, state, account); err != nil {
 		return err
@@ -276,7 +276,7 @@ func (c *Client) switchInstagramAccountManagerProfile(
 	// provisioned separately. Switch the already authenticated primary web session
 	// through Instagram's matching FXCAL endpoint before persisting the selection.
 	c.cookies.UpdateValues(primaryCookies)
-	c.cookies.IGWWWClaim = primaryWWWClaim
+	c.cookies.SetWWWClaim(primaryWWWClaim)
 	if err := c.switchInstagramAccountManagerWebAccount(ctx, account.Username); err != nil {
 		return err
 	}
