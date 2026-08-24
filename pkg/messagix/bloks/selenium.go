@@ -1672,6 +1672,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if url == "" {
 				return nil, fmt.Errorf("reCAPTCHA webview has no URL")
 			}
+			pageBytes, _, err := b.Config.FetchAsset(ctx, url)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to fetch recaptcha webview html")
+			} else {
+				log.Debug().Bytes("resp", pageBytes).Msg("Fetching recaptcha webview html")
+			}
 			initialURL, err := json.Marshal(url)
 			if err != nil {
 				return nil, fmt.Errorf("marshal initial captcha webview url: %w", err)
