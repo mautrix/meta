@@ -130,7 +130,9 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
 	}
 
 	batchCount := 0
-	if startCursor == "" {
+	cursor := startCursor
+	hasNextPage := true
+	if cursor == "" {
 		log.Info().Msg("No start cursor, loading from scratch")
 		resp, err := ic.Client.GetMailbox(ctx)
 		if err != nil {
@@ -140,16 +142,18 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
 		if !processThreads(resp.Mailbox.ThreadsByFolder) {
 			return
 		}
+		cursor = resp.Mailbox.ThreadsByFolder.PageInfo.EndCursor
+		hasNextPage = resp.Mailbox.ThreadsByFolder.PageInfo.HasNextPage
 	} else {
 		batchCount++
 	}
-	for batchCount < ic.Main.Config.ThreadBackfill.BatchCount {
+	for hasNextPage && cursor != "" && batchCount < ic.Main.Config.ThreadBackfill.BatchCount {
 		select {
 		case <-time.After(ic.Main.Config.ThreadBackfill.BatchDelay):
 		case <-ctx.Done():
 			return
 		}
-		resp, err := ic.Client.PaginateMailbox(ctx, slidetypes.MakePaginateMailboxRequest(viewerFBID, startCursor, "INBOX", nil))
+		resp, err := ic.Client.PaginateMailbox(ctx, slidetypes.MakePaginateMailboxRequest(viewerFBID, cursor, "INBOX", nil))
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more chats")
 			return
@@ -158,9 +162,8 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
 			return
 		}
 		batchCount++
-		if !resp.Mailbox.ThreadsByFolder.PageInfo.HasNextPage {
-			break
-		}
+		cursor = resp.Mailbox.ThreadsByFolder.PageInfo.EndCursor
+		hasNextPage = resp.Mailbox.ThreadsByFolder.PageInfo.HasNextPage
 	}
 	log.Info().Int("total_batch_count", batchCount).Msg("Completed chat backfill successfully")
 	ic.LoginMeta.BackfillCompleted = true
