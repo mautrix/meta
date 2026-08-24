@@ -2219,15 +2219,20 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	if b.State == prevState {
 		if step != nil {
 			fieldIDs := []string{}
+			fieldOptions := []string{}
 			if step.UserInputParams != nil {
 				for _, field := range step.UserInputParams.Fields {
 					fieldIDs = append(fieldIDs, field.ID)
+					if field.Type == bridgev2.LoginInputFieldTypeSelect {
+						fieldOptions = append(fieldOptions, field.Options...)
+					}
 				}
 			}
 			log.Debug().
 				Str("cur_state", string(b.State)).
 				Str("step_id", step.StepID).
 				Strs("field_ids", fieldIDs).
+				Strs("field_options", fieldOptions).
 				Msg("Requested user input")
 		} else if b.LastError != "" {
 			log.Debug().
