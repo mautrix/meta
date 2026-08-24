@@ -117,7 +117,7 @@ func mainE() error {
 	b, err := bloks.NewBrowser(&bloks.BrowserConfig{
 		Platform: plat,
 		EncryptPassword: func(ctx context.Context, password string) (string, error) {
-			return fmt.Sprintf(`#PWD_TEST_UNENCRYPTED:` + password), nil
+			return fmt.Sprintf(`#PWD_TEST_UNENCRYPTED:%s`, password), nil
 		},
 		MakeBloksRequest: func(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID string, familyDeviceID string) (*bloks.BloksBundle, error) {
 			log.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
