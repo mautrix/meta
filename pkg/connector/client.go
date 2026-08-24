@@ -511,7 +511,7 @@ func (m *MetaClient) saveConnectionState(ctx context.Context, state json.RawMess
 	}
 	m.lastStateSaveLock.Unlock()
 	if state == nil {
-		if !ratelimited {
+		if ratelimited {
 			return
 		}
 		state, _ = m.Client.DumpState()
