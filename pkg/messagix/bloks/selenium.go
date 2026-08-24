@@ -1117,6 +1117,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
+		log.Info().Str("dialog_action", selected).Msg("Picked option from dialog")
 		button := buttons[selected]
 		if button == nil {
 			return nil, fmt.Errorf("unknown dialog action")
@@ -1361,6 +1362,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
+		log.Info().Str("account", selectedAccount).Msg("Picked account from account selection page")
 
 		selectedButton := foundAccounts[selectedAccount]
 		if selectedButton == nil {
@@ -1763,6 +1765,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
+		log.Info().Str("mfatype", chosenMethod).Msg("Picked MFA method from MFA selection page")
 
 		if foundMethods[chosenMethod] == nil {
 			return nil, b.profile.invalidMFAMethodError(chosenMethod)
@@ -2085,6 +2088,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
+		log.Info().Str("contact_point", contactPoint).Msg("Picked contact point from selection page")
 
 		if foundPoints[contactPoint] == nil {
 			return nil, b.profile.invalidContactPointError(contactPoint)
