@@ -113,7 +113,7 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 		),
 		ReCaptcha: loginerrors.WithMessage(
 			loginerrors.ReCaptcha,
-			"Meta is requiring Google reCAPTCHA, which is not supported in this native flow. Try again later or complete the security check in the official app or website",
+			"Meta is requiring Google reCAPTCHA, which is not supported. Try again later or complete the security check in the official app or website",
 		),
 		NoSMSAvailable: loginerrors.WithMessage(
 			loginerrors.NoSMSAvailable,
