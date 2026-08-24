@@ -947,7 +947,7 @@ var initiateViewMethods = map[string]string{
 	"Get code or link via WhatsApp": "WhatsApp",
 	"Get code via email":            "Email",
 	"Get code via SMS":              "Text message",
-	"Enter password to log in":      "",
+	"Enter password to log in":      "Re-enter password",
 	"Log into another account":      "",
 }
 
