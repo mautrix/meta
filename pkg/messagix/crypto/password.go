@@ -123,6 +123,7 @@ func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (stri
 	iv := random.Bytes(aead.NonceSize())
 
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	//lint:ignore SA1019 we can't do anything if meta uses deprecated crypto
 	encryptedSessionKey, err := rsa.EncryptPKCS1v15(rand.Reader, rsaKey, sessionKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to encrypt Instagram app session key: %w", err)

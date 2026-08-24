@@ -76,6 +76,7 @@ func TestEncryptInstagramAppPasswordRoundTrips(t *testing.T) {
 	if keyEnd+16 > len(payload) {
 		t.Fatalf("invalid encrypted key length %d", keyLength)
 	}
+	//lint:ignore SA1019 we can't do anything if meta uses deprecated crypto
 	sessionKey, err := rsa.DecryptPKCS1v15(nil, privateKey, payload[16:keyEnd])
 	if err != nil {
 		t.Fatalf("failed to decrypt session key: %v", err)
