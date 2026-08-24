@@ -1678,10 +1678,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			} else {
 				log.Debug().Bytes("resp", pageBytes).Msg("Fetching recaptcha webview html")
 			}
-			initialURL, err := json.Marshal(url)
-			if err != nil {
-				return nil, fmt.Errorf("marshal initial captcha webview url: %w", err)
-			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeCookies,
 				StepID:       "fi.mau.meta.messengerlite.recaptcha",
@@ -1693,22 +1689,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						Required: true,
 						Sources:  []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "recaptcha_token"}},
 					}},
-					// The Android app seems to be just getting a navigation
-					// callback from the webview rather than something more
-					// specific. The argument, which is presumably a url, seems
-					// to be being used as the token itself.
-					//
-					// There's a high probability that I'm missing something
-					// here.
-					ExtractJS: fmt.Sprintf(`new Promise(resolve => {
-						const initialURL = new URL(%s).href;
-						const timer = setInterval(() => {
-							if (location.href !== initialURL) {
-								clearInterval(timer);
-								resolve({recaptcha_token: location.href});
+					ExtractJS: `new Promise((resolve, reject) => {
+						window.FbLoginRecaptcha = {
+							onRecaptcha: data => {
+								try {
+									resolve(JSON.parse(data)["g-recaptcha-response"]);
+								} catch (err) {
+									reject(err);
+								}
 							}
-						}, 250);
-					})`, string(initialURL)),
+						}
+					})`,
 				},
 			}
 			break
