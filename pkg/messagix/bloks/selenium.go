@@ -345,8 +345,9 @@ type Browser struct {
 	PendingDialog       *BloksDialog
 	DialogPreviousState BrowserState
 
-	LastError      string
-	ActionRPCCount uint64
+	LastError           string
+	PageTransitionCount uint64
+	ActionRPCCount      uint64
 }
 
 func (b *Browser) uninformativeLoginError(callsite string) bridgev2.RespError {
@@ -815,6 +816,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			b.PreviousPageState = b.State
 			b.CurrentPage = page
 			b.State = newState
+			b.PageTransitionCount += 1
 			return nil
 		},
 		HandleLoginResponse: func(ctx context.Context, data string) error {
@@ -1088,6 +1090,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		log.Debug().Str("cur_state", string(b.State)).Strs("user_input", fields).Msg("Executing login step")
 	}
 	prevState := b.State
+	prevPageTransitionCount := b.PageTransitionCount
 	switch b.State {
 
 	case StateDialog:
@@ -2234,6 +2237,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Str("cur_state", string(b.State)).
 				Bool("has_last_error", true).
 				Msg("Got intra-screen error, remaining in current state")
+		} else if b.PageTransitionCount > prevPageTransitionCount {
+			// This seems to happen sometimes on the CAA page. If we determine that
+			// login is never successful after that happens, we can make this an error
+			// again.
+			log.Debug().Msg("Redirected explicitly back to same page")
 		} else {
 			return nil, fmt.Errorf("handling %s failed to advance flow", prevState)
 		}
