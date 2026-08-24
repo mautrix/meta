@@ -159,6 +159,9 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch initial inbox")
 			return
+		} else if resp.Mailbox == nil {
+			log.Warn().Msg("Initial inbox response didn't contain a mailbox")
+			return
 		}
 		if !processThreads(resp.Mailbox.ThreadsByFolder) {
 			return
@@ -176,6 +179,9 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		resp, err := ic.Client.PaginateMailbox(ctx, slidetypes.MakePaginateMailboxRequest(viewerFBID, cursor, "INBOX", nil))
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more chats")
+			return
+		} else if resp.Mailbox == nil {
+			log.Warn().Msg("Pagination response didn't contain a mailbox")
 			return
 		}
 		if !processThreads(resp.Mailbox.ThreadsByFolder) {
