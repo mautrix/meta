@@ -568,8 +568,8 @@ func (c *HTTPClient) addInstagramHeaders(h *http.Header) {
 	}
 
 	if c.configs.BrowserConfigTable != nil {
-		if c.parent.GetCookies().IGWWWClaim != "" {
-			h.Set("x-ig-www-claim", c.parent.GetCookies().IGWWWClaim)
+		if wwwClaim := c.parent.GetCookies().GetWWWClaim(); wwwClaim != "" {
+			h.Set("x-ig-www-claim", wwwClaim)
 		}
 		h.Set("x-ig-app-id", c.configs.BrowserConfigTable.CurrentUserInitialData.AppID)
 	}
