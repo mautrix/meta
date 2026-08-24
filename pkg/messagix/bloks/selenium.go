@@ -1953,7 +1953,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				ExtractJS: `new Promise((resolve, reject) => reject("not implemented yet"))`,
 			},
 		}
-		break
 
 	case StateSMSPage:
 		for _, mount := range b.CurrentPage.FindDescendants(FilterByComponent("bk.components.OnMount")) {
