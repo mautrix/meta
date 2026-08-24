@@ -149,3 +149,17 @@ type ReadReceipt struct {
 	ParticipantFBID      int64                    `json:"participant_fbid,string"`
 	WatermarkTimestampMS jsontime.UnixMilliString `json:"watermark_timestamp_ms"`
 }
+
+type IDOnlyUser struct {
+	IGID string `json:"id"`
+}
+
+type MemberListThread struct {
+	Users []IDOnlyUser `json:"users"`
+	ID    string       `json:"id"`
+}
+
+type AdminListThread struct {
+	AdminUserIDs []string `json:"admin_user_ids"`
+	ID           string   `json:"id"`
+}

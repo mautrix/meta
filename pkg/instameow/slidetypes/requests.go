@@ -81,6 +81,38 @@ type DeleteThreadRequest struct {
 	MarkAsSpam bool   `json:"should_move_future_requests_to_spam"`
 }
 
+type LeaveThreadRequest struct {
+	ThreadID string `json:"thread_fbid"`
+}
+
+type RemoveMemberRequest struct {
+	ThreadID string `json:"thread_fbid"`
+	UserIGID string `json:"user_igid"`
+}
+
+type AddMembersRequest struct {
+	ThreadID                   string   `json:"thread_fbid"`
+	UserIGIDs                  []string `json:"user_igids"`
+	PinnedThreadsRenderEnabled bool     `json:"__relay_internal__pv__IGDPinnedThreadsRenderEnabledGKrelayprovider"`
+	MaxUnreadMessagesCount     int      `json:"__relay_internal__pv__IGDMaxUnreadMessagesCountrelayprovider"`
+	ThreadListActionsEnabled   bool     `json:"__relay_internal__pv__IGDThreadListActionsEnabledGKrelayprovider"`
+}
+
+func MakeAddMembersRequest(threadID string, userIGIDs ...string) *AddMembersRequest {
+	return &AddMembersRequest{
+		ThreadID:                   threadID,
+		UserIGIDs:                  userIGIDs,
+		PinnedThreadsRenderEnabled: true,
+		MaxUnreadMessagesCount:     5,
+		ThreadListActionsEnabled:   true,
+	}
+}
+
+type ModifyAdminsRequest struct {
+	ThreadID  string   `json:"thread_fbid"`
+	UserIGIDs []string `json:"user_igids"`
+}
+
 type AcceptMessageRequestRequest struct {
 	ThreadID           string  `json:"thread_fbid"`
 	IGInboxFolder      *string `json:"ig_inbox_folder"`

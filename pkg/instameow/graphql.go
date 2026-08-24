@@ -60,6 +60,26 @@ func (c *Client) DeleteThread(ctx context.Context, req *slidetypes.DeleteThreadR
 	return makeGraphQLRequest[*slidetypes.DeleteThreadResponse](ctx, c, "IGDInboxInfoDeleteThreadDialogOffMsysMutation", req, true)
 }
 
+func (c *Client) LeaveGroup(ctx context.Context, req *slidetypes.LeaveThreadRequest) (*slidetypes.LeaveThreadResponse, error) {
+	return makeGraphQLRequest[*slidetypes.LeaveThreadResponse](ctx, c, "useIGDLeaveChatMutation", req, true)
+}
+
+func (c *Client) RemoveMember(ctx context.Context, req *slidetypes.RemoveMemberRequest) (*slidetypes.RemoveMemberResponse, error) {
+	return makeGraphQLRequest[*slidetypes.RemoveMemberResponse](ctx, c, "IGDRemoveFromGroupDialogItemOffMsysMutation", req, true)
+}
+
+func (c *Client) AddMembers(ctx context.Context, req *slidetypes.AddMembersRequest) (*slidetypes.AddMembersResponse, error) {
+	return makeGraphQLRequest[*slidetypes.AddMembersResponse](ctx, c, "IGDAddParticipantSubmitBarMutation", req, true)
+}
+
+func (c *Client) AddAdmins(ctx context.Context, req *slidetypes.ModifyAdminsRequest) (*slidetypes.AddAdminsResponse, error) {
+	return makeGraphQLRequest[*slidetypes.AddAdminsResponse](ctx, c, "IGDAddAdminDialogItemOffMsysMutation", req, true)
+}
+
+func (c *Client) RemoveAdmins(ctx context.Context, req *slidetypes.ModifyAdminsRequest) (*slidetypes.RemoveAdminsResponse, error) {
+	return makeGraphQLRequest[*slidetypes.RemoveAdminsResponse](ctx, c, "IGDRemoveAdminDialogItemOffMsysMutation", req, true)
+}
+
 func (c *Client) AcceptMessageRequest(ctx context.Context, req *slidetypes.AcceptMessageRequestRequest) (*slidetypes.AcceptMessageRequestResponse, error) {
 	return makeGraphQLRequest[*slidetypes.AcceptMessageRequestResponse](ctx, c, "useIGDirectAcceptMessageRequestMutation", req, true)
 }

@@ -336,6 +336,12 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 }
 
 func (ic *IGClient) makeMessageEventMeta(portalKey networkid.PortalKey, msg *slidetypes.Message, evtType bridgev2.RemoteEventType) simplevent.EventMeta {
+	if msg == nil {
+		return simplevent.EventMeta{
+			Type:      evtType,
+			PortalKey: portalKey,
+		}
+	}
 	return simplevent.EventMeta{
 		Type:         evtType,
 		PortalKey:    portalKey,

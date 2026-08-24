@@ -92,6 +92,26 @@ type DeleteThreadResponse struct {
 	} `json:"ig_direct_hide_thread"`
 }
 
+type LeaveThreadResponse struct {
+	Thread MemberListThread `json:"xig_ig_direct_leave_thread"`
+}
+
+type RemoveMemberResponse struct {
+	Thread MemberListThread `json:"xig_direct_remove_thread_user"`
+}
+
+type AddMembersResponse struct {
+	Thread *ThreadInfo `json:"xig_ig_direct_add_users"`
+}
+
+type AddAdminsResponse struct {
+	Thread AdminListThread `json:"xig_direct_add_admins"`
+}
+
+type RemoveAdminsResponse struct {
+	Thread AdminListThread `json:"xig_direct_remove_admins"`
+}
+
 type AcceptMessageRequestResponse struct {
 	Data struct {
 		Folder       string `json:"folder"`

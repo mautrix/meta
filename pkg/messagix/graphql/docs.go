@@ -87,8 +87,12 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "IGDMessageUnsendDialogOffMsysMutation",
 	},
 	"IGDRemoveFromGroupDialogItemOffMsysMutation": {
-		DocID:        "26749775594683932",
+		DocID:        "27974649738797533",
 		FriendlyName: "IGDRemoveFromGroupDialogItemOffMsysMutation",
+	},
+	"IGDAddParticipantSubmitBarMutation": {
+		DocID:        "27335198219492328",
+		FriendlyName: "IGDAddParticipantSubmitBarMutation",
 	},
 	"IGDAddAdminDialogItemOffMsysMutation": {
 		DocID:        "35563011113312213",
@@ -145,6 +149,10 @@ var GraphQLDocs = map[string]GraphQLDoc{
 	"useIGDCreateOptimisticThreadUserQuery": {
 		DocID:        "35274961328786258",
 		FriendlyName: "useIGDCreateOptimisticThreadUserQuery",
+	},
+	"useIGDLeaveChatMutation": {
+		DocID:        "27243106098639056",
+		FriendlyName: "useIGDLeaveChatMutation",
 	},
 }
 
