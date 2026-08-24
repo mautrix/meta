@@ -339,6 +339,7 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
+		mediadl.ParseWaveformString(att.WaveformData),
 		refreshMeta,
 	)
 	if err != nil {
@@ -401,6 +402,7 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
+		nil,
 		refreshMeta,
 	)
 	if err != nil {
@@ -426,7 +428,7 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 	// Stickers don't typically expire, so no refresh metadata needed
 	converted, err := mc.reuploadAttachment(
 		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, stickerSize, stickerSize, 0,
-		nil,
+		nil, nil,
 	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")
@@ -490,7 +492,7 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 		// URL previews don't typically need refresh metadata
 		converted, err := mc.reuploadAttachment(
 			ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, 0, int(att.PreviewWidth), int(att.PreviewHeight), 0,
-			nil,
+			nil, nil,
 		)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload URL preview image")
@@ -525,7 +527,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	// This is minimal conversion; fetchFullXMA will enhance with proper refresh metadata
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), 0,
-		nil,
+		nil, nil,
 	)
 	if errors.Is(err, mediadl.ErrURLNotFound) && att.TitleText != "" {
 		return []*bridgev2.ConvertedMessagePart{{
@@ -557,6 +559,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	ctx context.Context, attachmentType table.AttachmentType,
 	url, fileName, mimeType string,
 	fileSize, width, height, duration int,
+	waveform []int,
 	refreshMeta *mediadl.MediaRefreshMeta,
 ) (*bridgev2.ConvertedMessagePart, error) {
 	return mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
@@ -568,6 +571,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		Width:          width,
 		Height:         height,
 		Duration:       duration,
+		Waveform:       waveform,
 		RefreshMeta:    refreshMeta,
 		DirectMedia:    mc.DirectMedia,
 		MaxFileSize:    mc.MaxFileSize,

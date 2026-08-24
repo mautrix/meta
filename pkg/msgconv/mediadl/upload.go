@@ -59,7 +59,7 @@ func ReuploadFileToMeta(
 			SamplingFrequency: 9,
 		}
 		for i, amp := range content.MSC1767Audio.Waveform {
-			waveformData.Amplitudes[i] = max(min(float64(amp)/256.0, 1.0), 0.0)
+			waveformData.Amplitudes[i] = max(min(float64(amp)/WaveformScale, 1.0), 0.0)
 		}
 	}
 	resp, err := client.SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{

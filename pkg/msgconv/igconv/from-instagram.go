@@ -338,6 +338,7 @@ func (mc *MessageConverter) audioReuploadParams(att *slidetypes.AudioAttachment)
 		AttachmentType: table.AttachmentTypeAudio,
 		URL:            att.AttachmentCDNURL,
 		Duration:       att.PlayableDurationMS,
+		Waveform:       mediadl.ParseWaveformList(att.WaveformData),
 		RefreshMeta:    &mediadl.MediaRefreshMeta{AttachmentFBID: att.AttachmentFBID},
 	}
 }
