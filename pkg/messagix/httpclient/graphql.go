@@ -56,9 +56,10 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	headers.Set("x-fb-client-ip", "True")
 	headers.Set("x-fb-server-cluster", "True")
 
+	var clientAppID string
 	switch c.GetPlatform() {
 	case types.MessengerLiteIOS:
-		appID = useragent.MessengerLiteIOSAppID
+		clientAppID = useragent.MessengerLiteIOSAppID
 		payload.Purpose = "fetch"
 		payload.EnableCanonicalNaming = "true"
 		payload.EnableCanonicalVariableOverrides = "true"
@@ -82,7 +83,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		//
 		// headers.Set("accept-encoding", "zstd")
 	case types.MessengerLiteAndroid:
-		appID = useragent.MessengerLiteAndroidAppID
+		clientAppID = useragent.MessengerLiteAndroidAppID
 		payload.FbAPICallerClass = "graphservice"
 		payload.FbAPIClientContext = `{"is_background":false}`
 		payload.FbAPIAnalyticsTags = `["GraphServices"]`
@@ -118,7 +119,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		return nil, fmt.Errorf("platform %s does not support bloks", c.GetPlatform().String())
 	}
 
-	analyticsTags, err := MakeRequestAnalyticsHeader(appID)
+	analyticsTags, err := MakeRequestAnalyticsHeader(clientAppID)
 	if err != nil {
 		return nil, err
 	}
