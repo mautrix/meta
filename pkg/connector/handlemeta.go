@@ -141,6 +141,10 @@ func (m *MetaClient) parseAndQueueTable(ctx context.Context, tbl *table.LSTable,
 		Events:    evts,
 		IsInitial: isInitial,
 	}
+	if ctx.Err() != nil {
+		zerolog.Ctx(ctx).Warn().Err(ctx.Err()).Msg("Not dispatching parsed table, context is canceled")
+		return
+	}
 	m.parsedTablesLock.Lock()
 	m.parsedTables = append(m.parsedTables, wrapped)
 	m.unhandledTables.Add(1)
