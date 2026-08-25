@@ -68,11 +68,12 @@ func getInstaNativeClient(
 		}
 	}
 	client := instameow.NewClient(instameow.ClientParams{
-		Cookies:           c,
-		Log:               log,
-		Settings:          conn.Bridge.GetHTTPClientSettings(),
-		DisableTyping:     conn.Config.DisableTyping,
-		MobileLoginDevice: loginDevice,
+		Cookies:                  c,
+		Log:                      log,
+		Settings:                 conn.Bridge.GetHTTPClientSettings(),
+		DisableTyping:            conn.Config.DisableTyping,
+		LogRedactedBloksPayloads: conn.Config.LogRedactedBloksPayloads,
+		MobileLoginDevice:        loginDevice,
 		SaveMobileLoginDevice: func(ctx context.Context, device types.InstagramLoginDevice) error {
 			if conn.DB == nil {
 				return nil
