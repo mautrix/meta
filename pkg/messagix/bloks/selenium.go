@@ -1865,6 +1865,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				"We sent a",
 				"Open the notification",
 				"You need to sign in on",
+				"Check your notifications",
 			} {
 				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
 					return true
