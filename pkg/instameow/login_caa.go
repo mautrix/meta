@@ -270,6 +270,11 @@ func (c *Client) makeInstagramBloksRequest(
 		}
 		return nil, fmt.Errorf("failed to parse Instagram Bloks response: %w", err)
 	}
+	if c.logRedactedBloksPayloads {
+		if err = bloks.LogRedactedBundle(c.log, appID, body); err != nil {
+			return nil, err
+		}
+	}
 	if requestErr != nil {
 		return nil, fmt.Errorf("instagram Bloks request failed: %w", requestErr)
 	}
