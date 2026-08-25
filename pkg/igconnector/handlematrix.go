@@ -355,7 +355,17 @@ func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.M
 	} else if err != nil {
 		return err
 	}
-
+	if chat.Portal.RoomType != database.RoomTypeDM {
+		memberInfo, err := ic.Main.Bridge.Matrix.GetMemberInfo(ctx, chat.Portal.MXID, ic.UserLogin.UserMXID)
+		if err != nil {
+			return fmt.Errorf("failed to get own member info: %w", err)
+		} else if memberInfo.Membership == event.MembershipJoin {
+			_, err = ic.Client.LeaveGroup(ctx, &slidetypes.LeaveThreadRequest{ThreadID: meta.IGID})
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to leave group on delete chat request")
+			}
+		}
+	}
 	_, err = ic.Client.DeleteThread(ctx, &slidetypes.DeleteThreadRequest{
 		ThreadID:   meta.IGID,
 		MarkAsSpam: false,
