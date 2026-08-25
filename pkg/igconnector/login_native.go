@@ -104,6 +104,7 @@ type MetaNativeLogin struct {
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessWithParams = (*MetaNativeLogin)(nil)
+var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	return m.StartWithParams(ctx, bridgev2.LoginStartParams{})
@@ -198,6 +199,10 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	}
 	m.clearCredentials()
 	return m.complete(ctx)
+}
+
+func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
+	return m.SubmitUserInput(ctx, map[string]string{})
 }
 
 func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, error) {
