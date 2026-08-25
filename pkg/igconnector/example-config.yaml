@@ -29,6 +29,8 @@ disable_xma_always: false
 disable_typing: false
 # Should view-once messages be disabled entirely?
 disable_view_once: false
+# Log raw Bloks payloads even at debug level, with any user identifiers or credentials redacted.
+log_redacted_bloks_payloads: false
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:

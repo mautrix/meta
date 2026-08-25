@@ -72,6 +72,8 @@ type Client struct {
 
 	enableTyping bool
 
+	logRedactedBloksPayloads bool
+
 	eventHandler EventHandler
 
 	seqID   int64
@@ -90,6 +92,8 @@ type ClientParams struct {
 	SeqIDTS       time.Time
 	EventHandler  EventHandler
 	DisableTyping bool
+
+	LogRedactedBloksPayloads bool
 
 	// MobileLoginDevice and SaveMobileLoginDevice retain one Android installation
 	// identity across login processes for the same bridge user.
@@ -110,6 +114,8 @@ func NewClient(params ClientParams) *Client {
 		streamControllerStopped: exsync.NewEvent(),
 
 		enableTyping: !params.DisableTyping,
+
+		logRedactedBloksPayloads: params.LogRedactedBloksPayloads,
 
 		saveMobileLoginDevice: params.SaveMobileLoginDevice,
 	}

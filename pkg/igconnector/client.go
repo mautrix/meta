@@ -126,6 +126,8 @@ func (ic *IGClient) ensureIGClient() {
 			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
+
+			LogRedactedBloksPayloads: ic.Main.Config.LogRedactedBloksPayloads,
 		})
 	}
 }
