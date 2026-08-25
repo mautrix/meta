@@ -37,6 +37,7 @@ type Config struct {
 
 	DisableXMABackfill bool `yaml:"disable_xma_backfill"`
 	DisableXMAAlways   bool `yaml:"disable_xma_always"`
+	SuppressXMA        bool `yaml:"suppress_xma"`
 
 	MinFullReconnectIntervalSeconds int  `yaml:"min_full_reconnect_interval_seconds"`
 	ForceRefreshIntervalSeconds     int  `yaml:"force_refresh_interval_seconds"`
@@ -86,6 +87,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "cache_connection_state")
 	helper.Copy(up.Bool, "disable_xma_backfill")
 	helper.Copy(up.Bool, "disable_xma_always")
+	helper.Copy(up.Bool, "suppress_xma")
 	helper.Copy(up.Bool, "disable_typing")
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
