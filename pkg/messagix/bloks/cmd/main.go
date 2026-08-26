@@ -60,6 +60,7 @@ var appAuth = flag.Bool("app-auth", false, "Send the first-party app authorizati
 var sweepAppIDs = flag.Bool("sweep-app-ids", false, "Try -exchange-token against every known first-party app ID")
 var doRecaptcha = flag.Bool("recaptcha", false, "Extract the recaptcha webview url")
 var doContinue = flag.Bool("continue", false, "Just tap the continue button")
+var doPassword = flag.Bool("password", false, "Fill the password field and click log in (account-recovery password form)")
 
 // Known first-party app IDs, for finding one that the session exchange accepts.
 var knownAppIDs = []struct{ ID, Name string }{
@@ -446,6 +447,15 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
+		err = fillTextInput("password", "correct horse battery staple")
+		if err != nil {
+			return err
+		}
+		err = tapButton("Log in")
+		if err != nil {
+			return err
+		}
+	} else if *doPassword {
 		err = fillTextInput("password", "correct horse battery staple")
 		if err != nil {
 			return err
