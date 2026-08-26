@@ -295,6 +295,7 @@ const (
 	StateDialog                 BrowserState = "dialog"
 	StateAccountSelectionPage   BrowserState = "account-selection-page"
 	StateAccountRecoveryPage    BrowserState = "account-recovery-page"
+	StatePasswordFormPage       BrowserState = "password-form-page"
 	StateCodeEntryPage          BrowserState = "enter-code-page"
 	StateCaptchaPage            BrowserState = "captcha-page"
 	StateReCaptchaPage          BrowserState = "recaptcha-page"
@@ -800,6 +801,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				return b.profile.errors.ReCaptcha
 			case "com.bloks.www.caa.login.password_as_id_confirmation":
 				newState = StateSuggestedAccountPage
+			case "com.bloks.www.caa.ar.password_form":
+				newState = StatePasswordFormPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
@@ -1379,6 +1382,51 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateAccountRecoveryPage:
 		return nil, b.profile.errors.AccountRecovery
+
+	case StatePasswordFormPage:
+		password := userInput["password"]
+		if password == "" {
+			instructions := fmt.Sprintf("Re-enter your %s password.", b.profile.serviceName)
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       b.stepID("password"),
+				Instructions: instructions,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+					},
+				},
+			}
+			break
+		}
+
+		delete(userInput, "password")
+		b.LastError = b.profile.loginRejected
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "password")).
+			FillInput(ctx, b.CurrentPage.Interpreter, password)
+		if err != nil {
+			return nil, fmt.Errorf("filling password input: %w", err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Log in")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			if strings.Contains(err.Error(), "Invalid username or password") {
+				b.LastError = "The password you entered is incorrect"
+			} else {
+				return nil, fmt.Errorf("tapping password form log in button: %w", err)
+			}
+		}
 
 	case StateCodeEntryPage:
 		otpCode := userInput["otp_code"]
