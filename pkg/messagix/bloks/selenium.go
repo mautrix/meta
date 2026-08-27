@@ -339,7 +339,7 @@ type Browser struct {
 	AFADNotification string
 	AFADInterval     time.Duration
 	AFADCallback     func() error
-	AFADCanGoBack    bool
+	MFACanGoBack     bool
 
 	LoginData    string
 	DisplayedURL string
@@ -1447,6 +1447,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("otp_code"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{
 							ID:   "otp_code",
@@ -1514,6 +1515,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("backup_code"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "backup_code", Name: "Backup code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -1787,7 +1789,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateChooseMFAPage:
 		foundMethods, methodNames, numIgnored := b.profile.findMFAMethods(b.CurrentPage, log)
-		b.AFADCanGoBack = false
+		b.MFACanGoBack = false
 
 		if len(foundMethods) == 0 {
 			if numIgnored == 0 {
@@ -1828,7 +1830,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, b.profile.mfaMethodTapError(chosenMethod, err)
 		}
-		b.AFADCanGoBack = len(foundMethods) > 1
+		b.MFACanGoBack = len(foundMethods) > 1
 		if !b.profile.shouldContinueAfterMFAMethod(b.State) {
 			break
 		}
@@ -1856,6 +1858,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("totp"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -1957,7 +1960,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			Instructions: b.AFADNotification,
 			DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
 				Type:      bridgev2.LoginDisplayTypeNothing,
-				CanCancel: b.AFADCanGoBack,
+				CanCancel: b.MFACanGoBack,
 			},
 		}
 		b.State = StateAFADPageWaiting
@@ -2091,6 +2094,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("sms"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "sms_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -2233,6 +2237,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("whatsapp"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "whatsapp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -2358,7 +2363,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 }
 
 func (b *Browser) CancelLoginStep(ctx context.Context) error {
-	if b.State != StateAFADPageWaiting || !b.AFADCanGoBack {
+	if !b.MFACanGoBack {
+		return fmt.Errorf("current login step cannot be cancelled")
+	}
+	switch b.State {
+	case StateCodeEntryPage, StateBackupCodePage, StateTOTPPage,
+		StateSMSPageAfterSend, StateWhatsAppPageAfterSend, StateAFADPageWaiting:
+	default:
 		return fmt.Errorf("current login step cannot be cancelled")
 	}
 	btn := b.CurrentPage.
@@ -2370,7 +2381,7 @@ func (b *Browser) CancelLoginStep(ctx context.Context) error {
 	if err := btn.TapButton(ctx, b.CurrentPage.Interpreter); err != nil {
 		return fmt.Errorf("tapping try another way button: %w", err)
 	}
-	b.AFADCanGoBack = false
+	b.MFACanGoBack = false
 	return nil
 }
 
