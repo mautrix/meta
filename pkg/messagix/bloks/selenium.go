@@ -339,6 +339,7 @@ type Browser struct {
 	AFADNotification string
 	AFADInterval     time.Duration
 	AFADCallback     func() error
+	AFADCanGoBack    bool
 
 	LoginData    string
 	DisplayedURL string
@@ -1786,6 +1787,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateChooseMFAPage:
 		foundMethods, methodNames, numIgnored := b.profile.findMFAMethods(b.CurrentPage, log)
+		b.AFADCanGoBack = false
 
 		if len(foundMethods) == 0 {
 			if numIgnored == 0 {
@@ -1826,6 +1828,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, b.profile.mfaMethodTapError(chosenMethod, err)
 		}
+		b.AFADCanGoBack = len(foundMethods) > 1
 		if !b.profile.shouldContinueAfterMFAMethod(b.State) {
 			break
 		}
@@ -1953,7 +1956,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			StepID:       b.stepID("afad_wait"),
 			Instructions: b.AFADNotification,
 			DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-				Type: bridgev2.LoginDisplayTypeNothing,
+				Type:      bridgev2.LoginDisplayTypeNothing,
+				CanCancel: b.AFADCanGoBack,
 			},
 		}
 		b.State = StateAFADPageWaiting
@@ -1963,10 +1967,23 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if b.AFADCallback == nil {
 				return nil, loginerrors.AFADStopped
 			}
-			time.Sleep(b.AFADInterval)
+			timer := time.NewTimer(b.AFADInterval)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+					return nil, bridgev2.ErrLoginStepCancelled
+				}
+				return nil, fmt.Errorf("login cancelled while waiting for approval: %w", ctx.Err())
+			}
 			err := b.AFADCallback()
 			if err != nil {
-				if ctxErr := ctx.Err(); ctxErr != nil {
+				if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+					return nil, bridgev2.ErrLoginStepCancelled
+				} else if ctxErr := ctx.Err(); ctxErr != nil {
 					return nil, fmt.Errorf("login cancelled while waiting for approval: %w", ctxErr)
 				}
 				return nil, fmt.Errorf("AFAD callback: %w", err)
@@ -2338,6 +2355,23 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		b.LastError = ""
 	}
 	return step, nil
+}
+
+func (b *Browser) CancelLoginStep(ctx context.Context) error {
+	if b.State != StateAFADPageWaiting || !b.AFADCanGoBack {
+		return fmt.Errorf("current login step cannot be cancelled")
+	}
+	btn := b.CurrentPage.
+		FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
+		FindContainingButton()
+	if btn == nil {
+		return fmt.Errorf("couldn't find try another way button")
+	}
+	if err := btn.TapButton(ctx, b.CurrentPage.Interpreter); err != nil {
+		return fmt.Errorf("tapping try another way button: %w", err)
+	}
+	b.AFADCanGoBack = false
+	return nil
 }
 
 func authenticationConfirmationPageState(page *BloksBundle) BrowserState {

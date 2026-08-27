@@ -398,3 +398,10 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 
 	return nil, m.convertCookies(loginRespPayload.SessionCookies), nil
 }
+
+func (m *MessengerLiteMethods) CancelLoginStep(ctx context.Context) error {
+	if m.browser == nil {
+		return fmt.Errorf("login browser is not initialized")
+	}
+	return m.browser.CancelLoginStep(ctx)
+}

@@ -332,6 +332,13 @@ func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error)
 	return m.proceed(ctx, nil)
 }
 
+func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if err := m.SavedClient.MessengerLite.CancelLoginStep(ctx); err != nil {
+		return nil, err
+	}
+	return m.proceed(ctx, nil)
+}
+
 func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 
@@ -370,3 +377,4 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessCookies = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
+var _ bridgev2.LoginProcessStepCancel = (*MetaNativeLogin)(nil)
