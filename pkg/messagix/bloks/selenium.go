@@ -376,6 +376,8 @@ func instagramLoginSubmissionErrorDiagnostic(err error) (kind, detail string) {
 		return "unlinked_identifier", ""
 	case strings.Contains(message, "com.bloks.www.caa.assistive_login_confirmation"):
 		return "invalid_identifier", ""
+	case strings.Contains(message, "unexpected HTTP status 429"):
+		return "rate_limited", ""
 	}
 	match := instagramLoginSafeDiagnosticPattern.FindStringSubmatch(message)
 	if len(match) == 3 {
@@ -1317,6 +1319,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				// comes up, but it's the only one sighted thus far. Update this if
 				// something new is discovered.
 				b.LastError = "Invalid email address"
+			} else if errorKind == "rate_limited" {
+				return nil, loginerrors.RateLimited
 			} else {
 				return nil, b.profile.unhandledCredentialError(err, errorKind, safeDetail)
 			}
