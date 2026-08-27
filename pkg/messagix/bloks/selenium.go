@@ -798,7 +798,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_step_verification.no_op_captcha":
 				newState = StateSilentCaptchaPage
 			case "com.bloks.www.two_step_verification.google_recaptcha":
-				return b.profile.errors.ReCaptcha
+				newState = StateReCaptchaPage
 			case "com.bloks.www.caa.login.password_as_id_confirmation":
 				newState = StateSuggestedAccountPage
 			case "com.bloks.www.caa.ar.password_form":
