@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strconv"
@@ -32,6 +33,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -40,6 +42,7 @@ import (
 const (
 	DGWConnectionError        status.BridgeStateErrorCode = "ig-dgw-connection-error"
 	DGWConnectionUnauthorized status.BridgeStateErrorCode = "dgw-connection-unauthorized"
+	DGWMainStreamClosed       status.BridgeStateErrorCode = "dgw-main-stream-closed"
 	MetaCookieRemoved         status.BridgeStateErrorCode = "meta-cookie-removed"
 	MetaUserIDIsZero          status.BridgeStateErrorCode = "meta-user-id-is-zero"
 	MetaRedirectedToLoginPage status.BridgeStateErrorCode = "meta-redirected-to-login"
@@ -57,6 +60,7 @@ const (
 func init() {
 	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
 		DGWConnectionError:        "Disconnected from server, trying to reconnect",
+		DGWMainStreamClosed:       "Unexpected repeated error connecting to Instagram server",
 		DGWConnectionUnauthorized: "Logged out, please relogin to continue",
 		MetaCookieRemoved:         "Logged out, please relogin to continue",
 		MetaUserIDIsZero:          "Logged out, please relogin to continue",
@@ -112,6 +116,11 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized
 			retErr = fmt.Errorf("connection unauthorized; stop reconnects")
+			ic.permanentErrored.Store(true)
+		} else if evt.FailureCount > 5 && errors.Is(evt.Error, instameow.ErrMainStreamClosed) {
+			stateEvt = status.StateUnknownError
+			errCode = DGWMainStreamClosed
+			retErr = fmt.Errorf("main stream closed too many times; stop reconnects")
 			ic.permanentErrored.Store(true)
 		}
 		ic.UserLogin.BridgeState.Send(status.BridgeState{

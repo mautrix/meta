@@ -32,7 +32,7 @@ type Stream interface {
 	receiveFrame(context.Context, *DataFrame) error
 	receiveEstablish(frame *EstablishStreamFrame)
 	receiveAck(id uint16) bool
-	close()
+	close(endOfData bool)
 }
 
 var (

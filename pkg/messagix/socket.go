@@ -44,7 +44,7 @@ type SocketLSRequestPayload struct {
 	Type      int    `json:"type"`
 }
 
-func (c *Client) onSocketConnect(ctx context.Context) error {
+func (c *Client) onSocketConnect(ctx context.Context, _ func(error)) error {
 	c.canSendMessages.Set()
 
 	reconnect := c.socketWasSynced.Load()

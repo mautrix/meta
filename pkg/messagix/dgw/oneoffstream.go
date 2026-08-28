@@ -138,7 +138,7 @@ func (s *OneOffStream) receiveAck(id uint16) bool {
 	return id == oneOffAckID && s.acked.Set()
 }
 
-func (s *OneOffStream) close() {
+func (s *OneOffStream) close(endOfData bool) {
 	s.log.Trace().Uint16("stream_id", uint16(s.id)).Msg("Close called for one-off stream")
 	s.closed.Store(true)
 	s.received.Set()
