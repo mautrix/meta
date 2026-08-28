@@ -57,7 +57,7 @@ var (
 )
 
 func (ic *IGConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	return []bridgev2.LoginFlow{loginFlowInstagram, loginFlowInstagramPassword}
+	return []bridgev2.LoginFlow{loginFlowInstagramPassword, loginFlowInstagram}
 }
 
 type MetaCookieLogin struct {

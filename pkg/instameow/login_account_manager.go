@@ -77,6 +77,18 @@ type instagramAccountManagerWebLoginResponse struct {
 	Authenticated bool `json:"authenticated"`
 }
 
+type instagramWebAccountManagerResponse struct {
+	IGAccounts []struct {
+		Username string `json:"username"`
+	} `json:"igAccounts"`
+}
+
+type instagramWebAccountManagerState struct {
+	Accounts  []instagramAccountManagerAccount
+	CSRFToken string
+	Complete  bool
+}
+
 func newInstagramAccountManagerToken(session *instagramMobileSession) instagramAccountManagerToken {
 	return instagramAccountManagerToken{
 		AccountType: "Instagram",
@@ -409,6 +421,114 @@ func (c *Client) switchInstagramAccountManagerWebAccount(
 		return errors.New("instagram Account Manager did not authenticate the selected web profile")
 	}
 	return nil
+}
+
+func (c *Client) getInstagramWebAccountManagerAccounts(
+	ctx context.Context,
+	currentUsername string,
+) ([]instagramAccountManagerAccount, error) {
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
+	headers := c.http.BuildHeaders(true, false)
+	headers.Set("origin", c.GetEndpoint("base_url"))
+	headers.Set("referer", c.GetEndpoint("messages"))
+	headers.Set("x-requested-with", "XMLHttpRequest")
+	headers.Set("sec-fetch-dest", "empty")
+	headers.Set("sec-fetch-mode", "cors")
+	headers.Set("sec-fetch-site", "same-origin")
+	response, body, requestErr := c.http.MakeRequest(
+		ctx,
+		c.GetEndpoint("fxcal_sso_users"),
+		http.MethodPost,
+		headers,
+		nil,
+		types.NONE,
+	)
+	if response != nil {
+		c.cookies.UpdateFromResponse(response)
+	}
+	if requestErr != nil {
+		return nil, instagramAccountManagerRequestError(
+			"failed to load Instagram web Account Manager profiles",
+			response,
+			body,
+			requestErr,
+		)
+	}
+	var result instagramWebAccountManagerResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse Instagram web Account Manager profiles: %w", err)
+	}
+	accounts := []instagramAccountManagerAccount{{Username: currentUsername}}
+	seen := map[string]bool{strings.ToLower(currentUsername): true}
+	for _, account := range result.IGAccounts {
+		username := strings.TrimSpace(account.Username)
+		key := strings.ToLower(username)
+		if username != "" && !seen[key] {
+			seen[key] = true
+			accounts = append(accounts, instagramAccountManagerAccount{Username: username})
+		}
+	}
+	return accounts, nil
+}
+
+func (c *Client) DoInstagramWebAccountManagerSteps(
+	ctx context.Context,
+	userInput map[string]string,
+) (*bridgev2.LoginStep, error) {
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
+	state := c.webAccountManager
+	if state == nil {
+		if err := c.loadIndex(ctx); err != nil {
+			return nil, fmt.Errorf("failed to load the current Instagram web session: %w", err)
+		}
+		currentUsername := strings.TrimSpace(c.configs.BrowserConfigTable.PolarisViewer.GetUsername())
+		if currentUsername == "" {
+			return nil, errors.New("instagram web login did not return the current profile")
+		}
+		accounts, err := c.getInstagramWebAccountManagerAccounts(ctx, currentUsername)
+		if err != nil {
+			return nil, err
+		}
+		state = &instagramWebAccountManagerState{
+			Accounts:  accounts,
+			CSRFToken: c.cookies.Get(cookies.IGCookieCSRFToken),
+			Complete:  len(accounts) == 1,
+		}
+		c.webAccountManager = state
+	}
+	if state.Complete {
+		return nil, nil
+	}
+	selectedUsername := strings.TrimSpace(userInput[instagramAccountManagerField])
+	if selectedUsername == "" {
+		return instagramAccountManagerSelectionStep(state.Accounts), nil
+	}
+	for i := range state.Accounts {
+		selectedAccount := &state.Accounts[i]
+		if !strings.EqualFold(selectedAccount.Username, selectedUsername) {
+			continue
+		}
+		if i != 0 {
+			if err := c.switchInstagramAccountManagerWebAccount(ctx, selectedAccount.Username); err != nil {
+				return nil, err
+			} else if err := c.loadIndex(ctx); err != nil {
+				return nil, fmt.Errorf("failed to load the selected Instagram web session: %w", err)
+			}
+			if c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
+				c.cookies.Set(cookies.IGCookieCSRFToken, state.CSRFToken)
+			}
+			if !strings.EqualFold(c.configs.BrowserConfigTable.PolarisViewer.GetUsername(), selectedAccount.Username) {
+				return nil, errors.New("instagram Account Manager web login returned the wrong profile")
+			}
+		}
+		state.Complete = true
+		return nil, nil
+	}
+	return nil, errors.New("invalid Instagram web Account Manager profile selection")
 }
 
 func instagramAccountManagerSelectionStep(
