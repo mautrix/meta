@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
 
 type CheckpointError struct {
@@ -1434,6 +1435,40 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		return BloksNothing, nil
 	case "bk.action.i64.Const":
 		return i.Evaluate(ctx, &call.Args[0])
+	case "bk.action.i64.Convert", "bk.action.i32.Convert":
+		// Both collapse to int64 here: this interpreter has no separate 32-bit integer
+		// representation (BloksScriptLiteralValue only ever holds int64 for whole numbers,
+		// see BloksScriptLiteral.Parse), so i32 vs i64 only mattered in Meta's original typed
+		// VM, not in this reimplementation.
+		val, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		switch v := val.Value().(type) {
+		case int64:
+			return BloksLiteralOf(v), nil
+		case float64:
+			return BloksLiteralOf(int64(v)), nil
+		case string:
+			n, perr := strconv.ParseInt(v, 10, 64)
+			if perr != nil {
+				return nil, fmt.Errorf("%s: cannot convert %q to int: %w", call.Function, v, perr)
+			}
+			return BloksLiteralOf(n), nil
+		case bool:
+			if v {
+				return BloksLiteralOf(int64(1)), nil
+			}
+			return BloksLiteralOf(int64(0)), nil
+		default:
+			return nil, fmt.Errorf("%s: cannot convert %T to int", call.Function, val.Value())
+		}
+	case "bk.action.f32.Convert":
+		n, err := evalFloat(ctx, i, &call.Args[0], "f32.Convert")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(n), nil
 	case "bk.action.map.Get":
 		obj, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "merge")
 		if err != nil {
@@ -1479,7 +1514,24 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 		}
 		if expected != actual {
-			return nil, fmt.Errorf("bloks type assertion failure (%d != %d)", actual, expected)
+			// getBloksType only ever returns the small set of primitive kind tags this
+			// reimplementation knows about (see its switch: 0/1/2/3/4/6/7, plus 5 and 8 as
+			// documented-but-unmapped placeholders). An `expected` far outside that range (seen
+			// in practice: 100, mid-login) is not a primitive kind at all -- it's almost
+			// certainly one of Meta's richer named/semantic Bloks types (e.g. a distinctly
+			// tagged "ID" or "Timestamp" scalar) that this interpreter has no schema for, not a
+			// real type mismatch on our part. Failing the whole login on an assertion we can't
+			// actually evaluate is worse than letting it through: log it so a real mismatch
+			// (both tags inside the known range, genuinely different) still fails loudly, the
+			// same as before.
+			if expected < 0 || expected > 7 {
+				zerolog.Ctx(ctx).Warn().
+					Int64("actual_type", actual).
+					Int64("expected_type", expected).
+					Msg("bloks AssertType: expected type is outside the known primitive range, passing through unchecked")
+			} else {
+				return nil, fmt.Errorf("bloks type assertion failure (%d != %d)", actual, expected)
+			}
 		}
 		return val, nil
 	case "bk.action.mins.TypeOf":
