@@ -23,6 +23,7 @@ var (
 	NoSMSAvailable   = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_SMS_AVAILABLE", Err: "Meta is refusing to send SMS codes right now. Try again later, or use/add a different MFA method for your Facebook account"}
 	MandatoryPasskey = bridgev2.RespError{ErrCode: "FI.MAU.META_PASSKEY_MANDATORY", Err: "Meta is requiring passkey sign-in which is not supported. Please try adding a different MFA method to your Facebook account from the official app/website", StatusCode: http.StatusBadRequest}
 	TokenExchange    = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_EXCHANGE_FAILED", Err: "Meta returned a temporary credential after login which could not be exchanged for a usable session. It may help to try again, or to log in from the official app/website first"}
+	RateLimited      = bridgev2.RespError{ErrCode: "FI.MAU.META_RATE_LIMITED", Err: "Meta is temporarily rate-limiting login attempts from this network. Please wait a few minutes and try again", StatusCode: http.StatusTooManyRequests}
 )
 
 func WithMessage(respError bridgev2.RespError, message string) bridgev2.RespError {
