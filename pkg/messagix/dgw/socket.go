@@ -308,7 +308,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 						return
 					}
 				} else {
-					frame.s.close()
+					frame.s.close(true)
 				}
 			case <-done:
 				return
@@ -462,7 +462,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	s.Log.Debug().Msg("DGW socket closed")
 
 	for _, stream := range s.streams.SwapData(nil) {
-		stream.close()
+		stream.close(false)
 	}
 	s.nextStreamID.Store(0)
 

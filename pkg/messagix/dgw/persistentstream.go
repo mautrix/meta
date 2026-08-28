@@ -210,7 +210,7 @@ func (s *PersistentStream) cancelAck(id uint16, expectedCh <-chan bool) {
 	close(ch)
 }
 
-func (s *PersistentStream) close() {
+func (s *PersistentStream) close(endOfData bool) {
 	s.log.Debug().Msg("Close called for persistent stream")
 	if !s.closed.Set() {
 		return
@@ -225,7 +225,7 @@ func (s *PersistentStream) close() {
 	if !s.established.IsSet() {
 		s.establishErr.Store(ptr.Ptr(ErrClosedBeforeTimeout))
 		s.established.Set()
-	} else {
+	} else if endOfData && s.onClose != nil {
 		s.onClose()
 	}
 }
