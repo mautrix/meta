@@ -95,8 +95,19 @@ func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {
 }
 
 func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent) *bridgev2.ConvertedMessagePart {
-	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
 	captionPart := mc.wrapXMACaption(ctx, xma)
+	if mc.SuppressXMA {
+		// The caption already ends with a link to the original, so the message is still
+		// usable without reuploading any of the media.
+		if captionPart == nil {
+			return nil
+		}
+		return &bridgev2.ConvertedMessagePart{
+			Type:    event.EventMessage,
+			Content: captionPart,
+		}
+	}
+	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
 	if previewPart == nil {
 		if captionPart == nil {
 			return nil
