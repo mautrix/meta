@@ -38,15 +38,17 @@ type PersistentStream struct {
 	closed       *exsync.Event
 	nextAckID    uint16
 	pendingAcks  map[uint16]chan bool
+	onClose      func()
 	frameHandler FrameHandler
 }
 
-func newStream(conn *websocket.Conn, id StreamID, frameHandler FrameHandler, log zerolog.Logger) *PersistentStream {
+func newStream(conn *websocket.Conn, id StreamID, frameHandler FrameHandler, onClose func(), log zerolog.Logger) *PersistentStream {
 	return &PersistentStream{
 		baseStream:   newBaseStream(conn, id, &log),
 		pendingAcks:  make(map[uint16]chan bool),
 		closed:       exsync.NewEvent(),
 		frameHandler: frameHandler,
+		onClose:      onClose,
 	}
 }
 
@@ -223,5 +225,7 @@ func (s *PersistentStream) close() {
 	if !s.established.IsSet() {
 		s.establishErr.Store(ptr.Ptr(ErrClosedBeforeTimeout))
 		s.established.Set()
+	} else {
+		s.onClose()
 	}
 }

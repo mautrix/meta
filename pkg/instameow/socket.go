@@ -104,7 +104,7 @@ func (c *Client) Connect(ctx context.Context) {
 			_ = c.eventHandler(ctx, &slidetypes.ResnapshotRequired{})
 			return
 		}
-		if dispatchErr := c.eventHandler(ctx, &slidetypes.Disconnected{Error: err}); dispatchErr != nil {
+		if dispatchErr := c.eventHandler(ctx, &slidetypes.Disconnected{Error: err, FailureCount: sequentialFailures}); dispatchErr != nil {
 			sock.Log.Err(dispatchErr).Msg("Failed to dispatch disconnected event, not reconnecting")
 			return
 		}
@@ -141,6 +141,8 @@ func (c *Client) ForceReconnect() {
 	}
 }
 
+var ErrMainStreamClosed = errors.New("main stream closed")
+
 func (c *Client) getSocketOptions() dgw.SocketOptions {
 	return dgw.SocketOptions{
 		GetCookies: c.cookies.String,
@@ -152,10 +154,17 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 		AppID:      c.configs.BrowserConfigTable.DGWWebConfig.AppID,
 		UserID:     c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid,
 		DeviceID:   c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
-		OnConnect: func(ctx context.Context) error {
+		OnConnect: func(ctx context.Context, fatalError func(error)) error {
 			_, err := c.socket.Load().EstablishStream(ctx, dgw.StreamInit{
 				InitPayload:  exerrors.Must(c.makeStreamInitPayload(c.socketRetries)),
 				FrameHandler: c.handleDataFrame,
+				OnClose: func() {
+					go func() {
+						// Slightly hacky sleep to allow other kinds of errors to take priority over this one
+						time.Sleep(3 * time.Second)
+						fatalError(ErrMainStreamClosed)
+					}()
+				},
 			})
 			if err != nil {
 				c.log.Err(err).Msg("Failed to establish main stream")

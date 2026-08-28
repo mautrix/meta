@@ -103,7 +103,7 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 		AppID:          c.configs.BrowserConfigTable.DGWWebConfig.AppID,
 		UserID:         c.configs.BrowserConfigTable.PolarisViewer.ID,
 		DeviceID:       c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
-		OnConnect: func(ctx context.Context) error {
+		OnConnect: func(ctx context.Context, _ func(error)) error {
 			// Note: the official web app subscribes to multiple streams like presence and other realtime events,
 			// but we only support typing for now
 			params, err := json.Marshal(&typingSubscribeParameters{
