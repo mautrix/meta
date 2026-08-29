@@ -660,6 +660,24 @@ func (r *FBChatResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 			r.Info.Members.MemberMap = makeNoteToSelfMembers(portal.OtherUserID, r.Info.Members.MemberMap[portal.OtherUserID].UserInfo)
 		}
 	}
+	// When DMs are re-created contact information is not redelivered, so ensure we correctly populate
+	// the other users contact info from our ghosts or get the info.
+	if otherUserID := r.Info.Members.OtherUserID; otherUserID != "" && otherUserID != networkid.UserID(r.m.UserLogin.ID) {
+		if member, ok := r.Info.Members.MemberMap[otherUserID]; ok && member.UserInfo == nil {
+			if ghost, err := r.m.Main.Bridge.GetGhostByID(ctx, otherUserID); err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).
+					Str("other_user_id", string(otherUserID)).
+					Msg("Failed to get DM peer ghost to backfill member UserInfo")
+			} else if userInfo, err := r.m.GetUserInfo(ctx, ghost); err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).
+					Str("other_user_id", string(otherUserID)).
+					Msg("Failed to fetch DM peer UserInfo for resync, emitting member without profile")
+			} else if userInfo != nil {
+				member.UserInfo = userInfo
+				r.Info.Members.MemberMap[otherUserID] = member
+			}
+		}
+	}
 	return r.Info, nil
 }
 
