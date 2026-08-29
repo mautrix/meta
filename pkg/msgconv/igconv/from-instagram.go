@@ -126,7 +126,9 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentMusicSticker:
 		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "music sticker", 0, mc.musicStickerReuploadParams(content)))
 	case *slidetypes.MessageContentXMA:
-		if content.XMATextBody != "" && content.XMA.TargetID == "" {
+		if content.XMA == nil {
+			cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
+		} else if content.XMATextBody != "" && content.XMA.TargetID == "" {
 			part := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)
 			preview, dbMeta, err := mc.wrapLinkPreview(ctx, content.XMA)
 			if err != nil {
