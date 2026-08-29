@@ -126,19 +126,20 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentMusicSticker:
 		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "music sticker", 0, mc.musicStickerReuploadParams(content)))
 	case *slidetypes.MessageContentXMA:
-		if content.XMA == nil {
-			cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
-		} else if content.XMATextBody != "" && content.XMA.TargetID == "" {
+		if content.XMATextBody != "" && (content.XMA == nil || content.XMA.TargetID == "") {
 			part := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)
 			preview, dbMeta, err := mc.wrapLinkPreview(ctx, content.XMA)
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to wrap XMA link preview")
-			} else {
+			} else if preview != nil {
 				part.Content.BeeperLinkPreviews = []*event.BeeperLinkPreview{preview}
 				part.DBMetadata = dbMeta
+			} else if content.XMA == nil {
+				// The XMA attachment being nil is unexpected, so add the raw content even though there's some text
+				part.Extra = unsupportedContentToExtra(content)
 			}
 			// Replies to instants don't have any media on web, but do have the quote text
-			if content.XMA.EyebrowText != "" {
+			if content.XMA != nil && content.XMA.EyebrowText != "" {
 				part.Content.FormattedBody = fmt.Sprintf(
 					"<blockquote>%s</blockquote>%s",
 					html.EscapeString(content.XMA.EyebrowText),
@@ -234,6 +235,9 @@ func (mc *MessageConverter) wrapAdminText(fragments []slidetypes.TextFragment, s
 }
 
 func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes.XMAContent) (*event.BeeperLinkPreview, any, error) {
+	if xma == nil {
+		return nil, nil, nil
+	}
 	realURL := xma.TargetURL
 	parsedURL, err := url.Parse(xma.TargetURL)
 	if err != nil {
