@@ -39,7 +39,7 @@ import (
 
 type SocketOptions struct {
 	GetCookies     func() string
-	OnConnect      func(context.Context) error
+	OnConnect      func(context.Context, func(error)) error
 	Origin         string
 	WSURL          string
 	DialOpts       websocket.DialOptions
@@ -116,6 +116,7 @@ type StreamInit struct {
 	InitPayload  []byte
 	LogName      string
 	FrameHandler FrameHandler
+	OnClose      func()
 }
 
 func (s *Socket) DoOneOffStream(ctx context.Context, payload []byte, noAckOrData bool) ([]byte, error) {
@@ -167,7 +168,7 @@ func (s *Socket) EstablishStream(ctx context.Context, init StreamInit) (stream *
 	if init.LogName != "" {
 		logWith = logWith.Str("stream_name", init.LogName)
 	}
-	stream = newStream(conn, streamID, init.FrameHandler, logWith.Logger())
+	stream = newStream(conn, streamID, init.FrameHandler, init.OnClose, logWith.Logger())
 	_, replaced := s.streams.Swap(streamID, stream)
 	if replaced {
 		// This should never happen in practice, since it'd require 65535 simultaneous stream creations
@@ -307,7 +308,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 						return
 					}
 				} else {
-					frame.s.close()
+					frame.s.close(true)
 				}
 			case <-done:
 				return
@@ -441,7 +442,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		}
 	}()
 
-	err := s.OnConnect(ctx)
+	err := s.OnConnect(ctx, fatalError)
 	if err != nil {
 		fatalError(fmt.Errorf("dgw: OnConnect error: %w", err))
 	} else {
@@ -461,7 +462,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	s.Log.Debug().Msg("DGW socket closed")
 
 	for _, stream := range s.streams.SwapData(nil) {
-		stream.close()
+		stream.close(false)
 	}
 	s.nextStreamID.Store(0)
 

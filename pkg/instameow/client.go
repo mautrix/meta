@@ -46,6 +46,8 @@ type Client struct {
 
 	mobileLogin           *mobileLoginState
 	caaLogin              *instagramCAALoginState
+	webTwoFactor          *instagramWebTwoFactorState
+	webAccountManager     *instagramWebAccountManagerState
 	mobileLoginDevice     *types.InstagramLoginDevice
 	mobileSession         *instagramMobileSession
 	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
