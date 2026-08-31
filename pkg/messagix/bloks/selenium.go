@@ -1974,13 +1974,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if b.AFADCallback == nil {
 				return nil, loginerrors.AFADStopped
 			}
-			timer := time.NewTimer(b.AFADInterval)
 			select {
-			case <-timer.C:
+			case <-time.After(b.AFADInterval):
 			case <-ctx.Done():
-				if !timer.Stop() {
-					<-timer.C
-				}
 				if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
 					return nil, bridgev2.ErrLoginStepCancelled
 				}
