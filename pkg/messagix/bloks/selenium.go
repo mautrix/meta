@@ -1978,12 +1978,24 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateOAuthPage:
-		b.DisplayedURL = ""
-
-		err = b.CurrentPage.
+		oauthButton := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Verify with Google")).
-			FindContainingButton().
-			TapButton(ctx, b.CurrentPage.Interpreter)
+			FindContainingButton()
+		if oauthButton == nil {
+			return nil, fmt.Errorf("couldn't find verify with Google button")
+		}
+
+		oauthRedirectURL := userInput["oauth_token"]
+		if oauthRedirectURL != "" {
+			delete(userInput, "oauth_token")
+			zerolog.Ctx(ctx).Debug().
+				Str("oauth_redirect_url", oauthRedirectURL).
+				Msg("Google OAuth reached the Meta redirect URL")
+			return nil, fmt.Errorf("google sign-in not yet fully implemented")
+		}
+
+		b.DisplayedURL = ""
+		err = oauthButton.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping verify: %w", err)
 		}
@@ -2003,7 +2015,20 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					Required: true,
 					Sources:  []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "oauth_token"}},
 				}},
-				ExtractJS: `new Promise((resolve, reject) => reject("not implemented yet"))`,
+				ExtractJS: `new Promise((resolve, reject) => {
+					const url = new URL(window.location.href);
+					const isMetaHost = ["m.facebook.com", "www.facebook.com", "web.facebook.com"].includes(url.hostname);
+					if (!isMetaHost || url.pathname !== "/oauth2/redirect/") {
+						return;
+					}
+					const fragment = new URLSearchParams(url.hash.slice(1));
+					const error = url.searchParams.get("error") || fragment.get("error");
+					if (error) {
+						reject(new Error("Google OAuth failed: " + error));
+						return;
+					}
+					resolve(window.location.href);
+				})`,
 			},
 		}
 
