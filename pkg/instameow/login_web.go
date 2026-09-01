@@ -443,7 +443,9 @@ func (c *Client) CreateInstagramWebSession(
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
 		}
 		return nil, errors.New("instagram web login did not authenticate")
-	} else if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
+	}
+	c.ensureInstagramWebUserID()
+	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
 		return nil, fmt.Errorf("instagram web login succeeded without required cookies: %v", missing)
 	}
 	return nil, nil
@@ -676,9 +678,40 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 	}
 	if err != nil {
 		return err
-	} else if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
+	}
+	c.ensureInstagramWebUserID()
+	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
 		return fmt.Errorf("instagram web two-factor login succeeded without required cookies: %v", missing)
 	}
 	c.webTwoFactor = nil
 	return nil
+}
+
+// ensureInstagramWebUserID derives the ds_user_id cookie from the sessionid when
+// Instagram authenticates without returning it as its own cookie, which happens
+// on the encrypted two-factor GraphQL path.
+func (c *Client) ensureInstagramWebUserID() {
+	if c.cookies.Get(cookies.IGCookieDSUserID) != "" {
+		return
+	}
+	if userID := instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)); userID != "" {
+		c.cookies.Set(cookies.IGCookieDSUserID, userID)
+	}
+}
+
+// instagramWebUserIDFromSessionID extracts the numeric account ID from the
+// sessionid cookie, whose value is "<ds_user_id>:<token>:<...>" (percent-encoded).
+func instagramWebUserIDFromSessionID(sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	decoded, err := url.QueryUnescape(sessionID)
+	if err != nil {
+		decoded = sessionID
+	}
+	userID, _, _ := strings.Cut(decoded, ":")
+	if _, err := strconv.ParseInt(userID, 10, 64); err != nil {
+		return ""
+	}
+	return userID
 }
