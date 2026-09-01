@@ -46,8 +46,8 @@ const (
 )
 
 var FBRequiredCookies = []MetaCookieName{FBCookieXS, FBCookieCUser, MetaCookieDatr}
-var IGRequiredCookies = []MetaCookieName{IGCookieSessionID, IGCookieCSRFToken, IGCookieDSUserID, IGCookieMachineID, IGCookieDeviceID}
-var IGOptionalCookies = []MetaCookieName{IGCookieRUR, IGCookieSHBID, IGCookieSHBTS}
+var IGRequiredCookies = []MetaCookieName{IGCookieSessionID, IGCookieCSRFToken, IGCookieDSUserID}
+var IGOptionalCookies = []MetaCookieName{IGCookieRUR, IGCookieSHBID, IGCookieSHBTS, IGCookieMachineID, IGCookieDeviceID}
 
 type Cookies struct {
 	Platform types.Platform

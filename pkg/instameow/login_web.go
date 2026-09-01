@@ -40,6 +40,8 @@ const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
 
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 
+var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
+
 type InstagramWebTwoFactorChallenge struct {
 	TOTP     bool
 	SMS      bool
@@ -62,6 +64,7 @@ type instagramWebTwoFactorState struct {
 	encryptedContext   string
 	maskedContactPoint string
 	method             string
+	csrfToken          string
 }
 
 type instagramWebLoginResponse struct {
@@ -268,6 +271,8 @@ func (c *Client) logInstagramWebRequestRejection(
 func (c *Client) captureInstagramWebTwoFactor(
 	result instagramWebLoginResponse,
 	fallbackUsername string,
+	preResponseCSRFToken string,
+	statusCode int,
 ) (*InstagramWebTwoFactorChallenge, error) {
 	info := result.TwoFactorInfo
 	username := info.Username
@@ -293,13 +298,31 @@ func (c *Client) captureInstagramWebTwoFactor(
 	if method == "SMS" || method == "WHATSAPP" {
 		maskedContactPoint = info.MaskedPhoneNumber
 	}
+	responseCSRFToken := c.cookies.Get(cookies.IGCookieCSRFToken)
+	csrfToken := responseCSRFToken
+	retainedCSRFToken := false
+	if csrfToken == "" {
+		csrfToken = preResponseCSRFToken
+		retainedCSRFToken = csrfToken != ""
+	}
+	if csrfToken == "" {
+		return nil, errInstagramWebTwoFactorMissingCSRF
+	}
 	c.webTwoFactor = &instagramWebTwoFactorState{
 		identifier:         info.Identifier,
 		username:           username,
 		encryptedContext:   info.EncryptedContext,
 		maskedContactPoint: maskedContactPoint,
 		method:             method,
+		csrfToken:          csrfToken,
 	}
+	c.log.Debug().
+		Int("status_code", statusCode).
+		Str("challenge_type", method).
+		Bool("csrf_pre_response_present", preResponseCSRFToken != "").
+		Bool("csrf_rotated", responseCSRFToken != "" && responseCSRFToken != preResponseCSRFToken).
+		Bool("csrf_retained", retainedCSRFToken).
+		Msg("Captured Instagram web two-factor challenge")
 	return &InstagramWebTwoFactorChallenge{
 		TOTP:     info.TOTP,
 		SMS:      info.SMS,
@@ -365,6 +388,7 @@ func (c *Client) CreateInstagramWebSession(
 	if err != nil {
 		return nil, err
 	}
+	preResponseCSRFToken := c.cookies.Get(cookies.IGCookieCSRFToken)
 	headers := c.http.BuildHeaders(true, false)
 	headers.Set("origin", baseURL)
 	headers.Set("referer", loginPageURL)
@@ -399,7 +423,11 @@ func (c *Client) CreateInstagramWebSession(
 			instagramWebLoginResponseClass(result),
 		)
 		if parseErr == nil && result.TwoFactorRequired {
-			return c.captureInstagramWebTwoFactor(result, identifier)
+			statusCode := 0
+			if response != nil {
+				statusCode = response.StatusCode
+			}
+			return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, statusCode)
 		} else if parseErr == nil && result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
 		}
@@ -409,13 +437,15 @@ func (c *Client) CreateInstagramWebSession(
 	} else if parseErr != nil {
 		return nil, fmt.Errorf("failed to parse Instagram web login: %w", parseErr)
 	} else if result.TwoFactorRequired {
-		return c.captureInstagramWebTwoFactor(result, identifier)
+		return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, response.StatusCode)
 	} else if !result.Authenticated {
 		if result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
 		}
 		return nil, errors.New("instagram web login did not authenticate")
-	} else if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
+	}
+	c.ensureInstagramWebUserID()
+	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
 		return nil, fmt.Errorf("instagram web login succeeded without required cookies: %v", missing)
 	}
 	return nil, nil
@@ -523,6 +553,9 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 	)
 	if response != nil {
 		c.cookies.UpdateFromResponse(response)
+		if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
+			state.csrfToken = csrfToken
+		}
 	}
 	var result instagramWebLoginResponse
 	parseErr := json.Unmarshal(body, &result)
@@ -579,6 +612,9 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 	)
 	if response != nil {
 		c.cookies.UpdateFromResponse(response)
+		if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
+			state.csrfToken = csrfToken
+		}
 	}
 	body = bytes.TrimPrefix(body, httpclient.AntiJSPrefix)
 	var result instagramWebTwoFactorGraphQLResponse
@@ -624,6 +660,16 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 		return errors.New("instagram web two-factor code is empty")
 	}
 	state := c.webTwoFactor
+	if state.csrfToken == "" {
+		return errInstagramWebTwoFactorMissingCSRF
+	}
+	c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
+	headers := c.http.BuildHeaders(true, false)
+	c.log.Debug().
+		Bool("csrf_cookie_present", c.cookies.Get(cookies.IGCookieCSRFToken) != "").
+		Bool("cookie_header_present", headers.Get("cookie") != "").
+		Bool("csrf_header_present", headers.Get("x-csrftoken") != "").
+		Msg("Prepared Instagram web two-factor CSRF state")
 	var err error
 	if state.encryptedContext == "" {
 		err = c.completeInstagramWebTwoFactorLegacy(ctx, state, verificationCode)
@@ -632,9 +678,40 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 	}
 	if err != nil {
 		return err
-	} else if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
+	}
+	c.ensureInstagramWebUserID()
+	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
 		return fmt.Errorf("instagram web two-factor login succeeded without required cookies: %v", missing)
 	}
 	c.webTwoFactor = nil
 	return nil
+}
+
+// ensureInstagramWebUserID derives the ds_user_id cookie from the sessionid when
+// Instagram authenticates without returning it as its own cookie, which happens
+// on the encrypted two-factor GraphQL path.
+func (c *Client) ensureInstagramWebUserID() {
+	if c.cookies.Get(cookies.IGCookieDSUserID) != "" {
+		return
+	}
+	if userID := instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)); userID != "" {
+		c.cookies.Set(cookies.IGCookieDSUserID, userID)
+	}
+}
+
+// instagramWebUserIDFromSessionID extracts the numeric account ID from the
+// sessionid cookie, whose value is "<ds_user_id>:<token>:<...>" (percent-encoded).
+func instagramWebUserIDFromSessionID(sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	decoded, err := url.QueryUnescape(sessionID)
+	if err != nil {
+		decoded = sessionID
+	}
+	userID, _, _ := strings.Cut(decoded, ":")
+	if _, err := strconv.ParseInt(userID, 10, 64); err != nil {
+		return ""
+	}
+	return userID
 }

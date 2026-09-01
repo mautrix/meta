@@ -192,6 +192,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 					"Instagram did not accept that code. Enter a new code and try again.",
 				), nil
 			}
+			m.Cancel()
 			return nil, fmt.Errorf("failed to complete Instagram web two-factor login: %w", err)
 		}
 		m.webTwoFactor = nil
@@ -211,7 +212,10 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		if isClientHTTPError(err) {
 			m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
+		} else if isMissingInstagramWebTwoFactorCSRF(err) {
+			return m.start(ctx, "Instagram did not return the security state needed to continue. Please try again.")
 		}
+		m.Cancel()
 		return nil, fmt.Errorf("failed to create Instagram web session: %w", err)
 	}
 	if challenge != nil {
@@ -264,6 +268,10 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 
 func isClientHTTPError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "error from client: ")
+}
+
+func isMissingInstagramWebTwoFactorCSRF(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "instagram web two-factor challenge is missing a CSRF token")
 }
 
 func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {
