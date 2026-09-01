@@ -162,10 +162,10 @@ func (c *Client) addInstagramWebLoginHeaders(headers http.Header) error {
 	}
 	headers.Set("x-instagram-ajax", config.InstagramWebPushInfo.RolloutHash)
 	headers.Set("x-web-session-id", c.configs.WebSessionID)
-	if c.cookies.IGWWWClaim == "" {
+	if wwwClaim := c.cookies.GetWWWClaim(); wwwClaim == "" {
 		headers.Set("x-ig-www-claim", "0")
 	} else {
-		headers.Set("x-ig-www-claim", c.cookies.IGWWWClaim)
+		headers.Set("x-ig-www-claim", wwwClaim)
 	}
 	if config.PolarisSiteData.SendDeviceIDHeader {
 		if config.PolarisSiteData.DeviceID == "" {
@@ -352,7 +352,7 @@ func (c *Client) CreateInstagramWebSession(
 		cookies.IGCookieMachineID: c.cookies.Get(cookies.IGCookieMachineID),
 		cookies.IGCookieDeviceID:  c.cookies.Get(cookies.IGCookieDeviceID),
 	})
-	c.cookies.IGWWWClaim = ""
+	c.cookies.SetWWWClaim("")
 
 	c.configs = httpclient.NewConfigs(c)
 	c.http.SetConfigs(c.configs)
