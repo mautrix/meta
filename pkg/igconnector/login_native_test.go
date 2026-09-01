@@ -17,17 +17,17 @@ func (*nativeLoginRoundTripper) RoundTrip(*http.Request) (*http.Response, error)
 	return nil, nil
 }
 
-func TestInstagramLoginFlowsExposeNativeFirstAndKeepCookies(t *testing.T) {
+func TestInstagramLoginFlowsExposeCookiesFirstAndKeepNative(t *testing.T) {
 	connector := &IGConnector{}
 	flows := connector.GetLoginFlows()
 	if len(flows) != 2 {
 		t.Fatalf("expected two login flows, got %d", len(flows))
 	}
-	if flows[0].ID != FlowIDInstagramPassword {
-		t.Fatalf("expected native flow first, got %q", flows[0].ID)
+	if flows[0].ID != FlowIDInstagramCookies {
+		t.Fatalf("expected cookie flow first, got %q", flows[0].ID)
 	}
-	if flows[1].ID != FlowIDInstagramCookies {
-		t.Fatalf("expected cookie fallback second, got %q", flows[1].ID)
+	if flows[1].ID != FlowIDInstagramPassword {
+		t.Fatalf("expected native flow second, got %q", flows[1].ID)
 	}
 	process, err := connector.CreateLogin(
 		context.Background(),
