@@ -291,6 +291,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				UserAction: status.UserActionRestart,
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
+			go m.periodicReconnect()
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {
