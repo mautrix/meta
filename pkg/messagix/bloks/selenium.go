@@ -1749,7 +1749,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						window.FbLoginRecaptcha = {
 							onRecaptcha: data => {
 								try {
-									resolve(JSON.parse(data)["g-recaptcha-response"]);
+									resolve({recaptcha_token: JSON.parse(data)["g-recaptcha-response"]});
 								} catch (err) {
 									reject(err);
 								}
@@ -2043,7 +2043,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						reject(new Error("Google OAuth failed: " + error));
 						return;
 					}
-					resolve(window.location.href);
+					resolve({oauth_token: window.location.href});
 				})`,
 			},
 		}
