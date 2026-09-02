@@ -17,6 +17,7 @@ var InstagramEndpoints = map[string]string{
 	"login_ajax":                  instaWebApiV1Url + "/accounts/login/ajax/",
 	"login_two_factor":            instaBaseUrl + "/accounts/login/two_factor/",
 	"login_two_factor_ajax":       instaWebApiV1Url + "/accounts/login/ajax/two_factor/",
+	"login_two_factor_sms":        instaWebApiV1Url + "/accounts/send_two_factor_login_sms/",
 	"login_two_step_verification": instaBaseUrl + "/accounts/login/two_step_verification/",
 	"fxcal_sso_users":             instaWebApiV1Url + "/fxcal/ig_sso_users/",
 	"fxcal_sso_login":             instaWebApiV1Url + "/fxcal/ig_sso_login/",
