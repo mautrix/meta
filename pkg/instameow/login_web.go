@@ -39,7 +39,6 @@ import (
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
-var ErrInstagramWebChallengeRequired = errors.New("instagram web login requires a challenge")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
 var errInstagramWebTwoFactorSMSRejected = fmt.Errorf("%w: SMS code validation failed", ErrInstagramWebTwoFactorCodeRejected)
@@ -484,7 +483,7 @@ func (c *Client) CreateInstagramWebSession(
 			}
 			return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, statusCode)
 		} else if parseErr == nil && instagramWebChallengeRequired(result) {
-			return nil, ErrInstagramWebChallengeRequired
+			return nil, httpclient.ErrChallengeRequired
 		} else if parseErr == nil && result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
 		}
@@ -498,7 +497,7 @@ func (c *Client) CreateInstagramWebSession(
 	} else if result.TwoFactorRequired {
 		return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, response.StatusCode)
 	} else if instagramWebChallengeRequired(result) {
-		return nil, ErrInstagramWebChallengeRequired
+		return nil, httpclient.ErrChallengeRequired
 	} else if !result.Authenticated {
 		if result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)

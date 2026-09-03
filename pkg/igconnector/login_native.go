@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -101,19 +100,11 @@ type MetaNativeLogin struct {
 
 	client          *instameow.Client
 	transport       http.RoundTripper
-	caaFallback     bool
 	caaIdentifier   string
 	caaPassword     string
 	caaUserID       string
 	webTwoFactor    *instameow.InstagramWebTwoFactorChallenge
 	webSessionReady bool
-
-	stateMu       sync.Mutex
-	cancelled     bool
-	processCtx    context.Context
-	processCancel context.CancelCauseFunc
-	opDone        chan struct{}
-	commitMu      sync.Mutex
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
@@ -123,67 +114,13 @@ var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
 var errInstagramCAAUnsupportedStep = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_CAA_STEP", Err: "Instagram returned a sign-in step this bridge cannot safely complete", StatusCode: http.StatusBadRequest}
 var errInstagramCAAFlowFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadGateway, CanRetry: true}
 
-func (m *MetaNativeLogin) runOperation(ctx context.Context, operation func(context.Context) (*bridgev2.LoginStep, error)) (*bridgev2.LoginStep, error) {
-	return m.runOperationContext(ctx, false, operation)
-}
-
-func (m *MetaNativeLogin) runCancelableOperation(ctx context.Context, operation func(context.Context) (*bridgev2.LoginStep, error)) (*bridgev2.LoginStep, error) {
-	return m.runOperationContext(ctx, true, operation)
-}
-
-func (m *MetaNativeLogin) runOperationContext(ctx context.Context, cancelWithCaller bool, operation func(context.Context) (*bridgev2.LoginStep, error)) (*bridgev2.LoginStep, error) {
-	m.stateMu.Lock()
-	if m.cancelled {
-		m.stateMu.Unlock()
-		return nil, bridgev2.ErrLoginStepCancelled
-	} else if m.opDone != nil {
-		m.stateMu.Unlock()
-		return nil, errors.New("another Instagram login operation is already running")
-	}
-	if m.processCtx == nil {
-		m.processCtx, m.processCancel = context.WithCancelCause(ctx)
-	}
-	processCtx := m.processCtx
-	opCtx := processCtx
-	var opCancel context.CancelCauseFunc
-	var stopProcessCancel func() bool
-	if cancelWithCaller {
-		opCtx, opCancel = context.WithCancelCause(ctx)
-		stopProcessCancel = context.AfterFunc(processCtx, func() {
-			opCancel(context.Cause(processCtx))
-		})
-	}
-	done := make(chan struct{})
-	m.opDone = done
-	m.stateMu.Unlock()
-	defer func() {
-		if stopProcessCancel != nil {
-			stopProcessCancel()
-			opCancel(nil)
-		}
-		m.stateMu.Lock()
-		m.opDone = nil
-		close(done)
-		m.stateMu.Unlock()
-	}()
-	return operation(opCtx)
-}
-
-type instagramCAAStepSpec struct {
-	instructions, fieldID, fieldName string
-	fieldType                        bridgev2.LoginInputFieldType
-}
-
-type instagramWebSessionCreator func(context.Context, string, string) (*instameow.InstagramWebTwoFactorChallenge, error)
-type instagramCAAStepper func(context.Context, map[string]string, string, string) (*bridgev2.LoginStep, error)
-
-var instagramCAASafeSteps = map[string]instagramCAAStepSpec{
-	"fi.mau.meta.instagram.caa.password":    {"Re-enter your Instagram password.", "password", "Password", bridgev2.LoginInputFieldTypePassword},
-	"fi.mau.meta.instagram.caa.otp_code":    {"Enter the Instagram verification code.", "otp_code", "Verification code", bridgev2.LoginInputFieldType2FACode},
-	"fi.mau.meta.instagram.caa.backup_code": {"Enter one of your Instagram backup codes.", "backup_code", "Backup code", bridgev2.LoginInputFieldType2FACode},
-	"fi.mau.meta.instagram.caa.totp":        {"Enter the six-digit code from your authenticator app.", "totp_code", "Six-digit code", bridgev2.LoginInputFieldType2FACode},
-	"fi.mau.meta.instagram.caa.sms":         {"Enter the SMS code Instagram sent.", "sms_code", "Six-digit code", bridgev2.LoginInputFieldType2FACode},
-	"fi.mau.meta.instagram.caa.whatsapp":    {"Enter the code Instagram sent on WhatsApp.", "whatsapp_code", "Six-digit code", bridgev2.LoginInputFieldType2FACode},
+var instagramCAASafeSteps = map[string][3]string{
+	"fi.mau.meta.instagram.caa.password":    {"password", "Password", "Re-enter your Instagram password."},
+	"fi.mau.meta.instagram.caa.otp_code":    {"otp_code", "Verification code", "Enter the Instagram verification code."},
+	"fi.mau.meta.instagram.caa.backup_code": {"backup_code", "Backup code", "Enter one of your Instagram backup codes."},
+	"fi.mau.meta.instagram.caa.totp":        {"totp_code", "Six-digit code", "Enter the six-digit code from your authenticator app."},
+	"fi.mau.meta.instagram.caa.sms":         {"sms_code", "Six-digit code", "Enter the SMS code Instagram sent."},
+	"fi.mau.meta.instagram.caa.whatsapp":    {"whatsapp_code", "Six-digit code", "Enter the code Instagram sent on WhatsApp."},
 }
 
 func sanitizeInstagramCAALoginStep(step *bridgev2.LoginStep) error {
@@ -208,10 +145,14 @@ func sanitizeInstagramCAALoginStep(step *bridgev2.LoginStep) error {
 		return errInstagramCAAUnsupportedStep
 	}
 	field := &step.UserInputParams.Fields[0]
-	if field.ID != spec.fieldID || field.Type != spec.fieldType || field.DefaultValue != "" || len(field.Options) != 0 {
+	expectedType := bridgev2.LoginInputFieldType2FACode
+	if spec[0] == "password" {
+		expectedType = bridgev2.LoginInputFieldTypePassword
+	}
+	if field.ID != spec[0] || field.Type != expectedType || field.DefaultValue != "" || len(field.Options) != 0 {
 		return errInstagramCAAUnsupportedStep
 	}
-	step.Instructions, field.Name, field.Description, field.Pattern = spec.instructions, spec.fieldName, "", ""
+	field.Name, step.Instructions, field.Description, field.Pattern = spec[1], spec[2], "", ""
 	step.UserInputParams.CanCancel = false
 	return nil
 }
@@ -224,10 +165,8 @@ func (m *MetaNativeLogin) StartWithParams(
 	ctx context.Context,
 	params bridgev2.LoginStartParams,
 ) (*bridgev2.LoginStep, error) {
-	return m.runOperation(ctx, func(ctx context.Context) (*bridgev2.LoginStep, error) {
-		m.transport = params.HTTP
-		return m.start(ctx, "Enter your Instagram email or username and password.")
-	})
+	m.transport = params.HTTP
+	return m.start(ctx, "Enter your Instagram email or username and password.")
 }
 
 func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*bridgev2.LoginStep, error) {
@@ -265,58 +204,21 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 }
 
 func (m *MetaNativeLogin) Cancel() {
-	m.commitMu.Lock()
-	m.stateMu.Lock()
-	m.cancelled = true
-	cancel, done := m.processCancel, m.opDone
-	m.stateMu.Unlock()
-	if cancel != nil {
-		cancel(bridgev2.ErrLoginStepCancelled)
-	}
-	m.commitMu.Unlock()
-	if done != nil {
-		<-done
-	}
-	m.stateMu.Lock()
 	m.clearCAAFallback()
 	m.client = nil
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.transport = nil
-	m.processCtx, m.processCancel = nil, nil
-	m.stateMu.Unlock()
 }
 
 func (m *MetaNativeLogin) clearCAAFallback() {
 	if m.client != nil {
 		m.client.ClearInstagramCAALoginState()
 	}
-	m.caaFallback = false
 	m.caaIdentifier, m.caaPassword, m.caaUserID = "", "", ""
 }
 
-func (m *MetaNativeLogin) beginLoginCommit() (func(), error) {
-	m.commitMu.Lock()
-	m.stateMu.Lock()
-	cancelled := m.cancelled || m.processCtx != nil && m.processCtx.Err() != nil
-	m.stateMu.Unlock()
-	if cancelled {
-		m.commitMu.Unlock()
-		return nil, bridgev2.ErrLoginStepCancelled
-	}
-	return m.commitMu.Unlock, nil
-}
-
 func (m *MetaNativeLogin) SubmitUserInput(
-	ctx context.Context,
-	input map[string]string,
-) (*bridgev2.LoginStep, error) {
-	return m.runOperation(ctx, func(ctx context.Context) (*bridgev2.LoginStep, error) {
-		return m.submitUserInput(ctx, input)
-	})
-}
-
-func (m *MetaNativeLogin) submitUserInput(
 	ctx context.Context,
 	input map[string]string,
 ) (*bridgev2.LoginStep, error) {
@@ -325,7 +227,7 @@ func (m *MetaNativeLogin) submitUserInput(
 			"This Instagram login session expired. Start the login again.",
 		), nil
 	}
-	if m.caaFallback {
+	if m.caaIdentifier != "" {
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.webSessionReady {
@@ -376,16 +278,15 @@ func (m *MetaNativeLogin) submitUserInput(
 			"Enter both your Instagram email or username and password.",
 		), nil
 	}
-	return m.submitWebCredentials(ctx, identifier, password, true, m.client.CreateInstagramWebSession)
+	return m.submitWebCredentials(ctx, identifier, password, true)
 }
 
 func (m *MetaNativeLogin) submitWebCredentials(
 	ctx context.Context,
 	identifier, password string,
 	allowCAAFallback bool,
-	createWebSession instagramWebSessionCreator,
 ) (*bridgev2.LoginStep, error) {
-	challenge, err := createWebSession(ctx, identifier, password)
+	challenge, err := m.client.CreateInstagramWebSession(ctx, identifier, password)
 	if err != nil {
 		if isClientHTTPError(err) {
 			m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
@@ -398,12 +299,10 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting login attempts. Wait a while before starting a new login.")
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			return nil, loginerrors.AccountSuspended
-		} else if errors.Is(err, instameow.ErrInstagramWebChallengeRequired) ||
-			errors.Is(err, httpclient.ErrChallengeRequired) || errors.Is(err, httpclient.ErrCheckpointRequired) {
+		} else if errors.Is(err, httpclient.ErrChallengeRequired) || errors.Is(err, httpclient.ErrCheckpointRequired) {
 			if !allowCAAFallback {
 				return nil, errInstagramCAAFlowFailed
 			}
-			m.caaFallback = true
 			m.caaIdentifier = identifier
 			m.caaPassword = password
 			m.caaUserID = m.client.GetCookies().Get(cookies.IGCookieDSUserID)
@@ -425,19 +324,10 @@ func (m *MetaNativeLogin) submitWebCredentials(
 }
 
 func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	return m.continueCAAFallbackWith(ctx, input, m.client.DoInstagramCAALoginStepsExactAccount, m.client.CreateInstagramWebSession)
-}
-
-func (m *MetaNativeLogin) continueCAAFallbackWith(
-	ctx context.Context,
-	input map[string]string,
-	doCAASteps instagramCAAStepper,
-	createWebSession instagramWebSessionCreator,
-) (*bridgev2.LoginStep, error) {
 	if password := input[loginFieldPassword]; password != "" {
 		m.caaPassword = password
 	}
-	step, err := doCAASteps(ctx, input, m.caaIdentifier, m.caaUserID)
+	step, err := m.client.DoInstagramCAALoginStepsExactAccount(ctx, input, m.caaIdentifier, m.caaUserID)
 	if err != nil {
 		m.clearCAAFallback()
 		if isClientHTTPError(err) {
@@ -458,22 +348,13 @@ func (m *MetaNativeLogin) continueCAAFallbackWith(
 	} else if step != nil {
 		return step, nil
 	}
-	return m.resumeWebLoginAfterCAA(ctx, createWebSession)
-}
-
-func (m *MetaNativeLogin) resumeWebLoginAfterCAA(
-	ctx context.Context,
-	createWebSession instagramWebSessionCreator,
-) (*bridgev2.LoginStep, error) {
 	identifier, password := m.caaIdentifier, m.caaPassword
 	m.clearCAAFallback()
-	return m.submitWebCredentials(ctx, identifier, password, false, createWebSession)
+	return m.submitWebCredentials(ctx, identifier, password, false)
 }
 
 func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
-	return m.runCancelableOperation(ctx, func(ctx context.Context) (*bridgev2.LoginStep, error) {
-		return m.submitUserInput(ctx, map[string]string{})
-	})
+	return m.SubmitUserInput(ctx, map[string]string{})
 }
 
 func (m *MetaNativeLogin) continueWebAccountManager(
@@ -494,12 +375,6 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 }
 
 func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, error) {
-	m.stateMu.Lock()
-	cancelled := m.cancelled
-	m.stateMu.Unlock()
-	if cancelled {
-		return nil, bridgev2.ErrLoginStepCancelled
-	}
 	log := m.User.Log.With().Str("component", "instameow").Logger()
 	loginCookies := m.client.GetCookies()
 	if missingCookies := loginCookies.GetMissingCookieNames(); len(missingCookies) > 0 {
@@ -523,7 +398,7 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		}
 		defer restoreTransport()
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, m.beginLoginCommit, restoreTransport)
+	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, restoreTransport)
 }
 
 func isClientHTTPError(err error) bool {
