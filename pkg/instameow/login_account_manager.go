@@ -29,6 +29,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -186,6 +187,9 @@ func instagramAccountManagerRequestError(
 	requestErr error,
 ) error {
 	if response == nil {
+		return fmt.Errorf("%s: %w", action, requestErr)
+	}
+	if httpclient.IsPermanentRequestError(requestErr) {
 		return fmt.Errorf("%s: %w", action, requestErr)
 	}
 	var failure instagramAccountManagerError

@@ -38,6 +38,7 @@ import (
 
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
 
+var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
 var errInstagramWebTwoFactorSMSRejected = fmt.Errorf("%w: SMS code validation failed", ErrInstagramWebTwoFactorCodeRejected)
@@ -251,6 +252,11 @@ func instagramWebLoginResponseClass(result instagramWebLoginResponse) string {
 	}
 }
 
+func instagramWebCredentialsRejected(result instagramWebLoginResponse) bool {
+	return strings.EqualFold(strings.TrimSpace(result.ErrorType), "bad_password") &&
+		instagramWebLoginResponseClass(result) == "credentials_rejected"
+}
+
 func instagramWebFormFields(form url.Values) []string {
 	fields := make([]string, 0, len(form))
 	for field := range form {
@@ -443,7 +449,9 @@ func (c *Client) CreateInstagramWebSession(
 			form,
 			instagramWebLoginResponseClass(result),
 		)
-		if parseErr == nil && result.TwoFactorRequired {
+		if parseErr == nil && instagramWebCredentialsRejected(result) {
+			return nil, ErrInstagramWebCredentialsRejected
+		} else if parseErr == nil && result.TwoFactorRequired {
 			statusCode := 0
 			if response != nil {
 				statusCode = response.StatusCode
@@ -457,6 +465,8 @@ func (c *Client) CreateInstagramWebSession(
 		return nil, errors.New("instagram web login returned no response")
 	} else if parseErr != nil {
 		return nil, fmt.Errorf("failed to parse Instagram web login: %w", parseErr)
+	} else if instagramWebCredentialsRejected(result) {
+		return nil, ErrInstagramWebCredentialsRejected
 	} else if result.TwoFactorRequired {
 		return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, response.StatusCode)
 	} else if !result.Authenticated {
