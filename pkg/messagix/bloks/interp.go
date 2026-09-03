@@ -1732,10 +1732,18 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.caa.GetSPIEligibility":
 		return BloksNull, nil
 	case "bk.action.core.Delay":
-		// First argument is time delay in milliseconds. It seems to be for
-		// triggering asynchronous execution. I really hope we can get away
-		// without actually doing that.
-		return i.Evaluate(ctx, &call.Args[1])
+		// The first argument is the delay in milliseconds. The interpreter is
+		// synchronous, so ignore the duration, but still invoke the callback.
+		callback, err := evalAs[*BloksLambda](ctx, i, &call.Args[1], "delay")
+		if err != nil {
+			return nil, err
+		}
+		return i.Evaluate(ctx, &BloksScriptNode{
+			Content: &BloksScriptFuncall{
+				Function: "bk.action.core.Apply",
+				Args:     []BloksScriptNode{{Content: BloksLiteralOf(callback)}},
+			},
+		})
 	case "bk.action.i64.Convert":
 		arg, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
