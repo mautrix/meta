@@ -229,6 +229,9 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 
 func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginState, error) {
 	if c.mobileLogin == nil {
+		// Web and app login sessions use different cookie jars.
+		c.cookies.UpdateValues(nil)
+		c.cookies.IGWWWClaim = ""
 		var err error
 		c.mobileLogin, err = c.newMobileLoginState(ctx)
 		if err != nil {
