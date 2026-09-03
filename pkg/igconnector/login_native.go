@@ -103,6 +103,7 @@ type MetaNativeLogin struct {
 	transport       http.RoundTripper
 	caaFallback     bool
 	caaIdentifier   string
+	caaPassword     string
 	caaUserID       string
 	webTwoFactor    *instameow.InstagramWebTwoFactorChallenge
 	webSessionReady bool
@@ -173,6 +174,9 @@ type instagramCAAStepSpec struct {
 	fieldType                        bridgev2.LoginInputFieldType
 }
 
+type instagramWebSessionCreator func(context.Context, string, string) (*instameow.InstagramWebTwoFactorChallenge, error)
+type instagramCAAStepper func(context.Context, map[string]string, string, string) (*bridgev2.LoginStep, error)
+
 var instagramCAASafeSteps = map[string]instagramCAAStepSpec{
 	"fi.mau.meta.instagram.caa.password":    {"Re-enter your Instagram password.", "password", "Password", bridgev2.LoginInputFieldTypePassword},
 	"fi.mau.meta.instagram.caa.otp_code":    {"Enter the Instagram verification code.", "otp_code", "Verification code", bridgev2.LoginInputFieldType2FACode},
@@ -227,9 +231,8 @@ func (m *MetaNativeLogin) StartWithParams(
 }
 
 func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*bridgev2.LoginStep, error) {
+	m.clearCAAFallback()
 	m.client = nil
-	m.caaFallback = false
-	m.caaIdentifier, m.caaUserID = "", ""
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	if m.User == nil || m.Main == nil {
@@ -275,14 +278,21 @@ func (m *MetaNativeLogin) Cancel() {
 		<-done
 	}
 	m.stateMu.Lock()
+	m.clearCAAFallback()
 	m.client = nil
-	m.caaFallback = false
-	m.caaIdentifier, m.caaUserID = "", ""
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.transport = nil
 	m.processCtx, m.processCancel = nil, nil
 	m.stateMu.Unlock()
+}
+
+func (m *MetaNativeLogin) clearCAAFallback() {
+	if m.client != nil {
+		m.client.ClearInstagramCAALoginState()
+	}
+	m.caaFallback = false
+	m.caaIdentifier, m.caaPassword, m.caaUserID = "", "", ""
 }
 
 func (m *MetaNativeLogin) beginLoginCommit() (func(), error) {
@@ -366,7 +376,16 @@ func (m *MetaNativeLogin) submitUserInput(
 			"Enter both your Instagram email or username and password.",
 		), nil
 	}
-	challenge, err := m.client.CreateInstagramWebSession(ctx, identifier, password)
+	return m.submitWebCredentials(ctx, identifier, password, true, m.client.CreateInstagramWebSession)
+}
+
+func (m *MetaNativeLogin) submitWebCredentials(
+	ctx context.Context,
+	identifier, password string,
+	allowCAAFallback bool,
+	createWebSession instagramWebSessionCreator,
+) (*bridgev2.LoginStep, error) {
+	challenge, err := createWebSession(ctx, identifier, password)
 	if err != nil {
 		if isClientHTTPError(err) {
 			m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
@@ -381,10 +400,17 @@ func (m *MetaNativeLogin) submitUserInput(
 			return nil, loginerrors.AccountSuspended
 		} else if errors.Is(err, instameow.ErrInstagramWebChallengeRequired) ||
 			errors.Is(err, httpclient.ErrChallengeRequired) || errors.Is(err, httpclient.ErrCheckpointRequired) {
+			if !allowCAAFallback {
+				return nil, errInstagramCAAFlowFailed
+			}
 			m.caaFallback = true
 			m.caaIdentifier = identifier
+			m.caaPassword = password
 			m.caaUserID = m.client.GetCookies().Get(cookies.IGCookieDSUserID)
-			return m.continueCAAFallback(ctx, input)
+			return m.continueCAAFallback(ctx, map[string]string{
+				loginFieldIdentifier: identifier,
+				loginFieldPassword:   password,
+			})
 		} else if isMissingInstagramWebTwoFactorCSRF(err) {
 			return m.start(ctx, "Instagram did not return the security state needed to continue. Please try again.")
 		}
@@ -395,12 +421,25 @@ func (m *MetaNativeLogin) submitUserInput(
 		return instagramWebTwoFactorStep(challenge, ""), nil
 	}
 	m.webSessionReady = true
-	return m.continueWebAccountManager(ctx, input)
+	return m.continueWebAccountManager(ctx, map[string]string{})
 }
 
 func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	step, err := m.client.DoInstagramCAALoginStepsExactAccount(ctx, input, m.caaIdentifier, m.caaUserID)
+	return m.continueCAAFallbackWith(ctx, input, m.client.DoInstagramCAALoginStepsExactAccount, m.client.CreateInstagramWebSession)
+}
+
+func (m *MetaNativeLogin) continueCAAFallbackWith(
+	ctx context.Context,
+	input map[string]string,
+	doCAASteps instagramCAAStepper,
+	createWebSession instagramWebSessionCreator,
+) (*bridgev2.LoginStep, error) {
+	if password := input[loginFieldPassword]; password != "" {
+		m.caaPassword = password
+	}
+	step, err := doCAASteps(ctx, input, m.caaIdentifier, m.caaUserID)
 	if err != nil {
+		m.clearCAAFallback()
 		if isClientHTTPError(err) {
 			m.User.Log.Warn().Msg("Instagram CAA fallback request failed on the client")
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
@@ -414,13 +453,21 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 		}
 		return nil, errInstagramCAAFlowFailed
 	} else if err = sanitizeInstagramCAALoginStep(step); err != nil {
+		m.clearCAAFallback()
 		return nil, err
 	} else if step != nil {
 		return step, nil
 	}
-	m.caaFallback = false
-	m.caaIdentifier, m.caaUserID = "", ""
-	return m.complete(ctx)
+	return m.resumeWebLoginAfterCAA(ctx, createWebSession)
+}
+
+func (m *MetaNativeLogin) resumeWebLoginAfterCAA(
+	ctx context.Context,
+	createWebSession instagramWebSessionCreator,
+) (*bridgev2.LoginStep, error) {
+	identifier, password := m.caaIdentifier, m.caaPassword
+	m.clearCAAFallback()
+	return m.submitWebCredentials(ctx, identifier, password, false, createWebSession)
 }
 
 func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
