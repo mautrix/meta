@@ -1760,7 +1760,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
-		log.Debug().Str("recaptcha_token", token).Msg("Got recaptcha token from webview")
+		log.Debug().Msg("Got recaptcha token from webview")
 		callback := webview.GetScript("callback")
 		if callback == nil {
 			return nil, fmt.Errorf("reCAPTCHA webview has no callback")

@@ -33,7 +33,10 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-const instagramCAALoginEntrypoint = "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
+const (
+	instagramCAALoginEntrypoint    = "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
+	instagramCAAAutomaticStepLimit = 16
+)
 
 func instagramDeviceNetworkInfo() map[string]any {
 	return map[string]any{
@@ -56,11 +59,19 @@ type instagramCAALoginState struct {
 	AccountManagerComplete bool
 }
 
-var ErrInstagramCAAUnsafeAccountStep = errors.New("Instagram returned a sign-in step this bridge cannot safely complete")
+var ErrInstagramCAAUnsafeAccountStep = errors.New("instagram returned a sign-in step this bridge cannot safely complete")
 
 type instagramCAALoginResponse struct {
 	Headers       string `json:"headers"`
 	LoginResponse string `json:"login_response"`
+}
+
+func (c *Client) ClearInstagramCAALoginState() {
+	if c != nil {
+		c.caaLogin = nil
+		c.mobileLogin = nil
+		c.mobileSession = nil
+	}
 }
 
 func parseInstagramCAAResponseHeaders(rawHeaders string) (http.Header, error) {
@@ -195,7 +206,10 @@ func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[str
 	if err != nil {
 		return nil, err
 	}
-	for state.Browser.State != bloks.StateSuccess {
+	for automaticSteps := 0; state.Browser.State != bloks.StateSuccess; automaticSteps++ {
+		if automaticSteps >= instagramCAAAutomaticStepLimit {
+			return nil, errors.New("instagram CAA login exceeded automatic step limit")
+		}
 		if exactAccount {
 			switch state.Browser.State {
 			case bloks.StateAuthenticationConfirm, bloks.StateAccountSelectionPage, bloks.StateSuggestedAccountPage,
