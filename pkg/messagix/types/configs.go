@@ -123,6 +123,10 @@ type InstagramLoginDevice struct {
 	AdvertisingID   string `json:"advertising_id,omitempty"`
 	AndroidDeviceID string `json:"android_device_id,omitempty"`
 	MachineID       string `json:"machine_id,omitempty"`
+	USDID           string `json:"usdid,omitempty"`
+	USDIDKeyID      string `json:"usdid_key_id,omitempty"`
+	USDIDPrivateKey string `json:"usdid_private_key,omitempty"`
+	USDIDRegistered bool   `json:"usdid_registered,omitempty"`
 }
 
 type XIGSharedData struct {

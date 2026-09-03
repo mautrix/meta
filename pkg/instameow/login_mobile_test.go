@@ -56,18 +56,14 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 		t.Fatal("new app installation unexpectedly sent a machine ID before the server issued one")
 	}
 	if persisted == nil || persisted.MachineID != "stable-machine-id" {
-		t.Fatalf(
-			"first mobile login did not persist the complete installation identity: %#v",
-			persisted,
-		)
+		t.Fatal("first mobile login did not persist the complete installation identity")
+	}
+	if persisted.USDID == "" || persisted.USDIDKeyID == "" || persisted.USDIDPrivateKey == "" {
+		t.Fatal("first mobile login did not persist its signed USDID identity")
 	}
 	firstDevice := firstState.device()
 	if firstDevice != *persisted {
-		t.Fatalf(
-			"persisted installation identity does not match the active client: %#v != %#v",
-			*persisted,
-			firstDevice,
-		)
+		t.Fatal("persisted installation identity does not match the active client")
 	}
 	firstSaveCalls := saveCalls
 
@@ -81,11 +77,7 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 		t.Fatal("restored app installation did not send its server-issued machine ID")
 	}
 	if secondState.device() != firstDevice {
-		t.Fatalf(
-			"restored app installation changed identity: %#v != %#v",
-			secondState.device(),
-			firstDevice,
-		)
+		t.Fatal("restored app installation changed identity")
 	}
 	if saveCalls != firstSaveCalls {
 		t.Fatalf(

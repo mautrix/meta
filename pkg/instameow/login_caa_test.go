@@ -61,6 +61,12 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		PhoneID:         "family-device-id",
 		DeviceID:        "qe-device-id",
 		AndroidDeviceID: "android-0123456789abcdef",
+		USDIDHeader:     "test-usdid-header",
+	}
+	client.caaLogin = &instagramCAALoginState{
+		AAC:              "server-aac",
+		WaterfallID:      "server-waterfall",
+		AttestationNonce: "server-attestation-nonce",
 	}
 
 	requestSeen := false
@@ -69,14 +75,32 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		if request.Method != http.MethodPost {
 			t.Fatalf("expected Bloks POST, got %s", request.Method)
 		}
-		expectedPath := "/api/v1/bloks/async_action/" + instagramCAALoginEntrypoint + "/"
-		if request.URL.Path != expectedPath {
-			t.Fatalf("unexpected CAA path %q", request.URL.Path)
+		expectedPath := "/api/v1/bloks/async_action/" + instagramCAASendEntrypoint + "/"
+		if request.URL.Host != "b.i.instagram.com" || request.URL.Path != expectedPath {
+			t.Fatalf("unexpected CAA endpoint %q", request.URL.String())
 		}
 		if request.Header.Get("X-Bloks-Version-Id") != bloks.BloksVersionInstagramAndroid ||
 			request.Header.Get("X-Ig-App-Id") != useragent.IGAndroidAppID ||
-			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 440.0.0.19.86 Android") {
+			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 440.0.0.19.86 Android") ||
+			request.Header.Get("X-Meta-Usdid") != "test-usdid-header" ||
+			request.Header.Get("X-Fb-Friendly-Name") != "IgApi: bloks/async_action/"+instagramCAASendEntrypoint+"/" {
 			t.Fatal("Instagram CAA headers do not match the current signed APK profile")
+		}
+		var attestParams struct {
+			Attestation []struct {
+				Version        int    `json:"version"`
+				Type           string `json:"type"`
+				Errors         []int  `json:"errors"`
+				ChallengeNonce string `json:"challenge_nonce"`
+			} `json:"attestation"`
+		}
+		if err := json.Unmarshal([]byte(request.Header.Get("X-Ig-Attest-Params")), &attestParams); err != nil ||
+			len(attestParams.Attestation) != 1 ||
+			attestParams.Attestation[0].Version != 2 ||
+			attestParams.Attestation[0].Type != "keystore" ||
+			!reflect.DeepEqual(attestParams.Attestation[0].Errors, []int{-1013}) ||
+			attestParams.Attestation[0].ChallengeNonce != "server-attestation-nonce" {
+			t.Fatalf("unexpected Instagram attestation parameters: %+v (%v)", attestParams, err)
 		}
 		body, err := io.ReadAll(request.Body)
 		if err != nil {
@@ -102,9 +126,10 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		if err = json.Unmarshal([]byte(form.Get("params")), &params); err != nil {
 			t.Fatalf("invalid CAA params: %v", err)
 		}
-		if params["offline_experiment_group"] != "caa_iteration_v3_perf_ig_4" ||
-			params["device_id"] != "android-0123456789abcdef" ||
-			params["qe_device_id"] != "qe-device-id" {
+		clientParams, clientOK := params["client_input_params"].(map[string]any)
+		serverParams, serverOK := params["server_params"].(map[string]any)
+		if !clientOK || !serverOK || clientParams["aac"] != "server-aac" ||
+			serverParams["waterfall_id"] != "server-waterfall" {
 			t.Fatalf("unexpected CAA params: %+v", params)
 		}
 		return mobileLoginTestResponse(request, http.StatusOK, nil, `{}`), nil
@@ -113,11 +138,10 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 	_, _ = client.makeInstagramBloksRequest(
 		context.Background(),
 		&bloks.BloksActionDocInstagram,
-		instagramCAALoginEntrypoint,
+		instagramCAASendEntrypoint,
 		bloks.BloksParamsInner{
-			"device_id":                "android-0123456789abcdef",
-			"qe_device_id":             "qe-device-id",
-			"offline_experiment_group": "caa_iteration_v3_perf_ig_4",
+			"client_input_params": map[string]any{},
+			"server_params":       map[string]any{},
 		},
 		"",
 		"",

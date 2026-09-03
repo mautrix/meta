@@ -128,7 +128,6 @@ func loginWithCookies(
 	bridgeUser *bridgev2.User,
 	conn *IGConnector,
 	c *cookies.Cookies,
-	beforeLoginSave func() (func(), error),
 	beforeClientStart func(),
 ) (*bridgev2.LoginStep, error) {
 	log.Debug().
@@ -162,13 +161,6 @@ func loginWithCookies(
 	var loginUA string
 	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {
 		loginUA = req.Header.Get("User-Agent")
-	}
-	if beforeLoginSave != nil {
-		finish, err := beforeLoginSave()
-		if err != nil {
-			return nil, err
-		}
-		defer finish()
 	}
 
 	ul, err := bridgeUser.NewLogin(ctx, &database.UserLogin{
@@ -240,5 +232,5 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, c, nil, nil)
+	return loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
 }
