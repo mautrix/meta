@@ -286,14 +286,15 @@ func instagramCAAValue(bundle *bloks.BloksBundle, replacement string) string {
 			variable.Info.Initial, variable.Info.InitialScript = replacement, nil
 			return replacement
 		}
-		if value, ok := variable.Info.Initial.(string); ok {
+		if value, ok := variable.Info.Initial.(string); ok && value != "" {
 			return value
 		}
 		if script := variable.Info.InitialScript; script != nil {
 			if call, ok := script.AST.Content.(*bloks.BloksScriptFuncall); ok && len(call.Args) > 0 {
 				if value, ok := call.Args[0].Content.(*bloks.BloksScriptLiteral); ok {
-					result, _ := value.Value().(string)
-					return result
+					if result, ok := value.Value().(string); ok && result != "" {
+						return result
+					}
 				}
 			}
 		}
