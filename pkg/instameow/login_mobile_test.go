@@ -18,7 +18,11 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 	saveCalls := 0
 	newClientWithDevice := func(device *types.InstagramLoginDevice) (*Client, *bool) {
 		loginCookies := &cookies.Cookies{Platform: types.Instagram}
-		loginCookies.UpdateValues(nil)
+		loginCookies.UpdateValues(map[cookies.MetaCookieName]string{
+			cookies.IGCookieCSRFToken: "web-csrf",
+			cookies.IGCookieDeviceID:  "web-device",
+		})
+		loginCookies.IGWWWClaim = "web-claim"
 		client := NewClient(ClientParams{
 			Cookies:           loginCookies,
 			Log:               zerolog.Nop(),
@@ -36,6 +40,9 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 		machineIDHeaderPresent := false
 		client.http.HTTP.Transport = roundTripFunc(
 			func(request *http.Request) (*http.Response, error) {
+				if request.Header.Get("Cookie") != "" {
+					t.Fatal("mobile login sent cookies from the preceding web session")
+				}
 				machineIDHeaderPresent = request.Header.Get("X-Mid") != ""
 				return mobileLoginTestResponse(request, http.StatusOK, http.Header{
 					"Ig-Set-Password-Encryption-Key-Id":  {"145"},
@@ -54,6 +61,10 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 	}
 	if *firstHadMachineID {
 		t.Fatal("new app installation unexpectedly sent a machine ID before the server issued one")
+	}
+	if firstClient.GetCookies().Get(cookies.IGCookieCSRFToken) != "" ||
+		firstClient.GetCookies().Get(cookies.IGCookieDeviceID) != "" || firstClient.GetCookies().IGWWWClaim != "" {
+		t.Fatal("mobile login retained state from the preceding web session")
 	}
 	if persisted == nil || persisted.MachineID != "stable-machine-id" {
 		t.Fatal("first mobile login did not persist the complete installation identity")
