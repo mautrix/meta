@@ -61,12 +61,14 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		PhoneID:         "family-device-id",
 		DeviceID:        "qe-device-id",
 		AndroidDeviceID: "android-0123456789abcdef",
+		MachineID:       "machine-id",
 		USDIDHeader:     "test-usdid-header",
 	}
 	client.caaLogin = &instagramCAALoginState{
 		AAC:              "server-aac",
 		WaterfallID:      "server-waterfall",
 		AttestationNonce: "server-attestation-nonce",
+		Mobile:           client.mobileLogin,
 	}
 
 	requestSeen := false
@@ -129,8 +131,38 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		clientParams, clientOK := params["client_input_params"].(map[string]any)
 		serverParams, serverOK := params["server_params"].(map[string]any)
 		if !clientOK || !serverOK || clientParams["aac"] != "server-aac" ||
-			serverParams["waterfall_id"] != "server-waterfall" {
+			clientParams["password"] != "#PWD_INSTAGRAM:4:test-envelope" ||
+			clientParams["contact_point"] != "test-user" ||
+			clientParams["password_contains_non_ascii"] != "true" ||
+			clientParams["login_attempt_count"] != float64(3) || clientParams["try_num"] != float64(2) ||
+			clientParams["device_id"] != "android-0123456789abcdef" ||
+			clientParams["family_device_id"] != "family-device-id" || clientParams["machine_id"] != "machine-id" ||
+			serverParams["waterfall_id"] != "server-waterfall" || serverParams["qe_device_id"] != "qe-device-id" ||
+			serverParams["credential_type"] != "password" || serverParams["caller"] != "gslr" {
 			t.Fatalf("unexpected CAA params: %+v", params)
+		}
+		passwordInputID, passwordInputOK := serverParams["password_text_input_id"].(string)
+		usernameInputID, usernameInputOK := serverParams["username_text_input_id"].(string)
+		if !passwordInputOK || !usernameInputOK || !strings.HasSuffix(passwordInputID, "ig:82") ||
+			!strings.HasSuffix(usernameInputID, "ig:81") ||
+			strings.TrimSuffix(passwordInputID, ":82") != strings.TrimSuffix(usernameInputID, ":81") {
+			t.Fatalf("unexpected CAA input IDs: password=%q username=%q", passwordInputID, usernameInputID)
+		}
+		for _, key := range []string{
+			"blocked_uids", "sim_phones", "aymh_accounts", "si_device_param_network_info", "sso_accounts_auth_data",
+			"flash_call_permission_status", "accounts_list", "gms_incoming_call_retriever_eligibility", "lois_settings", "openid_tokens",
+		} {
+			if _, present := clientParams[key]; !present {
+				t.Fatalf("current CAA client params are missing %q", key)
+			}
+		}
+		for _, key := range []string{
+			"two_step_login_type", "login_entry_point", "offline_experiment_group", "ar_event_source",
+			"login_surface", "reg_flow_source", "access_flow_version",
+		} {
+			if _, present := serverParams[key]; !present {
+				t.Fatalf("current CAA server params are missing %q", key)
+			}
 		}
 		return mobileLoginTestResponse(request, http.StatusOK, nil, `{}`), nil
 	})
@@ -140,8 +172,14 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		&bloks.BloksActionDocInstagram,
 		instagramCAASendEntrypoint,
 		bloks.BloksParamsInner{
-			"client_input_params": map[string]any{},
-			"server_params":       map[string]any{},
+			"client_input_params": map[string]any{
+				"password":                    "#PWD_INSTAGRAM:4:test-envelope",
+				"contact_point":               "test-user",
+				"password_contains_non_ascii": true,
+				"login_attempt_count":         3,
+				"try_num":                     2,
+			},
+			"server_params": map[string]any{},
 		},
 		"",
 		"",
