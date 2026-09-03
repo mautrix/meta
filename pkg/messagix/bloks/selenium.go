@@ -1492,7 +1492,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		actionRPCCountBefore := b.ActionRPCCount
 		err = continueButton.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			log.Debug().Err(err).Msg("Got error from OTP code submission")
+			log.Debug().Msg("Got error from OTP code submission")
 			if strings.Contains(err.Error(), "Please re-enter") {
 				// retry
 			} else if strings.Contains(err.Error(), "An unexpected error occurred") {
@@ -1822,7 +1822,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
-		log.Info().Str("mfatype", chosenMethod).Msg("Picked MFA method from MFA selection page")
+		log.Info().Msg("Picked supported MFA method from MFA selection page")
 
 		if foundMethods[chosenMethod] == nil {
 			return nil, b.profile.invalidMFAMethodError(chosenMethod)
@@ -2343,12 +2343,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	if b.State == prevState {
 		if step != nil {
 			fieldIDs := []string{}
-			fieldOptions := []string{}
+			selectOptionCount := 0
 			if step.UserInputParams != nil {
 				for _, field := range step.UserInputParams.Fields {
 					fieldIDs = append(fieldIDs, field.ID)
 					if field.Type == bridgev2.LoginInputFieldTypeSelect {
-						fieldOptions = append(fieldOptions, field.Options...)
+						selectOptionCount += len(field.Options)
 					}
 				}
 			}
@@ -2361,7 +2361,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Str("cur_state", string(b.State)).
 				Str("step_id", step.StepID).
 				Strs("field_ids", fieldIDs).
-				Strs("field_options", fieldOptions).
+				Int("select_option_count", selectOptionCount).
 				Msg("Requested user input")
 		} else if b.LastError != "" {
 			log.Debug().

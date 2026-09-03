@@ -56,6 +56,8 @@ type instagramCAALoginState struct {
 	AccountManagerComplete bool
 }
 
+var ErrInstagramCAAUnsafeAccountStep = errors.New("Instagram returned a sign-in step this bridge cannot safely complete")
+
 type instagramCAALoginResponse struct {
 	Headers       string `json:"headers"`
 	LoginResponse string `json:"login_response"`
@@ -152,6 +154,34 @@ func (c *Client) DoInstagramCAALoginSteps(
 	ctx context.Context,
 	userInput map[string]string,
 ) (*bridgev2.LoginStep, error) {
+	return c.doInstagramCAALoginSteps(ctx, userInput, false)
+}
+
+func (c *Client) DoInstagramCAALoginStepsExactAccount(
+	ctx context.Context,
+	userInput map[string]string,
+	expectedIdentifier,
+	expectedUserID string,
+) (*bridgev2.LoginStep, error) {
+	step, err := c.doInstagramCAALoginSteps(ctx, userInput, true)
+	if step == nil && err == nil && !instagramCAAAccountMatches(c.mobileSession, expectedIdentifier, expectedUserID) {
+		return nil, ErrInstagramCAAUnsafeAccountStep
+	}
+	return step, err
+}
+
+func instagramCAAAccountMatches(session *instagramMobileSession, expectedIdentifier, expectedUserID string) bool {
+	if session == nil {
+		return false
+	} else if expectedUserID = strings.TrimSpace(expectedUserID); expectedUserID != "" {
+		return session.UserID == expectedUserID
+	}
+	expectedIdentifier = strings.TrimPrefix(strings.TrimSpace(expectedIdentifier), "@")
+	return expectedIdentifier != "" && !strings.Contains(expectedIdentifier, "@") &&
+		strings.EqualFold(session.Username, expectedIdentifier)
+}
+
+func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[string]string, exactAccount bool) (*bridgev2.LoginStep, error) {
 	if c == nil {
 		return nil, ErrClientIsNil
 	}
@@ -166,6 +196,14 @@ func (c *Client) DoInstagramCAALoginSteps(
 		return nil, err
 	}
 	for state.Browser.State != bloks.StateSuccess {
+		if exactAccount {
+			switch state.Browser.State {
+			case bloks.StateAuthenticationConfirm, bloks.StateAccountSelectionPage, bloks.StateSuggestedAccountPage,
+				bloks.StateCaptchaPage, bloks.StateReCaptchaPage, bloks.StateOAuthPage,
+				bloks.StateChooseContactPointPage:
+				return nil, ErrInstagramCAAUnsafeAccountStep
+			}
+		}
 		step, stepErr := state.Browser.DoLoginStep(ctx, userInput)
 		if stepErr != nil {
 			return nil, stepErr
@@ -179,6 +217,9 @@ func (c *Client) DoInstagramCAALoginSteps(
 			return nil, err
 		}
 		state.Complete = true
+	}
+	if exactAccount {
+		return nil, nil
 	}
 	if !state.AccountManagerChecked {
 		state.AccountManagerAccounts, err = c.getInstagramAccountManagerAccounts(ctx)
