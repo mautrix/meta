@@ -136,12 +136,16 @@ func loginWithCookies(
 	user, mailbox, err := client.LoadIndex(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to load messages page for login")
-		if errors.Is(err, httpclient.ErrChallengeRequired) {
+		if errors.Is(err, httpclient.ErrRateLimited) {
+			return nil, loginerrors.RateLimited
+		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
 			return nil, loginerrors.Challenge
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
 			return nil, loginerrors.Checkpoint
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			return nil, loginerrors.Consent
+		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
+			return nil, loginerrors.AccountSuspended
 		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
 			return nil, loginerrors.TokenInvalidated
 		} else {

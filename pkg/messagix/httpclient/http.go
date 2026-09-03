@@ -311,6 +311,7 @@ var (
 	ErrRequestFailed            = errors.New("failed to send request")
 	ErrResponseReadFailed       = errors.New("failed to read response body")
 	ErrUnexpectedError          = errors.New("server returned unexpected HTTP status")
+	ErrRateLimited              = fmt.Errorf("%w 429", ErrUnexpectedError)
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
 	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
@@ -343,6 +344,7 @@ func IsPermanentRequestError(err error) bool {
 		errors.Is(err, ErrCheckpointRequired) ||
 		errors.Is(err, ErrConsentRequired) ||
 		errors.Is(err, ErrAccountSuspended) ||
+		errors.Is(err, ErrRateLimited) ||
 		errors.Is(err, ErrTooManyRedirects)
 }
 
@@ -482,6 +484,9 @@ func (c *HTTPClient) MakeRequestOnce(ctx context.Context, url string, method str
 	if err != nil {
 		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
 		return nil, nil, fmt.Errorf("%w: %w", ErrRequestFailed, err)
+	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		return response, nil, ErrRateLimited
 	}
 
 	responseBody, err := io.ReadAll(response.Body)

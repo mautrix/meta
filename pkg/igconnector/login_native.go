@@ -30,6 +30,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -196,6 +197,12 @@ func (m *MetaNativeLogin) SubmitUserInput(
 					m.webTwoFactor,
 					"Instagram did not accept that code. Check that it is the latest code from Instagram, then try again.",
 				), nil
+			} else if errors.Is(err, httpclient.ErrRateLimited) {
+				m.Cancel()
+				return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
+			} else if errors.Is(err, httpclient.ErrAccountSuspended) {
+				m.Cancel()
+				return nil, loginerrors.AccountSuspended
 			}
 			m.Cancel()
 			return nil, fmt.Errorf("failed to complete Instagram web two-factor login: %w", err)
@@ -217,6 +224,16 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		if isClientHTTPError(err) {
 			m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
+		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
+			return instagramCredentialsStep(
+				"Instagram didn't accept that username or password. Check your credentials and try again.",
+			), nil
+		} else if errors.Is(err, httpclient.ErrRateLimited) {
+			m.Cancel()
+			return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting login attempts. Wait a while before starting a new login.")
+		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
+			m.Cancel()
+			return nil, loginerrors.AccountSuspended
 		} else if isMissingInstagramWebTwoFactorCSRF(err) {
 			return m.start(ctx, "Instagram did not return the security state needed to continue. Please try again.")
 		}
@@ -236,7 +253,13 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 	input map[string]string,
 ) (*bridgev2.LoginStep, error) {
 	step, err := m.client.DoInstagramWebAccountManagerSteps(ctx, input)
-	if err != nil {
+	if errors.Is(err, httpclient.ErrRateLimited) {
+		m.Cancel()
+		return nil, loginerrors.RateLimited
+	} else if errors.Is(err, httpclient.ErrAccountSuspended) {
+		m.Cancel()
+		return nil, loginerrors.AccountSuspended
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to select Instagram web Account Manager profile: %w", err)
 	} else if step != nil {
 		return step, nil
