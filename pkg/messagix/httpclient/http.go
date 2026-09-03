@@ -415,7 +415,7 @@ func (c *HTTPClient) makeRequest(
 	for {
 		attempts++
 		start := time.Now()
-		resp, respDat, err := c.makeRequestDirect(ctx, url, method, headers, payload, contentType)
+		resp, respDat, err := c.MakeRequestOnce(ctx, url, method, headers, payload, contentType)
 		dur := time.Since(start)
 		if err == nil {
 			logContext(c.log.Debug()).
@@ -461,7 +461,7 @@ func (c *HTTPClient) makeRequest(
 	}
 }
 
-func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
+func (c *HTTPClient) MakeRequestOnce(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
 	newRequest, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, nil, err

@@ -186,10 +186,15 @@ func (m *MetaNativeLogin) SubmitUserInput(
 					m.webTwoFactor,
 					"The request did not complete on this device. Enter a fresh verification code and try again.",
 				), nil
+			} else if errors.Is(err, instameow.ErrInstagramWebTwoFactorCodeResent) {
+				return instagramWebTwoFactorStep(
+					m.webTwoFactor,
+					"Instagram rejected that code. A fresh SMS code was requested. Enter it when it arrives.",
+				), nil
 			} else if errors.Is(err, instameow.ErrInstagramWebTwoFactorCodeRejected) {
 				return instagramWebTwoFactorStep(
 					m.webTwoFactor,
-					"Instagram did not accept that code. Enter a new code and try again.",
+					"Instagram did not accept that code. Check that it is the latest code from Instagram, then try again.",
 				), nil
 			}
 			m.Cancel()
