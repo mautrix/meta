@@ -208,6 +208,72 @@ func instagramCAAProcessParams(state *instagramCAALoginState) bloks.BloksParamsI
 	}
 }
 
+func instagramCAACredentialParams(
+	state *instagramCAALoginState,
+	mobile *mobileLoginState,
+	legacy bloks.BloksParamsInner,
+) (bloks.BloksParamsInner, error) {
+	// The legacy homepage still supplies the credentials, but its generated request
+	// shape is stale. Preserve only the encrypted user values and rebuild the envelope.
+	legacyClient, ok := legacy["client_input_params"].(map[string]any)
+	if !ok {
+		return nil, errors.New("instagram credential request has invalid CAA parameters")
+	}
+	password, passwordOK := legacyClient["password"].(string)
+	contactPoint, contactPointOK := legacyClient["contact_point"].(string)
+	if !passwordOK || !strings.HasPrefix(password, "#PWD_INSTAGRAM:4:") ||
+		!contactPointOK || strings.TrimSpace(contactPoint) == "" {
+		return nil, errors.New("instagram credential request is missing encrypted credentials")
+	}
+	passwordContainsNonASCII := "false"
+	if value, ok := legacyClient["password_contains_non_ascii"].(string); ok && value == "true" {
+		passwordContainsNonASCII = "true"
+	} else if value, ok := legacyClient["password_contains_non_ascii"].(bool); ok && value {
+		passwordContainsNonASCII = "true"
+	}
+	loginAttemptCount := legacyClient["login_attempt_count"]
+	if loginAttemptCount == nil {
+		loginAttemptCount = 1
+	}
+	tryNum := legacyClient["try_num"]
+	if tryNum == nil {
+		tryNum = 1
+	}
+	textInputID := uuid.NewString()[:4] + "ig"
+	return bloks.BloksParamsInner{
+		"client_input_params": map[string]any{
+			"blocked_uids": []any{}, "aac": state.AAC, "sim_phones": []any{}, "aymh_accounts": []any{},
+			"network_bssid": nil, "secure_family_device_id": "", "has_granted_read_contacts_permissions": 0,
+			"auth_secure_device_id": "", "has_whatsapp_installed": 0, "si_device_param_network_info": instagramDeviceNetworkInfo(),
+			"password": password, "sso_token_map_json_string": "", "block_store_machine_id": "", "ig_vetted_device_nonces": nil,
+			"cloud_trust_token": nil, "event_flow": "login_manual", "password_contains_non_ascii": passwordContainsNonASCII,
+			"client_known_key_hash": "", "sso_accounts_auth_data": []any{}, "encrypted_msisdn": "",
+			"has_granted_read_phone_permissions": 0, "app_manager_id": "", "should_show_nested_nta_from_aymh": 0,
+			"device_id": mobile.AndroidDeviceID, "zero_balance_state": "", "login_attempt_count": loginAttemptCount,
+			"machine_id": mobile.MachineID, "flash_call_permission_status": map[string]string{
+				"READ_PHONE_STATE": "DENIED", "READ_CALL_LOG": "DENIED", "ANSWER_PHONE_CALLS": "DENIED",
+			},
+			"accounts_list": []any{}, "gms_incoming_call_retriever_eligibility": "eligible", "family_device_id": mobile.PhoneID,
+			"fb_ig_device_id": []any{}, "device_emails": []any{}, "try_num": tryNum, "lois_settings": map[string]string{"lois_token": ""},
+			"event_step": "home_page", "headers_infra_flow_id": "", "openid_tokens": map[string]any{}, "contact_point": contactPoint,
+		},
+		"server_params": map[string]any{
+			"should_trigger_override_login_2fa_action": 0, "is_from_logged_out": 0, "should_trigger_override_login_success_action": 0,
+			"login_credential_type": "none", "server_login_source": "login", "waterfall_id": state.WaterfallID,
+			"two_step_login_type": "one_step_login", "login_source": "Login", "is_platform_login": 0,
+			"login_entry_point": "logged_out", "INTERNAL__latency_qpl_marker_id": 36707139, "is_from_aymh": 0,
+			"offline_experiment_group": "caa_iteration_v3_perf_ig_4", "is_from_landing_page": 0, "left_nav_button_action": "NONE",
+			"password_text_input_id": textInputID + ":82", "is_from_empty_password": 0, "is_from_msplit_fallback": 0,
+			"ar_event_source": "login_home_page", "qe_device_id": mobile.DeviceID, "username_text_input_id": textInputID + ":81",
+			"layered_homepage_experiment_group": "Deploy: Not in Experiment", "device_id": mobile.AndroidDeviceID,
+			"login_surface": "login_home", "INTERNAL__latency_qpl_instance_id": time.Now().UnixMilli(),
+			"reg_flow_source": "login_home_native_integration_point", "is_caa_perf_enabled": 1, "credential_type": "password",
+			"is_from_password_entry_page": 0, "caller": "gslr", "family_device_id": mobile.PhoneID,
+			"is_from_assistive_id": 0, "access_flow_version": "pre_mt_behavior", "is_from_logged_in_switcher": 0,
+		},
+	}, nil
+}
+
 func instagramCAAValue(bundle *bloks.BloksBundle, replacement string) string {
 	if bundle == nil {
 		return ""
@@ -460,16 +526,14 @@ func (c *Client) makeInstagramBloksRequest(
 	}
 	state := c.caaLogin
 	if appID == instagramCAASendEntrypoint {
-		if state == nil || state.AAC == "" || state.AttestationNonce == "" {
+		if state == nil || state.Mobile == nil || state.AAC == "" || state.AttestationNonce == "" {
 			return nil, errors.New("instagram credential request is missing CAA preflight state")
 		}
-		clientParams, clientOK := inner["client_input_params"].(map[string]any)
-		serverParams, serverOK := inner["server_params"].(map[string]any)
-		if !clientOK || !serverOK {
-			return nil, errors.New("instagram credential request has invalid CAA parameters")
+		var normalizeErr error
+		inner, normalizeErr = instagramCAACredentialParams(state, state.Mobile, inner)
+		if normalizeErr != nil {
+			return nil, normalizeErr
 		}
-		clientParams["aac"] = state.AAC
-		serverParams["waterfall_id"] = state.WaterfallID
 	}
 	params, err := json.Marshal(inner)
 	if err != nil {
