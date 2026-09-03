@@ -50,6 +50,30 @@ func TestInstagramCAALoginUsesClientLoggerWithoutContextLogger(t *testing.T) {
 	}
 }
 
+func TestInstagramCAAValueSkipsEmptyDuplicates(t *testing.T) {
+	newAACVariable := func(value string) *bloks.BloksVariable {
+		script := &bloks.BloksTreeScript{}
+		if err := script.Parse(`(bk.action.ref.Make "` + value + `")`); err != nil {
+			t.Fatalf("failed to parse AAC fixture: %v", err)
+		}
+		return &bloks.BloksVariable{
+			Info: bloks.BloksDatumInfo{
+				Name:          "CAA_ACCOUNT_ACCESS_CONTEXT:aac",
+				InitialScript: script,
+			},
+		}
+	}
+	bundle := &bloks.BloksBundle{}
+	bundle.Layout.Payload.Variables = []*bloks.BloksVariable{
+		newAACVariable(""),
+		newAACVariable("current-aac"),
+	}
+
+	if got := instagramCAAValue(bundle, ""); got != "current-aac" {
+		t.Fatalf("expected populated AAC, got %q", got)
+	}
+}
+
 func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 	loginCookies := &cookies.Cookies{Platform: types.Instagram}
 	loginCookies.UpdateValues(nil)
