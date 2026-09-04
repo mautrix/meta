@@ -113,6 +113,7 @@ var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
 
 var errInstagramCAAUnsupportedStep = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_CAA_STEP", Err: "Instagram returned a sign-in step this bridge cannot safely complete", StatusCode: http.StatusBadRequest}
 var errInstagramCAAFlowFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadGateway, CanRetry: true}
+var errInstagramWebCheckpointUnsupported = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_WEB_CHECKPOINT", Err: "Instagram returned a verification step this bridge cannot safely complete. Finish it in Instagram, then start a new login.", StatusCode: http.StatusBadRequest}
 
 var instagramCAASafeSteps = map[string][3]string{
 	"fi.mau.meta.instagram.caa.password":    {"password", "Password", "Re-enter your Instagram password."},
@@ -243,12 +244,14 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		}
 		err := m.client.CompleteInstagramWebSessionTwoFactor(ctx, verificationCode)
 		if err != nil {
-			if isClientHTTPError(err) {
+			if isClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 				m.User.Log.Warn().Err(err).Msg("Instagram web two-factor request failed on the client")
 				return instagramWebTwoFactorStep(
 					m.webTwoFactor,
 					"The request did not complete on this device. Enter a fresh verification code and try again.",
 				), nil
+			} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
+				return nil, errInstagramWebCheckpointUnsupported
 			} else if errors.Is(err, instameow.ErrInstagramWebTwoFactorCodeResent) {
 				return instagramWebTwoFactorStep(
 					m.webTwoFactor,
@@ -288,9 +291,11 @@ func (m *MetaNativeLogin) submitWebCredentials(
 ) (*bridgev2.LoginStep, error) {
 	challenge, err := m.client.CreateInstagramWebSession(ctx, identifier, password)
 	if err != nil {
-		if isClientHTTPError(err) {
+		if isClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 			m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
+		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
+			return nil, errInstagramWebCheckpointUnsupported
 		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
 			return instagramCredentialsStep(
 				"Instagram didn't accept that username or password. Check your credentials and try again.",
@@ -441,6 +446,8 @@ func instagramWebTwoFactorStep(
 		switch {
 		case challenge != nil && challenge.TOTP:
 			instructions = "Enter the verification code from your authenticator app."
+		case challenge != nil && challenge.Email:
+			instructions = "Enter the verification code Instagram sent to your email."
 		case challenge != nil && (challenge.SMS || challenge.WhatsApp):
 			instructions = "Enter the verification code Instagram sent to you."
 		default:
