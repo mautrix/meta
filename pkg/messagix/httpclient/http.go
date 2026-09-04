@@ -351,6 +351,11 @@ func unwrapURLErrors(err error) error {
 	}
 }
 
+func accountVerificationPath(path string) (challenge, checkpoint bool) {
+	path = "/" + strings.Trim(path, "/") + "/"
+	return strings.Contains(path, "/challenge/"), strings.Contains(path, "/checkpoint/")
+}
+
 func IsPermanentRequestError(err error) bool {
 	return errors.Is(err, ErrTokenInvalidated) ||
 		errors.Is(err, ErrChallengeRequired) ||
@@ -368,15 +373,17 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 	if len(via) > 5 {
 		return ErrTooManyRedirects
 	}
+	challengeRedirect, checkpointRedirect := accountVerificationPath(req.URL.Path)
 	if !strings.HasSuffix(req.URL.Hostname(), "fbcdn.net") && !strings.HasSuffix(req.URL.Hostname(), "facebookcooa4ldbat4g7iacswl3p2zrf5nuylvnhxn6kqolvojixwid.onion") {
 		logEvent := c.log.Warn()
-		if strings.HasPrefix(req.URL.Path, "/challenge/") || strings.HasPrefix(req.URL.Path, "/checkpoint/") {
+		if challengeRedirect || checkpointRedirect {
 			logEvent = logEvent.Str("redirect_type", "account_verification")
 		} else {
 			var prevURL string
 			if len(via) > 0 {
 				previous := via[len(via)-1].URL
-				if strings.HasPrefix(previous.Path, "/challenge/") || strings.HasPrefix(previous.Path, "/checkpoint/") {
+				previousChallenge, previousCheckpoint := accountVerificationPath(previous.Path)
+				if previousChallenge || previousCheckpoint {
 					prevURL = "account_verification"
 				} else {
 					prevURL = previous.String()
@@ -386,13 +393,13 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 		}
 		logEvent.Msg("HTTP request was redirected")
 	}
-	if strings.HasPrefix(req.URL.Path, "/challenge/") {
+	if challengeRedirect {
 		return RedirectedError{Type: ErrChallengeRequired, URL: req.URL.String()}
 	} else if req.URL.Path == "/accounts/suspended/" {
 		return RedirectedError{Type: ErrAccountSuspended, URL: req.URL.String()}
 	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
 		return RedirectedError{Type: ErrConsentRequired, URL: req.URL.String()}
-	} else if strings.HasPrefix(req.URL.Path, "/checkpoint/") {
+	} else if checkpointRedirect {
 		return RedirectedError{Type: ErrCheckpointRequired, URL: req.URL.String()}
 	}
 	respCookies := req.Response.Cookies()
@@ -524,7 +531,8 @@ func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Clien
 			err = unwrapURLErrors(err)
 			return response, nil, err
 		}
-		if strings.HasPrefix(newRequest.URL.Path, "/challenge/") || strings.HasPrefix(newRequest.URL.Path, "/checkpoint/") {
+		challengePath, checkpointPath := accountVerificationPath(newRequest.URL.Path)
+		if challengePath || checkpointPath {
 			err = unwrapURLErrors(err)
 		}
 		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))

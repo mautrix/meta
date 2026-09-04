@@ -257,8 +257,7 @@ func instagramWebLoginResponseClass(result instagramWebLoginResponse) string {
 }
 
 func instagramWebCredentialsRejected(result instagramWebLoginResponse) bool {
-	return strings.EqualFold(strings.TrimSpace(result.ErrorType), "bad_password") &&
-		instagramWebLoginResponseClass(result) == "credentials_rejected"
+	return instagramWebLoginResponseClass(result) == "credentials_rejected"
 }
 
 func instagramWebChallengeRequired(result instagramWebLoginResponse) bool {
@@ -281,17 +280,19 @@ func normalizeInstagramWebChallengeURL(raw string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if parsed.Scheme == "" && parsed.Host == "" {
+	if parsed.Scheme == "" {
 		base, _ := url.Parse("https://www.instagram.com")
 		parsed = base.ResolveReference(parsed)
 	}
 	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
-	trusted := parsed.User == nil && parsed.Scheme == "https" && parsed.Port() == "" &&
+	port := parsed.Port()
+	trusted := parsed.User == nil && strings.EqualFold(parsed.Scheme, "https") && (port == "" || port == "443") &&
 		(host == "instagram.com" || strings.HasSuffix(host, ".instagram.com"))
 	if !trusted {
 		return "", false
 	}
-	if !strings.HasPrefix(parsed.Path, "/challenge/") && !strings.HasPrefix(parsed.Path, "/checkpoint/") {
+	path := "/" + strings.Trim(parsed.Path, "/") + "/"
+	if !strings.Contains(path, "/challenge/") && !strings.Contains(path, "/checkpoint/") {
 		return "", false
 	}
 	parsed.Fragment = ""
