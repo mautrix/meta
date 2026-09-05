@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"go.mau.fi/util/exerrors"
@@ -38,6 +39,25 @@ import (
 )
 
 var MaxConnectionRetryInterval = 60 * time.Second
+
+// MinStableConnectionForImmediateReconnect is how long a socket must have
+// stayed connected before a disconnect is treated as a transient blip worth
+// reconnecting to immediately. A connection that was accepted, subscribed and
+// then dropped again within seconds is not stable, and reconnecting to it with
+// no delay turns a soft server-side refusal into a hot loop. The messagix
+// client applies the same rule; this ports it to the Instagram sockets.
+var MinStableConnectionForImmediateReconnect = 2 * time.Minute
+
+// reconnectDelay returns how long to wait before the next connection attempt.
+//
+// Backoff is exponential in the number of sequential failures, capped at
+// MaxConnectionRetryInterval, with ±20% jitter so that many logins failing at
+// the same moment do not retry in lockstep for the rest of their lives.
+func reconnectDelay(sequentialFailures int) time.Duration {
+	base := min(time.Duration(1<<sequentialFailures)*time.Second, MaxConnectionRetryInterval)
+	jitter := time.Duration((rand.Float64()*0.4 - 0.2) * float64(base))
+	return base + jitter
+}
 
 func (c *Client) makeNewSocket() {
 	old := c.socket.Swap(dgw.NewSocket(c.getSocketOptions()))
@@ -88,8 +108,13 @@ func (c *Client) Connect(ctx context.Context) {
 	sequentialFailures := 0
 	ctx = sock.Log.WithContext(ctx)
 	for {
+		connectStart := time.Now()
 		err := sock.Connect(ctx)
-		wasConnected := c.connected.IsSet()
+		// Only a connection that held for a meaningful stretch counts as having
+		// been "connected" for backoff purposes. One that was accepted and
+		// dropped again within seconds is a failure wearing a success's clothes.
+		wasConnected := c.connected.IsSet() &&
+			time.Since(connectStart) >= MinStableConnectionForImmediateReconnect
 		c.connected.Clear()
 		if err == nil {
 			sock.Log.Debug().Msg("Socket closed cleanly")
@@ -119,13 +144,13 @@ func (c *Client) Connect(ctx context.Context) {
 			case <-ctx.Done():
 				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
 				return
-			case <-time.After(min(time.Duration(1<<sequentialFailures)*time.Second, MaxConnectionRetryInterval)):
+			case <-time.After(reconnectDelay(sequentialFailures)):
 				continue
 			}
 		} else {
 			sock.Log.Debug().Err(err).
 				Int("connection_num", c.socketRetries).
-				Msg("Socket disconnected, reconnecting immediately")
+				Msg("Socket disconnected after a stable connection, reconnecting immediately")
 			sequentialFailures = 0
 		}
 	}
