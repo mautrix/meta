@@ -69,6 +69,10 @@ type InstagramWebPushInfo struct {
 	RolloutHash string `json:"rollout_hash,omitempty"`
 }
 
+type InstagramSecurityConfig struct {
+	CSRFToken string `json:"csrf_token,omitempty"`
+}
+
 type PolarisSiteData struct {
 	DeviceID           string `json:"device_id,omitempty"`
 	SendDeviceIDHeader bool   `json:"send_device_id_header,omitempty"`
@@ -254,6 +258,7 @@ type SchedulerJSDefineConfig struct {
 	CurrentBusinessUser           CurrentBusinessAccount
 	SiteData                      SiteData
 	InstagramWebPushInfo          InstagramWebPushInfo
+	InstagramSecurityConfig       InstagramSecurityConfig
 	PolarisSiteData               PolarisSiteData
 	SprinkleConfig                SprinkleConfig
 	USIDMetadata                  USIDMetadata

@@ -190,7 +190,7 @@ func (c *Client) registerInstagramUSDID(ctx context.Context, state *mobileLoginS
 			return c.persistMobileLoginDevice(ctx, state)
 		}
 	}
-	return errors.New("Instagram rejected USDID registration")
+	return errors.New("instagram rejected USDID registration")
 }
 
 func instagramCAAProcessParams(state *instagramCAALoginState) bloks.BloksParamsInner {
@@ -312,7 +312,7 @@ func (c *Client) prepareInstagramCAAPreflight(ctx context.Context, state *instag
 		return err
 	}
 	if state.AAC = instagramCAAValue(process, ""); state.AAC == "" {
-		return errors.New("Instagram CAA preflight did not return account access context")
+		return errors.New("instagram CAA preflight did not return account access context")
 	}
 	headers := c.mobileLoginHeaders(state.Mobile)
 	headers.Set("x-fb-friendly-name", "IgApi: attestation/create_android_keystore/")
@@ -325,7 +325,7 @@ func (c *Client) prepareInstagramCAAPreflight(ctx context.Context, state *instag
 		ChallengeNonce string `json:"challenge_nonce"`
 	}
 	if err = json.Unmarshal(body, &attestation); err != nil || attestation.ChallengeNonce == "" {
-		return errors.New("Instagram CAA preflight did not return an attestation nonce")
+		return errors.New("instagram CAA preflight did not return an attestation nonce")
 	}
 	state.AttestationNonce = attestation.ChallengeNonce
 	_, err = c.makeInstagramBloksRequest(ctx, &bloks.BloksActionDocInstagram, instagramCAAOAuthEntrypoint,
@@ -580,7 +580,7 @@ func (c *Client) makeInstagramBloksRequest(
 		return nil, fmt.Errorf("failed to parse Instagram Bloks response: %w", err)
 	}
 	if appID == instagramCAALegacyHomepage && state != nil && instagramCAAValue(&bundle, state.AAC) == "" {
-		return nil, errors.New("Instagram login page did not expose its CAA account access context")
+		return nil, errors.New("instagram login page did not expose its CAA account access context")
 	}
 	if c.logRedactedBloksPayloads {
 		if err = bloks.LogRedactedBundle(c.log, appID, body); err != nil {
