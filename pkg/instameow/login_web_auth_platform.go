@@ -45,6 +45,7 @@ type instagramAuthPlatformChoice struct {
 }
 
 type instagramAuthPlatformState struct {
+	referrer                 string
 	url                      *url.URL
 	expectedUserID, channel  string
 	notice                   string
@@ -78,7 +79,8 @@ func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 }
 
 func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expectedUserID string) (*InstagramWebTwoFactorChallenge, error) {
-	if target, ok := resolveInstagramAuthPlatformURL("https://www.instagram.com/", rawURL); !ok || !strings.HasPrefix(target.Path, "/auth_platform/") {
+	target, ok := resolveInstagramAuthPlatformURL("https://www.instagram.com/", rawURL)
+	if !ok || !strings.HasPrefix(target.Path, "/auth_platform/") {
 		c.log.Debug().Str("checkpoint_url_kind", instagramWebCheckpointURLKind(rawURL)).Msg("Unsupported Instagram web checkpoint URL")
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
@@ -88,8 +90,8 @@ func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expecte
 			return nil, ErrInstagramWebCheckpointUnsupported
 		}
 	}
-	c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL("https://www.instagram.com/"), expectedUserID: expectedUserID}
-	if err := c.advanceInstagramAuthPlatform(ctx, rawURL); err != nil {
+	c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login")), expectedUserID: expectedUserID}
+	if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
 		c.webAuthPlatform = nil
 		return nil, err
 	} else if c.webAuthPlatform == nil {
@@ -100,6 +102,8 @@ func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expecte
 
 func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string) error {
 	s := c.webAuthPlatform
+	// Redirects keep the initiating document's referrer until a new page loads.
+	s.referrer = s.url.String()
 	for range 5 {
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
 		if !ok {
@@ -300,7 +304,8 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	rq.FbDtsg = cmp.Or(config.DTSGInitialData.Token, config.DTSGInitData.Token)
 	// Relay signs DTSG, or LSD for logged-out requests; the legacy login signs CSRF instead.
 	sprinkle := config.SprinkleConfig
-	if sprinkle.ParamName != "jazoest" || (!sprinkle.ShouldRandomize && sprinkle.Version <= 0) || rq.Lsd == "" || c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
+	csrfToken := cmp.Or(c.cookies.Get(cookies.IGCookieCSRFToken), config.InstagramSecurityConfig.CSRFToken)
+	if sprinkle.ParamName != "jazoest" || (!sprinkle.ShouldRandomize && sprinkle.Version <= 0) || rq.Lsd == "" || csrfToken == "" {
 		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
 	}
 	sum := 0
@@ -315,6 +320,7 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	}
 	form.Set(sprinkle.ParamName, token)
 	headers := c.http.BuildHeaders(true, false)
+	headers.Set("x-csrftoken", csrfToken)
 	headers.Set("origin", "https://www.instagram.com")
 	headers.Set("referer", s.url.String())
 	headers.Set("x-fb-friendly-name", op.name)
@@ -356,9 +362,11 @@ func (c *Client) refreshInstagramAuthPlatformConfig(body []byte) error {
 	config := *c.configs.BrowserConfigTable
 	config.LSD, config.DTSGInitData, config.DTSGInitialData = types.LSD{}, types.DTSGInitData{}, types.DTSGInitialData{}
 	config.SiteData, config.SprinkleConfig = types.SiteData{}, types.SprinkleConfig{}
+	config.InstagramSecurityConfig = types.InstagramSecurityConfig{}
 	fields := map[string]any{"LSD": &config.LSD, "DTSGInitData": &config.DTSGInitData, "DTSGInitialData": &config.DTSGInitialData,
 		"SiteData": &config.SiteData, "SprinkleConfig": &config.SprinkleConfig, "CurrentUserInitialData": &config.CurrentUserInitialData,
-		"InstagramWebPushInfo": &config.InstagramWebPushInfo, "PolarisSiteData": &config.PolarisSiteData}
+		"InstagramWebPushInfo": &config.InstagramWebPushInfo, "PolarisSiteData": &config.PolarisSiteData,
+		"InstagramSecurityConfig": &config.InstagramSecurityConfig}
 	found, invalid := map[string]bool{}, false
 	var visit func(any, int)
 	visit = func(value any, depth int) {

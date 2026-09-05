@@ -445,6 +445,10 @@ func (c *Client) instagramWebCheckpointRequest(
 	phase string,
 ) (*http.Response, []byte, error) {
 	headers := c.http.BuildHeaders(true, document)
+	if document && phase == "auth_platform_render" && c.webAuthPlatform != nil {
+		headers.Set("referer", c.webAuthPlatform.referrer)
+		headers.Set("sec-fetch-site", "same-origin")
+	}
 	if !document {
 		parsed := mustParseURL(requestURL)
 		headers.Set("origin", parsed.Scheme+"://"+parsed.Host)
