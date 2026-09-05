@@ -421,6 +421,10 @@ func (c *Client) updateInstagramWebLoginCookies(response *http.Response) {
 	states := zerolog.Dict()
 	for i, name := range names {
 		reason, updates, pastExpires := "not_set", 0, false
+		sequence := zerolog.Arr()
+		// IDs identify parsed attribute pairs in this event, not browser jar keys.
+		attributeGroups := make(map[[2]string]int)
+		const maxCookieUpdates = 16
 		for _, cookie := range parsed {
 			if cookie.Name != string(name) {
 				continue
@@ -439,10 +443,43 @@ func (c *Client) updateInstagramWebLoginCookies(response *http.Response) {
 			default:
 				reason = "set_session"
 			}
+			if updates <= maxCookieUpdates {
+				domain := strings.TrimPrefix(strings.ToLower(cookie.Domain), ".")
+				domainClass, pathClass := "other", "other"
+				switch domain {
+				case "":
+					domainClass = "host_only"
+				case "instagram.com":
+					domainClass = "instagram_parent"
+				case "www.instagram.com":
+					domainClass = "instagram_www"
+				case "i.instagram.com", "b.i.instagram.com":
+					domainClass = "instagram_mobile"
+				}
+				switch cookie.Path {
+				case "":
+					pathClass = "default"
+				case "/":
+					pathClass = "root"
+				case "/accounts/login/":
+					pathClass = "accounts_login"
+				case "/auth_platform/":
+					pathClass = "auth_platform"
+				}
+				attributes := [2]string{domain, cookie.Path}
+				if attributeGroups[attributes] == 0 {
+					attributeGroups[attributes] = len(attributeGroups) + 1
+				}
+				sequence.Dict(zerolog.Dict().Str("action", reason).
+					Str("domain_class", domainClass).Str("path_class", pathClass).
+					Int("attribute_group", attributeGroups[attributes]).
+					Bool("empty_value", cookie.Value == "").Bool("partitioned", cookie.Partitioned))
+			}
 		}
 		states.Dict(string(name), zerolog.Dict().Bool("before", before[i]).
 			Bool("after", c.cookies.Get(name) != "").Int("parsed_updates", updates).
-			Str("last_parsed_update", reason).Bool("expires_in_past", pastExpires))
+			Str("last_parsed_update", reason).Bool("expires_in_past", pastExpires).
+			Array("parsed_sequence", sequence).Int("omitted_updates", max(0, updates-maxCookieUpdates)))
 	}
 	event.Int("status_code", response.StatusCode).
 		Int("unparsed_cookie_headers", len(response.Header.Values("Set-Cookie"))-len(parsed)).
