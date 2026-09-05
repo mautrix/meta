@@ -27,8 +27,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/go-querystring/query"
+	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -400,6 +402,53 @@ func (c *Client) captureInstagramWebTwoFactor(
 	}, nil
 }
 
+func (c *Client) updateInstagramWebLoginCookies(response *http.Response) {
+	event := c.log.Debug()
+	if !event.Enabled() {
+		c.cookies.UpdateFromResponse(response)
+		return
+	}
+	// Fixed names and metadata only: login response cookies and URLs are secrets.
+	names := [...]cookies.MetaCookieName{cookies.IGCookieCSRFToken, cookies.IGCookieSessionID,
+		cookies.IGCookieDSUserID, cookies.IGCookieMachineID, cookies.IGCookieDeviceID, cookies.MetaCookieDatr}
+	before := make([]bool, len(names))
+	for i, name := range names {
+		before[i] = c.cookies.Get(name) != ""
+	}
+	now := time.Now()
+	c.cookies.UpdateFromResponse(response)
+	parsed := response.Cookies()
+	states := zerolog.Dict()
+	for i, name := range names {
+		reason, updates, pastExpires := "not_set", 0, false
+		for _, cookie := range parsed {
+			if cookie.Name != string(name) {
+				continue
+			}
+			updates++
+			pastExpires = !cookie.Expires.IsZero() && cookie.Expires.Before(now)
+			switch {
+			case cookie.MaxAge < 0:
+				reason = "delete_max_age"
+			case cookie.MaxAge > 0:
+				reason = "set_max_age"
+			case pastExpires:
+				reason = "delete_expires"
+			case !cookie.Expires.IsZero():
+				reason = "set_expires"
+			default:
+				reason = "set_session"
+			}
+		}
+		states.Dict(string(name), zerolog.Dict().Bool("before", before[i]).
+			Bool("after", c.cookies.Get(name) != "").Int("parsed_updates", updates).
+			Str("last_parsed_update", reason).Bool("expires_in_past", pastExpires))
+	}
+	event.Int("status_code", response.StatusCode).
+		Int("unparsed_cookie_headers", len(response.Header.Values("Set-Cookie"))-len(parsed)).
+		Dict("cookie_updates", states).Msg("Instagram web password response cookie update")
+}
+
 // CreateInstagramWebSession creates a session that can be used by Instagram's
 // web messaging APIs and realtime stream. A returned challenge must be
 // completed with CompleteInstagramWebSessionTwoFactor.
@@ -479,7 +528,7 @@ func (c *Client) CreateInstagramWebSession(
 		types.FORM,
 	)
 	if response != nil {
-		c.cookies.UpdateFromResponse(response)
+		c.updateInstagramWebLoginCookies(response)
 	}
 	var result instagramWebLoginResponse
 	parseErr := json.Unmarshal(body, &result)
