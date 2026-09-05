@@ -337,7 +337,46 @@ func (c *Client) logInstagramWebRequestRejection(
 			Int("status_code", response.StatusCode).
 			Str("content_type", response.Header.Get("content-type"))
 	}
+	if responseClass == "challenge_required" {
+		logEvent.Dict("checkpoint_response", instagramWebCheckpointDiagnostics(body))
+	}
 	logEvent.Msg(message)
+}
+
+func instagramWebCheckpointDiagnostics(body []byte) *zerolog.Event {
+	var fields map[string]json.RawMessage
+	diag := zerolog.Dict()
+	if json.Unmarshal(body, &fields) != nil || fields == nil {
+		return diag.Bool("valid_json", false)
+	}
+	// Unknown provider values must never become log strings or identifiers.
+	for _, key := range []string{"authenticated", "user", "lock", "is_vetted", "is_user_inactivated_error"} {
+		value := "absent"
+		if raw, ok := fields[key]; ok {
+			value = "non_boolean"
+			switch string(bytes.TrimSpace(raw)) {
+			case "true":
+				value = "true"
+			case "false":
+				value = "false"
+			}
+		}
+		diag.Str(key, value)
+	}
+	for _, key := range []string{"message", "error_type"} {
+		var value string
+		kind := "other"
+		if _, ok := fields[key]; !ok {
+			kind = "absent"
+		} else if json.Unmarshal(fields[key], &value) == nil {
+			switch value {
+			case "checkpoint_required", "challenge_required", "checkpoint_challenge_required", "login_required":
+				kind = value
+			}
+		}
+		diag.Str(key, kind)
+	}
+	return diag
 }
 
 func (c *Client) captureInstagramWebTwoFactor(
@@ -527,7 +566,12 @@ func (c *Client) CreateInstagramWebSession(
 	if err != nil || keyID <= 0 || encryption.PublicKey == "" {
 		return nil, errors.New("instagram web login page did not include password encryption keys")
 	}
-	encryptedPassword, err := crypto.EncryptInstagramWebPassword(
+	if encryption.Version != "10" {
+		return nil, errors.New("instagram web login page uses an unsupported password encryption version")
+	}
+	// Polaris AJAX uses #PWD_INSTAGRAM_BROWSER; #PWD_BROWSER belongs to CDS/GraphQL.
+	encryptedPassword, err := crypto.EncryptPassword(
+		types.Unset,
 		keyID,
 		encryption.PublicKey,
 		password,
@@ -556,7 +600,8 @@ func (c *Client) CreateInstagramWebSession(
 	if err = c.addInstagramWebLoginHeaders(headers); err != nil {
 		return nil, err
 	}
-	response, body, requestErr := c.http.MakeRequest(
+	// A lost response must not silently submit the password again.
+	response, body, requestErr := c.http.MakeRequestOnce(
 		ctx,
 		c.GetEndpoint("login_ajax"),
 		http.MethodPost,

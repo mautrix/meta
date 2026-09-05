@@ -483,6 +483,7 @@ func (c *Client) instagramWebCheckpointRequest(
 		statusCode = response.StatusCode
 	}
 	c.log.Debug().Str("checkpoint_phase", phase).Int("status_code", statusCode).
+		Bool("cookie_header_present", headers.Get("cookie") != "").
 		Str("response_kind", instagramWebLoginResponseKind(body)).Msg("Instagram web checkpoint request completed")
 	if requestErr == nil || (response != nil && response.StatusCode == http.StatusBadRequest && errors.Is(requestErr, httpclient.ErrUnexpectedError)) {
 		return response, body, nil

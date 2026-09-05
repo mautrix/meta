@@ -130,6 +130,22 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		}
 		if response.StatusCode >= 300 && response.StatusCode < 400 {
 			rawURL = response.Header.Get("Location")
+			destination := "invalid"
+			if next, valid := resolveInstagramAuthPlatformURL(target.String(), rawURL); valid {
+				switch next.Path {
+				case "/auth_platform/":
+					destination = "checkpoint_root"
+				case "/auth_platform/codeentry/":
+					destination = "code_entry"
+				case "/auth_platform/challengepicker/":
+					destination = "method_picker"
+				case "/auth_platform/recaptcha/":
+					destination = "captcha"
+				default:
+					destination = "terminal"
+				}
+			}
+			c.log.Debug().Str("destination", destination).Msg("Instagram verification redirect")
 			continue
 		} else if response.StatusCode != http.StatusOK {
 			return ErrInstagramWebCheckpointUnsupported
@@ -139,6 +155,12 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			userID := c.cookies.Get(cookies.IGCookieDSUserID)
 			if instagramWebLoginResponseKind(body) != "html" || len(c.cookies.GetMissingCookieNames()) != 0 ||
 				instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) != userID || (s.expectedUserID != "" && s.expectedUserID != userID) {
+				c.log.Debug().
+					Bool("required_cookies_present", len(c.cookies.GetMissingCookieNames()) == 0).
+					Bool("session_user_matches", userID != "" && instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) == userID).
+					Bool("expected_user_known", s.expectedUserID != "").
+					Bool("expected_user_matches", s.expectedUserID != "" && s.expectedUserID == userID).
+					Msg("Instagram verification reached a terminal page without a valid session")
 				return ErrInstagramWebCheckpointUnsupported
 			}
 			c.webAuthPlatform = nil
