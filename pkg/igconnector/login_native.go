@@ -110,10 +110,12 @@ type MetaNativeLogin struct {
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessWithParams = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
+var _ bridgev2.LoginProcessStepCancel = (*MetaNativeLogin)(nil)
 
 var errInstagramCAAUnsupportedStep = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_CAA_STEP", Err: "Instagram returned a sign-in step this bridge cannot safely complete", StatusCode: http.StatusBadRequest}
 var errInstagramCAAFlowFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadGateway, CanRetry: true}
 var errInstagramWebCheckpointUnsupported = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_WEB_CHECKPOINT", Err: "Instagram returned a verification step this bridge cannot safely complete. Finish it in Instagram, then start a new login.", StatusCode: http.StatusBadRequest}
+var errInstagramWebCheckpointCAPTCHA = bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_CAPTCHA", Err: "Instagram requires an interactive CAPTCHA check. This login flow cannot display that check yet.", StatusCode: http.StatusBadRequest}
 
 var instagramCAASafeSteps = map[string][3]string{
 	"fi.mau.meta.instagram.caa.password":    {"password", "Password", "Re-enter your Instagram password."},
@@ -234,6 +236,9 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	if m.webSessionReady {
 		return m.continueWebAccountManager(ctx, input)
 	}
+	if m.webTwoFactor != nil && m.webTwoFactor.AuthPlatform {
+		return m.continueWebAuthPlatform(ctx, input)
+	}
 	if m.webTwoFactor != nil {
 		verificationCode := strings.TrimSpace(input[loginFieldWebTwoFactorCode])
 		if verificationCode == "" {
@@ -296,6 +301,8 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
 		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
 			return nil, errInstagramWebCheckpointUnsupported
+		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
+			return nil, errInstagramWebCheckpointCAPTCHA
 		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
 			return instagramCredentialsStep(
 				"Instagram didn't accept that username or password. Check your credentials and try again.",
@@ -322,10 +329,41 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	}
 	if challenge != nil {
 		m.webTwoFactor = challenge
+		if challenge.AuthPlatform {
+			return m.continueWebAuthPlatform(ctx, nil)
+		}
 		return instagramWebTwoFactorStep(challenge, ""), nil
 	}
 	m.webSessionReady = true
 	return m.continueWebAccountManager(ctx, map[string]string{})
+}
+
+func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if m.client == nil || m.webTwoFactor == nil || !m.webTwoFactor.AuthPlatform {
+		return nil, bridgev2.ErrLoginStepCancelled
+	}
+	return m.continueWebAuthPlatform(ctx, map[string]string{"back": "true"})
+}
+
+func (m *MetaNativeLogin) continueWebAuthPlatform(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	step, err := m.client.DoInstagramWebAuthPlatformSteps(ctx, input)
+	if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
+		return nil, errInstagramWebCheckpointCAPTCHA
+	} else if errors.Is(err, httpclient.ErrRateLimited) {
+		return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
+	} else if errors.Is(err, httpclient.ErrAccountSuspended) {
+		return nil, loginerrors.AccountSuspended
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
+		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusBadGateway}
+	} else if err != nil {
+		return nil, errInstagramWebCheckpointUnsupported
+	} else if step != nil {
+		return step, nil
+	}
+	m.webTwoFactor, m.webSessionReady = nil, true
+	return m.continueWebAccountManager(ctx, nil)
 }
 
 func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {

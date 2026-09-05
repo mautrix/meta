@@ -47,6 +47,7 @@ type Client struct {
 	mobileLogin           *mobileLoginState
 	caaLogin              *instagramCAALoginState
 	webTwoFactor          *instagramWebTwoFactorState
+	webAuthPlatform       *instagramAuthPlatformState
 	webAccountManager     *instagramWebAccountManagerState
 	mobileLoginDevice     *types.InstagramLoginDevice
 	mobileSession         *instagramMobileSession
