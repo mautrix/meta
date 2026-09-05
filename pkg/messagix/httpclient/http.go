@@ -353,7 +353,7 @@ func unwrapURLErrors(err error) error {
 
 func accountVerificationPath(path string) (challenge, checkpoint bool) {
 	path = "/" + strings.Trim(path, "/") + "/"
-	return strings.Contains(path, "/challenge/"), strings.Contains(path, "/checkpoint/")
+	return strings.Contains(path, "/challenge/") || strings.Contains(path, "/auth_platform/"), strings.Contains(path, "/checkpoint/")
 }
 
 func IsPermanentRequestError(err error) bool {

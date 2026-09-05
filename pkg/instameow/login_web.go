@@ -48,10 +48,11 @@ var errInstagramWebTwoFactorSMSNotSent = errors.New("instagram could not send a 
 var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
 
 type InstagramWebTwoFactorChallenge struct {
-	TOTP     bool
-	SMS      bool
-	WhatsApp bool
-	Email    bool
+	AuthPlatform bool
+	TOTP         bool
+	SMS          bool
+	WhatsApp     bool
+	Email        bool
 }
 
 type instagramWebTwoFactorInfo struct {
@@ -261,7 +262,7 @@ func instagramWebCredentialsRejected(result instagramWebLoginResponse) bool {
 }
 
 func instagramWebChallengeRequired(result instagramWebLoginResponse) bool {
-	return instagramWebChallengeURL(result.CheckpointURL) || instagramWebChallengeURL(result.RedirectURL) ||
+	return strings.TrimSpace(result.CheckpointURL) != "" || instagramWebChallengeURL(result.RedirectURL) ||
 		instagramWebChallengeReason(result.ErrorType) || instagramWebChallengeReason(result.Message)
 }
 
@@ -272,7 +273,7 @@ func instagramWebChallengeReason(reason string) bool {
 
 func instagramWebChallengeURL(raw string) bool {
 	_, ok := normalizeInstagramWebChallengeURL(raw)
-	return ok
+	return ok || instagramWebCheckpointURLKind(raw) == "auth_platform"
 }
 
 func normalizeInstagramWebChallengeURL(raw string) (string, bool) {
@@ -414,6 +415,7 @@ func (c *Client) CreateInstagramWebSession(
 	}
 	c.webTwoFactor = nil
 	c.webAccountManager = nil
+	c.webAuthPlatform = nil
 
 	// Keep only stable device cookies between attempts. Loading the login page
 	// below refreshes the remaining unauthenticated web-session state.

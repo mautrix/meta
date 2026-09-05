@@ -37,6 +37,8 @@ type instagramWebCheckpointNavigation struct {
 }
 
 type instagramWebCheckpointStep struct {
+	completed     bool
+	continuation  bool
 	ChallengeType string                           `json:"challengeType"`
 	Type          string                           `json:"type"`
 	Status        string                           `json:"status"`
@@ -54,9 +56,13 @@ const instagramWebCheckpointChoiceDelay = 3 * time.Second
 func (r instagramWebCheckpointResponse) step() instagramWebCheckpointStep {
 	if r.Challenge != nil {
 		step := *r.Challenge
-		if step.Status == "" {
+		if step.Status == "" || (r.Status != "" && !strings.EqualFold(r.Status, "ok")) {
 			step.Status = r.Status
 		}
+		if step.Type == "" {
+			step.Type = r.Type
+		}
+		step.Errors = append(step.Errors, r.Errors...)
 		return step
 	}
 	return r.instagramWebCheckpointStep
@@ -66,7 +72,21 @@ func parseInstagramWebCheckpointResponse(body []byte) (instagramWebCheckpointSte
 	body = bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix)
 	var response instagramWebCheckpointResponse
 	err := json.Unmarshal(body, &response)
-	return response.step(), err
+	var pending struct {
+		instagramWebLoginResponse
+		Challenge struct {
+			URL string `json:"url"`
+			instagramWebLoginResponse
+		} `json:"challenge"`
+	}
+	if pendingErr := json.Unmarshal(body, &pending); err == nil {
+		err = pendingErr
+	}
+	step := response.step()
+	step.continuation = pending.TwoFactorRequired || pending.Challenge.TwoFactorRequired || response.ChallengeType != "" || strings.EqualFold(response.Type, "CHALLENGE") ||
+		instagramWebChallengeRequired(pending.instagramWebLoginResponse) || pending.RedirectURL != "" ||
+		instagramWebChallengeRequired(pending.Challenge.instagramWebLoginResponse) || pending.Challenge.RedirectURL != "" || pending.Challenge.URL != ""
+	return step, err
 }
 
 func instagramWebCheckpointMethod(step instagramWebCheckpointStep) string {
@@ -84,21 +104,30 @@ func (c *Client) startInstagramWebCheckpoint(
 	ctx context.Context,
 	result instagramWebLoginResponse,
 ) (*InstagramWebTwoFactorChallenge, error) {
-	checkpointURL, ok := normalizeInstagramWebChallengeURL(result.CheckpointURL)
-	if !ok {
-		checkpointURL, ok = normalizeInstagramWebChallengeURL(result.RedirectURL)
+	rawURL := result.CheckpointURL
+	if strings.TrimSpace(rawURL) == "" {
+		rawURL = result.RedirectURL
 	}
+	if instagramWebCheckpointURLKind(rawURL) == "auth_platform" {
+		return c.startInstagramAuthPlatform(ctx, rawURL, "")
+	}
+	checkpointURL, ok := normalizeInstagramWebChallengeURL(rawURL)
 	if !ok {
 		if strings.TrimSpace(result.CheckpointURL) != "" || strings.TrimSpace(result.RedirectURL) != "" {
+			c.log.Debug().Str("checkpoint_url_kind", instagramWebCheckpointURLKind(rawURL)).Msg("Unsupported Instagram web checkpoint URL")
 			return nil, ErrInstagramWebCheckpointUnsupported
 		}
 		return nil, httpclient.ErrChallengeRequired
 	}
+	expectedUserID := instagramWebCheckpointUserID(checkpointURL)
 	checkpointURL, step, err := c.renderInstagramWebCheckpoint(ctx, checkpointURL)
 	if err != nil {
 		return nil, err
 	}
-	if c.instagramWebCheckpointSessionReady(checkpointURL) {
+	if instagramWebCheckpointURLKind(checkpointURL) == "auth_platform" {
+		return c.startInstagramAuthPlatform(ctx, checkpointURL, expectedUserID)
+	}
+	if step.completed {
 		return nil, nil
 	}
 	method := instagramWebCheckpointMethod(step)
@@ -114,7 +143,7 @@ func (c *Client) startInstagramWebCheckpoint(
 		if err != nil {
 			return nil, err
 		}
-		if c.instagramWebCheckpointSessionReady(checkpointURL) {
+		if method == "" && !trySMS {
 			return nil, nil
 		} else if trySMS {
 			if err = waitInstagramWebCheckpoint(ctx); err != nil {
@@ -124,7 +153,7 @@ func (c *Client) startInstagramWebCheckpoint(
 			if err != nil {
 				return nil, err
 			}
-			if c.instagramWebCheckpointSessionReady(checkpointURL) {
+			if method == "" {
 				return nil, nil
 			}
 		}
@@ -155,10 +184,16 @@ func (c *Client) renderInstagramWebCheckpoint(
 		)
 		if err != nil {
 			return "", instagramWebCheckpointStep{}, err
-		} else if c.instagramWebCheckpointSessionReady(checkpointURL) {
-			return checkpointURL, instagramWebCheckpointStep{}, nil
+		} else if response != nil && response.StatusCode < 400 && response.Request != nil && response.Request.URL != nil &&
+			instagramWebCheckpointURLKind(response.Request.URL.String()) == "auth_platform" {
+			return response.Request.URL.String(), instagramWebCheckpointStep{}, nil
+		} else if c.instagramWebCheckpointResponseComplete(checkpointURL, response, body) {
+			return checkpointURL, instagramWebCheckpointStep{completed: true}, nil
 		}
 		if response != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+			if target, ok := resolveInstagramAuthPlatformURL(checkpointURL, response.Header.Get("Location")); ok && strings.HasPrefix(target.Path, "/auth_platform/") {
+				return target.String(), instagramWebCheckpointStep{}, nil
+			}
 			var ok bool
 			checkpointURL, ok = resolveInstagramWebCheckpointURL(checkpointURL, response.Header.Get("Location"))
 			if !ok {
@@ -168,7 +203,13 @@ func (c *Client) renderInstagramWebCheckpoint(
 		}
 		step, parseErr := parseInstagramWebCheckpointResponse(body)
 		if parseErr == nil {
+			if response != nil && response.StatusCode >= 400 && step.ChallengeType == "" {
+				return "", instagramWebCheckpointStep{}, ErrInstagramWebCheckpointUnsupported
+			}
 			return checkpointURL, step, nil
+		}
+		if response != nil && response.StatusCode >= 400 {
+			return "", instagramWebCheckpointStep{}, ErrInstagramWebCheckpointUnsupported
 		}
 		// The normal render response is HTML. The next POST returns the
 		// machine-readable challenge step.
@@ -198,7 +239,7 @@ func (c *Client) selectInstagramWebCheckpointMethod(
 	checkpointURL,
 	choice string,
 ) (method string, tryAnotherMethod bool, err error) {
-	_, body, requestErr := c.instagramWebCheckpointRequest(
+	response, body, requestErr := c.instagramWebCheckpointRequest(
 		ctx,
 		checkpointURL,
 		http.MethodPost,
@@ -208,7 +249,7 @@ func (c *Client) selectInstagramWebCheckpointMethod(
 	)
 	if requestErr != nil {
 		return "", false, requestErr
-	} else if c.instagramWebCheckpointSessionReady(checkpointURL) {
+	} else if c.instagramWebCheckpointResponseComplete(checkpointURL, response, body) {
 		return "", false, nil
 	}
 	step, parseErr := parseInstagramWebCheckpointResponse(body)
@@ -227,7 +268,7 @@ func (c *Client) completeInstagramWebCheckpoint(
 	state *instagramWebTwoFactorState,
 	verificationCode string,
 ) error {
-	_, body, requestErr := c.instagramWebCheckpointRequest(
+	response, body, requestErr := c.instagramWebCheckpointRequest(
 		ctx,
 		state.checkpointURL,
 		http.MethodPost,
@@ -238,7 +279,7 @@ func (c *Client) completeInstagramWebCheckpoint(
 	c.refreshInstagramWebCheckpointCSRF(state)
 	if requestErr != nil {
 		return requestErr
-	} else if c.instagramWebCheckpointSessionReady(state.checkpointURL) {
+	} else if c.instagramWebCheckpointResponseComplete(state.checkpointURL, response, body) {
 		return nil
 	}
 	step, parseErr := parseInstagramWebCheckpointResponse(body)
@@ -251,7 +292,7 @@ func (c *Client) completeInstagramWebCheckpoint(
 	} else if len(step.Errors) > 0 {
 		return ErrInstagramWebCheckpointUnsupported
 	}
-	return c.finishInstagramWebCheckpoint(state.checkpointURL, step)
+	return ErrInstagramWebCheckpointUnsupported
 }
 
 func (c *Client) confirmInstagramWebCheckpointContact(
@@ -274,23 +315,22 @@ func (c *Client) confirmInstagramWebCheckpointContact(
 		"enc_new_password2": {seed},
 		"new_password2":     {""},
 	}
-	_, body, requestErr := c.instagramWebCheckpointRequest(
+	response, body, requestErr := c.instagramWebCheckpointRequest(
 		ctx, forwardURL, http.MethodPost, form, false, "confirm_contact",
 	)
 	c.refreshInstagramWebCheckpointCSRF(state)
 	if requestErr != nil {
 		return requestErr
-	} else if c.instagramWebCheckpointSessionReady(state.checkpointURL) {
+	} else if c.instagramWebCheckpointResponseComplete(forwardURL, response, body) {
 		return nil
 	}
-	step, parseErr := parseInstagramWebCheckpointResponse(body)
-	if parseErr != nil {
-		return ErrInstagramWebCheckpointUnsupported
-	}
-	return c.finishInstagramWebCheckpoint(state.checkpointURL, step)
+	return ErrInstagramWebCheckpointUnsupported
 }
 
 func resolveInstagramWebCheckpointURL(baseURL, raw string) (string, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return "", false
+	}
 	base, baseErr := url.Parse(baseURL)
 	reference, referenceErr := url.Parse(strings.TrimSpace(raw))
 	if baseErr != nil || referenceErr != nil {
@@ -302,18 +342,41 @@ func resolveInstagramWebCheckpointURL(baseURL, raw string) (string, bool) {
 		return "", false
 	}
 	baseUserID, resolvedUserID := instagramWebCheckpointUserID(baseURL), instagramWebCheckpointUserID(normalized)
-	if baseUserID != "" && resolvedUserID != "" && baseUserID != resolvedUserID {
+	if baseUserID != "" && baseUserID != resolvedUserID {
 		return "", false
 	}
 	return normalized, true
 }
 
-func (c *Client) finishInstagramWebCheckpoint(checkpointURL string, step instagramWebCheckpointStep) error {
-	if !c.instagramWebCheckpointSessionReady(checkpointURL) ||
-		(step.Status != "" && !strings.EqualFold(step.Status, "ok")) {
-		return ErrInstagramWebCheckpointUnsupported
+func (c *Client) instagramWebCheckpointResponseComplete(checkpointURL string, response *http.Response, body []byte) bool {
+	if response == nil || response.StatusCode < 200 || response.StatusCode >= 400 {
+		return false
 	}
-	return nil
+	step, parseErr := parseInstagramWebCheckpointResponse(body)
+	if parseErr == nil && (step.continuation || step.ChallengeType != "" || len(step.Errors) != 0 || strings.EqualFold(step.Type, "CHALLENGE") ||
+		(step.Status != "" && !strings.EqualFold(step.Status, "ok"))) {
+		return false
+	}
+	if response.StatusCode >= 300 {
+		location, err := url.Parse(response.Header.Get("Location"))
+		if err != nil || response.Header.Get("Location") == "" {
+			return false
+		}
+		target := mustParseURL(checkpointURL).ResolveReference(location)
+		// Only a terminal web destination may finish a checkpoint on a redirect.
+		if target.Scheme != "https" || target.User != nil || (target.Port() != "" && target.Port() != "443") ||
+			!strings.EqualFold(strings.TrimSuffix(target.Hostname(), "."), "www.instagram.com") {
+			return false
+		}
+		switch target.Path {
+		case "/", "/accounts/edit/", "/direct/inbox/":
+		default:
+			return false
+		}
+	} else if parseErr != nil || !strings.EqualFold(step.Status, "ok") {
+		return false
+	}
+	return c.instagramWebCheckpointSessionReady(checkpointURL)
 }
 
 func (c *Client) instagramWebCheckpointSessionReady(checkpointURL string) bool {
@@ -327,14 +390,44 @@ func (c *Client) instagramWebCheckpointSessionReady(checkpointURL string) bool {
 
 func instagramWebCheckpointUserID(rawURL string) string {
 	parsed := mustParseURL(rawURL)
+	if parsed == nil {
+		return ""
+	}
 	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(parts) < 3 || (parts[0] != "challenge" && parts[0] != "checkpoint") {
-		return ""
+	for i := 0; i+2 < len(parts); i++ {
+		if parts[i] == "challenge" || parts[i] == "checkpoint" {
+			if accountID, err := strconv.ParseUint(parts[i+1], 10, 64); err == nil && accountID > 0 {
+				return parts[i+1]
+			}
+		}
 	}
-	if _, err := strconv.ParseInt(parts[1], 10, 64); err != nil {
-		return ""
+	return ""
+}
+
+func instagramWebCheckpointURLKind(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "invalid"
 	}
-	return parts[1]
+	if parsed.Scheme == "" {
+		parsed = mustParseURL("https://www.instagram.com").ResolveReference(parsed)
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	if !strings.EqualFold(parsed.Scheme, "https") || parsed.User != nil || (parsed.Port() != "" && parsed.Port() != "443") ||
+		(host != "instagram.com" && !strings.HasSuffix(host, ".instagram.com")) {
+		return "untrusted"
+	}
+	path := "/" + strings.Trim(parsed.Path, "/") + "/"
+	switch {
+	case strings.Contains(path, "/auth_platform/"):
+		return "auth_platform"
+	case path == "/web/unsupported_version/":
+		return "unsupported_version"
+	case strings.Contains(path, "/challenge/") || strings.Contains(path, "/checkpoint/"):
+		return "legacy_checkpoint"
+	default:
+		return "other_instagram"
+	}
 }
 
 func (c *Client) refreshInstagramWebCheckpointCSRF(state *instagramWebTwoFactorState) {
@@ -372,6 +465,13 @@ func (c *Client) instagramWebCheckpointRequest(
 	}
 	response, body, requestErr := c.http.MakeRequestOnceNoRedirect(ctx, requestURL, method, headers, payload, contentType)
 	if response != nil {
+		if (phase == "render" || phase == "auth_platform_render") && response.Request != nil && response.Request.URL != nil {
+			if _, ok := resolveInstagramAuthPlatformURL(requestURL, response.Request.URL.String()); !ok {
+				if _, legacyOK := resolveInstagramWebCheckpointURL(requestURL, response.Request.URL.String()); phase != "render" || !legacyOK {
+					return response, nil, ErrInstagramWebCheckpointUnsupported
+				}
+			}
+		}
 		c.cookies.UpdateFromResponse(response)
 	}
 	statusCode := 0
@@ -380,7 +480,7 @@ func (c *Client) instagramWebCheckpointRequest(
 	}
 	c.log.Debug().Str("checkpoint_phase", phase).Int("status_code", statusCode).
 		Str("response_kind", instagramWebLoginResponseKind(body)).Msg("Instagram web checkpoint request completed")
-	if requestErr == nil || (response != nil && errors.Is(requestErr, httpclient.ErrUnexpectedError)) {
+	if requestErr == nil || (response != nil && response.StatusCode == http.StatusBadRequest && errors.Is(requestErr, httpclient.ErrUnexpectedError)) {
 		return response, body, nil
 	} else if errors.Is(requestErr, httpclient.ErrRateLimited) ||
 		errors.Is(requestErr, httpclient.ErrAccountSuspended) ||
