@@ -27,6 +27,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
+	igcapture "go.mau.fi/mautrix-meta/internal/igcapture"
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -294,6 +295,23 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	identifier, password string,
 	allowCAAFallback bool,
 ) (*bridgev2.LoginStep, error) {
+	// TEMPORARY: remove with internal/igcapture before the fix PR; see TEMPORARY_LOGIN_CAPTURE.md.
+	if m.User != nil && m.User.User != nil {
+		loginHTTP := m.client.GetHTTP().HTTP
+		originalTransport := loginHTTP.Transport
+		recorder, captureErr := igcapture.Open(string(m.User.MXID), originalTransport, password)
+		if captureErr != nil {
+			m.User.Log.Warn().Msg("Temporary encrypted login capture unavailable")
+		} else if recorder != nil {
+			m.User.Log.Info().Msg("Temporary encrypted login capture started")
+			loginHTTP.Transport = recorder
+			defer func() {
+				loginHTTP.Transport = originalTransport
+				recorder.Close()
+				m.User.Log.Info().Msg("Temporary encrypted login capture stopped; verify file completeness locally")
+			}()
+		}
+	}
 	challenge, err := m.client.CreateInstagramWebSession(ctx, identifier, password)
 	if err != nil {
 		if isClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
