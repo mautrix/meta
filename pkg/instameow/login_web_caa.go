@@ -223,12 +223,9 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	if !data.IsObject() || (graphErrors.Type != gjson.Null && (!graphErrors.IsArray() || len(graphErrors.Array()) != 0)) || root.Get("error").Exists() {
 		return nil, ErrInstagramWebCheckpointRequestFailed
 	}
-	// Only fixed classifications reach logs; provider text and redirects may contain secrets.
-	if data.Get("error_style").String() == "RATE_LIMIT_BANNER" {
-		return nil, httpclient.ErrRateLimited
-	} else if data.Get("is_ig_login_recaptcha").Bool() || data.Get("recaptcha_needed").Bool() {
-		return nil, ErrInstagramWebCheckpointCAPTCHA
-	} else if data.Get("stop_deletion_payload").Type != gjson.Null || data.Get("reg_nta_context").Type != gjson.Null {
+	// GraphQL also returns this object with null fields when no deletion is pending.
+	deletion := data.Get("stop_deletion_payload")
+	if deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	if twoFactor := data.Get("two_factor_result"); twoFactor.Type != gjson.Null && twoFactor.String() != "" {
@@ -237,6 +234,9 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 			return nil, ErrInstagramWebCheckpointUnsupported
 		}
 		return c.captureInstagramWebTwoFactor(result, identifier, csrf, http.StatusOK)
+	}
+	if data.Get("is_ig_login_recaptcha").Bool() {
+		return nil, ErrInstagramWebCheckpointCAPTCHA
 	}
 	if redirect := data.Get("redirect_uri").String(); redirect != "" {
 		if target, valid := resolveInstagramAuthPlatformURL("https://www.instagram.com/", redirect); valid {
@@ -256,6 +256,16 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 			return nil, nil
 		}
 		return nil, ErrInstagramWebCheckpointUnsupported
+	}
+	// The frontend applies generic error flags only after two-factor/redirect
+	// dispatch. recaptcha_needed can accompany an ordinary AuthPlatform redirect;
+	// only is_ig_login_recaptcha selects its interactive CAPTCHA dialog.
+	if data.Get("reg_nta_context").Type != gjson.Null {
+		return nil, ErrInstagramWebCheckpointUnsupported
+	} else if data.Get("recaptcha_needed").Bool() {
+		return nil, ErrInstagramWebCheckpointCAPTCHA
+	} else if data.Get("error_style").String() == "RATE_LIMIT_BANNER" {
+		return nil, httpclient.ErrRateLimited
 	}
 	if data.Get("ig_authenticated").Bool() {
 		if code := data.Get("error_code"); code.Type != gjson.Null && code.String() != "0" {
