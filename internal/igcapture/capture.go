@@ -15,13 +15,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 const Format = "ig-login-capture-v1"
@@ -68,7 +68,7 @@ type Record struct {
 
 type Recorder struct {
 	base     http.RoundTripper
-	file     *os.File
+	file     captureOutput
 	aead     cipher.AEAD
 	deadline time.Time
 	secrets  []string
@@ -79,24 +79,27 @@ type Recorder struct {
 	timer    *time.Timer
 }
 
-// Open is deliberately fixed to one bridge user, one process claim and one file.
-func Open(user string, base http.RoundTripper, password string) (*Recorder, error) {
+type captureOutput interface {
+	io.WriteCloser
+	Sync() error
+}
+
+// Open captures one new flow per process, independently of any old capture file.
+func Open(user string, base http.RoundTripper, password string, log zerolog.Logger) (*Recorder, error) {
 	if user != "@chr13:beeper.com" || base == nil {
 		return nil, nil
 	}
-	path, err := filepath.Abs(temporaryFilename)
-	if err != nil {
-		return nil, errors.New("capture path unavailable")
-	}
-	return openConfigured(user, base, password, temporaryPublicKey, path, temporaryExpires)
+	return openConfigured(user, base, password, temporaryPublicKey, temporaryExpires, func() (captureOutput, error) {
+		return newLogOutput(log, "new_login")
+	})
 }
 
-func openConfigured(user string, base http.RoundTripper, password, key, path, expires string) (*Recorder, error) {
+func openConfigured(user string, base http.RoundTripper, password, key, expires string, output func() (captureOutput, error)) (*Recorder, error) {
 	if user != "@chr13:beeper.com" || base == nil {
 		return nil, nil
 	}
 	deadline, err := time.Parse(time.RFC3339, expires)
-	if err != nil || !filepath.IsAbs(path) || !deadline.After(time.Now()) || time.Until(deadline) > 24*time.Hour {
+	if err != nil || !deadline.After(time.Now()) || time.Until(deadline) > 24*time.Hour {
 		return nil, errors.New("invalid capture configuration")
 	}
 	der, err := base64.StdEncoding.DecodeString(key)
@@ -111,10 +114,10 @@ func openConfigured(user string, base http.RoundTripper, password, key, path, ex
 	if !claimed.CompareAndSwap(false, true) {
 		return nil, nil
 	}
-	return newRecorder(base, password, pub, path, deadline)
+	return newRecorder(base, password, pub, output, deadline)
 }
 
-func newRecorder(base http.RoundTripper, password string, pub *rsa.PublicKey, path string, deadline time.Time) (*Recorder, error) {
+func newRecorder(base http.RoundTripper, password string, pub *rsa.PublicKey, output func() (captureOutput, error), deadline time.Time) (*Recorder, error) {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
@@ -132,10 +135,9 @@ func newRecorder(base http.RoundTripper, password string, pub *rsa.PublicKey, pa
 	if err != nil {
 		return nil, err
 	}
-	// O_EXCL both prevents overwrite and keeps the one-shot latch across restarts.
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := output()
 	if err != nil {
-		return nil, errors.New("capture file unavailable")
+		return nil, errors.New("capture output unavailable")
 	}
 	if deadline.After(time.Now().Add(10 * time.Minute)) {
 		deadline = time.Now().Add(10 * time.Minute)

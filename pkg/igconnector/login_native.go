@@ -299,7 +299,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	if m.User != nil && m.User.User != nil {
 		loginHTTP := m.client.GetHTTP().HTTP
 		originalTransport := loginHTTP.Transport
-		recorder, captureErr := igcapture.Open(string(m.User.MXID), originalTransport, password)
+		recorder, captureErr := igcapture.Open(string(m.User.MXID), originalTransport, password, m.User.Log)
 		if captureErr != nil {
 			m.User.Log.Warn().Msg("Temporary encrypted login capture unavailable")
 		} else if recorder != nil {
@@ -308,7 +308,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			defer func() {
 				loginHTTP.Transport = originalTransport
 				recorder.Close()
-				m.User.Log.Info().Msg("Temporary encrypted login capture stopped; verify file completeness locally")
+				m.User.Log.Info().Msg("Temporary encrypted login capture stopped; verify log chunks locally")
 			}()
 		}
 	}
