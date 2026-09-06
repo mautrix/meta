@@ -554,12 +554,22 @@ func (c *Client) CreateInstagramWebSession(
 	c.http.SetConfigs(c.configs)
 	moduleLoader := httpclient.NewModuleParser(c, c.http, c.configs)
 	moduleLoader.LS = nil
+	var caaPage *instagramCAALoginPage
+	moduleLoader.InspectPage = func(body []byte) (err error) {
+		caaPage, err = parseInstagramCAALoginPage(body)
+		return
+	}
 	baseURL := c.GetEndpoint("base_url")
 	loginPageURL := c.GetEndpoint("login")
 	if err := moduleLoader.Load(ctx, loginPageURL); err != nil {
 		return nil, fmt.Errorf("failed to load Instagram web login page: %w", err)
 	}
 	c.configs.Setup(false)
+	if caaPage != nil {
+		c.log.Debug().Str("login_protocol", "caa_web").Msg("Selected Instagram password login protocol")
+		return c.createInstagramCAAWebSession(ctx, caaPage, identifier, password)
+	}
+	c.log.Debug().Str("login_protocol", "polaris_ajax").Msg("Selected Instagram password login protocol")
 
 	encryption := c.configs.BrowserConfigTable.InstagramPasswordEncryption
 	keyID, err := strconv.Atoi(encryption.KeyID)

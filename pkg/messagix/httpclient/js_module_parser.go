@@ -88,6 +88,9 @@ type ModuleParser struct {
 	http    *HTTPClient
 
 	LS *table.LSTable
+
+	// InspectPage reads login-specific bootstrap data without fetching the page again.
+	InspectPage func([]byte) error
 }
 
 func NewModuleParser(client Client, http *HTTPClient, configs *Configs) *ModuleParser {
@@ -104,6 +107,11 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 	htmlData, err := m.http.fetchPageData(ctx, page)
 	if err != nil {
 		return err
+	}
+	if m.InspectPage != nil {
+		if err = m.InspectPage(htmlData); err != nil {
+			return err
+		}
 	}
 	if m.client.GetPlatform().IsMessenger() && !strings.Contains(page, "login") && bytes.Contains(htmlData, []byte(`"USER_ID":"0"`)) {
 		return ErrUserIDIsZero
