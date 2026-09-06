@@ -215,11 +215,27 @@ func (r *Recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 			if form, err := url.ParseQuery(string(data)); err == nil && readErr == nil {
 				r.addSecret(form.Get("enc_password"))
 				operation = form.Get("fb_api_req_friendly_name")
+				if operation == "useCDSWebLoginMutation" {
+					var variables struct {
+						Input struct {
+							Password struct {
+								Value string `json:"sensitive_string_value"`
+							} `json:"password"`
+							EncryptedPassword struct {
+								Value string `json:"sensitive_string_value"`
+							} `json:"enc_password"`
+						} `json:"input"`
+					}
+					if json.Unmarshal([]byte(form.Get("variables")), &variables) == nil {
+						r.addSecret(variables.Input.Password.Value)
+						r.addSecret(variables.Input.EncryptedPassword.Value)
+					}
+				}
 			}
 			clear(data)
 		}
 	}
-	if req.URL.Path == "/api/graphql" && operation != "AuthPlatformCodeEntryViewQuery" && operation != "AuthPlatformChallengePickerViewQuery" {
+	if req.URL.Path == "/api/graphql" && operation != "AuthPlatformCodeEntryViewQuery" && operation != "AuthPlatformChallengePickerViewQuery" && operation != "useCDSWebLoginMutation" {
 		r.mu.Unlock()
 		return r.base.RoundTrip(req)
 	}
