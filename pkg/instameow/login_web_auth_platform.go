@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -37,6 +38,7 @@ var (
 	instagramAPAnother                = instagramAuthPlatformOperation{"useAuthPlatformTryAnotherWayMutation", "9378248908953318", "xfb_auth_platform_try_another_way"}
 	instagramAPSelect                 = instagramAuthPlatformOperation{"useAuthPlatformSelectChallengeMutation", "9771607989592788", "xfb_auth_platform_select_challenge"}
 	instagramAPSubmit                 = instagramAuthPlatformOperation{"useAuthPlatformSubmitCodeMutation", "25017097917894476", "xfb_auth_platform_submit_code"}
+	instagramAPResend                 = instagramAuthPlatformOperation{"useAuthPlatformSendCodeAgainMutation", "29612122925068775", "xfb_auth_platform_send_code_again"}
 	ErrInstagramWebCheckpointCAPTCHA  = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
 	errInstagramAuthPlatformLoggedOut = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebCheckpointUnsupported)
 )
@@ -55,6 +57,9 @@ type instagramAuthPlatformState struct {
 	mutationID               int
 	choices                  []instagramAuthPlatformChoice
 	captcha                  *instagramAuthPlatformCaptcha
+	canResend                bool
+	resendCooldown           time.Duration
+	resendAfter              time.Time
 }
 
 func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
@@ -177,6 +182,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		s.captcha = nil
 		s.channel, s.choices, s.enterCode, s.tryAnotherWay = "", nil, false, false
 		s.notice = ""
+		s.canResend, s.resendCooldown, s.resendAfter = false, 0, time.Time{}
 		op := instagramAPCode
 		if target.Path == "/auth_platform/challengepicker/" {
 			op = instagramAPPicker
@@ -190,6 +196,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		if op == instagramAPCode {
 			s.channel = instagramAuthPlatformChannel(data.Get("challenge_name").String())
 			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
+			s.configureCodeResend(data)
 			if s.channel == "" || (data.Get("error_message").String() != "" && data.Get("error_style").String() != "INLINE") {
 				return ErrInstagramWebCheckpointUnsupported
 			}
@@ -225,6 +232,17 @@ func instagramAuthPlatformChannel(method string) string {
 	return map[string]string{"EMAIL": "email", "SMS": "SMS", "SOWA": "WhatsApp"}[method]
 }
 
+func (s *instagramAuthPlatformState) configureCodeResend(data gjson.Result) {
+	// The browser starts this cooldown on entering the page, not just on resend.
+	cooldown := data.Get("resend_code_cooldown")
+	s.canResend = data.Get("resend_code_link").Type == gjson.String && data.Get("resend_code_link").String() != "" &&
+		cooldown.Type == gjson.Number && cooldown.Int() >= 0 && cooldown.Int() <= 86400 && cooldown.Float() == float64(cooldown.Int())
+	if s.canResend {
+		s.resendCooldown = time.Duration(cooldown.Int()) * time.Second
+		s.resendAfter = time.Now().Add(s.resendCooldown)
+	}
+}
+
 func (s *instagramAuthPlatformState) step(instructions string) *bridgev2.LoginStep {
 	instructions = cmp.Or(instructions, s.notice)
 	field := bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeSelect, ID: "method", Name: "Verification method"}
@@ -233,15 +251,24 @@ func (s *instagramAuthPlatformState) step(instructions string) *bridgev2.LoginSt
 		for _, choice := range s.choices {
 			field.Options = append(field.Options, choice.label)
 		}
-	} else if s.tryAnotherWay && !s.enterCode {
-		instructions = cmp.Or(instructions, "Instagram requires a code via "+s.channel+". You can enter it or choose another available method.")
-		field.ID, field.Options = "action", []string{"Enter code", "Try another method"}
+	} else if (s.tryAnotherWay || s.canResend) && !s.enterCode {
+		instructions = cmp.Or(instructions, "Instagram requires a verification code via "+s.channel+". Choose an action below.")
+		field.ID, field.Options = "action", []string{"Enter code"}
+		if s.canResend {
+			field.Options = append(field.Options, "Resend code")
+		}
+		if s.tryAnotherWay {
+			field.Options = append(field.Options, "Try another method")
+		}
 	} else {
-		instructions = cmp.Or(instructions, "Enter the verification code Instagram sent via "+s.channel+".")
+		instructions = cmp.Or(instructions, "Enter your Instagram verification code from "+s.channel+".")
+		if s.canResend {
+			instructions += " If it hasn't arrived, go back and choose Resend code."
+		}
 		field = bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldType2FACode, ID: "verification_code", Name: "Verification code", Pattern: "^.{5,8}$"}
 	}
 	return &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeUserInput, StepID: "fi.mau.meta.instagram.auth_platform." + field.ID,
-		Instructions: instructions, UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{field}, CanCancel: s.tryAnotherWay && s.enterCode}}
+		Instructions: instructions, UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{field}, CanCancel: (s.tryAnotherWay || s.canResend) && s.enterCode}}
 }
 
 // DoInstagramWebAuthPlatformSteps continues the provider's checkpoint, never a new password login.
@@ -265,17 +292,19 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 			return s.step(""), nil
 		}
 		op = instagramAPSelect
-	} else if s.tryAnotherWay && !s.enterCode {
+	} else if (s.tryAnotherWay || s.canResend) && !s.enterCode {
 		if input["action"] == "Enter code" {
 			s.enterCode = true
-		} else if input["action"] == "Try another method" {
+		} else if input["action"] == "Resend code" && s.canResend {
+			return c.resendInstagramAuthPlatformCode(ctx)
+		} else if input["action"] == "Try another method" && s.tryAnotherWay {
 			op = instagramAPAnother
 		}
 		if op != instagramAPAnother {
 			return s.step(""), nil
 		}
 	} else {
-		if input["back"] == "true" && s.tryAnotherWay {
+		if input["back"] == "true" && (s.tryAnotherWay || s.canResend) {
 			s.enterCode = false
 			return s.step(""), nil
 		}
@@ -305,6 +334,35 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 	return c.webAuthPlatform.step(""), nil
 }
 
+func (c *Client) resendInstagramAuthPlatformCode(ctx context.Context) (*bridgev2.LoginStep, error) {
+	s := c.webAuthPlatform
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if remaining := time.Until(s.resendAfter); remaining > 0 {
+		seconds := int((remaining + time.Second - 1) / time.Second)
+		return s.step(fmt.Sprintf("Wait %d seconds before requesting another code. You can still enter a code you've already received.", seconds)), nil
+	}
+	// Consume the cooldown before I/O, including ambiguous failures. Never retry a
+	// send automatically: the provider may already have dispatched the message.
+	s.resendAfter = time.Now().Add(max(s.resendCooldown, time.Second))
+	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPResend, map[string]any{})
+	if errors.Is(err, context.Canceled) {
+		return nil, err
+	} else if errors.Is(err, httpclient.ErrRateLimited) {
+		s.canResend = false
+		s.notice = "Instagram is limiting code requests. You can still enter a code you've received or use another available method."
+	} else if err != nil || (data.Get("success").Type != gjson.True && data.Get("success").Type != gjson.False) {
+		s.notice = "Couldn't confirm whether Instagram sent another code. Check for a message before requesting another."
+	} else if data.Get("success").Type == gjson.False || data.Get("error_message").String() != "" {
+		s.notice = "Instagram couldn't send another code. Wait before trying again, or use another available method."
+	} else {
+		s.notice = "Instagram accepted the request for another code via " + s.channel + ". Enter the latest code when it arrives."
+		s.enterCode = true
+	}
+	return s.step(""), nil
+}
+
 func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramAuthPlatformOperation, input map[string]any) (gjson.Result, error) {
 	s := c.webAuthPlatform
 	params := s.url.Query()
@@ -325,6 +383,14 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	}
 	if input != nil {
 		variables = map[string]any{"input": variables}
+	}
+	// This mutation's browser input has no actor/client-mutation fields.
+	if op == instagramAPResend {
+		resendInput := map[string]any{"encrypted_ap_context": params.Get("apc"), "device_id": nil}
+		if deviceID := params.Get("device_id"); deviceID != "" {
+			resendInput["device_id"] = deviceID
+		}
+		variables = map[string]any{"input": resendInput}
 	}
 	// CAPTCHA mutations use root variables, unlike the code-entry input object.
 	if op == instagramAPCaptchaSubmit || op == instagramAPCaptchaRender {
