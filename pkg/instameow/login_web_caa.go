@@ -35,7 +35,10 @@ const instagramCAAWebLoginOperation = "useCDSWebLoginMutation"
 const instagramCAAWebLoginRoute = "comet.igweb.PolarisCAAIGLoginHomepageRoute"
 
 type instagramCAALoginPage struct {
-	form, encryption, props gjson.Result
+	form, encryption, props            gjson.Result
+	consent, polarisConsent            gjson.Result
+	cookieDomain, deferredCookies      gjson.Result
+	granularConsent, skipConsentReload gjson.Result
 }
 
 // Only inert JSON is inspected. A CAA page with incomplete or unsupported state
@@ -59,6 +62,15 @@ func parseInstagramCAALoginPage(body []byte) (*instagramCAALoginPage, error) {
 			return
 		}
 		if value.IsObject() {
+			if deferred := value.Get("deferredCookies"); deferred.Exists() {
+				set(&page.deferredCookies, deferred)
+			}
+			if gate := value.Get("gkxData.3123.result"); gate.Exists() {
+				set(&page.granularConsent, gate)
+			}
+			if gate := value.Get("qexData.4809.r"); gate.Exists() {
+				set(&page.skipConsentReload, gate)
+			}
 			if value.Get("ef_page").String() == "PolarisCAAIGLoginHomepageRoute" {
 				indicated = true
 			}
@@ -74,6 +86,19 @@ func parseInstagramCAALoginPage(body []byte) (*instagramCAALoginPage, error) {
 			}
 			if encryption := value.Get("caa_password_encryption_data.encryption_data"); encryption.Exists() {
 				set(&page.encryption, encryption)
+			}
+		}
+		if value.IsArray() {
+			module := value.Array()
+			if len(module) >= 3 && module[1].IsArray() && module[2].IsObject() {
+				switch module[0].String() {
+				case "InitialCookieConsent":
+					set(&page.consent, module[2])
+				case "PolarisCookieConsent":
+					set(&page.polarisConsent, module[2])
+				case "CookieDomain":
+					set(&page.cookieDomain, module[2])
+				}
 			}
 		}
 		if value.IsObject() || value.IsArray() {
@@ -162,10 +187,19 @@ func (c *Client) createInstagramCAAWebSession(ctx context.Context, page *instagr
 	if err != nil {
 		return nil, err
 	}
+	csrf := c.cookies.Get(cookies.IGCookieCSRFToken)
+	body, err := c.instagramCAAWebMutation(ctx, instagramCAAWebLoginOperation, instagramCAAWebLoginDocID, variables)
+	if err != nil {
+		return nil, err
+	}
+	return c.handleInstagramCAAWebLoginResponse(ctx, body, identifier, csrf)
+}
+
+func (c *Client) instagramCAAWebMutation(ctx context.Context, operation, docID string, variables []byte) ([]byte, error) {
 	config := c.configs.BrowserConfigTable
 	rq := c.http.NewHTTPQuery()
 	rq.Av, rq.User, rq.Jssesw = "0", "0", ""
-	rq.FbAPICallerClass, rq.FbAPIReqFriendlyName, rq.DocID = "RelayModern", instagramCAAWebLoginOperation, instagramCAAWebLoginDocID
+	rq.FbAPICallerClass, rq.FbAPIReqFriendlyName, rq.DocID = "RelayModern", operation, docID
 	rq.ServerTimestamps, rq.Variables, rq.Crn = "true", string(variables), instagramCAAWebLoginRoute
 	rq.CometReq, rq.Rev = strconv.FormatInt(config.SiteData.CometEnv, 10), strconv.FormatInt(config.SiteData.ClientRevision, 10)
 	rq.FbDtsg = cmp.Or(config.DTSGInitialData.Token, config.DTSGInitData.Token)
@@ -191,7 +225,7 @@ func (c *Client) createInstagramCAAWebSession(ctx context.Context, page *instagr
 	headers.Set("referer", c.GetEndpoint("login"))
 	headers.Set("x-csrftoken", csrf)
 	headers.Set("x-fb-lsd", rq.Lsd)
-	headers.Set("x-fb-friendly-name", instagramCAAWebLoginOperation)
+	headers.Set("x-fb-friendly-name", operation)
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
@@ -209,7 +243,7 @@ func (c *Client) createInstagramCAAWebSession(ctx context.Context, page *instagr
 	} else if response == nil || err != nil || response.StatusCode != http.StatusOK {
 		return nil, ErrInstagramWebCheckpointRequestFailed
 	}
-	return c.handleInstagramCAAWebLoginResponse(ctx, body, identifier, csrf)
+	return body, nil
 }
 
 func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []byte, identifier, csrf string) (*InstagramWebTwoFactorChallenge, error) {
@@ -223,6 +257,11 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	if !data.IsObject() || (graphErrors.Type != gjson.Null && (!graphErrors.IsArray() || len(graphErrors.Array()) != 0)) || root.Get("error").Exists() {
 		return nil, ErrInstagramWebCheckpointRequestFailed
 	}
+	c.log.Debug().Int64("error_code", data.Get("error_code").Int()).
+		Bool("authenticated", data.Get("ig_authenticated").Bool()).
+		Bool("has_redirect", data.Get("redirect_uri").String() != "").
+		Bool("has_two_factor", data.Get("two_factor_result").Type != gjson.Null).
+		Msg("Instagram CAA login response")
 	// GraphQL also returns this object with null fields when no deletion is pending.
 	deletion := data.Get("stop_deletion_payload")
 	if deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null {
@@ -241,7 +280,14 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	if redirect := data.Get("redirect_uri").String(); redirect != "" {
 		if target, valid := resolveInstagramAuthPlatformURL("https://www.instagram.com/", redirect); valid {
 			if strings.HasPrefix(target.Path, "/auth_platform/") {
-				return c.startInstagramAuthPlatform(ctx, redirect, "")
+				challenge, err := c.startInstagramAuthPlatform(ctx, redirect, "")
+				// A credential rejection may also carry an AuthPlatform redirect. Give
+				// verification priority, but retain the rejection if it only logs us out.
+				if errors.Is(err, errInstagramAuthPlatformLoggedOut) && data.Get("error_code").Int() == 1348009 &&
+					data.Get("error_style").String() == "GENERIC_BANNER" && !data.Get("ig_authenticated").Bool() {
+					return nil, ErrInstagramWebCredentialsRejected
+				}
+				return challenge, err
 			}
 			// A redirect alone is not successful authentication. The existing terminal
 			// verifier requires a complete session and matching session/user cookies.

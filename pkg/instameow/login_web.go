@@ -541,6 +541,7 @@ func (c *Client) CreateInstagramWebSession(
 	c.webTwoFactor = nil
 	c.webAccountManager = nil
 	c.webAuthPlatform = nil
+	c.webCookieConsent = nil
 
 	// Keep only stable device cookies between attempts. Loading the login page
 	// below refreshes the remaining unauthenticated web-session state.
@@ -567,6 +568,9 @@ func (c *Client) CreateInstagramWebSession(
 	c.configs.Setup(false)
 	if caaPage != nil {
 		c.log.Debug().Str("login_protocol", "caa_web").Msg("Selected Instagram password login protocol")
+		if err := c.prepareInstagramWebCookieConsent(caaPage); err != nil {
+			return nil, err
+		}
 		return c.createInstagramCAAWebSession(ctx, caaPage, identifier, password)
 	}
 	c.log.Debug().Str("login_protocol", "polaris_ajax").Msg("Selected Instagram password login protocol")

@@ -49,6 +49,7 @@ type Client struct {
 	webTwoFactor          *instagramWebTwoFactorState
 	webAuthPlatform       *instagramAuthPlatformState
 	webAccountManager     *instagramWebAccountManagerState
+	webCookieConsent      *instagramWebCookieConsentState
 	mobileLoginDevice     *types.InstagramLoginDevice
 	mobileSession         *instagramMobileSession
 	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error

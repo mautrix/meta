@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -31,12 +32,13 @@ import (
 type instagramAuthPlatformOperation struct{ name, docID, field string }
 
 var (
-	instagramAPCode                  = instagramAuthPlatformOperation{"AuthPlatformCodeEntryViewQuery", "34414353874878894", "xfb_auth_platform_enter_code_content"}
-	instagramAPPicker                = instagramAuthPlatformOperation{"AuthPlatformChallengePickerViewQuery", "26777000331897324", "xfb_auth_platform_challenges"}
-	instagramAPAnother               = instagramAuthPlatformOperation{"useAuthPlatformTryAnotherWayMutation", "9378248908953318", "xfb_auth_platform_try_another_way"}
-	instagramAPSelect                = instagramAuthPlatformOperation{"useAuthPlatformSelectChallengeMutation", "9771607989592788", "xfb_auth_platform_select_challenge"}
-	instagramAPSubmit                = instagramAuthPlatformOperation{"useAuthPlatformSubmitCodeMutation", "25017097917894476", "xfb_auth_platform_submit_code"}
-	ErrInstagramWebCheckpointCAPTCHA = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
+	instagramAPCode                   = instagramAuthPlatformOperation{"AuthPlatformCodeEntryViewQuery", "34414353874878894", "xfb_auth_platform_enter_code_content"}
+	instagramAPPicker                 = instagramAuthPlatformOperation{"AuthPlatformChallengePickerViewQuery", "26777000331897324", "xfb_auth_platform_challenges"}
+	instagramAPAnother                = instagramAuthPlatformOperation{"useAuthPlatformTryAnotherWayMutation", "9378248908953318", "xfb_auth_platform_try_another_way"}
+	instagramAPSelect                 = instagramAuthPlatformOperation{"useAuthPlatformSelectChallengeMutation", "9771607989592788", "xfb_auth_platform_select_challenge"}
+	instagramAPSubmit                 = instagramAuthPlatformOperation{"useAuthPlatformSubmitCodeMutation", "25017097917894476", "xfb_auth_platform_submit_code"}
+	ErrInstagramWebCheckpointCAPTCHA  = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
+	errInstagramAuthPlatformLoggedOut = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebCheckpointUnsupported)
 )
 
 type instagramAuthPlatformChoice struct {
@@ -52,6 +54,7 @@ type instagramAuthPlatformState struct {
 	tryAnotherWay, enterCode bool
 	mutationID               int
 	choices                  []instagramAuthPlatformChoice
+	captcha                  *instagramAuthPlatformCaptcha
 }
 
 func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
@@ -108,8 +111,6 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
 		if !ok {
 			return ErrInstagramWebCheckpointUnsupported
-		} else if target.Path == "/auth_platform/recaptcha/" {
-			return ErrInstagramWebCheckpointCAPTCHA
 		}
 		s.url = target
 		response, body, err := c.instagramWebCheckpointRequest(ctx, target.String(), http.MethodGet, nil, true, "auth_platform_render")
@@ -123,8 +124,6 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			target, ok = resolveInstagramAuthPlatformURL(target.String(), response.Request.URL.String())
 			if !ok {
 				return ErrInstagramWebCheckpointUnsupported
-			} else if target.Path == "/auth_platform/recaptcha/" {
-				return ErrInstagramWebCheckpointCAPTCHA
 			}
 			s.url = target
 		}
@@ -161,6 +160,9 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 					Bool("expected_user_known", s.expectedUserID != "").
 					Bool("expected_user_matches", s.expectedUserID != "" && s.expectedUserID == userID).
 					Msg("Instagram verification reached a terminal page without a valid session")
+				if instagramWebLoginResponseKind(body) == "html" && userID == "" && c.cookies.Get(cookies.IGCookieSessionID) == "" {
+					return errInstagramAuthPlatformLoggedOut
+				}
 				return ErrInstagramWebCheckpointUnsupported
 			}
 			c.webAuthPlatform = nil
@@ -169,6 +171,10 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		if err = c.refreshInstagramAuthPlatformConfig(body); err != nil {
 			return err
 		}
+		if target.Path == "/auth_platform/recaptcha/" {
+			return c.prepareInstagramAuthPlatformCaptcha(body)
+		}
+		s.captcha = nil
 		s.channel, s.choices, s.enterCode, s.tryAnotherWay = "", nil, false, false
 		s.notice = ""
 		op := instagramAPCode
@@ -244,6 +250,9 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 	if s == nil {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
+	if s.captcha != nil {
+		return c.instagramAuthPlatformCaptchaStep("")
+	}
 	op, values := instagramAPSubmit, map[string]any{}
 	if len(s.choices) != 0 {
 		for _, choice := range s.choices {
@@ -290,6 +299,9 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 	} else if c.webAuthPlatform == nil {
 		return nil, nil
 	}
+	if c.webAuthPlatform.captcha != nil {
+		return c.instagramAuthPlatformCaptchaStep("")
+	}
 	return c.webAuthPlatform.step(""), nil
 }
 
@@ -313,6 +325,19 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	}
 	if input != nil {
 		variables = map[string]any{"input": variables}
+	}
+	// CAPTCHA mutations use root variables, unlike the code-entry input object.
+	if op == instagramAPCaptchaSubmit || op == instagramAPCaptchaRender {
+		variables = map[string]any{"encrypted_context": params.Get("apc"), "device_id": nil}
+		if deviceID := params.Get("device_id"); deviceID != "" {
+			variables["device_id"] = deviceID
+		}
+		if op == instagramAPCaptchaSubmit {
+			variables["captcha_response"] = input["captcha_response"]
+		} else {
+			variables["render_succeeded"] = true
+		}
+		rq.Crn = ""
 	}
 	encoded, err := json.Marshal(variables)
 	if err != nil {
@@ -368,7 +393,7 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	}
 	root := gjson.ParseBytes(body)
 	data := root.Get("data." + op.field)
-	if !data.IsObject() || len(root.Get("errors").Array()) != 0 || root.Get("error").Exists() {
+	if (!data.IsObject() && !(op == instagramAPCaptchaRender && data.Type == gjson.True)) || len(root.Get("errors").Array()) != 0 || root.Get("error").Exists() {
 		return gjson.Result{}, ErrInstagramWebCheckpointUnsupported
 	} else if data.Get("error_style").String() == "RATE_LIMIT_BANNER" {
 		return gjson.Result{}, httpclient.ErrRateLimited
