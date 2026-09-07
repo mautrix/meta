@@ -378,19 +378,15 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 			rq.Crn = "comet.igweb.PolarisAuthPlatformChallengePickerRoute"
 		}
 	}
+	if op == instagramAPResend {
+		// Keep Relay's mutation identity fields; only the optional device is nullable.
+		variables["device_id"] = nil
+	}
 	if deviceID := params.Get("device_id"); deviceID != "" {
 		variables["device_id"] = deviceID
 	}
 	if input != nil {
 		variables = map[string]any{"input": variables}
-	}
-	// This mutation's browser input has no actor/client-mutation fields.
-	if op == instagramAPResend {
-		resendInput := map[string]any{"encrypted_ap_context": params.Get("apc"), "device_id": nil}
-		if deviceID := params.Get("device_id"); deviceID != "" {
-			resendInput["device_id"] = deviceID
-		}
-		variables = map[string]any{"input": resendInput}
 	}
 	// CAPTCHA mutations use root variables, unlike the code-entry input object.
 	if op == instagramAPCaptchaSubmit || op == instagramAPCaptchaRender {
