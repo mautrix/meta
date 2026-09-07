@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"go.mau.fi/mautrix-meta/pkg/loginerrors"
+	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 

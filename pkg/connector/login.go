@@ -16,11 +16,11 @@ import (
 
 	"go.mau.fi/util/exslices"
 
-	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
+	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
