@@ -74,23 +74,31 @@ func (ic *IGClient) updateGhostIGID(username, igid string, fbid int64) bridgev2.
 }
 
 func (ic *IGClient) wrapUserInfo(info *slidetypes.User) *bridgev2.UserInfo {
+	var identifiers []string
+	if info.Username != "" {
+		identifiers = []string{fmt.Sprintf("instagram:%s", info.Username)}
+	}
 	return &bridgev2.UserInfo{
-		Identifiers: []string{fmt.Sprintf("instagram:%s", info.Username)},
-		Name: ptr.Ptr(ic.Main.Config.FormatDisplayname(DisplaynameParams{
+		Identifiers: identifiers,
+		Name: new(ic.Main.Config.FormatDisplayname(DisplaynameParams{
 			DisplayName: info.FullName,
 			Username:    info.Username,
 			ID:          info.InteropMessagingUserFBID,
 		})),
 		Avatar:       wrapAvatar(info.ProfilePicURL),
-		IsBot:        ptr.Ptr(info.AIAgentType != ""),
+		IsBot:        new(info.AIAgentType != ""),
 		ExtraUpdates: ic.updateGhostIGID(info.Username, info.ID, info.InteropMessagingUserFBID),
 	}
 }
 
 func (ic *IGClient) wrapSearchResultInfo(info *slidetypes.SearchResult) *bridgev2.UserInfo {
+	var identifiers []string
+	if info.Username != "" {
+		identifiers = []string{fmt.Sprintf("instagram:%s", info.Username)}
+	}
 	return &bridgev2.UserInfo{
-		Identifiers: []string{fmt.Sprintf("instagram:%s", info.Username)},
-		Name: ptr.Ptr(ic.Main.Config.FormatDisplayname(DisplaynameParams{
+		Identifiers: identifiers,
+		Name: new(ic.Main.Config.FormatDisplayname(DisplaynameParams{
 			DisplayName: info.FullName,
 			Username:    info.Username,
 			ID:          info.InteropMessagingUserFBID,
