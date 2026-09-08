@@ -341,16 +341,6 @@ func GetErrorRedirectURL(err error) string {
 	return ""
 }
 
-func unwrapURLErrors(err error) error {
-	for {
-		urlErr, ok := errors.AsType[*url.Error](err)
-		if !ok || urlErr.Err == nil {
-			return err
-		}
-		err = urlErr.Err
-	}
-}
-
 func accountVerificationPath(path string) (challenge, checkpoint bool) {
 	path = "/" + strings.Trim(path, "/") + "/"
 	return strings.Contains(path, "/challenge/") || strings.Contains(path, "/auth_platform/"), strings.Contains(path, "/checkpoint/")
@@ -525,15 +515,13 @@ func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Clien
 	}()
 	if err != nil {
 		if response != nil && (errors.Is(err, ErrChallengeRequired) || errors.Is(err, ErrCheckpointRequired)) {
-			// CheckRedirect returns the response whose headers contain the
-			// checkpoint cookies. Keep it, strip net/url's private target from
-			// the error text, and do not rotate the proxy.
-			err = unwrapURLErrors(err)
-			return response, nil, err
+			// Keep checkpoint cookies without rotating the proxy. http.Client.Do
+			// wraps the redirect error with a URL that may contain private tokens.
+			return response, nil, errors.Unwrap(err)
 		}
 		challengePath, checkpointPath := accountVerificationPath(newRequest.URL.Path)
 		if challengePath || checkpointPath {
-			err = unwrapURLErrors(err)
+			err = errors.Unwrap(err)
 		}
 		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
 		return nil, nil, fmt.Errorf("%w: %w", ErrRequestFailed, err)

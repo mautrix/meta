@@ -98,10 +98,10 @@ CREATE TABLE meta_instagram_login_device (
 	advertising_id    TEXT NOT NULL,
 	android_device_id TEXT NOT NULL,
 	machine_id        TEXT NOT NULL,
-	usdid             TEXT NOT NULL,
-	usdid_key_id      TEXT NOT NULL,
-	usdid_private_key TEXT NOT NULL,
-	usdid_registered  BOOLEAN NOT NULL,
+	usdid             TEXT NOT NULL DEFAULT '',
+	usdid_key_id      TEXT NOT NULL DEFAULT '',
+	usdid_private_key TEXT NOT NULL DEFAULT '',
+	usdid_registered  BOOLEAN NOT NULL DEFAULT false,
 
 	PRIMARY KEY (bridge_id, user_mxid),
 	CONSTRAINT meta_instagram_login_device_user_fkey FOREIGN KEY (bridge_id, user_mxid)
