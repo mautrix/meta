@@ -200,6 +200,7 @@ func loginWithCookies(
 	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	go func() {
 		igClient.connectWithMailbox(backgroundCtx, backgroundCtx, user, mailbox)
+		igClient.schedulePeriodicReconnect(ctx)
 		zerolog.Ctx(ctx).Debug().Msg("Processed mailbox after login, connecting to DGW")
 		go igClient.Client.Connect(backgroundCtx)
 	}()

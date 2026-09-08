@@ -117,11 +117,13 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			errCode = DGWConnectionUnauthorized
 			retErr = fmt.Errorf("connection unauthorized; stop reconnects")
 			ic.permanentErrored.Store(true)
+			ic.cancelPeriodicReconnect()
 		} else if evt.FailureCount > 5 && errors.Is(evt.Error, instameow.ErrMainStreamClosed) {
 			stateEvt = status.StateUnknownError
 			errCode = DGWMainStreamClosed
 			retErr = fmt.Errorf("main stream closed too many times; stop reconnects")
 			ic.permanentErrored.Store(true)
+			ic.cancelPeriodicReconnect()
 		}
 		ic.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: stateEvt,
@@ -152,6 +154,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	case *slidetypes.ReconnectionStateUpdate:
 		return ic.Main.DB.PutReconnectionState(ctx, ic.UserLogin.ID, evt.State)
 	case *slidetypes.ResnapshotRequired:
+		ic.cancelPeriodicReconnect()
 		_ = ic.doWaitMailboxProcessed(ctx)
 		go ic.FullReconnect(true)
 		return nil

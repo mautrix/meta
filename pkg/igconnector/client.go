@@ -59,6 +59,7 @@ type IGClient struct {
 	mailboxProcessed      atomic.Bool
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
+	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -263,6 +264,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 			Time("last_used", lastUsed).
 			Msg("Failed to load reconnection state")
 	} else if cli.HasSeqID() {
+		ic.schedulePeriodicReconnect(ctx)
 		zerolog.Ctx(ctx).Debug().
 			Time("last_used", lastUsed).
 			Msg("Reconnecting with cached state")
@@ -335,6 +337,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		zerolog.Ctx(ctx).Err(ctx.Err()).Msg("Connection cancelled")
 		return
 	}
+	ic.schedulePeriodicReconnect(ctx)
 	zerolog.Ctx(ctx).Debug().Msg("Processed index, connecting to DGW")
 	go ic.Client.Connect(ctx)
 }
@@ -370,6 +373,7 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 }
 
 func (ic *IGClient) Disconnect() {
+	ic.cancelPeriodicReconnect()
 	ic.permanentErrored.Store(false)
 	if stopConnectAttempt := ic.stopConnectAttempt.Swap(nil); stopConnectAttempt != nil {
 		(*stopConnectAttempt)()
@@ -395,6 +399,33 @@ func (ic *IGClient) LogoutRemote(ctx context.Context) {
 	// TODO actual logout request?
 	ic.Disconnect()
 	ic.LoginMeta.Cookies = nil
+}
+
+func (ic *IGClient) cancelPeriodicReconnect() {
+	if oldCancel := ic.stopPeriodicReconnect.Swap(nil); oldCancel != nil {
+		(*oldCancel)()
+	}
+}
+
+func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
+	if ic.Main.Config.ForceRefreshIntervalSeconds <= 0 {
+		return
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if oldCancel := ic.stopPeriodicReconnect.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	interval := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	ic.UserLogin.Log.Info().Stringer("interval", interval).Msg("Periodic reconnect scheduled")
+	go func() {
+		select {
+		case <-time.After(interval):
+			ic.UserLogin.Log.Info().Msg("Doing periodic reconnect")
+			ic.FullReconnect(false)
+		case <-ctx.Done():
+		}
+	}()
 }
 
 func (ic *IGClient) FullReconnect(seqIDOnly bool) {
