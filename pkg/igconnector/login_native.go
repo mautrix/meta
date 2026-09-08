@@ -27,7 +27,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	igcapture "go.mau.fi/mautrix-meta/internal/igcapture"
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -115,7 +114,7 @@ type instagramPendingConsentCredentials struct {
 	allowCAAFallback     bool
 }
 
-const instagramDeclineOptionalCookies = "Decline optional cookies and continue"
+const instagramDeclineOptionalCookies = "Continue with required cookies only"
 const instagramCancelCookieConsent = "Cancel login"
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
@@ -249,7 +248,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	}
 	if m.webCookieConsent != nil {
 		switch input["cookie_consent"] {
-		case instagramDeclineOptionalCookies:
+		case instagramDeclineOptionalCookies, "Decline optional cookies and continue": // Accept the previous label for pending steps.
 			pending := m.webCookieConsent
 			return m.submitWebCredentials(ctx, pending.identifier, pending.password, pending.allowCAAFallback)
 		case instagramCancelCookieConsent:
@@ -320,23 +319,6 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	identifier, password string,
 	allowCAAFallback bool,
 ) (*bridgev2.LoginStep, error) {
-	// TEMPORARY: remove with internal/igcapture before the fix PR; see TEMPORARY_LOGIN_CAPTURE.md.
-	if m.User != nil && m.User.User != nil {
-		loginHTTP := m.client.GetHTTP().HTTP
-		originalTransport := loginHTTP.Transport
-		recorder, captureErr := igcapture.Open(string(m.User.MXID), originalTransport, password, m.User.Log)
-		if captureErr != nil {
-			m.User.Log.Warn().Msg("Temporary encrypted login capture unavailable")
-		} else if recorder != nil {
-			m.User.Log.Info().Msg("Temporary encrypted login capture started")
-			loginHTTP.Transport = recorder
-			defer func() {
-				loginHTTP.Transport = originalTransport
-				recorder.Close()
-				m.User.Log.Info().Msg("Temporary encrypted login capture stopped; verify log chunks locally")
-			}()
-		}
-	}
 	var challenge *instameow.InstagramWebTwoFactorChallenge
 	var err error
 	if m.webCookieConsent != nil {
@@ -550,7 +532,7 @@ func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {
 func instagramCookieConsentStep() *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
 		Type: bridgev2.LoginStepTypeUserInput, StepID: LoginStepIDCookieConsent,
-		Instructions: "Instagram requires a cookie choice before signing in. Continue with cookies needed for login and decline optional cookies, or cancel.",
+		Instructions: "Continue with the cookies Instagram needs to sign you in. Optional cookies will be declined.",
 		UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{{
 			Type: bridgev2.LoginInputFieldTypeSelect, ID: "cookie_consent", Name: "Instagram cookies",
 			Options: []string{instagramDeclineOptionalCookies, instagramCancelCookieConsent},

@@ -24,13 +24,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/go-querystring/query"
-	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -221,19 +218,6 @@ func instagramWebLoginResponseKind(body []byte) string {
 	}
 }
 
-func instagramWebLoginResponseKeys(body []byte) []string {
-	var response map[string]json.RawMessage
-	if json.Unmarshal(body, &response) != nil {
-		return nil
-	}
-	keys := make([]string, 0, len(response))
-	for key := range response {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 func instagramWebLoginResponseClass(result instagramWebLoginResponse) string {
 	detail := strings.ToLower(result.Message + " " + result.ErrorType)
 	switch {
@@ -302,81 +286,24 @@ func normalizeInstagramWebChallengeURL(raw string) (string, bool) {
 	return parsed.String(), true
 }
 
-func instagramWebFormFields(form url.Values) []string {
-	fields := make([]string, 0, len(form))
-	for field := range form {
-		fields = append(fields, field)
-	}
-	sort.Strings(fields)
-	return fields
-}
-
 func (c *Client) logInstagramWebRequestRejection(
 	message string,
 	requestErr error,
 	response *http.Response,
 	body []byte,
-	headers http.Header,
-	form url.Values,
 	responseClass string,
 ) {
 	logEvent := c.log.Warn().
 		Err(requestErr).
 		Int("response_bytes", len(body)).
 		Str("response_kind", instagramWebLoginResponseKind(body)).
-		Bool("csrf_header_present", headers.Get("x-csrftoken") != "").
-		Bool("cookie_header_present", headers.Get("cookie") != "").
-		Bool("instagram_ajax_header_present", headers.Get("x-instagram-ajax") != "").
-		Bool("web_session_header_present", headers.Get("x-web-session-id") != "").
-		Bool("web_device_header_present", headers.Get("x-web-device-id") != "").
-		Str("response_class", responseClass).
-		Strs("response_keys", instagramWebLoginResponseKeys(body)).
-		Strs("form_fields", instagramWebFormFields(form))
+		Str("response_class", responseClass)
 	if response != nil {
 		logEvent = logEvent.
 			Int("status_code", response.StatusCode).
 			Str("content_type", response.Header.Get("content-type"))
 	}
-	if responseClass == "challenge_required" {
-		logEvent.Dict("checkpoint_response", instagramWebCheckpointDiagnostics(body))
-	}
 	logEvent.Msg(message)
-}
-
-func instagramWebCheckpointDiagnostics(body []byte) *zerolog.Event {
-	var fields map[string]json.RawMessage
-	diag := zerolog.Dict()
-	if json.Unmarshal(body, &fields) != nil || fields == nil {
-		return diag.Bool("valid_json", false)
-	}
-	// Unknown provider values must never become log strings or identifiers.
-	for _, key := range []string{"authenticated", "user", "lock", "is_vetted", "is_user_inactivated_error"} {
-		value := "absent"
-		if raw, ok := fields[key]; ok {
-			value = "non_boolean"
-			switch string(bytes.TrimSpace(raw)) {
-			case "true":
-				value = "true"
-			case "false":
-				value = "false"
-			}
-		}
-		diag.Str(key, value)
-	}
-	for _, key := range []string{"message", "error_type"} {
-		var value string
-		kind := "other"
-		if _, ok := fields[key]; !ok {
-			kind = "absent"
-		} else if json.Unmarshal(fields[key], &value) == nil {
-			switch value {
-			case "checkpoint_required", "challenge_required", "checkpoint_challenge_required", "login_required":
-				kind = value
-			}
-		}
-		diag.Str(key, kind)
-	}
-	return diag
 }
 
 func (c *Client) captureInstagramWebTwoFactor(
@@ -409,12 +336,9 @@ func (c *Client) captureInstagramWebTwoFactor(
 	if method == "SMS" || method == "WHATSAPP" {
 		maskedContactPoint = info.MaskedPhoneNumber
 	}
-	responseCSRFToken := c.cookies.Get(cookies.IGCookieCSRFToken)
-	csrfToken := responseCSRFToken
-	retainedCSRFToken := false
+	csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken)
 	if csrfToken == "" {
 		csrfToken = preResponseCSRFToken
-		retainedCSRFToken = csrfToken != ""
 	}
 	if csrfToken == "" {
 		return nil, errInstagramWebTwoFactorMissingCSRF
@@ -430,99 +354,12 @@ func (c *Client) captureInstagramWebTwoFactor(
 	c.log.Debug().
 		Int("status_code", statusCode).
 		Str("challenge_type", method).
-		Bool("csrf_pre_response_present", preResponseCSRFToken != "").
-		Bool("csrf_rotated", responseCSRFToken != "" && responseCSRFToken != preResponseCSRFToken).
-		Bool("csrf_retained", retainedCSRFToken).
 		Msg("Captured Instagram web two-factor challenge")
 	return &InstagramWebTwoFactorChallenge{
 		TOTP:     info.TOTP,
 		SMS:      info.SMS,
 		WhatsApp: info.WhatsApp,
 	}, nil
-}
-
-func (c *Client) updateInstagramWebLoginCookies(response *http.Response) {
-	event := c.log.Debug()
-	if !event.Enabled() {
-		c.cookies.UpdateFromResponse(response)
-		return
-	}
-	// Fixed names and metadata only: login response cookies and URLs are secrets.
-	names := [...]cookies.MetaCookieName{cookies.IGCookieCSRFToken, cookies.IGCookieSessionID,
-		cookies.IGCookieDSUserID, cookies.IGCookieMachineID, cookies.IGCookieDeviceID, cookies.MetaCookieDatr}
-	before := make([]bool, len(names))
-	for i, name := range names {
-		before[i] = c.cookies.Get(name) != ""
-	}
-	now := time.Now()
-	c.cookies.UpdateFromResponse(response)
-	parsed := response.Cookies()
-	states := zerolog.Dict()
-	for i, name := range names {
-		reason, updates, pastExpires := "not_set", 0, false
-		sequence := zerolog.Arr()
-		// IDs identify parsed attribute pairs in this event, not browser jar keys.
-		attributeGroups := make(map[[2]string]int)
-		const maxCookieUpdates = 16
-		for _, cookie := range parsed {
-			if cookie.Name != string(name) {
-				continue
-			}
-			updates++
-			pastExpires = !cookie.Expires.IsZero() && cookie.Expires.Before(now)
-			switch {
-			case cookie.MaxAge < 0:
-				reason = "delete_max_age"
-			case cookie.MaxAge > 0:
-				reason = "set_max_age"
-			case pastExpires:
-				reason = "delete_expires"
-			case !cookie.Expires.IsZero():
-				reason = "set_expires"
-			default:
-				reason = "set_session"
-			}
-			if updates <= maxCookieUpdates {
-				domain := strings.TrimPrefix(strings.ToLower(cookie.Domain), ".")
-				domainClass, pathClass := "other", "other"
-				switch domain {
-				case "":
-					domainClass = "host_only"
-				case "instagram.com":
-					domainClass = "instagram_parent"
-				case "www.instagram.com":
-					domainClass = "instagram_www"
-				case "i.instagram.com", "b.i.instagram.com":
-					domainClass = "instagram_mobile"
-				}
-				switch cookie.Path {
-				case "":
-					pathClass = "default"
-				case "/":
-					pathClass = "root"
-				case "/accounts/login/":
-					pathClass = "accounts_login"
-				case "/auth_platform/":
-					pathClass = "auth_platform"
-				}
-				attributes := [2]string{domain, cookie.Path}
-				if attributeGroups[attributes] == 0 {
-					attributeGroups[attributes] = len(attributeGroups) + 1
-				}
-				sequence.Dict(zerolog.Dict().Str("action", reason).
-					Str("domain_class", domainClass).Str("path_class", pathClass).
-					Int("attribute_group", attributeGroups[attributes]).
-					Bool("empty_value", cookie.Value == "").Bool("partitioned", cookie.Partitioned))
-			}
-		}
-		states.Dict(string(name), zerolog.Dict().Bool("before", before[i]).
-			Bool("after", c.cookies.Get(name) != "").Int("parsed_updates", updates).
-			Str("last_parsed_update", reason).Bool("expires_in_past", pastExpires).
-			Array("parsed_sequence", sequence).Int("omitted_updates", max(0, updates-maxCookieUpdates)))
-	}
-	event.Int("status_code", response.StatusCode).
-		Int("unparsed_cookie_headers", len(response.Header.Values("Set-Cookie"))-len(parsed)).
-		Dict("cookie_updates", states).Msg("Instagram web password response cookie update")
 }
 
 // CreateInstagramWebSession creates a session that can be used by Instagram's
@@ -624,7 +461,7 @@ func (c *Client) CreateInstagramWebSession(
 		types.FORM,
 	)
 	if response != nil {
-		c.updateInstagramWebLoginCookies(response)
+		c.cookies.UpdateFromResponse(response)
 	}
 	var result instagramWebLoginResponse
 	parseErr := json.Unmarshal(body, &result)
@@ -637,8 +474,6 @@ func (c *Client) CreateInstagramWebSession(
 			requestErr,
 			response,
 			body,
-			headers,
-			form,
 			instagramWebLoginResponseClass(result),
 		)
 		if parseErr == nil && instagramWebCredentialsRejected(result) {
@@ -792,8 +627,6 @@ func (c *Client) resendInstagramWebTwoFactorSMS(ctx context.Context, state *inst
 			requestErr,
 			response,
 			body,
-			headers,
-			form,
 			instagramWebLoginResponseClass(result),
 		)
 		return fmt.Errorf("instagram web two-factor SMS request failed: %w", requestErr)
@@ -853,8 +686,6 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 			requestErr,
 			response,
 			body,
-			headers,
-			form,
 			instagramWebLoginResponseClass(result),
 		)
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
@@ -919,8 +750,6 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 			requestErr,
 			response,
 			body,
-			headers,
-			form,
 			"two_factor_code_rejected",
 		)
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
@@ -958,12 +787,6 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 		return errInstagramWebTwoFactorMissingCSRF
 	}
 	c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
-	headers := c.http.BuildHeaders(true, false)
-	c.log.Debug().
-		Bool("csrf_cookie_present", c.cookies.Get(cookies.IGCookieCSRFToken) != "").
-		Bool("cookie_header_present", headers.Get("cookie") != "").
-		Bool("csrf_header_present", headers.Get("x-csrftoken") != "").
-		Msg("Prepared Instagram web two-factor CSRF state")
 	var err error
 	if state.checkpointURL != "" {
 		err = c.completeInstagramWebCheckpoint(ctx, state, verificationCode)

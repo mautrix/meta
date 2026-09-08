@@ -21,7 +21,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	igcapture "go.mau.fi/mautrix-meta/internal/igcapture"
 	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
@@ -48,9 +47,6 @@ func (ic *IGConnector) Init(bridge *bridgev2.Bridge) {
 }
 
 func (ic *IGConnector) Start(ctx context.Context) error {
-	// TEMPORARY: export the previous encrypted diagnostic file without a login.
-	// Remove with internal/igcapture before the fix PR; see TEMPORARY_LOGIN_CAPTURE.md.
-	igcapture.ExportExisting(ic.Bridge.Log)
 	ic.ResetHTTPTransport()
 	err := ic.DB.Upgrade(ctx)
 	if err != nil {

@@ -236,7 +236,7 @@ func (c *Client) instagramCAAWebMutation(ctx context.Context, operation, docID s
 		if response.Request != nil && response.Request.URL != nil && response.Request.URL.String() != "https://www.instagram.com/api/graphql" {
 			return nil, ErrInstagramWebCheckpointRequestFailed
 		}
-		c.updateInstagramWebLoginCookies(response)
+		c.cookies.UpdateFromResponse(response)
 	}
 	if errors.Is(err, httpclient.ErrRateLimited) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return nil, err
