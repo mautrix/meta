@@ -289,8 +289,6 @@ func (c *Client) completeInstagramWebCheckpoint(
 		return ErrInstagramWebTwoFactorCodeRejected
 	} else if step.ChallengeType == "ReviewContactPointChangeForm" && len(step.Errors) == 0 {
 		return c.confirmInstagramWebCheckpointContact(ctx, state, step.Navigation.Forward)
-	} else if len(step.Errors) > 0 {
-		return ErrInstagramWebCheckpointUnsupported
 	}
 	return ErrInstagramWebCheckpointUnsupported
 }

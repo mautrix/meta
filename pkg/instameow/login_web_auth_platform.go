@@ -11,18 +11,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/google/go-querystring/query"
 	"github.com/tidwall/gjson"
-	"golang.org/x/net/html"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -383,49 +379,17 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	if err != nil {
 		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
 	}
-	rq.Av, rq.User = "0", "0"
-	rq.FbAPICallerClass, rq.FbAPIReqFriendlyName, rq.DocID = "RelayModern", op.name, op.docID
-	rq.ServerTimestamps, rq.Variables, rq.Jssesw = "true", string(encoded), ""
+	rq.FbAPIReqFriendlyName, rq.DocID, rq.Variables = op.name, op.docID, string(encoded)
 	config := c.configs.BrowserConfigTable
-	rq.Rev = strconv.FormatInt(config.SiteData.ClientRevision, 10)
-	rq.FbDtsg = cmp.Or(config.DTSGInitialData.Token, config.DTSGInitData.Token)
-	// Relay signs DTSG, or LSD for logged-out requests; the legacy login signs CSRF instead.
 	sprinkle := config.SprinkleConfig
 	csrfToken := cmp.Or(c.cookies.Get(cookies.IGCookieCSRFToken), config.InstagramSecurityConfig.CSRFToken)
 	if sprinkle.ParamName != "jazoest" || (!sprinkle.ShouldRandomize && sprinkle.Version <= 0) || rq.Lsd == "" || csrfToken == "" {
 		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
 	}
-	sum := 0
-	for _, character := range utf16.Encode([]rune(cmp.Or(rq.FbDtsg, rq.Lsd))) {
-		sum += int(character)
-	}
-	rq.Jazoest = ""
-	form, _ := query.Values(rq)
-	token := strconv.Itoa(sum)
-	if !sprinkle.ShouldRandomize {
-		token = strconv.Itoa(sprinkle.Version) + token
-	}
-	form.Set(sprinkle.ParamName, token)
-	headers := c.http.BuildHeaders(true, false)
-	headers.Set("x-csrftoken", csrfToken)
-	headers.Set("origin", "https://www.instagram.com")
-	headers.Set("referer", s.url.String())
-	headers.Set("x-fb-friendly-name", op.name)
-	headers.Set("sec-fetch-dest", "empty")
-	headers.Set("sec-fetch-mode", "cors")
-	headers.Set("sec-fetch-site", "same-origin")
 	c.log.Debug().Str("auth_platform_operation", op.name).Msg("Submitting Instagram verification request")
-	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, "https://www.instagram.com/api/graphql", http.MethodPost, headers, []byte(form.Encode()), types.FORM)
-	if response != nil {
-		if response.Request != nil && response.Request.URL != nil && response.Request.URL.String() != "https://www.instagram.com/api/graphql" {
-			return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
-		}
-		c.cookies.UpdateFromResponse(response)
-	}
-	if errors.Is(err, httpclient.ErrRateLimited) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	body, err := c.instagramWebGraphQLRequest(ctx, rq, s.url.String(), csrfToken)
+	if err != nil {
 		return gjson.Result{}, err
-	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
-		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
 	}
 	body = bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix)
 	if !gjson.ValidBytes(body) {
@@ -487,31 +451,18 @@ func (c *Client) refreshInstagramAuthPlatformConfig(body []byte) error {
 			}
 		}
 	}
-	tokens := html.NewTokenizer(bytes.NewReader(body))
-	for {
-		switch tokens.Next() {
-		case html.ErrorToken:
-			if tokens.Err() != io.EOF || invalid || config.LSD.Token == "" || !found["SiteData"] || config.SiteData.ClientRevision <= 0 ||
-				!found["SprinkleConfig"] || config.SprinkleConfig.ParamName != "jazoest" || (!config.SprinkleConfig.ShouldRandomize && config.SprinkleConfig.Version <= 0) {
-				return ErrInstagramWebCheckpointUnsupported
-			}
-			*c.configs.BrowserConfigTable = config
-			c.configs.LSDToken, c.configs.CometReq = config.LSD.Token, strconv.FormatInt(config.SiteData.CometEnv, 10)
-			return nil
-		case html.StartTagToken:
-			tag := tokens.Token()
-			if tag.Data != "script" {
-				continue
-			}
-			for _, attr := range tag.Attr {
-				if attr.Key == "type" && attr.Val == "application/json" && tokens.Next() == html.TextToken {
-					var value any
-					if json.Unmarshal(tokens.Text(), &value) == nil {
-						visit(value, 0)
-					}
-					break
-				}
-			}
+	err := visitInstagramJSONScripts(body, func(data []byte) error {
+		var value any
+		if json.Unmarshal(data, &value) == nil {
+			visit(value, 0)
 		}
+		return nil
+	})
+	if err != nil || invalid || config.LSD.Token == "" || !found["SiteData"] || config.SiteData.ClientRevision <= 0 ||
+		!found["SprinkleConfig"] || config.SprinkleConfig.ParamName != "jazoest" || (!config.SprinkleConfig.ShouldRandomize && config.SprinkleConfig.Version <= 0) {
+		return ErrInstagramWebCheckpointUnsupported
 	}
+	*c.configs.BrowserConfigTable = config
+	c.configs.LSDToken, c.configs.CometReq = config.LSD.Token, strconv.FormatInt(config.SiteData.CometEnv, 10)
+	return nil
 }

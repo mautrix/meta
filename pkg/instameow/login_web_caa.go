@@ -6,28 +6,22 @@ package instameow
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf16"
 
-	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"go.mau.fi/util/random"
-	"golang.org/x/net/html"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
-	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 const instagramCAAWebLoginDocID = "27972648395719857"
@@ -105,37 +99,23 @@ func parseInstagramCAALoginPage(body []byte) (*instagramCAALoginPage, error) {
 			value.ForEach(func(_, child gjson.Result) bool { visit(child, depth+1); return !invalid })
 		}
 	}
-	tokens := html.NewTokenizer(bytes.NewReader(body))
-	for {
-		switch tokens.Next() {
-		case html.ErrorToken:
-			if tokens.Err() != io.EOF || invalid {
-				return nil, ErrInstagramWebCheckpointUnsupported
-			}
-			if !selected && !indicated {
-				return nil, nil
-			}
-			if !selected || !page.form.IsObject() || !page.encryption.IsObject() || page.props.Get("appId").Int() != 1217981644879628 {
-				return nil, ErrInstagramWebCheckpointUnsupported
-			}
-			return page, nil
-		case html.StartTagToken:
-			tag := tokens.Token()
-			if tag.Data != "script" {
-				continue
-			}
-			for _, attr := range tag.Attr {
-				if attr.Key == "type" && attr.Val == "application/json" && tokens.Next() == html.TextToken {
-					data := tokens.Text()
-					if !gjson.ValidBytes(data) {
-						return nil, ErrInstagramWebCheckpointUnsupported
-					}
-					visit(gjson.ParseBytes(data), 0)
-					break
-				}
-			}
+	err := visitInstagramJSONScripts(body, func(data []byte) error {
+		if !gjson.ValidBytes(data) {
+			return ErrInstagramWebCheckpointUnsupported
 		}
+		visit(gjson.ParseBytes(data), 0)
+		return nil
+	})
+	if err != nil || invalid {
+		return nil, ErrInstagramWebCheckpointUnsupported
 	}
+	if !selected && !indicated {
+		return nil, nil
+	}
+	if !selected || !page.form.IsObject() || !page.encryption.IsObject() || page.props.Get("appId").Int() != 1217981644879628 {
+		return nil, ErrInstagramWebCheckpointUnsupported
+	}
+	return page, nil
 }
 
 func (c *Client) instagramCAAWebLoginVariables(page *instagramCAALoginPage, identifier, password string) ([]byte, error) {
@@ -198,52 +178,17 @@ func (c *Client) createInstagramCAAWebSession(ctx context.Context, page *instagr
 func (c *Client) instagramCAAWebMutation(ctx context.Context, operation, docID string, variables []byte) ([]byte, error) {
 	config := c.configs.BrowserConfigTable
 	rq := c.http.NewHTTPQuery()
-	rq.Av, rq.User, rq.Jssesw = "0", "0", ""
-	rq.FbAPICallerClass, rq.FbAPIReqFriendlyName, rq.DocID = "RelayModern", operation, docID
-	rq.ServerTimestamps, rq.Variables, rq.Crn = "true", string(variables), instagramCAAWebLoginRoute
-	rq.CometReq, rq.Rev = strconv.FormatInt(config.SiteData.CometEnv, 10), strconv.FormatInt(config.SiteData.ClientRevision, 10)
-	rq.FbDtsg = cmp.Or(config.DTSGInitialData.Token, config.DTSGInitData.Token)
+	rq.FbAPIReqFriendlyName, rq.DocID = operation, docID
+	rq.Variables, rq.Crn = string(variables), instagramCAAWebLoginRoute
+	rq.CometReq = strconv.FormatInt(config.SiteData.CometEnv, 10)
 	csrf := c.cookies.Get(cookies.IGCookieCSRFToken)
 	sprinkle := config.SprinkleConfig
 	if rq.Lsd == "" || csrf == "" || sprinkle.ParamName != "jazoest" || (!sprinkle.ShouldRandomize && sprinkle.Version <= 0) {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
-	sum := 0
-	for _, character := range utf16.Encode([]rune(cmp.Or(rq.FbDtsg, rq.Lsd))) {
-		sum += int(character)
-	}
-	rq.Jazoest = strconv.Itoa(sum)
-	if !sprinkle.ShouldRandomize {
-		rq.Jazoest = strconv.Itoa(sprinkle.Version) + rq.Jazoest
-	}
-	form, err := query.Values(rq)
-	if err != nil {
-		return nil, ErrInstagramWebCheckpointRequestFailed
-	}
-	headers := c.http.BuildHeaders(true, false)
-	headers.Set("origin", "https://www.instagram.com")
-	headers.Set("referer", c.GetEndpoint("login"))
-	headers.Set("x-csrftoken", csrf)
-	headers.Set("x-fb-lsd", rq.Lsd)
-	headers.Set("x-fb-friendly-name", operation)
-	headers.Set("sec-fetch-dest", "empty")
-	headers.Set("sec-fetch-mode", "cors")
-	headers.Set("sec-fetch-site", "same-origin")
 	// A rejected or lost response is terminal for this submission, never a reason
 	// to try AJAX or the mobile password endpoint with the same credentials.
-	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, "https://www.instagram.com/api/graphql", http.MethodPost, headers, []byte(form.Encode()), types.FORM)
-	if response != nil {
-		if response.Request != nil && response.Request.URL != nil && response.Request.URL.String() != "https://www.instagram.com/api/graphql" {
-			return nil, ErrInstagramWebCheckpointRequestFailed
-		}
-		c.cookies.UpdateFromResponse(response)
-	}
-	if errors.Is(err, httpclient.ErrRateLimited) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return nil, err
-	} else if response == nil || err != nil || response.StatusCode != http.StatusOK {
-		return nil, ErrInstagramWebCheckpointRequestFailed
-	}
-	return body, nil
+	return c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login"), csrf)
 }
 
 func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []byte, identifier, csrf string) (*InstagramWebTwoFactorChallenge, error) {

@@ -5,20 +5,17 @@
 package instameow
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
-	"golang.org/x/net/html"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
@@ -91,31 +88,18 @@ func (c *Client) prepareInstagramAuthPlatformCaptcha(body []byte) error {
 			value.ForEach(func(_, child gjson.Result) bool { visit(child, depth+1); return !invalid })
 		}
 	}
-	tokens := html.NewTokenizer(bytes.NewReader(body))
-	for {
-		switch tokens.Next() {
-		case html.ErrorToken:
-			if tokens.Err() != io.EOF || invalid {
-				return ErrInstagramWebCheckpointUnsupported
-			}
-			state.iframeURL = "https://www.fbsbx.com/captcha/recaptcha/iframe/?" + params.Encode()
-			c.webAuthPlatform.captcha = state
-			return nil
-		case html.StartTagToken:
-			tag := tokens.Token()
-			if tag.Data == "script" {
-				for _, attr := range tag.Attr {
-					if attr.Key == "type" && attr.Val == "application/json" && tokens.Next() == html.TextToken {
-						text := tokens.Text()
-						if gjson.ValidBytes(text) {
-							visit(gjson.ParseBytes(text), 0)
-						}
-						break
-					}
-				}
-			}
+	err := visitInstagramJSONScripts(body, func(data []byte) error {
+		if gjson.ValidBytes(data) {
+			visit(gjson.ParseBytes(data), 0)
 		}
+		return nil
+	})
+	if err != nil || invalid {
+		return ErrInstagramWebCheckpointUnsupported
 	}
+	state.iframeURL = "https://www.fbsbx.com/captcha/recaptcha/iframe/?" + params.Encode()
+	c.webAuthPlatform.captcha = state
+	return nil
 }
 
 func (c *Client) HasInstagramWebCaptcha() bool {

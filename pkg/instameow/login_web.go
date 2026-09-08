@@ -18,16 +18,20 @@ package instameow
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/google/go-querystring/query"
+	"golang.org/x/net/html"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -840,4 +844,83 @@ func instagramWebUserIDFromSessionID(sessionID string) string {
 		return ""
 	}
 	return userID
+}
+
+// Inspect inert scripts without executing JavaScript or logging their contents.
+// Callers decide whether malformed JSON is fatal for their particular page.
+func visitInstagramJSONScripts(body []byte, visit func([]byte) error) error {
+	tokens := html.NewTokenizer(bytes.NewReader(body))
+	for {
+		switch tokens.Next() {
+		case html.ErrorToken:
+			if tokens.Err() != io.EOF {
+				return ErrInstagramWebCheckpointUnsupported
+			}
+			return nil
+		case html.StartTagToken:
+			tag := tokens.Token()
+			if tag.Data != "script" {
+				continue
+			}
+			for _, attr := range tag.Attr {
+				if attr.Key == "type" && attr.Val == "application/json" && tokens.Next() == html.TextToken {
+					if err := visit(tokens.Text()); err != nil {
+						return err
+					}
+					break
+				}
+			}
+		}
+	}
+}
+
+// Relay signs DTSG (or LSD when logged out), using JavaScript's UTF-16 units.
+// Legacy AJAX signs CSRF instead and has its own configuration validation.
+func instagramRelaySprinkleToken(token string, config types.SprinkleConfig) string {
+	sum := 0
+	for _, character := range utf16.Encode([]rune(token)) {
+		sum += int(character)
+	}
+	result := strconv.Itoa(sum)
+	if !config.ShouldRandomize {
+		result = strconv.Itoa(config.Version) + result
+	}
+	return result
+}
+
+func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.HTTPQuery, referrer, csrf string) ([]byte, error) {
+	config := c.configs.BrowserConfigTable
+	rq.Av, rq.User, rq.Jssesw = "0", "0", ""
+	rq.FbAPICallerClass, rq.ServerTimestamps = "RelayModern", "true"
+	rq.Rev = strconv.FormatInt(config.SiteData.ClientRevision, 10)
+	rq.FbDtsg = cmp.Or(config.DTSGInitialData.Token, config.DTSGInitData.Token)
+	rq.Jazoest = instagramRelaySprinkleToken(cmp.Or(rq.FbDtsg, rq.Lsd), config.SprinkleConfig)
+	form, err := query.Values(rq)
+	if err != nil {
+		return nil, ErrInstagramWebCheckpointRequestFailed
+	}
+	headers := c.http.BuildHeaders(true, false)
+	headers.Set("origin", "https://www.instagram.com")
+	headers.Set("referer", referrer)
+	headers.Set("x-csrftoken", csrf)
+	headers.Set("x-fb-lsd", rq.Lsd)
+	headers.Set("x-fb-friendly-name", rq.FbAPIReqFriendlyName)
+	headers.Set("sec-fetch-dest", "empty")
+	headers.Set("sec-fetch-mode", "cors")
+	headers.Set("sec-fetch-site", "same-origin")
+	// A lost response must not replay a password, verification code or CAPTCHA.
+	const endpoint = "https://www.instagram.com/api/graphql"
+	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
+	if response != nil {
+		if response.Request != nil && response.Request.URL != nil && response.Request.URL.String() != endpoint {
+			return nil, ErrInstagramWebCheckpointRequestFailed
+		}
+		c.cookies.UpdateFromResponse(response)
+	}
+	if errors.Is(err, httpclient.ErrRateLimited) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
+		return nil, ErrInstagramWebCheckpointRequestFailed
+	}
+	return body, nil
 }
