@@ -156,10 +156,7 @@ func (m *ModuleParser) Load(ctx context.Context, page string) error {
 	authenticated := m.client.IsAuthenticated()
 	// on certain occasions, the server does not return the lightspeed data or version
 	// when this is the case, the server "preloads" the js files in the link tags, so we need to loop through them until we can find the "LSVersion" module and extract the exported version string
-	if m.configs.VersionID == 0 && authenticated && m.client.GetPlatform().IsInstagram() {
-		m.log.Warn().Msg("Version ID not found in index page, using hardcoded value")
-		m.configs.VersionID = 27246847665007062
-	} else if m.configs.VersionID == 0 && authenticated {
+	if m.configs.VersionID == 0 && authenticated && m.client.GetPlatform().IsMessenger() {
 		m.log.Warn().Msg("Version ID not found in index page")
 		var doneCrawling bool
 		linkTags := m.findLinkTags(doc)
