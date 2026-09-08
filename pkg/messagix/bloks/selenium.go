@@ -1492,7 +1492,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		actionRPCCountBefore := b.ActionRPCCount
 		err = continueButton.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
-			log.Debug().Msg("Got error from OTP code submission")
+			log.Debug().Err(err).Msg("Got error from OTP code submission")
 			if strings.Contains(err.Error(), "Please re-enter") {
 				// retry
 			} else if strings.Contains(err.Error(), "An unexpected error occurred") {
@@ -1754,7 +1754,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
-		log.Debug().Msg("Got recaptcha token from webview")
+		log.Debug().Str("recaptcha_token", token).Msg("Got recaptcha token from webview")
 		callback := webview.GetScript("callback")
 		if callback == nil {
 			return nil, fmt.Errorf("reCAPTCHA webview has no callback")
@@ -1816,7 +1816,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
-		log.Info().Msg("Picked supported MFA method from MFA selection page")
+		log.Info().Str("mfatype", chosenMethod).Msg("Picked MFA method from MFA selection page")
 
 		if foundMethods[chosenMethod] == nil {
 			return nil, b.profile.invalidMFAMethodError(chosenMethod)
@@ -2337,12 +2337,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	if b.State == prevState {
 		if step != nil {
 			fieldIDs := []string{}
-			selectOptionCount := 0
+			fieldOptions := []string{}
 			if step.UserInputParams != nil {
 				for _, field := range step.UserInputParams.Fields {
 					fieldIDs = append(fieldIDs, field.ID)
 					if field.Type == bridgev2.LoginInputFieldTypeSelect {
-						selectOptionCount += len(field.Options)
+						fieldOptions = append(fieldOptions, field.Options...)
 					}
 				}
 			}
@@ -2355,7 +2355,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Str("cur_state", string(b.State)).
 				Str("step_id", step.StepID).
 				Strs("field_ids", fieldIDs).
-				Int("select_option_count", selectOptionCount).
+				Strs("field_options", fieldOptions).
 				Msg("Requested user input")
 		} else if b.LastError != "" {
 			log.Debug().

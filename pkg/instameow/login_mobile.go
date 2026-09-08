@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mau.fi/util/random"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -122,12 +123,8 @@ func initializeUSDID(device *types.InstagramLoginDevice) (*ecdsa.PrivateKey, err
 	if err != nil {
 		return nil, fmt.Errorf("marshal Instagram USDID signing key: %w", err)
 	}
-	kid := make([]byte, 32)
-	if _, err = rand.Read(kid); err != nil {
-		return nil, fmt.Errorf("generate Instagram USDID key ID: %w", err)
-	}
 	device.USDID = uuid.NewString()
-	device.USDIDKeyID = base64.RawURLEncoding.EncodeToString(kid)
+	device.USDIDKeyID = base64.RawURLEncoding.EncodeToString(random.Bytes(32))
 	device.USDIDPrivateKey = base64.StdEncoding.EncodeToString(der)
 	device.USDIDRegistered = false
 	return key, nil

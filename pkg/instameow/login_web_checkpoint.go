@@ -219,10 +219,8 @@ func (c *Client) renderInstagramWebCheckpoint(
 }
 
 func waitInstagramWebCheckpoint(ctx context.Context) error {
-	timer := time.NewTimer(instagramWebCheckpointChoiceDelay)
-	defer timer.Stop()
 	select {
-	case <-timer.C:
+	case <-time.After(instagramWebCheckpointChoiceDelay):
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

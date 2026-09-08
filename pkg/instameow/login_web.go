@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -222,6 +223,19 @@ func instagramWebLoginResponseKind(body []byte) string {
 	}
 }
 
+func instagramWebLoginResponseKeys(body []byte) []string {
+	var response map[string]json.RawMessage
+	if json.Unmarshal(body, &response) != nil {
+		return nil
+	}
+	keys := make([]string, 0, len(response))
+	for key := range response {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func instagramWebLoginResponseClass(result instagramWebLoginResponse) string {
 	detail := strings.ToLower(result.Message + " " + result.ErrorType)
 	switch {
@@ -290,18 +304,36 @@ func normalizeInstagramWebChallengeURL(raw string) (string, bool) {
 	return parsed.String(), true
 }
 
+func instagramWebFormFields(form url.Values) []string {
+	fields := make([]string, 0, len(form))
+	for field := range form {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	return fields
+}
+
 func (c *Client) logInstagramWebRequestRejection(
 	message string,
 	requestErr error,
 	response *http.Response,
 	body []byte,
+	headers http.Header,
+	form url.Values,
 	responseClass string,
 ) {
 	logEvent := c.log.Warn().
 		Err(requestErr).
 		Int("response_bytes", len(body)).
 		Str("response_kind", instagramWebLoginResponseKind(body)).
-		Str("response_class", responseClass)
+		Bool("csrf_header_present", headers.Get("x-csrftoken") != "").
+		Bool("cookie_header_present", headers.Get("cookie") != "").
+		Bool("instagram_ajax_header_present", headers.Get("x-instagram-ajax") != "").
+		Bool("web_session_header_present", headers.Get("x-web-session-id") != "").
+		Bool("web_device_header_present", headers.Get("x-web-device-id") != "").
+		Str("response_class", responseClass).
+		Strs("response_keys", instagramWebLoginResponseKeys(body)).
+		Strs("form_fields", instagramWebFormFields(form))
 	if response != nil {
 		logEvent = logEvent.
 			Int("status_code", response.StatusCode).
@@ -340,9 +372,12 @@ func (c *Client) captureInstagramWebTwoFactor(
 	if method == "SMS" || method == "WHATSAPP" {
 		maskedContactPoint = info.MaskedPhoneNumber
 	}
-	csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken)
+	responseCSRFToken := c.cookies.Get(cookies.IGCookieCSRFToken)
+	csrfToken := responseCSRFToken
+	retainedCSRFToken := false
 	if csrfToken == "" {
 		csrfToken = preResponseCSRFToken
+		retainedCSRFToken = csrfToken != ""
 	}
 	if csrfToken == "" {
 		return nil, errInstagramWebTwoFactorMissingCSRF
@@ -358,6 +393,9 @@ func (c *Client) captureInstagramWebTwoFactor(
 	c.log.Debug().
 		Int("status_code", statusCode).
 		Str("challenge_type", method).
+		Bool("csrf_pre_response_present", preResponseCSRFToken != "").
+		Bool("csrf_rotated", responseCSRFToken != "" && responseCSRFToken != preResponseCSRFToken).
+		Bool("csrf_retained", retainedCSRFToken).
 		Msg("Captured Instagram web two-factor challenge")
 	return &InstagramWebTwoFactorChallenge{
 		TOTP:     info.TOTP,
@@ -478,6 +516,8 @@ func (c *Client) CreateInstagramWebSession(
 			requestErr,
 			response,
 			body,
+			headers,
+			form,
 			instagramWebLoginResponseClass(result),
 		)
 		if parseErr == nil && instagramWebCredentialsRejected(result) {
@@ -631,6 +671,8 @@ func (c *Client) resendInstagramWebTwoFactorSMS(ctx context.Context, state *inst
 			requestErr,
 			response,
 			body,
+			headers,
+			form,
 			instagramWebLoginResponseClass(result),
 		)
 		return fmt.Errorf("instagram web two-factor SMS request failed: %w", requestErr)
@@ -690,6 +732,8 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 			requestErr,
 			response,
 			body,
+			headers,
+			form,
 			instagramWebLoginResponseClass(result),
 		)
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
@@ -754,6 +798,8 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 			requestErr,
 			response,
 			body,
+			headers,
+			form,
 			"two_factor_code_rejected",
 		)
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
@@ -791,6 +837,12 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 		return errInstagramWebTwoFactorMissingCSRF
 	}
 	c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
+	headers := c.http.BuildHeaders(true, false)
+	c.log.Debug().
+		Bool("csrf_cookie_present", c.cookies.Get(cookies.IGCookieCSRFToken) != "").
+		Bool("cookie_header_present", headers.Get("cookie") != "").
+		Bool("csrf_header_present", headers.Get("x-csrftoken") != "").
+		Msg("Prepared Instagram web two-factor CSRF state")
 	var err error
 	if state.checkpointURL != "" {
 		err = c.completeInstagramWebCheckpoint(ctx, state, verificationCode)
@@ -909,7 +961,7 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
 	// A lost response must not replay a password, verification code or CAPTCHA.
-	const endpoint = "https://www.instagram.com/api/graphql"
+	endpoint := c.GetEndpoint("graphql")
 	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
 	if response != nil {
 		if response.Request != nil && response.Request.URL != nil && response.Request.URL.String() != endpoint {
