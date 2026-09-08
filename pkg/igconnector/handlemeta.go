@@ -156,7 +156,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	case *slidetypes.ResnapshotRequired:
 		ic.cancelPeriodicReconnect()
 		_ = ic.doWaitMailboxProcessed(ctx)
-		go ic.FullReconnect(true)
+		go ic.FullReconnect(true, false)
 		return nil
 	case *slidetypes.Delta:
 		if err := ic.doWaitMailboxProcessed(ctx); err != nil {

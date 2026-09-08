@@ -422,13 +422,13 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		select {
 		case <-time.After(interval):
 			ic.UserLogin.Log.Info().Msg("Doing periodic reconnect")
-			ic.FullReconnect(false)
+			ic.FullReconnect(false, true)
 		case <-ctx.Done():
 		}
 	}()
 }
 
-func (ic *IGClient) FullReconnect(seqIDOnly bool) {
+func (ic *IGClient) FullReconnect(seqIDOnly, reconnectionStateOnly bool) {
 	if ic.LoginMeta.Cookies == nil {
 		return
 	}
@@ -437,6 +437,8 @@ func (ic *IGClient) FullReconnect(seqIDOnly bool) {
 	var err error
 	if seqIDOnly {
 		err = ic.Main.DB.DeleteIGSeqID(ctx, ic.UserLogin.ID)
+	} else if reconnectionStateOnly {
+		err = ic.Main.DB.DeleteReconnectionStateOnly(ctx, ic.UserLogin.ID)
 	} else {
 		err = ic.Main.DB.DeleteReconnectionState(ctx, ic.UserLogin.ID)
 	}

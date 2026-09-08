@@ -203,13 +203,18 @@ func (db *MetaDB) PutReconnectionState(ctx context.Context, loginID networkid.Us
 }
 
 func (db *MetaDB) DeleteReconnectionState(ctx context.Context, loginID networkid.UserLoginID) error {
-	_, err := db.Exec(ctx, `
-		DELETE FROM meta_reconnection_state WHERE bridge_id = $1 AND login_id = $2
-	`, db.BridgeID, loginID)
+	err := db.DeleteReconnectionStateOnly(ctx, loginID)
 	if err != nil {
 		return err
 	}
 	return db.DeleteIGSeqID(ctx, loginID)
+}
+
+func (db *MetaDB) DeleteReconnectionStateOnly(ctx context.Context, loginID networkid.UserLoginID) error {
+	_, err := db.Exec(ctx, `
+		DELETE FROM meta_reconnection_state WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID)
+	return err
 }
 
 func (db *MetaDB) DeleteIGSeqID(ctx context.Context, loginID networkid.UserLoginID) error {
