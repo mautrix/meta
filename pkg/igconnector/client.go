@@ -412,13 +412,13 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		return
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	if oldCancel := ic.stopPeriodicReconnect.Swap(&cancel); oldCancel != nil {
 		(*oldCancel)()
 	}
 	interval := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second
 	ic.UserLogin.Log.Info().Stringer("interval", interval).Msg("Periodic reconnect scheduled")
 	go func() {
+		defer cancel()
 		select {
 		case <-time.After(interval):
 			ic.UserLogin.Log.Info().Msg("Doing periodic reconnect")
