@@ -69,7 +69,8 @@ var upgrades embed.FS
 func (db *MetaDB) GetInstagramLoginDevice(ctx context.Context, userID id.UserID) (*types.InstagramLoginDevice, error) {
 	device := &types.InstagramLoginDevice{}
 	err := db.QueryRow(ctx, `
-		SELECT phone_id, device_id, advertising_id, android_device_id, machine_id
+		SELECT phone_id, device_id, advertising_id, android_device_id, machine_id,
+		       usdid, usdid_key_id, usdid_private_key, usdid_registered
 		FROM meta_instagram_login_device
 		WHERE bridge_id = $1 AND user_mxid = $2
 	`, db.BridgeID, userID).Scan(
@@ -78,6 +79,10 @@ func (db *MetaDB) GetInstagramLoginDevice(ctx context.Context, userID id.UserID)
 		&device.AdvertisingID,
 		&device.AndroidDeviceID,
 		&device.MachineID,
+		&device.USDID,
+		&device.USDIDKeyID,
+		&device.USDIDPrivateKey,
+		&device.USDIDRegistered,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -91,15 +96,21 @@ func (db *MetaDB) GetInstagramLoginDevice(ctx context.Context, userID id.UserID)
 func (db *MetaDB) PutInstagramLoginDevice(ctx context.Context, userID id.UserID, device types.InstagramLoginDevice) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO meta_instagram_login_device (
-			bridge_id, user_mxid, phone_id, device_id, advertising_id, android_device_id, machine_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			bridge_id, user_mxid, phone_id, device_id, advertising_id, android_device_id, machine_id,
+			usdid, usdid_key_id, usdid_private_key, usdid_registered
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (bridge_id, user_mxid) DO UPDATE SET
 			phone_id = excluded.phone_id,
 			device_id = excluded.device_id,
 			advertising_id = excluded.advertising_id,
 			android_device_id = excluded.android_device_id,
-			machine_id = excluded.machine_id
-	`, db.BridgeID, userID, device.PhoneID, device.DeviceID, device.AdvertisingID, device.AndroidDeviceID, device.MachineID)
+			machine_id = excluded.machine_id,
+			usdid = excluded.usdid,
+			usdid_key_id = excluded.usdid_key_id,
+			usdid_private_key = excluded.usdid_private_key,
+			usdid_registered = excluded.usdid_registered
+	`, db.BridgeID, userID, device.PhoneID, device.DeviceID, device.AdvertisingID, device.AndroidDeviceID,
+		device.MachineID, device.USDID, device.USDIDKeyID, device.USDIDPrivateKey, device.USDIDRegistered)
 	return err
 }
 

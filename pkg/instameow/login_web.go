@@ -18,17 +18,21 @@ package instameow
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/google/go-querystring/query"
+	"golang.org/x/net/html"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -41,14 +45,18 @@ const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
+var ErrInstagramWebCheckpointRequestFailed = errors.New("instagram web checkpoint request failed")
+var ErrInstagramWebCheckpointUnsupported = errors.New("instagram web checkpoint is not supported")
 var errInstagramWebTwoFactorSMSRejected = fmt.Errorf("%w: SMS code validation failed", ErrInstagramWebTwoFactorCodeRejected)
 var errInstagramWebTwoFactorSMSNotSent = errors.New("instagram could not send a replacement SMS code")
 var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
 
 type InstagramWebTwoFactorChallenge struct {
-	TOTP     bool
-	SMS      bool
-	WhatsApp bool
+	AuthPlatform bool
+	TOTP         bool
+	SMS          bool
+	WhatsApp     bool
+	Email        bool
 }
 
 type instagramWebTwoFactorInfo struct {
@@ -69,6 +77,7 @@ type instagramWebTwoFactorState struct {
 	method             string
 	csrfToken          string
 	smsReplacementSent bool
+	checkpointURL      string
 }
 
 type instagramWebLoginResponse struct {
@@ -253,8 +262,46 @@ func instagramWebLoginResponseClass(result instagramWebLoginResponse) string {
 }
 
 func instagramWebCredentialsRejected(result instagramWebLoginResponse) bool {
-	return strings.EqualFold(strings.TrimSpace(result.ErrorType), "bad_password") &&
-		instagramWebLoginResponseClass(result) == "credentials_rejected"
+	return instagramWebLoginResponseClass(result) == "credentials_rejected"
+}
+
+func instagramWebChallengeRequired(result instagramWebLoginResponse) bool {
+	return strings.TrimSpace(result.CheckpointURL) != "" || instagramWebChallengeURL(result.RedirectURL) ||
+		instagramWebChallengeReason(result.ErrorType) || instagramWebChallengeReason(result.Message)
+}
+
+func instagramWebChallengeReason(reason string) bool {
+	reason = strings.TrimSpace(reason)
+	return strings.EqualFold(reason, "checkpoint_required") || strings.EqualFold(reason, "challenge_required")
+}
+
+func instagramWebChallengeURL(raw string) bool {
+	_, ok := normalizeInstagramWebChallengeURL(raw)
+	return ok || instagramWebCheckpointURLKind(raw) == "auth_platform"
+}
+
+func normalizeInstagramWebChallengeURL(raw string) (string, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", false
+	}
+	if parsed.Scheme == "" {
+		base, _ := url.Parse("https://www.instagram.com")
+		parsed = base.ResolveReference(parsed)
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	port := parsed.Port()
+	trusted := parsed.User == nil && strings.EqualFold(parsed.Scheme, "https") && (port == "" || port == "443") &&
+		(host == "instagram.com" || strings.HasSuffix(host, ".instagram.com"))
+	if !trusted {
+		return "", false
+	}
+	path := "/" + strings.Trim(parsed.Path, "/") + "/"
+	if !strings.Contains(path, "/challenge/") && !strings.Contains(path, "/checkpoint/") {
+		return "", false
+	}
+	parsed.Fragment = ""
+	return parsed.String(), true
 }
 
 func instagramWebFormFields(form url.Values) []string {
@@ -372,6 +419,8 @@ func (c *Client) CreateInstagramWebSession(
 	}
 	c.webTwoFactor = nil
 	c.webAccountManager = nil
+	c.webAuthPlatform = nil
+	c.webCookieConsent = nil
 
 	// Keep only stable device cookies between attempts. Loading the login page
 	// below refreshes the remaining unauthenticated web-session state.
@@ -385,19 +434,37 @@ func (c *Client) CreateInstagramWebSession(
 	c.http.SetConfigs(c.configs)
 	moduleLoader := httpclient.NewModuleParser(c, c.http, c.configs)
 	moduleLoader.LS = nil
+	var caaPage *instagramCAALoginPage
+	moduleLoader.InspectPage = func(body []byte) (err error) {
+		caaPage, err = parseInstagramCAALoginPage(body)
+		return
+	}
 	baseURL := c.GetEndpoint("base_url")
 	loginPageURL := c.GetEndpoint("login")
 	if err := moduleLoader.Load(ctx, loginPageURL); err != nil {
 		return nil, fmt.Errorf("failed to load Instagram web login page: %w", err)
 	}
 	c.configs.Setup(false)
+	if caaPage != nil {
+		c.log.Debug().Str("login_protocol", "caa_web").Msg("Selected Instagram password login protocol")
+		if err := c.prepareInstagramWebCookieConsent(caaPage); err != nil {
+			return nil, err
+		}
+		return c.createInstagramCAAWebSession(ctx, caaPage, identifier, password)
+	}
+	c.log.Debug().Str("login_protocol", "polaris_ajax").Msg("Selected Instagram password login protocol")
 
 	encryption := c.configs.BrowserConfigTable.InstagramPasswordEncryption
 	keyID, err := strconv.Atoi(encryption.KeyID)
 	if err != nil || keyID <= 0 || encryption.PublicKey == "" {
 		return nil, errors.New("instagram web login page did not include password encryption keys")
 	}
-	encryptedPassword, err := crypto.EncryptInstagramWebPassword(
+	if encryption.Version != "10" {
+		return nil, errors.New("instagram web login page uses an unsupported password encryption version")
+	}
+	// Polaris AJAX uses #PWD_INSTAGRAM_BROWSER; #PWD_BROWSER belongs to CDS/GraphQL.
+	encryptedPassword, err := crypto.EncryptPassword(
+		types.Unset,
 		keyID,
 		encryption.PublicKey,
 		password,
@@ -426,7 +493,8 @@ func (c *Client) CreateInstagramWebSession(
 	if err = c.addInstagramWebLoginHeaders(headers); err != nil {
 		return nil, err
 	}
-	response, body, requestErr := c.http.MakeRequest(
+	// A lost response must not silently submit the password again.
+	response, body, requestErr := c.http.MakeRequestOnce(
 		ctx,
 		c.GetEndpoint("login_ajax"),
 		http.MethodPost,
@@ -440,6 +508,9 @@ func (c *Client) CreateInstagramWebSession(
 	var result instagramWebLoginResponse
 	parseErr := json.Unmarshal(body, &result)
 	if requestErr != nil {
+		if redirectURL := httpclient.GetErrorRedirectURL(requestErr); redirectURL != "" {
+			result.RedirectURL = redirectURL
+		}
 		c.logInstagramWebRequestRejection(
 			"Instagram web login request was rejected",
 			requestErr,
@@ -457,6 +528,8 @@ func (c *Client) CreateInstagramWebSession(
 				statusCode = response.StatusCode
 			}
 			return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, statusCode)
+		} else if instagramWebChallengeRequired(result) && (parseErr == nil || result.RedirectURL != "") {
+			return c.startInstagramWebCheckpoint(ctx, result)
 		} else if parseErr == nil && result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
 		}
@@ -469,6 +542,8 @@ func (c *Client) CreateInstagramWebSession(
 		return nil, ErrInstagramWebCredentialsRejected
 	} else if result.TwoFactorRequired {
 		return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, response.StatusCode)
+	} else if instagramWebChallengeRequired(result) {
+		return c.startInstagramWebCheckpoint(ctx, result)
 	} else if !result.Authenticated {
 		if result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
@@ -769,7 +844,9 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 		Bool("csrf_header_present", headers.Get("x-csrftoken") != "").
 		Msg("Prepared Instagram web two-factor CSRF state")
 	var err error
-	if state.encryptedContext == "" {
+	if state.checkpointURL != "" {
+		err = c.completeInstagramWebCheckpoint(ctx, state, verificationCode)
+	} else if state.encryptedContext == "" {
 		err = c.completeInstagramWebTwoFactorLegacy(ctx, state, verificationCode)
 	} else {
 		err = c.completeInstagramWebTwoFactorEncrypted(ctx, state, verificationCode)
@@ -819,4 +896,83 @@ func instagramWebUserIDFromSessionID(sessionID string) string {
 		return ""
 	}
 	return userID
+}
+
+// Inspect inert scripts without executing JavaScript or logging their contents.
+// Callers decide whether malformed JSON is fatal for their particular page.
+func visitInstagramJSONScripts(body []byte, visit func([]byte) error) error {
+	tokens := html.NewTokenizer(bytes.NewReader(body))
+	for {
+		switch tokens.Next() {
+		case html.ErrorToken:
+			if tokens.Err() != io.EOF {
+				return ErrInstagramWebCheckpointUnsupported
+			}
+			return nil
+		case html.StartTagToken:
+			tag := tokens.Token()
+			if tag.Data != "script" {
+				continue
+			}
+			for _, attr := range tag.Attr {
+				if attr.Key == "type" && attr.Val == "application/json" && tokens.Next() == html.TextToken {
+					if err := visit(tokens.Text()); err != nil {
+						return err
+					}
+					break
+				}
+			}
+		}
+	}
+}
+
+// Relay signs DTSG (or LSD when logged out), using JavaScript's UTF-16 units.
+// Legacy AJAX signs CSRF instead and has its own configuration validation.
+func instagramRelaySprinkleToken(token string, config types.SprinkleConfig) string {
+	sum := 0
+	for _, character := range utf16.Encode([]rune(token)) {
+		sum += int(character)
+	}
+	result := strconv.Itoa(sum)
+	if !config.ShouldRandomize {
+		result = strconv.Itoa(config.Version) + result
+	}
+	return result
+}
+
+func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.HTTPQuery, referrer, csrf string) ([]byte, error) {
+	config := c.configs.BrowserConfigTable
+	rq.Av, rq.User, rq.Jssesw = "0", "0", ""
+	rq.FbAPICallerClass, rq.ServerTimestamps = "RelayModern", "true"
+	rq.Rev = strconv.FormatInt(config.SiteData.ClientRevision, 10)
+	rq.FbDtsg = cmp.Or(config.DTSGInitialData.Token, config.DTSGInitData.Token)
+	rq.Jazoest = instagramRelaySprinkleToken(cmp.Or(rq.FbDtsg, rq.Lsd), config.SprinkleConfig)
+	form, err := query.Values(rq)
+	if err != nil {
+		return nil, ErrInstagramWebCheckpointRequestFailed
+	}
+	headers := c.http.BuildHeaders(true, false)
+	headers.Set("origin", "https://www.instagram.com")
+	headers.Set("referer", referrer)
+	headers.Set("x-csrftoken", csrf)
+	headers.Set("x-fb-lsd", rq.Lsd)
+	headers.Set("x-fb-friendly-name", rq.FbAPIReqFriendlyName)
+	headers.Set("sec-fetch-dest", "empty")
+	headers.Set("sec-fetch-mode", "cors")
+	headers.Set("sec-fetch-site", "same-origin")
+	// A lost response must not replay a password, verification code or CAPTCHA.
+	endpoint := c.GetEndpoint("graphql")
+	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
+	if response != nil {
+		if response.Request != nil && response.Request.URL != nil && response.Request.URL.String() != endpoint {
+			return nil, ErrInstagramWebCheckpointRequestFailed
+		}
+		c.cookies.UpdateFromResponse(response)
+	}
+	if errors.Is(err, httpclient.ErrRateLimited) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
+		return nil, ErrInstagramWebCheckpointRequestFailed
+	}
+	return body, nil
 }

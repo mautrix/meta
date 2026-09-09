@@ -50,6 +50,30 @@ func TestInstagramCAALoginUsesClientLoggerWithoutContextLogger(t *testing.T) {
 	}
 }
 
+func TestInstagramCAAValueSkipsEmptyDuplicates(t *testing.T) {
+	newAACVariable := func(value string) *bloks.BloksVariable {
+		script := &bloks.BloksTreeScript{}
+		if err := script.Parse(`(bk.action.ref.Make "` + value + `")`); err != nil {
+			t.Fatalf("failed to parse AAC fixture: %v", err)
+		}
+		return &bloks.BloksVariable{
+			Info: bloks.BloksDatumInfo{
+				Name:          "CAA_ACCOUNT_ACCESS_CONTEXT:aac",
+				InitialScript: script,
+			},
+		}
+	}
+	bundle := &bloks.BloksBundle{}
+	bundle.Layout.Payload.Variables = []*bloks.BloksVariable{
+		newAACVariable(""),
+		newAACVariable("current-aac"),
+	}
+
+	if got := instagramCAAValue(bundle, ""); got != "current-aac" {
+		t.Fatalf("expected populated AAC, got %q", got)
+	}
+}
+
 func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 	loginCookies := &cookies.Cookies{Platform: types.Instagram}
 	loginCookies.UpdateValues(nil)
@@ -61,6 +85,14 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		PhoneID:         "family-device-id",
 		DeviceID:        "qe-device-id",
 		AndroidDeviceID: "android-0123456789abcdef",
+		MachineID:       "machine-id",
+		USDIDHeader:     "test-usdid-header",
+	}
+	client.caaLogin = &instagramCAALoginState{
+		AAC:              "server-aac",
+		WaterfallID:      "server-waterfall",
+		AttestationNonce: "server-attestation-nonce",
+		Mobile:           client.mobileLogin,
 	}
 
 	requestSeen := false
@@ -69,14 +101,32 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		if request.Method != http.MethodPost {
 			t.Fatalf("expected Bloks POST, got %s", request.Method)
 		}
-		expectedPath := "/api/v1/bloks/async_action/" + instagramCAALoginEntrypoint + "/"
-		if request.URL.Path != expectedPath {
-			t.Fatalf("unexpected CAA path %q", request.URL.Path)
+		expectedPath := "/api/v1/bloks/async_action/" + instagramCAASendEntrypoint + "/"
+		if request.URL.Host != "b.i.instagram.com" || request.URL.Path != expectedPath {
+			t.Fatalf("unexpected CAA endpoint %q", request.URL.String())
 		}
 		if request.Header.Get("X-Bloks-Version-Id") != bloks.BloksVersionInstagramAndroid ||
 			request.Header.Get("X-Ig-App-Id") != useragent.IGAndroidAppID ||
-			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 440.0.0.19.86 Android") {
+			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 440.0.0.19.86 Android") ||
+			request.Header.Get("X-Meta-Usdid") != "test-usdid-header" ||
+			request.Header.Get("X-Fb-Friendly-Name") != "IgApi: bloks/async_action/"+instagramCAASendEntrypoint+"/" {
 			t.Fatal("Instagram CAA headers do not match the current signed APK profile")
+		}
+		var attestParams struct {
+			Attestation []struct {
+				Version        int    `json:"version"`
+				Type           string `json:"type"`
+				Errors         []int  `json:"errors"`
+				ChallengeNonce string `json:"challenge_nonce"`
+			} `json:"attestation"`
+		}
+		if err := json.Unmarshal([]byte(request.Header.Get("X-Ig-Attest-Params")), &attestParams); err != nil ||
+			len(attestParams.Attestation) != 1 ||
+			attestParams.Attestation[0].Version != 2 ||
+			attestParams.Attestation[0].Type != "keystore" ||
+			!reflect.DeepEqual(attestParams.Attestation[0].Errors, []int{-1013}) ||
+			attestParams.Attestation[0].ChallengeNonce != "server-attestation-nonce" {
+			t.Fatalf("unexpected Instagram attestation parameters: %+v (%v)", attestParams, err)
 		}
 		body, err := io.ReadAll(request.Body)
 		if err != nil {
@@ -102,10 +152,41 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		if err = json.Unmarshal([]byte(form.Get("params")), &params); err != nil {
 			t.Fatalf("invalid CAA params: %v", err)
 		}
-		if params["offline_experiment_group"] != "caa_iteration_v3_perf_ig_4" ||
-			params["device_id"] != "android-0123456789abcdef" ||
-			params["qe_device_id"] != "qe-device-id" {
+		clientParams, clientOK := params["client_input_params"].(map[string]any)
+		serverParams, serverOK := params["server_params"].(map[string]any)
+		if !clientOK || !serverOK || clientParams["aac"] != "server-aac" ||
+			clientParams["password"] != "#PWD_INSTAGRAM:4:test-envelope" ||
+			clientParams["contact_point"] != "test-user" ||
+			clientParams["password_contains_non_ascii"] != "true" ||
+			clientParams["login_attempt_count"] != float64(3) || clientParams["try_num"] != float64(2) ||
+			clientParams["device_id"] != "android-0123456789abcdef" ||
+			clientParams["family_device_id"] != "family-device-id" || clientParams["machine_id"] != "machine-id" ||
+			serverParams["waterfall_id"] != "server-waterfall" || serverParams["qe_device_id"] != "qe-device-id" ||
+			serverParams["credential_type"] != "password" || serverParams["caller"] != "gslr" {
 			t.Fatalf("unexpected CAA params: %+v", params)
+		}
+		passwordInputID, passwordInputOK := serverParams["password_text_input_id"].(string)
+		usernameInputID, usernameInputOK := serverParams["username_text_input_id"].(string)
+		if !passwordInputOK || !usernameInputOK || !strings.HasSuffix(passwordInputID, "ig:82") ||
+			!strings.HasSuffix(usernameInputID, "ig:81") ||
+			strings.TrimSuffix(passwordInputID, ":82") != strings.TrimSuffix(usernameInputID, ":81") {
+			t.Fatalf("unexpected CAA input IDs: password=%q username=%q", passwordInputID, usernameInputID)
+		}
+		for _, key := range []string{
+			"blocked_uids", "sim_phones", "aymh_accounts", "si_device_param_network_info", "sso_accounts_auth_data",
+			"flash_call_permission_status", "accounts_list", "gms_incoming_call_retriever_eligibility", "lois_settings", "openid_tokens",
+		} {
+			if _, present := clientParams[key]; !present {
+				t.Fatalf("current CAA client params are missing %q", key)
+			}
+		}
+		for _, key := range []string{
+			"two_step_login_type", "login_entry_point", "offline_experiment_group", "ar_event_source",
+			"login_surface", "reg_flow_source", "access_flow_version",
+		} {
+			if _, present := serverParams[key]; !present {
+				t.Fatalf("current CAA server params are missing %q", key)
+			}
 		}
 		return mobileLoginTestResponse(request, http.StatusOK, nil, `{}`), nil
 	})
@@ -113,11 +194,16 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 	_, _ = client.makeInstagramBloksRequest(
 		context.Background(),
 		&bloks.BloksActionDocInstagram,
-		instagramCAALoginEntrypoint,
+		instagramCAASendEntrypoint,
 		bloks.BloksParamsInner{
-			"device_id":                "android-0123456789abcdef",
-			"qe_device_id":             "qe-device-id",
-			"offline_experiment_group": "caa_iteration_v3_perf_ig_4",
+			"client_input_params": map[string]any{
+				"password":                    "#PWD_INSTAGRAM:4:test-envelope",
+				"contact_point":               "test-user",
+				"password_contains_non_ascii": true,
+				"login_attempt_count":         3,
+				"try_num":                     2,
+			},
+			"server_params": map[string]any{},
 		},
 		"",
 		"",

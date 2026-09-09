@@ -18,8 +18,11 @@ package instameow
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -32,6 +35,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mau.fi/util/random"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -60,6 +64,12 @@ type mobileLoginState struct {
 	MachineID         string
 	PasswordKeyID     int
 	PasswordPublicKey string
+	USDIDKey          *ecdsa.PrivateKey
+	USDIDHeader       string
+	USDID             string
+	USDIDKeyID        string
+	USDIDPrivateKey   string
+	USDIDRegistered   bool
 }
 
 type instagramMobileSession struct {
@@ -94,6 +104,44 @@ func newMobileLoginDevice() types.InstagramLoginDevice {
 	}
 }
 
+func initializeUSDID(device *types.InstagramLoginDevice) (*ecdsa.PrivateKey, error) {
+	if device.USDID != "" && device.USDIDKeyID != "" && device.USDIDPrivateKey != "" {
+		der, err := base64.StdEncoding.DecodeString(device.USDIDPrivateKey)
+		if err == nil {
+			key, parseErr := x509.ParseECPrivateKey(der)
+			if parseErr == nil && key.Curve == elliptic.P256() {
+				return key, nil
+			}
+		}
+		return nil, errors.New("stored Instagram USDID signing key is invalid")
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate Instagram USDID signing key: %w", err)
+	}
+	der, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("marshal Instagram USDID signing key: %w", err)
+	}
+	device.USDID = uuid.NewString()
+	device.USDIDKeyID = base64.RawURLEncoding.EncodeToString(random.Bytes(32))
+	device.USDIDPrivateKey = base64.StdEncoding.EncodeToString(der)
+	device.USDIDRegistered = false
+	return key, nil
+}
+
+func signUSDID(key *ecdsa.PrivateKey, value string) (string, error) {
+	hash := sha256.Sum256([]byte(value))
+	signature, err := ecdsa.SignASN1(rand.Reader, key, hash[:])
+	return base64.RawURLEncoding.EncodeToString(signature), err
+}
+
+func makeUSDIDHeader(device types.InstagramLoginDevice, key *ecdsa.PrivateKey) (string, error) {
+	signed := device.USDID + "." + strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	signature, err := signUSDID(key, signed)
+	return signed + "." + signature, err
+}
+
 func validMobileLoginDevice(device *types.InstagramLoginDevice) bool {
 	if device == nil {
 		return false
@@ -118,6 +166,10 @@ func (state *mobileLoginState) device() types.InstagramLoginDevice {
 		AdvertisingID:   state.AdvertisingID,
 		AndroidDeviceID: state.AndroidDeviceID,
 		MachineID:       state.MachineID,
+		USDID:           state.USDID,
+		USDIDKeyID:      state.USDIDKeyID,
+		USDIDPrivateKey: state.USDIDPrivateKey,
+		USDIDRegistered: state.USDIDRegistered,
 	}
 }
 
@@ -140,8 +192,16 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 	if validMobileLoginDevice(c.mobileLoginDevice) {
 		device = *c.mobileLoginDevice
 	}
+	usdidKey, err := initializeUSDID(&device)
+	if err != nil {
+		return nil, err
+	}
+	usdidHeader, err := makeUSDIDHeader(device, usdidKey)
+	if err != nil {
+		return nil, fmt.Errorf("sign Instagram USDID header: %w", err)
+	}
 	csrfBytes := make([]byte, 32)
-	if _, err := rand.Read(csrfBytes); err != nil {
+	if _, err = rand.Read(csrfBytes); err != nil {
 		return nil, fmt.Errorf("failed to generate Instagram app CSRF token: %w", err)
 	}
 	state := &mobileLoginState{
@@ -151,6 +211,12 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 		AndroidDeviceID: device.AndroidDeviceID,
 		CSRFToken:       hex.EncodeToString(csrfBytes),
 		MachineID:       device.MachineID,
+		USDIDKey:        usdidKey,
+		USDIDHeader:     usdidHeader,
+		USDID:           device.USDID,
+		USDIDKeyID:      device.USDIDKeyID,
+		USDIDPrivateKey: device.USDIDPrivateKey,
+		USDIDRegistered: device.USDIDRegistered,
 	}
 	if err := c.persistMobileLoginDevice(ctx, state); err != nil {
 		return nil, fmt.Errorf("failed to persist Instagram app installation identity: %w", err)
@@ -160,6 +226,9 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 
 func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginState, error) {
 	if c.mobileLogin == nil {
+		// Web and app login sessions use different cookie jars.
+		c.cookies.UpdateValues(nil)
+		c.cookies.IGWWWClaim = ""
 		var err error
 		c.mobileLogin, err = c.newMobileLoginState(ctx)
 		if err != nil {
@@ -259,10 +328,21 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 	if state.MachineID != "" {
 		headers.Set("x-mid", state.MachineID)
 	}
+	if state.USDIDHeader != "" {
+		headers.Set("x-meta-usdid", state.USDIDHeader)
+	}
 	if cookieHeader := c.cookies.String(); cookieHeader != "" {
 		headers.Set("cookie", cookieHeader)
 	}
 	return headers
+}
+
+func (c *Client) makeMobileLoginRequest(ctx context.Context, state *mobileLoginState, requestURL string, headers http.Header, body []byte) ([]byte, error) {
+	response, responseBody, err := c.http.MakeRequest(ctx, requestURL, http.MethodPost, headers, body, types.FORM)
+	if response != nil {
+		err = errors.Join(err, c.updateMobileLoginResponseState(ctx, state, response))
+	}
+	return responseBody, err
 }
 
 func (c *Client) updateMobileLoginResponseState(

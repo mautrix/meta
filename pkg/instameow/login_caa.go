@@ -18,6 +18,8 @@ package instameow
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,15 +27,27 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-const instagramCAALoginEntrypoint = "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
+const (
+	instagramCAALoginEntrypoint    = "com.bloks.www.bloks.caa.login.process_client_data_and_redirect"
+	instagramCAAOAuthEntrypoint    = "com.bloks.www.caa.login.oauth.token.fetch.async"
+	instagramCAASendEntrypoint     = "com.bloks.www.bloks.caa.login.async.send_login_request"
+	instagramCAALegacyHomepage     = "com.bloks.www.caa.login.login_homepage"
+	instagramCAAAutomaticStepLimit = 16
+	instagramCAAAPIBase            = "https://b.i.instagram.com/api/v1/"
+	instagramCAAGraphQLURL         = "https://b.i.instagram.com/graphql_www"
+	instagramUSDIDRegistrationDoc  = "124930351917786857261002920888"
+)
 
 func instagramDeviceNetworkInfo() map[string]any {
 	return map[string]any{
@@ -54,11 +68,24 @@ type instagramCAALoginState struct {
 	Complete               bool
 	AccountManagerChecked  bool
 	AccountManagerComplete bool
+	AAC                    string
+	WaterfallID            string
+	AttestationNonce       string
 }
+
+var ErrInstagramCAAUnsafeAccountStep = errors.New("instagram returned a sign-in step this bridge cannot safely complete")
 
 type instagramCAALoginResponse struct {
 	Headers       string `json:"headers"`
 	LoginResponse string `json:"login_response"`
+}
+
+func (c *Client) ClearInstagramCAALoginState() {
+	if c != nil {
+		c.caaLogin = nil
+		c.mobileLogin = nil
+		c.mobileSession = nil
+	}
 }
 
 func parseInstagramCAAResponseHeaders(rawHeaders string) (http.Header, error) {
@@ -92,7 +119,231 @@ func parseInstagramCAAResponseHeaders(rawHeaders string) (http.Header, error) {
 	return headers, nil
 }
 
-func (c *Client) prepareInstagramCAALogin(ctx context.Context) (*instagramCAALoginState, error) {
+func makeInstagramUSDIDRegistrationToken(state *mobileLoginState) (string, error) {
+	publicKey, err := x509.MarshalPKIXPublicKey(&state.USDIDKey.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().Unix()
+	encode := func(value any) (string, error) {
+		data, marshalErr := json.Marshal(value)
+		return base64.RawURLEncoding.EncodeToString(data), marshalErr
+	}
+	payload, err := encode(map[string]any{
+		"sub": state.USDID, "iat": now, "aud": useragent.IGAndroidAppID, "exp": now + 3600,
+		"pub": base64.StdEncoding.EncodeToString(publicKey), "alg": "ES256",
+	})
+	if err != nil {
+		return "", err
+	}
+	protected, err := encode(map[string]any{"typ": "JWT", "alg": "ES256", "kid": state.USDIDKeyID, "aid": useragent.IGAndroidAppID, "ver": "1"})
+	if err != nil {
+		return "", err
+	}
+	signature, err := signUSDID(state.USDIDKey, protected+"."+payload)
+	if err != nil {
+		return "", err
+	}
+	return encode(map[string]any{"payload": payload, "signatures": []any{map[string]any{"protected": protected, "signature": signature}}})
+}
+
+func (c *Client) registerInstagramUSDID(ctx context.Context, state *mobileLoginState) error {
+	if state.USDIDRegistered {
+		return nil
+	}
+	token, err := makeInstagramUSDIDRegistrationToken(state)
+	if err != nil {
+		return fmt.Errorf("build USDID registration token: %w", err)
+	}
+	variables, _ := json.Marshal(map[string]any{"input": map[string]any{
+		"usdid_token": map[string]string{"sensitive_string_value": token},
+		"fdid":        map[string]string{"sensitive_string_value": state.PhoneID},
+	}})
+	form := url.Values{
+		"method": {"post"}, "pretty": {"false"}, "format": {"json"},
+		"server_timestamps": {"true"}, "locale": {"user"}, "purpose": {"fetch"},
+		"fb_api_req_friendly_name": {"IGUSDIDRegistrationMutation"},
+		"enable_canonical_naming":  {"true"}, "enable_canonical_variable_overrides": {"true"},
+		"enable_canonical_naming_ambiguous_type_prefixing": {"true"},
+		"client_doc_id": {instagramUSDIDRegistrationDoc}, "variables": {string(variables)},
+	}
+	headers := c.mobileLoginHeaders(state)
+	headers.Set("x-fb-friendly-name", "IGUSDIDRegistrationMutation")
+	headers.Set("x-root-field-name", "usdid_registration")
+	headers.Set("x-graphql-client-library", "pando")
+	headers.Set("x-client-doc-id", instagramUSDIDRegistrationDoc)
+	body, err := c.makeMobileLoginRequest(ctx, state, instagramCAAGraphQLURL, headers, []byte(form.Encode()))
+	if err != nil {
+		return err
+	}
+	var result struct {
+		Data map[string]struct {
+			Success bool `json:"success"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(body, &result); err != nil {
+		return err
+	}
+	for key, registration := range result.Data {
+		if strings.Contains(key, "usdid_registration") && registration.Success {
+			state.USDIDRegistered = true
+			return c.persistMobileLoginDevice(ctx, state)
+		}
+	}
+	return errors.New("instagram rejected USDID registration")
+}
+
+func instagramCAAProcessParams(state *instagramCAALoginState) bloks.BloksParamsInner {
+	return bloks.BloksParamsInner{
+		"is_from_logged_out": false, "logged_out_user": "", "qpl_join_id": nil, "family_device_id": state.Mobile.PhoneID,
+		"device_id":                state.Mobile.AndroidDeviceID,
+		"offline_experiment_group": "caa_iteration_v3_perf_ig_4", "waterfall_id": state.WaterfallID,
+		"logout_source": "", "show_internal_settings": false, "last_auto_login_time": 0, "disable_auto_login": false,
+		"qe_device_id":                state.Mobile.DeviceID,
+		"use_auto_login_interstitial": true, "disable_recursive_auto_login_interstitial": true,
+		"auto_login_interstitial_experiment_group_name": "", "is_from_logged_in_switcher": false,
+		"switcher_logged_in_uid": "", "account_list": []any{}, "blocked_uid": []any{},
+		"INTERNAL_INFRA_THEME": "THREE_NEUTRAL_GRAY", "layered_homepage_experiment_group": "Deploy: Not in Experiment",
+		"launched_url": "", "sim_phone_numbers": []any{}, "is_from_registration_reminder": false,
+	}
+}
+
+func instagramCAACredentialParams(
+	state *instagramCAALoginState,
+	mobile *mobileLoginState,
+	legacy bloks.BloksParamsInner,
+) (bloks.BloksParamsInner, error) {
+	// The legacy homepage still supplies the credentials, but its generated request
+	// shape is stale. Preserve only the encrypted user values and rebuild the envelope.
+	legacyClient, ok := legacy["client_input_params"].(map[string]any)
+	if !ok {
+		return nil, errors.New("instagram credential request has invalid CAA parameters")
+	}
+	password, passwordOK := legacyClient["password"].(string)
+	contactPoint, contactPointOK := legacyClient["contact_point"].(string)
+	if !passwordOK || !strings.HasPrefix(password, "#PWD_INSTAGRAM:4:") ||
+		!contactPointOK || strings.TrimSpace(contactPoint) == "" {
+		return nil, errors.New("instagram credential request is missing encrypted credentials")
+	}
+	passwordContainsNonASCII := "false"
+	if value, ok := legacyClient["password_contains_non_ascii"].(string); ok && value == "true" {
+		passwordContainsNonASCII = "true"
+	} else if value, ok := legacyClient["password_contains_non_ascii"].(bool); ok && value {
+		passwordContainsNonASCII = "true"
+	}
+	loginAttemptCount := legacyClient["login_attempt_count"]
+	if loginAttemptCount == nil {
+		loginAttemptCount = 1
+	}
+	tryNum := legacyClient["try_num"]
+	if tryNum == nil {
+		tryNum = 1
+	}
+	textInputID := uuid.NewString()[:4] + "ig"
+	return bloks.BloksParamsInner{
+		"client_input_params": map[string]any{
+			"blocked_uids": []any{}, "aac": state.AAC, "sim_phones": []any{}, "aymh_accounts": []any{},
+			"network_bssid": nil, "secure_family_device_id": "", "has_granted_read_contacts_permissions": 0,
+			"auth_secure_device_id": "", "has_whatsapp_installed": 0, "si_device_param_network_info": instagramDeviceNetworkInfo(),
+			"password": password, "sso_token_map_json_string": "", "block_store_machine_id": "", "ig_vetted_device_nonces": nil,
+			"cloud_trust_token": nil, "event_flow": "login_manual", "password_contains_non_ascii": passwordContainsNonASCII,
+			"client_known_key_hash": "", "sso_accounts_auth_data": []any{}, "encrypted_msisdn": "",
+			"has_granted_read_phone_permissions": 0, "app_manager_id": "", "should_show_nested_nta_from_aymh": 0,
+			"device_id": mobile.AndroidDeviceID, "zero_balance_state": "", "login_attempt_count": loginAttemptCount,
+			"machine_id": mobile.MachineID, "flash_call_permission_status": map[string]string{
+				"READ_PHONE_STATE": "DENIED", "READ_CALL_LOG": "DENIED", "ANSWER_PHONE_CALLS": "DENIED",
+			},
+			"accounts_list": []any{}, "gms_incoming_call_retriever_eligibility": "eligible", "family_device_id": mobile.PhoneID,
+			"fb_ig_device_id": []any{}, "device_emails": []any{}, "try_num": tryNum, "lois_settings": map[string]string{"lois_token": ""},
+			"event_step": "home_page", "headers_infra_flow_id": "", "openid_tokens": map[string]any{}, "contact_point": contactPoint,
+		},
+		"server_params": map[string]any{
+			"should_trigger_override_login_2fa_action": 0, "is_from_logged_out": 0, "should_trigger_override_login_success_action": 0,
+			"login_credential_type": "none", "server_login_source": "login", "waterfall_id": state.WaterfallID,
+			"two_step_login_type": "one_step_login", "login_source": "Login", "is_platform_login": 0,
+			"login_entry_point": "logged_out", "INTERNAL__latency_qpl_marker_id": 36707139, "is_from_aymh": 0,
+			"offline_experiment_group": "caa_iteration_v3_perf_ig_4", "is_from_landing_page": 0, "left_nav_button_action": "NONE",
+			"password_text_input_id": textInputID + ":82", "is_from_empty_password": 0, "is_from_msplit_fallback": 0,
+			"ar_event_source": "login_home_page", "qe_device_id": mobile.DeviceID, "username_text_input_id": textInputID + ":81",
+			"layered_homepage_experiment_group": "Deploy: Not in Experiment", "device_id": mobile.AndroidDeviceID,
+			"login_surface": "login_home", "INTERNAL__latency_qpl_instance_id": time.Now().UnixMilli(),
+			"reg_flow_source": "login_home_native_integration_point", "is_caa_perf_enabled": 1, "credential_type": "password",
+			"is_from_password_entry_page": 0, "caller": "gslr", "family_device_id": mobile.PhoneID,
+			"is_from_assistive_id": 0, "access_flow_version": "pre_mt_behavior", "is_from_logged_in_switcher": 0,
+		},
+	}, nil
+}
+
+func instagramCAAValue(bundle *bloks.BloksBundle, replacement string) string {
+	if bundle == nil {
+		return ""
+	}
+	for _, variable := range bundle.Layout.Payload.Variables {
+		if variable.Info.Name != "CAA_ACCOUNT_ACCESS_CONTEXT:aac" {
+			continue
+		}
+		if replacement != "" {
+			variable.Info.Initial, variable.Info.InitialScript = replacement, nil
+			return replacement
+		}
+		if value, ok := variable.Info.Initial.(string); ok && value != "" {
+			return value
+		}
+		if script := variable.Info.InitialScript; script != nil {
+			if call, ok := script.AST.Content.(*bloks.BloksScriptFuncall); ok && len(call.Args) > 0 {
+				if value, ok := call.Args[0].Content.(*bloks.BloksScriptLiteral); ok {
+					if result, ok := value.Value().(string); ok && result != "" {
+						return result
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (c *Client) prepareInstagramCAAPreflight(ctx context.Context, state *instagramCAALoginState, username string) error {
+	if err := c.registerInstagramUSDID(ctx, state.Mobile); err != nil {
+		return err
+	}
+	process, err := c.makeInstagramBloksRequest(ctx, &bloks.BloksActionDocInstagram,
+		instagramCAALoginEntrypoint, instagramCAAProcessParams(state), "", "")
+	if err != nil {
+		return err
+	}
+	if state.AAC = instagramCAAValue(process, ""); state.AAC == "" {
+		return errors.New("instagram CAA preflight did not return account access context")
+	}
+	headers := c.mobileLoginHeaders(state.Mobile)
+	headers.Set("x-fb-friendly-name", "IgApi: attestation/create_android_keystore/")
+	form := url.Values{"app_scoped_device_id": {state.Mobile.DeviceID}, "key_hash": {""}}
+	body, err := c.makeMobileLoginRequest(ctx, state.Mobile, instagramCAAAPIBase+"attestation/create_android_keystore/", headers, []byte(form.Encode()))
+	if err != nil {
+		return err
+	}
+	var attestation struct {
+		ChallengeNonce string `json:"challenge_nonce"`
+	}
+	if err = json.Unmarshal(body, &attestation); err != nil || attestation.ChallengeNonce == "" {
+		return errors.New("instagram CAA preflight did not return an attestation nonce")
+	}
+	state.AttestationNonce = attestation.ChallengeNonce
+	_, err = c.makeInstagramBloksRequest(ctx, &bloks.BloksActionDocInstagram, instagramCAAOAuthEntrypoint,
+		bloks.BloksParamsInner{
+			"client_input_params": map[string]any{
+				"username_input": username, "si_device_param_network_info": instagramDeviceNetworkInfo(), "aac": state.AAC,
+				"lois_settings": map[string]string{"lois_token": ""}, "cloud_trust_token": nil, "zero_balance_state": "", "network_bssid": nil},
+			"server_params": map[string]any{
+				"is_from_logged_out": 0, "layered_homepage_experiment_group": "Deploy: Not in Experiment", "device_id": state.Mobile.AndroidDeviceID,
+				"login_surface": "login_home", "waterfall_id": state.WaterfallID, "INTERNAL__latency_qpl_instance_id": time.Now().UnixMilli(),
+				"is_platform_login": 0, "login_entry_point": "logged_out", "INTERNAL__latency_qpl_marker_id": 36707139,
+				"family_device_id": state.Mobile.PhoneID, "offline_experiment_group": "caa_iteration_v3_perf_ig_4", "access_flow_version": "pre_mt_behavior",
+				"is_from_logged_in_switcher": 0, "qe_device_id": state.Mobile.DeviceID}},
+		"", "")
+	return err
+}
+
+func (c *Client) prepareInstagramCAALogin(ctx context.Context, username string) (*instagramCAALoginState, error) {
 	if c.caaLogin != nil {
 		return c.caaLogin, nil
 	}
@@ -137,13 +388,19 @@ func (c *Client) prepareInstagramCAALogin(ctx context.Context) (*instagramCAALog
 	browser.Bridge.FamilyDeviceID = mobile.PhoneID
 	browser.Bridge.AndroidDeviceID = mobile.AndroidDeviceID
 	browser.Bridge.MachineID = mobile.MachineID
+	waterfallID := uuid.NewString()
 	browser.Bridge.DeviceNetworkInfo = instagramDeviceNetworkInfo()
 	browser.Bridge.GetSecureNoncesForUser = func(string) any {
 		return nil
 	}
 	c.caaLogin = &instagramCAALoginState{
-		Browser: browser,
-		Mobile:  mobile,
+		Browser:     browser,
+		Mobile:      mobile,
+		WaterfallID: waterfallID,
+	}
+	if err = c.prepareInstagramCAAPreflight(ctx, c.caaLogin, username); err != nil {
+		c.caaLogin = nil
+		return nil, fmt.Errorf("failed to prepare current Instagram CAA login: %w", err)
 	}
 	return c.caaLogin, nil
 }
@@ -152,20 +409,56 @@ func (c *Client) DoInstagramCAALoginSteps(
 	ctx context.Context,
 	userInput map[string]string,
 ) (*bridgev2.LoginStep, error) {
+	return c.doInstagramCAALoginSteps(ctx, userInput, false)
+}
+
+func (c *Client) DoInstagramCAALoginStepsExactAccount(
+	ctx context.Context,
+	userInput map[string]string,
+	expectedIdentifier,
+	expectedUserID string,
+) (*bridgev2.LoginStep, error) {
+	step, err := c.doInstagramCAALoginSteps(ctx, userInput, true)
+	if step == nil && err == nil && !instagramCAAAccountMatches(c.mobileSession, expectedIdentifier, expectedUserID) {
+		return nil, ErrInstagramCAAUnsafeAccountStep
+	}
+	return step, err
+}
+
+func instagramCAAAccountMatches(session *instagramMobileSession, expectedIdentifier, expectedUserID string) bool {
+	if session == nil {
+		return false
+	} else if expectedUserID = strings.TrimSpace(expectedUserID); expectedUserID != "" {
+		return session.UserID == expectedUserID
+	}
+	expectedIdentifier = strings.TrimPrefix(strings.TrimSpace(expectedIdentifier), "@")
+	return expectedIdentifier != "" && !strings.Contains(expectedIdentifier, "@") &&
+		strings.EqualFold(session.Username, expectedIdentifier)
+}
+
+func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[string]string, exactAccount bool) (*bridgev2.LoginStep, error) {
 	if c == nil {
 		return nil, ErrClientIsNil
 	}
 	if c.log != nil {
-		// Provisioning requests do not always carry the network client's logger.
-		// Attach it here so privacy-safe CAA state, screen, and field identifiers
-		// are available when diagnosing a credentialed login.
 		ctx = c.log.WithContext(ctx)
 	}
-	state, err := c.prepareInstagramCAALogin(ctx)
+	state, err := c.prepareInstagramCAALogin(ctx, userInput["username"])
 	if err != nil {
 		return nil, err
 	}
-	for state.Browser.State != bloks.StateSuccess {
+	for automaticSteps := 0; state.Browser.State != bloks.StateSuccess; automaticSteps++ {
+		if automaticSteps >= instagramCAAAutomaticStepLimit {
+			return nil, errors.New("instagram CAA login exceeded automatic step limit")
+		}
+		if exactAccount {
+			switch state.Browser.State {
+			case bloks.StateAuthenticationConfirm, bloks.StateAccountSelectionPage, bloks.StateSuggestedAccountPage,
+				bloks.StateCaptchaPage, bloks.StateReCaptchaPage, bloks.StateOAuthPage,
+				bloks.StateChooseContactPointPage:
+				return nil, ErrInstagramCAAUnsafeAccountStep
+			}
+		}
 		step, stepErr := state.Browser.DoLoginStep(ctx, userInput)
 		if stepErr != nil {
 			return nil, stepErr
@@ -179,6 +472,9 @@ func (c *Client) DoInstagramCAALoginSteps(
 			return nil, err
 		}
 		state.Complete = true
+	}
+	if exactAccount {
+		return nil, nil
 	}
 	if !state.AccountManagerChecked {
 		state.AccountManagerAccounts, err = c.getInstagramAccountManagerAccounts(ctx)
@@ -229,6 +525,17 @@ func (c *Client) makeInstagramBloksRequest(
 	if c.mobileLogin == nil {
 		return nil, errors.New("instagram Bloks request is missing its mobile session")
 	}
+	state := c.caaLogin
+	if appID == instagramCAASendEntrypoint {
+		if state == nil || state.Mobile == nil || state.AAC == "" || state.AttestationNonce == "" {
+			return nil, errors.New("instagram credential request is missing CAA preflight state")
+		}
+		var normalizeErr error
+		inner, normalizeErr = instagramCAACredentialParams(state, state.Mobile, inner)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+	}
 	params, err := json.Marshal(inner)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal Instagram Bloks parameters: %w", err)
@@ -250,25 +557,30 @@ func (c *Client) makeInstagramBloksRequest(
 	if doc.RootField == "bloks_action" {
 		route = "bloks/async_action/"
 	}
-	response, body, requestErr := c.http.MakeRequest(
-		ctx,
-		instagramMobileAPIBase+route+url.PathEscape(appID)+"/",
-		http.MethodPost,
-		c.mobileLoginHeaders(c.mobileLogin),
-		[]byte(form.Encode()),
-		types.FORM,
-	)
-	if response != nil {
-		if err = c.updateMobileLoginResponseState(ctx, c.mobileLogin, response); err != nil {
-			return nil, err
-		}
+	headers := c.mobileLoginHeaders(c.mobileLogin)
+	headers.Set("x-fb-friendly-name", "IgApi: "+route+appID+"/")
+	requestBase := instagramMobileAPIBase
+	if state != nil && appID != instagramCAALegacyHomepage {
+		requestBase = instagramCAAAPIBase
 	}
+	if appID == instagramCAASendEntrypoint {
+		attestation, _ := json.Marshal(map[string]any{"attestation": []any{map[string]any{
+			"version": 2, "type": "keystore", "errors": []int{-1013},
+			"challenge_nonce": state.AttestationNonce, "signed_nonce": "", "key_hash": "",
+		}}})
+		headers.Set("x-ig-attest-params", string(attestation))
+	}
+	body, requestErr := c.makeMobileLoginRequest(ctx, c.mobileLogin,
+		requestBase+route+url.PathEscape(appID)+"/", headers, []byte(form.Encode()))
 	var bundle bloks.BloksBundle
 	if err = json.Unmarshal(body, &bundle); err != nil {
 		if requestErr != nil {
 			return nil, fmt.Errorf("instagram Bloks request failed: %w", requestErr)
 		}
 		return nil, fmt.Errorf("failed to parse Instagram Bloks response: %w", err)
+	}
+	if appID == instagramCAALegacyHomepage && state != nil && instagramCAAValue(&bundle, state.AAC) == "" {
+		return nil, errors.New("instagram login page did not expose its CAA account access context")
 	}
 	if c.logRedactedBloksPayloads {
 		if err = bloks.LogRedactedBundle(c.log, appID, body); err != nil {
