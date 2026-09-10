@@ -14,6 +14,7 @@ import (
 type LSTable struct {
 	LSMciTraceLog                                    []*LSMciTraceLog                                    `json:",omitempty"`
 	LSExecuteFirstBlockForSyncTransaction            []*LSExecuteFirstBlockForSyncTransaction            `json:",omitempty"`
+	LSExecuteFirstBlockForSyncTransactionV4          []*LSExecuteFirstBlockForSyncTransactionV4          `json:",omitempty"`
 	LSTruncateMetadataThreads                        []*LSTruncateMetadataThreads                        `json:",omitempty"`
 	LSTruncateThreadRangeTablesForSyncGroup          []*LSTruncateThreadRangeTablesForSyncGroup          `json:",omitempty"`
 	LSUpsertSyncGroupThreadsRange                    []*LSUpsertSyncGroupThreadsRange                    `json:",omitempty"`
@@ -241,6 +242,7 @@ var SPTable = map[string]string{
 	"insertNewMessageRange":                          "LSInsertNewMessageRange",
 	"updateExistingMessageRange":                     "LSUpdateExistingMessageRange",
 	"threadsRangesQuery":                             "LSThreadsRangesQuery",
+	"setRegionHint":                                  "LSSetRegionHint",
 	"updateThreadSnippetFromLastMessage":             "LSUpdateThreadSnippetFromLastMessage",
 	"upsertInboxThreadsRange":                        "LSUpsertInboxThreadsRange",
 	"deleteThenInsertThread":                         "LSDeleteThenInsertThread",
@@ -251,6 +253,7 @@ var SPTable = map[string]string{
 	"insertBlobAttachment":                           "LSInsertBlobAttachment",
 	"updateUnsentMessageCollapsedStatus":             "LSUpdateUnsentMessageCollapsedStatus",
 	"executeFirstBlockForSyncTransaction":            "LSExecuteFirstBlockForSyncTransaction",
+	"executeFirstBlockForSyncTransactionV4":          "LSExecuteFirstBlockForSyncTransactionV4",
 	"updateThreadsRangesV2":                          "LSUpdateThreadsRangesV2",
 	"upsertSyncGroupThreadsRange":                    "LSUpsertSyncGroupThreadsRange",
 	"upsertFolder":                                   "LSUpsertFolder",

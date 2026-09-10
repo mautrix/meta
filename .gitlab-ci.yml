@@ -89,7 +89,7 @@ variables:
 
 build amd64:
   <<: *build
-  image: $BUILDER_IMAGE:linux-amd64
+  image: $BUILDER_IMAGE:go1.26-linux-amd64
   tags:
   - linux
   - amd64
@@ -145,14 +145,14 @@ deploy config:
 
 build arm64:
   <<: *build
-  image: $BUILDER_IMAGE:linux-arm64-native
+  image: $BUILDER_IMAGE:go1.26-linux-arm64-native
   tags:
   - linux
   - arm64
 
 build arm:
   <<: *build
-  image: $BUILDER_IMAGE:linux-arm
+  image: $BUILDER_IMAGE:go1.26-linux-arm
   tags:
   - linux
   - amd64
@@ -220,7 +220,7 @@ manifest:
     docker manifest create $MANIFEST_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
     docker manifest create $IG_MANIFEST_NAME $CI_REGISTRY_IMAGE:ig-$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:ig-$CI_COMMIT_SHA-arm64
     docker manifest push $MANIFEST_NAME
-    docker manifest push $IG_MANIFEST_NAME
+    #docker manifest push $IG_MANIFEST_NAME
   - |
     if echo "$CI_COMMIT_TAG" | grep -Eq '^v[0-9]{1}\.[0-9]{4}\.[0-9]+$'; then
       YYMM=$(echo "$CI_COMMIT_TAG" | cut -d. -f2)
@@ -238,7 +238,7 @@ manifest:
       docker manifest push $MANIFEST_NAME
       docker manifest rm $MANIFEST_NAME
       docker manifest create $IG_MANIFEST_NAME $CI_REGISTRY_IMAGE:ig-$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:ig-$CI_COMMIT_SHA-arm64
-      docker manifest push $IG_MANIFEST_NAME
+      #docker manifest push $IG_MANIFEST_NAME
       docker manifest rm $IG_MANIFEST_NAME
     fi
   - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64

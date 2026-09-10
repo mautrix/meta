@@ -3,6 +3,7 @@ package messagix
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -247,7 +248,7 @@ func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table
 	return tableData, nil
 }
 
-func (sm *SyncManager) SyncTransactions(transactions []*table.LSExecuteFirstBlockForSyncTransaction) error {
+func (sm *SyncManager) SyncTransactions(transactions []*table.LSExecuteFirstBlockForSyncTransactionV4) error {
 	for _, transaction := range transactions {
 		database, ok := sm.store[transaction.DatabaseID]
 		if !ok {
@@ -257,10 +258,12 @@ func (sm *SyncManager) SyncTransactions(transactions []*table.LSExecuteFirstBloc
 		database.LastAppliedCursor = &transaction.NextCursor
 		database.SendSyncParams = transaction.SendSyncParams
 		database.SyncChannel = socket.SyncChannel(transaction.SyncChannel)
+		database.CurrentSeqID = transaction.CurrentSeqID
 		sm.client.Logger.Debug().
 			Any("new_cursor", database.LastAppliedCursor).
 			Any("sync_channel", database.SyncChannel).
 			Any("send_sync_params", database.SendSyncParams).
+			Int64("current_seq_id", database.CurrentSeqID).
 			Any("database_id", transaction.DatabaseID).
 			Msg("Updated database by transaction...")
 	}
@@ -361,14 +364,8 @@ these 3 return the same stuff
 updateThreadsRangesV2, upsertInboxThreadsRange, upsertSyncGroupThreadsRange
 */
 func (sm *SyncManager) updateSyncGroupCursors(table *table.LSTable) error {
-	var err error
-	if len(table.LSUpsertSyncGroupThreadsRange) > 0 {
-		err = sm.updateThreadRanges(table.LSUpsertSyncGroupThreadsRange)
-	}
-
-	if len(table.LSExecuteFirstBlockForSyncTransaction) > 0 {
-		err = sm.SyncTransactions(table.LSExecuteFirstBlockForSyncTransaction)
-	}
-
-	return err
+	return errors.Join(
+		sm.updateThreadRanges(table.LSUpsertSyncGroupThreadsRange),
+		sm.SyncTransactions(table.GetLSExecuteFirstBlockForSyncTransactionV4()),
+	)
 }
