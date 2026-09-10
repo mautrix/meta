@@ -111,6 +111,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 	for range 5 {
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
 		if !ok {
+			c.log.Debug().Str("checkpoint_url_kind", instagramWebCheckpointURLKind(rawURL)).Msg("Unsupported Instagram web checkpoint URL")
 			return ErrInstagramWebCheckpointUnsupported
 		}
 		s.url = target
@@ -135,10 +136,22 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			return ErrInstagramWebCheckpointUnsupported
 		}
 		if !strings.HasPrefix(target.Path, "/auth_platform/") {
+			// The web login form displays a rejection banner for this query flag.
+			if target.Path == "/" && target.Query().Has("e") {
+				c.webAuthPlatform = nil
+				return ErrInstagramWebCredentialsRejected
+			}
 			c.ensureInstagramWebUserID()
 			userID := c.cookies.Get(cookies.IGCookieDSUserID)
 			if instagramWebLoginResponseKind(body) != "html" || len(c.cookies.GetMissingCookieNames()) != 0 ||
 				instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) != userID || (s.expectedUserID != "" && s.expectedUserID != userID) {
+				c.log.Debug().Str("response_kind", instagramWebLoginResponseKind(body)).
+					Bool("has_session_cookie", c.cookies.Get(cookies.IGCookieSessionID) != "").
+					Bool("has_csrf_cookie", c.cookies.Get(cookies.IGCookieCSRFToken) != "").
+					Bool("has_user_id_cookie", userID != "").
+					Bool("session_user_matches", userID != "" && instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) == userID).
+					Bool("expected_user_matches", s.expectedUserID == "" || s.expectedUserID == userID).
+					Msg("Instagram verification terminal page did not establish a matching session")
 				if instagramWebLoginResponseKind(body) == "html" && userID == "" && c.cookies.Get(cookies.IGCookieSessionID) == "" {
 					return errInstagramAuthPlatformLoggedOut
 				}
