@@ -1754,8 +1754,27 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return BloksLiteralOf(val), nil
 		case float64:
 			return BloksLiteralOf(int64(val)), nil
+		case string:
+			parsed, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				// Meta sometimes passes float-formatted strings ("3.0").
+				asFloat, floatErr := strconv.ParseFloat(val, 64)
+				if floatErr != nil {
+					return nil, fmt.Errorf("i64.Convert: %q is not an integer: %w", val, err)
+				}
+				return BloksLiteralOf(int64(asFloat)), nil
+			}
+			return BloksLiteralOf(parsed), nil
+		case bool:
+			if val {
+				return BloksLiteralOf(int64(1)), nil
+			}
+			return BloksLiteralOf(int64(0)), nil
+		case nil:
+			return BloksLiteralOf(int64(0)), nil
+		default:
+			return nil, fmt.Errorf("i64.Convert: cannot convert %T to int64", arg.Value())
 		}
-		return nil, fmt.Errorf("can't convert %T to i64", arg.Value())
 	case
 		"bk.action.animated.Start",
 		"bk.action.animated.Build",
