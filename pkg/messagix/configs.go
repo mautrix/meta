@@ -51,7 +51,7 @@ func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LS
 				return ls, fmt.Errorf("failed to update thread ranges from js module data: %w", err)
 			}
 		}
-		err := c.syncManager.SyncTransactions(ls.LSExecuteFirstBlockForSyncTransaction)
+		err := c.syncManager.SyncTransactions(ls.GetLSExecuteFirstBlockForSyncTransactionV4())
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
 		}
