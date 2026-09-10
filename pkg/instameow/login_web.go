@@ -32,6 +32,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/google/go-querystring/query"
+	"github.com/tidwall/gjson"
 	"golang.org/x/net/html"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -43,6 +44,7 @@ import (
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
+var ErrInstagramWebLoginRejected = errors.New("instagram web sign-in was rejected")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
 var ErrInstagramWebCheckpointRequestFailed = errors.New("instagram web checkpoint request failed")
@@ -547,6 +549,11 @@ func (c *Client) CreateInstagramWebSession(
 	} else if !result.Authenticated {
 		if result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
+		}
+		user := gjson.GetBytes(body, "user").Type
+		if result.Status == "ok" && result.ErrorType == "" && result.RedirectURL == "" && gjson.GetBytes(body, "authenticated").Type == gjson.False &&
+			(user == gjson.True || user == gjson.False) && c.cookies.Get(cookies.IGCookieSessionID) == "" {
+			return nil, ErrInstagramWebLoginRejected
 		}
 		return nil, errors.New("instagram web login did not authenticate")
 	}

@@ -273,5 +273,10 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	if data.Get("error_style").String() == "INLINE" && data.Get("error_message.text").String() != "" {
 		return nil, ErrInstagramWebCredentialsRejected
 	}
+	if data.Get("ig_authenticated").Type == gjson.False && data.Get("error_style").String() == "GENERIC_BANNER" &&
+		data.Get("error_message.text").Type == gjson.String && data.Get("error_message.text").String() != "" &&
+		!data.Get("should_show_google_oauth_after_failure").Bool() && data.Get("google_oauth_uri").String() == "" {
+		return nil, ErrInstagramWebLoginRejected
+	}
 	return nil, ErrInstagramWebCheckpointUnsupported
 }
