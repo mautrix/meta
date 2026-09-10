@@ -28,15 +28,25 @@ type instagramWebCookieConsentState struct {
 }
 
 func (c *Client) prepareInstagramWebCookieConsent(page *instagramCAALoginPage) error {
-	if !page.consent.Get("shouldShowCookieBanner").Bool() && !page.polarisConsent.Get("should_show_consent_dialog").Bool() {
-		return nil
+	needsConsent := page.consent.Get("shouldShowCookieBanner").Bool() || page.polarisConsent.Get("should_show_consent_dialog").Bool()
+	if !needsConsent {
+		hasFirstPartyConsent := false
+		for _, consent := range page.consent.Get("initialConsent").Array() {
+			if consent.Type == gjson.Number && consent.Float() == 1 {
+				hasFirstPartyConsent = true
+				break
+			}
+		}
+		if !hasFirstPartyConsent || page.consent.Get("noCookies").Type != gjson.False || !page.deferredCookies.Exists() {
+			return nil
+		}
 	}
-	// Only the observed granular, blocking, no-reload banner is supported. In particular,
-	// noCookies is not permission to flush the server's deferred cookie queue.
-	if page.consent.Get("noCookies").Type != gjson.False || page.consent.Get("nonBlockingBannerPage").Type != gjson.False ||
-		!page.consent.Get("initialConsent").IsArray() || len(page.consent.Get("initialConsent").Array()) != 0 ||
-		page.granularConsent.Type != gjson.True || page.skipConsentReload.Type != gjson.True ||
-		page.cookieDomain.Get("domain").String() != "instagram.com" || !page.deferredCookies.IsObject() {
+	// Banner-specific flags do not apply when first-party consent already exists.
+	if page.consent.Get("noCookies").Type != gjson.False ||
+		!page.consent.Get("initialConsent").IsArray() ||
+		page.cookieDomain.Get("domain").String() != "instagram.com" || !page.deferredCookies.IsObject() ||
+		(needsConsent && (page.consent.Get("nonBlockingBannerPage").Type != gjson.False ||
+			page.granularConsent.Type != gjson.True || page.skipConsentReload.Type != gjson.True)) {
 		return ErrInstagramWebCheckpointUnsupported
 	}
 	now := time.Now()
@@ -69,8 +79,14 @@ func (c *Client) prepareInstagramWebCookieConsent(page *instagramCAALoginPage) e
 		state.values[cookies.MetaCookieName(cookie.Name)] = cookie.Value
 		return true
 	})
-	if !valid || len(state.values) != 3 || c.configs.BrowserConfigTable.PolarisSiteData.DeviceID == "" {
+	if !valid || c.configs.BrowserConfigTable.PolarisSiteData.DeviceID == "" {
 		return ErrInstagramWebCheckpointUnsupported
+	}
+	if !needsConsent {
+		for name, value := range state.values {
+			c.cookies.Set(name, value)
+		}
+		return nil
 	}
 	c.webCookieConsent = state
 	return ErrInstagramWebCookieConsentRequired
