@@ -202,13 +202,28 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	if !data.IsObject() || (graphErrors.Type != gjson.Null && (!graphErrors.IsArray() || len(graphErrors.Array()) != 0)) || root.Get("error").Exists() {
 		return nil, ErrInstagramWebCheckpointRequestFailed
 	}
+	errorStyle := data.Get("error_style").String()
+	switch errorStyle {
+	case "INLINE", "GENERIC_BANNER", "RATE_LIMIT_BANNER":
+	default:
+		errorStyle = "other"
+	}
+	deletion := data.Get("stop_deletion_payload")
 	c.log.Debug().Int64("error_code", data.Get("error_code").Int()).
+		Str("error_style", errorStyle).
 		Bool("authenticated", data.Get("ig_authenticated").Bool()).
+		Str("authenticated_type", data.Get("ig_authenticated").Type.String()).
 		Bool("has_redirect", data.Get("redirect_uri").String() != "").
 		Bool("has_two_factor", data.Get("two_factor_result").Type != gjson.Null).
+		Bool("has_error_message", data.Get("error_message.text").String() != "").
+		Bool("has_recovery", data.Get("reg_nta_context").Type != gjson.Null).
+		Bool("recaptcha_needed", data.Get("recaptcha_needed").Bool()).
+		Bool("is_ig_login_recaptcha", data.Get("is_ig_login_recaptcha").Bool()).
+		Bool("has_oauth", data.Get("should_show_google_oauth_after_failure").Bool() || data.Get("google_oauth_uri").String() != "").
+		Bool("has_pending_deletion", deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null).
+		Bool("session_cookie_present", c.cookies.Get(cookies.IGCookieSessionID) != "").
 		Msg("Instagram CAA login response")
 	// GraphQL also returns this object with null fields when no deletion is pending.
-	deletion := data.Get("stop_deletion_payload")
 	if deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
