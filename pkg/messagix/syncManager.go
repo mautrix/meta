@@ -177,7 +177,8 @@ func (sm *SyncManager) recursivelySyncSocketData(
 			Any("sync_failures", tbl.LSHandleSyncFailure).
 			Msg("Sync failures found")
 	}
-	if len(tbl.LSExecuteFirstBlockForSyncTransaction) == 0 {
+	firstBlocks := tbl.GetLSExecuteFirstBlockForSyncTransactionV4()
+	if len(firstBlocks) == 0 {
 		sm.client.Logger.Warn().
 			Any("database_id", databaseID).
 			Any("payload", string(jsonPayload)).
@@ -186,7 +187,7 @@ func (sm *SyncManager) recursivelySyncSocketData(
 			Msg("No transactions found")
 		return nil
 	}
-	block := tbl.LSExecuteFirstBlockForSyncTransaction[0]
+	block := firstBlocks[0]
 	nextCursor, currentCursor := block.NextCursor, block.CurrentCursor
 	sm.client.Logger.Debug().
 		Any("full_block", block).

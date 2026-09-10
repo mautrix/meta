@@ -164,7 +164,7 @@ func (c *Client) PostHandlePublishResponse(tbl *table.LSTable) {
 	syncGroupsNeedUpdate := methods.NeedUpdateSyncGroups(tbl)
 	if syncGroupsNeedUpdate {
 		c.Logger.Debug().
-			Any("LSExecuteFirstBlockForSyncTransaction", tbl.LSExecuteFirstBlockForSyncTransaction).
+			Any("LSExecuteFirstBlockForSyncTransaction", tbl.GetLSExecuteFirstBlockForSyncTransactionV4()).
 			Any("LSUpsertSyncGroupThreadsRange", tbl.LSUpsertSyncGroupThreadsRange).
 			Msg("Updating sync groups")
 		err := c.syncManager.updateSyncGroupCursors(tbl)
