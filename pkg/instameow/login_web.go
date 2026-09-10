@@ -32,6 +32,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/google/go-querystring/query"
+	"github.com/tidwall/gjson"
 	"golang.org/x/net/html"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -43,6 +44,7 @@ import (
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
+var ErrInstagramWebLoginRejected = errors.New("instagram web sign-in was rejected")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
 var ErrInstagramWebCheckpointRequestFailed = errors.New("instagram web checkpoint request failed")
@@ -493,8 +495,8 @@ func (c *Client) CreateInstagramWebSession(
 	if err = c.addInstagramWebLoginHeaders(headers); err != nil {
 		return nil, err
 	}
-	// A lost response must not silently submit the password again.
-	response, body, requestErr := c.http.MakeRequestOnce(
+	// Neither retries nor redirects may silently submit the password again.
+	response, body, requestErr := c.http.MakeRequestOnceNoRedirect(
 		ctx,
 		c.GetEndpoint("login_ajax"),
 		http.MethodPost,
@@ -504,6 +506,22 @@ func (c *Client) CreateInstagramWebSession(
 	)
 	if response != nil {
 		c.cookies.UpdateFromResponse(response)
+	}
+	if requestErr == nil && response != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+		redirect, redirectErr := response.Location()
+		if redirectErr == nil {
+			switch instagramWebCheckpointURLKind(redirect.String()) {
+			case "auth_platform", "legacy_checkpoint":
+				return c.startInstagramWebCheckpoint(ctx, instagramWebLoginResponse{RedirectURL: redirect.String()})
+			case "other_instagram":
+				if redirect.Path == "/accounts/suspended/" {
+					return nil, httpclient.ErrAccountSuspended
+				} else if redirect.Path == "/consent/" || strings.HasPrefix(redirect.Path, "/privacy/consent/") {
+					return nil, httpclient.ErrConsentRequired
+				}
+			}
+		}
+		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	var result instagramWebLoginResponse
 	parseErr := json.Unmarshal(body, &result)
@@ -545,8 +563,19 @@ func (c *Client) CreateInstagramWebSession(
 	} else if instagramWebChallengeRequired(result) {
 		return c.startInstagramWebCheckpoint(ctx, result)
 	} else if !result.Authenticated {
+		user := gjson.GetBytes(body, "user").Type
+		c.log.Debug().Str("authenticated_type", gjson.GetBytes(body, "authenticated").Type.String()).
+			Str("user_type", user.String()).
+			Bool("has_error_message", result.Message != "").
+			Bool("has_error_type", result.ErrorType != "").
+			Bool("session_cookie_present", c.cookies.Get(cookies.IGCookieSessionID) != "").
+			Msg("Instagram web login did not authenticate")
 		if result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
+		}
+		if result.Status == "ok" && result.ErrorType == "" && result.RedirectURL == "" && gjson.GetBytes(body, "authenticated").Type == gjson.False &&
+			(user == gjson.True || user == gjson.False) && c.cookies.Get(cookies.IGCookieSessionID) == "" {
+			return nil, ErrInstagramWebLoginRejected
 		}
 		return nil, errors.New("instagram web login did not authenticate")
 	}

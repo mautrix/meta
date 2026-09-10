@@ -338,6 +338,8 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return nil, errInstagramWebCheckpointUnsupported
 		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 			return nil, errInstagramWebCheckpointCAPTCHA
+		} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
+			return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
 		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
 			return instagramCredentialsStep(
 				"Instagram didn't accept that username or password. Check your credentials and try again.",
