@@ -495,8 +495,8 @@ func (c *Client) CreateInstagramWebSession(
 	if err = c.addInstagramWebLoginHeaders(headers); err != nil {
 		return nil, err
 	}
-	// A lost response must not silently submit the password again.
-	response, body, requestErr := c.http.MakeRequestOnce(
+	// Neither retries nor redirects may silently submit the password again.
+	response, body, requestErr := c.http.MakeRequestOnceNoRedirect(
 		ctx,
 		c.GetEndpoint("login_ajax"),
 		http.MethodPost,
@@ -506,6 +506,22 @@ func (c *Client) CreateInstagramWebSession(
 	)
 	if response != nil {
 		c.cookies.UpdateFromResponse(response)
+	}
+	if requestErr == nil && response != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+		redirect, redirectErr := response.Location()
+		if redirectErr == nil {
+			switch instagramWebCheckpointURLKind(redirect.String()) {
+			case "auth_platform", "legacy_checkpoint":
+				return c.startInstagramWebCheckpoint(ctx, instagramWebLoginResponse{RedirectURL: redirect.String()})
+			case "other_instagram":
+				if redirect.Path == "/accounts/suspended/" {
+					return nil, httpclient.ErrAccountSuspended
+				} else if redirect.Path == "/consent/" || strings.HasPrefix(redirect.Path, "/privacy/consent/") {
+					return nil, httpclient.ErrConsentRequired
+				}
+			}
+		}
+		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	var result instagramWebLoginResponse
 	parseErr := json.Unmarshal(body, &result)
