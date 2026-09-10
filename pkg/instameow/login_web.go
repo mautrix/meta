@@ -547,10 +547,16 @@ func (c *Client) CreateInstagramWebSession(
 	} else if instagramWebChallengeRequired(result) {
 		return c.startInstagramWebCheckpoint(ctx, result)
 	} else if !result.Authenticated {
+		user := gjson.GetBytes(body, "user").Type
+		c.log.Debug().Str("authenticated_type", gjson.GetBytes(body, "authenticated").Type.String()).
+			Str("user_type", user.String()).
+			Bool("has_error_message", result.Message != "").
+			Bool("has_error_type", result.ErrorType != "").
+			Bool("session_cookie_present", c.cookies.Get(cookies.IGCookieSessionID) != "").
+			Msg("Instagram web login did not authenticate")
 		if result.Message != "" {
 			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
 		}
-		user := gjson.GetBytes(body, "user").Type
 		if result.Status == "ok" && result.ErrorType == "" && result.RedirectURL == "" && gjson.GetBytes(body, "authenticated").Type == gjson.False &&
 			(user == gjson.True || user == gjson.False) && c.cookies.Get(cookies.IGCookieSessionID) == "" {
 			return nil, ErrInstagramWebLoginRejected
