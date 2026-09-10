@@ -1,5 +1,9 @@
 package table
 
+import (
+	"go.mau.fi/util/exslices"
+)
+
 type LSTruncateTablesForSyncGroup struct {
 	SyncGroup int64 `index:"0" json:",omitempty"`
 
@@ -45,6 +49,46 @@ type LSExecuteFirstBlockForSyncTransaction struct {
 	MinTimeToSyncTimestampMS int64  `index:"6" json:",omitempty"` // fix this, use conditionIndex
 	CanIgnoreTimestamp       bool   `index:"7" json:",omitempty"`
 	SyncChannel              int64  `index:"8" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (t *LSTable) GetLSExecuteFirstBlockForSyncTransactionV4() []*LSExecuteFirstBlockForSyncTransactionV4 {
+	if len(t.LSExecuteFirstBlockForSyncTransactionV4) > 0 {
+		return t.LSExecuteFirstBlockForSyncTransactionV4
+	} else if len(t.LSExecuteFirstBlockForSyncTransaction) > 0 {
+		return exslices.CastFunc(t.LSExecuteFirstBlockForSyncTransaction, (*LSExecuteFirstBlockForSyncTransaction).ToV4)
+	}
+	return nil
+}
+
+func (fb *LSExecuteFirstBlockForSyncTransaction) ToV4() *LSExecuteFirstBlockForSyncTransactionV4 {
+	return &LSExecuteFirstBlockForSyncTransactionV4{
+		DatabaseID:               fb.DatabaseID,
+		EpochID:                  fb.EpochID,
+		CurrentCursor:            fb.CurrentCursor,
+		NextCursor:               fb.NextCursor,
+		CurrentSeqID:             0,
+		SyncStatus:               fb.SyncStatus,
+		SendSyncParams:           fb.SendSyncParams,
+		MinTimeToSyncTimestampMS: fb.MinTimeToSyncTimestampMS,
+		CanIgnoreTimestamp:       fb.CanIgnoreTimestamp,
+		SyncChannel:              fb.SyncChannel,
+		Unrecognized:             fb.Unrecognized,
+	}
+}
+
+type LSExecuteFirstBlockForSyncTransactionV4 struct {
+	DatabaseID               int64  `index:"0" json:",omitempty"`
+	EpochID                  int64  `index:"1" json:",omitempty"`
+	CurrentCursor            string `index:"2" json:",omitempty"`
+	NextCursor               string `index:"3" json:",omitempty"`
+	CurrentSeqID             int64  `index:"4" json:",omitempty"`
+	SyncStatus               int64  `index:"5" json:",omitempty"`
+	SendSyncParams           bool   `index:"6" json:",omitempty"`
+	MinTimeToSyncTimestampMS int64  `index:"7" json:",omitempty"` // fix this, use conditionIndex
+	CanIgnoreTimestamp       bool   `index:"8" json:",omitempty"`
+	SyncChannel              int64  `index:"9" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
