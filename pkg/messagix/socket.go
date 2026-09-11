@@ -3,6 +3,7 @@ package messagix
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -44,6 +45,8 @@ type SocketLSRequestPayload struct {
 	Type      int    `json:"type"`
 }
 
+var ErrFatalSocketSyncError = errors.New("failed to ensure db 1 is synced")
+
 func (c *Client) onSocketConnect(ctx context.Context, _ func(error)) error {
 	c.canSendMessages.Set()
 
@@ -57,7 +60,7 @@ func (c *Client) onSocketConnect(ctx context.Context, _ func(error)) error {
 
 	err := c.syncManager.ensureSyncedSocket(ctx, minimalFBSync)
 	if err != nil {
-		return fmt.Errorf("failed to ensure db 1 is synced: %w", err)
+		return fmt.Errorf("%w: %w", ErrFatalSocketSyncError, err)
 	}
 
 	if reconnect {

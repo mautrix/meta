@@ -84,12 +84,18 @@ func (sm *SyncManager) syncSocketData(ctx context.Context, db int64, cb func(), 
 
 	err := sm.recursivelySyncSocketData(ctx, db, database, nil)
 	if err != nil {
-		sm.client.Logger.Err(err).Int64("database_id", db).Msg("Failed to sync database through socket")
+		sm.client.Logger.Err(err).
+			Int64("database_id", db).
+			Any("database", database).
+			Msg("Failed to sync database through socket")
 		if db == 1 {
-			*outErr = fmt.Errorf("failed to sync db 1: %w", err)
+			*outErr = err
 		}
 	} else {
-		sm.client.Logger.Debug().Any("database_id", db).Any("database", database).Msg("Synced database")
+		sm.client.Logger.Debug().
+			Any("database_id", db).
+			Any("database", database).
+			Msg("Synced database")
 	}
 }
 
