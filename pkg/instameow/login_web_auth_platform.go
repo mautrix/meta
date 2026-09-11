@@ -82,6 +82,34 @@ func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 	return target, true
 }
 
+func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
+	summary := map[string]any{"checkpoint_url_kind": "invalid", "url_empty": strings.TrimSpace(raw) == ""}
+	reference, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return summary
+	}
+	target := mustParseURL(base).ResolveReference(reference)
+	pathKind := map[string]string{
+		"/": "root", "/auth_platform/": "auth_platform", "/auth_platform/codeentry/": "codeentry",
+		"/auth_platform/challengepicker/": "picker", "/auth_platform/recaptcha/": "recaptcha",
+		"/accounts/onetap/": "onetap", "/accounts/edit/": "edit", "/direct/inbox/": "inbox",
+		"/accounts/login/": "login", "/web/unsupported_version/": "unsupported_version",
+		"/oauth/oidc/": "oidc", "/consent/": "consent", "/privacy/consent/": "privacy_consent",
+		"/accounts/suspended/": "suspended",
+	}[target.Path]
+	params, queryErr := url.ParseQuery(target.RawQuery)
+	summary["checkpoint_url_kind"] = instagramWebCheckpointURLKind(target.String())
+	summary["path_kind"] = cmp.Or(pathKind, "other")
+	summary["origin_allowed"] = target.Scheme == "https" && target.User == nil &&
+		(target.Port() == "" || target.Port() == "443") && strings.EqualFold(target.Hostname(), "www.instagram.com")
+	summary["escaped_path"] = target.RawPath != ""
+	summary["query_parse_error"] = queryErr != nil
+	summary["apc_count"] = min(2, len(params["apc"]))
+	summary["apc_empty"] = params.Get("apc") == ""
+	summary["device_id_count"] = min(2, len(params["device_id"]))
+	return summary
+}
+
 func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expectedUserID string) (*InstagramWebTwoFactorChallenge, error) {
 	target, ok := resolveInstagramAuthPlatformURL("https://www.instagram.com/", rawURL)
 	if !ok || !strings.HasPrefix(target.Path, "/auth_platform/") {
@@ -130,11 +158,20 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		}
 		if response.StatusCode >= 300 && response.StatusCode < 400 {
 			rawURL = response.Header.Get("Location")
+			if _, valid := resolveInstagramAuthPlatformURL(s.url.String(), rawURL); !valid {
+				c.log.Debug().Int("status_code", response.StatusCode).Str("redirect_source", "location").
+					Fields(instagramAuthPlatformURLDiagnostics(s.url.String(), rawURL)).Msg("Rejected Instagram AuthPlatform redirect")
+			}
 			continue
 		} else if response.StatusCode != http.StatusOK {
 			return ErrInstagramWebCheckpointUnsupported
 		}
 		if !strings.HasPrefix(target.Path, "/auth_platform/") {
+			// Instagram treats any e parameter on the login homepage as a rejection.
+			if target.Path == "/" && target.Query().Has("e") && instagramWebLoginResponseKind(body) == "html" {
+				c.webAuthPlatform = nil
+				return ErrInstagramWebLoginRejected
+			}
 			c.ensureInstagramWebUserID()
 			userID := c.cookies.Get(cookies.IGCookieDSUserID)
 			if instagramWebLoginResponseKind(body) != "html" || len(c.cookies.GetMissingCookieNames()) != 0 ||

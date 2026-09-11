@@ -402,7 +402,10 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 }
 
 func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step *bridgev2.LoginStep, err error) (*bridgev2.LoginStep, error) {
-	if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
+	if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
+		m.webTwoFactor = nil
+		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 		return nil, errInstagramWebCheckpointCAPTCHA
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
 		return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
@@ -460,7 +463,9 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 	input map[string]string,
 ) (*bridgev2.LoginStep, error) {
 	step, err := m.client.DoInstagramWebAccountManagerSteps(ctx, input)
-	if errors.Is(err, httpclient.ErrRateLimited) {
+	if errors.Is(err, httpclient.ErrConsentRequired) {
+		return nil, loginerrors.Consent
+	} else if errors.Is(err, httpclient.ErrRateLimited) {
 		return nil, loginerrors.RateLimited
 	} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 		return nil, loginerrors.AccountSuspended
