@@ -211,6 +211,12 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	deletion := data.Get("stop_deletion_payload")
 	c.log.Debug().Int64("error_code", data.Get("error_code").Int()).
 		Str("error_style", errorStyle).
+		Stringer("error_style_type", data.Get("error_style").Type).
+		Stringer("error_code_type", data.Get("error_code").Type).
+		Bool("error_code_is_numeric_zero", data.Get("error_code").Type == gjson.Number && data.Get("error_code").Float() == 0).
+		Stringer("error_message_type", data.Get("error_message").Type).
+		Bool("error_message_is_object", data.Get("error_message").IsObject()).
+		Stringer("error_message_text_type", data.Get("error_message.text").Type).
 		Bool("authenticated", data.Get("ig_authenticated").Bool()).
 		Str("authenticated_type", data.Get("ig_authenticated").Type.String()).
 		Bool("has_redirect", data.Get("redirect_uri").String() != "").
@@ -249,19 +255,26 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 				}
 				return challenge, err
 			}
-			// A redirect alone is not successful authentication. The existing terminal
-			// verifier requires a complete session and matching session/user cookies.
-			c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login"))}
-			if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
-				c.webAuthPlatform = nil
-				return nil, err
+			// One-tap is optional, but its query can carry a required continuation.
+			code := data.Get("error_code")
+			optionalOneTap := target.Path == "/accounts/onetap/" && target.RawQuery == "" && data.Get("ig_authenticated").Type == gjson.True &&
+				(code.Type == gjson.Null || (code.Type == gjson.Number && code.Float() == 0)) && c.instagramCAAWebSessionReady()
+			if !optionalOneTap {
+				// A redirect alone is not successful authentication. The existing terminal
+				// verifier requires a complete session and matching session/user cookies.
+				c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login"))}
+				if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
+					c.webAuthPlatform = nil
+					return nil, err
+				}
+				if c.webAuthPlatform != nil {
+					return &InstagramWebTwoFactorChallenge{AuthPlatform: true}, nil
+				}
+				return nil, nil
 			}
-			if c.webAuthPlatform != nil {
-				return &InstagramWebTwoFactorChallenge{AuthPlatform: true}, nil
-			}
-			return nil, nil
+		} else {
+			return nil, ErrInstagramWebCheckpointUnsupported
 		}
-		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	// The frontend applies generic error flags only after two-factor/redirect
 	// dispatch. recaptcha_needed can accompany an ordinary AuthPlatform redirect;
@@ -277,9 +290,7 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		if code := data.Get("error_code"); code.Type != gjson.Null && code.String() != "0" {
 			return nil, ErrInstagramWebCheckpointUnsupported
 		}
-		c.ensureInstagramWebUserID()
-		userID := c.cookies.Get(cookies.IGCookieDSUserID)
-		if len(c.cookies.GetMissingCookieNames()) == 0 && userID != "" && instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) == userID {
+		if c.instagramCAAWebSessionReady() {
 			return nil, nil
 		}
 		return nil, ErrInstagramWebCheckpointUnsupported
@@ -288,10 +299,19 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	if data.Get("error_style").String() == "INLINE" && data.Get("error_message.text").String() != "" {
 		return nil, ErrInstagramWebCredentialsRejected
 	}
-	if data.Get("ig_authenticated").Type == gjson.False && data.Get("error_style").String() == "GENERIC_BANNER" &&
-		data.Get("error_message.text").Type == gjson.String && data.Get("error_message.text").String() != "" &&
+	style, message, code := data.Get("error_style"), data.Get("error_message"), data.Get("error_code")
+	text := message.Get("text")
+	if data.Get("ig_authenticated").Type == gjson.False && (style.Type == gjson.Null || style.String() == "GENERIC_BANNER") &&
+		(message.Type == gjson.Null || message.IsObject()) && (text.Type == gjson.Null || text.Type == gjson.String) &&
+		((style.String() == "GENERIC_BANNER" && text.String() != "") || code.Type == gjson.Null || (code.Type == gjson.Number && code.Float() == 0)) &&
 		!data.Get("should_show_google_oauth_after_failure").Bool() && data.Get("google_oauth_uri").String() == "" {
 		return nil, ErrInstagramWebLoginRejected
 	}
 	return nil, ErrInstagramWebCheckpointUnsupported
+}
+
+func (c *Client) instagramCAAWebSessionReady() bool {
+	c.ensureInstagramWebUserID()
+	userID := c.cookies.Get(cookies.IGCookieDSUserID)
+	return len(c.cookies.GetMissingCookieNames()) == 0 && userID != "" && instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) == userID
 }
