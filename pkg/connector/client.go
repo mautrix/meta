@@ -484,7 +484,7 @@ func (m *MetaClient) connectE2EE() error {
 	if m.Main.Config.ProxyE2EE && m.Main.Config.Proxy != "" {
 		m.E2EEClient.SetProxyAddress(m.Main.Config.Proxy)
 	}
-	if bridgev2.PortalEventBuffer == 0 {
+	if m.Main.Bridge.Config.PortalEventBuffer == 0 {
 		m.E2EEClient.SynchronousAck = true
 		m.E2EEClient.EnableDecryptedEventBuffer = true
 	}

@@ -254,7 +254,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		defer m.removeBackfillCollector(threadID, collector)
 		start := time.Now()
 		timeout := BackfillTimeout
-		if params.Forward && bridgev2.PortalEventBuffer == 0 {
+		if params.Forward && m.Main.Bridge.Config.PortalEventBuffer == 0 {
 			timeout = BackfillForwardTimeout
 		}
 		if m.Main.Bridge.Background {
