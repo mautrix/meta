@@ -334,7 +334,7 @@ func (m *MessengerLiteMethods) GetSessionForApp(ctx context.Context, accessToken
 }
 
 func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, accessToken string) (*cookies.Cookies, error) {
-	resp, err := m.GetSessionForApp(ctx, accessToken, SessionForAppOptions{NewAppID: useragent.MessengerLiteAndroidAppID})
+	resp, err := m.GetSessionForApp(ctx, accessToken, SessionForAppOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -342,18 +342,20 @@ func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, acces
 	if !newCookies.IsLoggedIn() {
 		return nil, fmt.Errorf("session-for-app response is missing cookies: %v", newCookies.GetMissingCookieNames())
 	}
-	uid, err := resp.UID.Int64()
-	if err != nil || uid <= 0 || uid != newCookies.GetUserID() {
-		return nil, fmt.Errorf("session-for-app response account does not match cookies")
-	} else if resp.AccessToken == "" {
-		return nil, fmt.Errorf("session-for-app response is missing an access token")
+	if m.client.Platform == types.MessengerLiteAndroid {
+		uid, err := resp.UID.Int64()
+		if err != nil || uid <= 0 || uid != newCookies.GetUserID() {
+			return nil, fmt.Errorf("session-for-app response account does not match cookies")
+		} else if resp.AccessToken == "" {
+			return nil, fmt.Errorf("session-for-app response is missing an access token")
+		}
+		m.SetNativeSession(&types.NativeSession{
+			AccessToken:    resp.AccessToken,
+			AppID:          useragent.MessengerLiteAndroidAppID,
+			DeviceID:       m.deviceID,
+			FamilyDeviceID: m.familyDeviceID,
+		})
 	}
-	m.SetNativeSession(&types.NativeSession{
-		AccessToken:    resp.AccessToken,
-		AppID:          useragent.MessengerLiteAndroidAppID,
-		DeviceID:       m.deviceID,
-		FamilyDeviceID: m.familyDeviceID,
-	})
 	return newCookies, nil
 }
 
@@ -404,13 +406,13 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		return nil, nil, fmt.Errorf("parsing login response data: %w", err)
 	}
 
-	if len(loginRespPayload.SessionCookies) == 0 || (m.client.Platform == types.MessengerLiteIOS && loginRespPayload.AccessToken != "") {
+	if len(loginRespPayload.SessionCookies) == 0 {
 		if loginRespPayload.AccessToken == "" {
 			return nil, nil, loginerrors.MissingCookies.AppendMessage(". Meta returned incomplete credentials after login. If you don't have MFA enabled, please turn it on for your Facebook account. Otherwise, it may help to try again, log in from the official app/website first, or change the MFA settings for your Facebook account")
 		}
 		m.client.Logger.Debug().
 			Str("credential_type", loginRespPayload.CredentialType).
-			Msg("Exchanging login access token for a Messenger Android session")
+			Msg("Exchanging login access token for session cookies")
 		newCookies, err := m.ExchangeTransientToken(ctx, loginRespPayload.AccessToken)
 		if err != nil {
 			m.client.Logger.Warn().Err(err).
@@ -432,7 +434,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 	if newCookies.GetUserID() <= 0 || (loginRespPayload.UID != 0 && loginRespPayload.UID != newCookies.GetUserID()) {
 		return nil, nil, loginerrors.TokenExchange
 	}
-	if loginRespPayload.AccessToken != "" {
+	if m.client.Platform == types.MessengerLiteAndroid && loginRespPayload.AccessToken != "" {
 		m.SetNativeSession(&types.NativeSession{
 			AccessToken:    loginRespPayload.AccessToken,
 			AppID:          useragent.MessengerLiteAndroidAppID,
