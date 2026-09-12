@@ -233,6 +233,9 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to timeout")
+			if parsedMsgID == nil && m.LoginMeta.Platform.IsMessenger() && !m.connectBackgroundWAOfflineSync.IsSet() {
+				return errors.New("encrypted offline sync did not complete")
+			}
 			return m.ensurePushMessageReceived(ctx, data, parsedMsgID)
 		case <-ctx.Done():
 			log.Debug().
