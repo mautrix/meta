@@ -121,17 +121,15 @@ type connectBackgroundEvent struct {
 	isProcessing bool
 }
 
-func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypto.DecryptedPushData, parsed *methods.MetaMessageID) {
+func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypto.DecryptedPushData, parsed *methods.MetaMessageID) error {
 	if pd == nil || parsed == nil {
-		return
+		return nil
 	}
 	log := zerolog.Ctx(ctx)
 	msgID := parsed.String()
 	part, err := m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
 	if err != nil {
-		log.Err(err).Str("message_id", msgID).
-			Msg("Failed to look up push message in database")
-		return
+		return fmt.Errorf("failed to look up push message %s: %w", msgID, err)
 	} else if part != nil {
 		log.Debug().
 			Str("message_id", msgID).
@@ -139,7 +137,7 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 			Str("f_param", pd.Params["f"]).
 			Stringer("event_id", part.MXID).
 			Msg("Confirmed push message was bridged")
-		return
+		return nil
 	}
 	threadType := table.ONE_TO_ONE
 	chatID := parsed.ChatID
@@ -163,10 +161,12 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 		LatestMessageTS: parsed.Time,
 	})
 	log.Debug().Any("result", res).Msg("Event handling result for push backfill")
+	if !res.Success {
+		return errors.Join(errors.New("failed to queue push backfill"), res.Error)
+	}
 	part, err = m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
 	if err != nil {
-		log.Err(err).Str("message_id", msgID).
-			Msg("Failed to look up push message in database after backfill")
+		return fmt.Errorf("failed to look up push message %s after backfill: %w", msgID, err)
 	} else if part != nil {
 		log.Debug().
 			Str("message_id", msgID).
@@ -174,10 +174,9 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 			Stringer("event_id", part.MXID).
 			Msg("Confirmed push message was bridged after backfill")
 	} else {
-		log.Warn().
-			Str("message_id", msgID).
-			Msg("Push message still wasn't bridged after backfill")
+		return fmt.Errorf("push message %s wasn't bridged after backfill", msgID)
 	}
+	return nil
 }
 
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
@@ -234,8 +233,7 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to timeout")
-			m.ensurePushMessageReceived(ctx, data, parsedMsgID)
-			return nil
+			return m.ensurePushMessageReceived(ctx, data, parsedMsgID)
 		case <-ctx.Done():
 			log.Debug().
 				Bool("fb_tables_received", anythingReceived).
@@ -243,7 +241,7 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to cancellation")
-			return nil
+			return ctx.Err()
 		case <-waOfflineSyncChan:
 			waOfflineSyncChan = nil
 			waDone = true
