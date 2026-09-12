@@ -58,6 +58,9 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 	if pushType != bridgev2.PushTypeWeb {
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
+	if token == "" {
+		return errors.New("empty push token")
+	}
 	meta := m.UserLogin.Metadata.(*metaid.UserLoginMetadata)
 	if meta.PushKeys == nil {
 		meta.GeneratePushKeys()
