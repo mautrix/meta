@@ -217,6 +217,7 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		Stringer("error_message_type", data.Get("error_message").Type).
 		Bool("error_message_is_object", data.Get("error_message").IsObject()).
 		Stringer("error_message_text_type", data.Get("error_message.text").Type).
+		Str("error_message", data.Get("error_message.text").Str).
 		Bool("authenticated", data.Get("ig_authenticated").Bool()).
 		Str("authenticated_type", data.Get("ig_authenticated").Type.String()).
 		Bool("has_redirect", data.Get("redirect_uri").String() != "").
