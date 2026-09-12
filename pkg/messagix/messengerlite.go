@@ -30,6 +30,23 @@ type MessengerLiteMethods struct {
 	deviceID       uuid.UUID
 	familyDeviceID uuid.UUID
 	machineID      string
+	nativeSession  *types.NativeSession
+}
+
+func (m *MessengerLiteMethods) GetNativeSession() *types.NativeSession {
+	if m == nil {
+		return nil
+	}
+	return m.nativeSession
+}
+
+func (m *MessengerLiteMethods) SetNativeSession(session *types.NativeSession) {
+	if m == nil || session == nil {
+		return
+	}
+	m.nativeSession = session
+	m.deviceID = session.DeviceID
+	m.familyDeviceID = session.FamilyDeviceID
 }
 
 func (fb *MessengerLiteMethods) GetSuggestedDeviceID() uuid.UUID {
@@ -270,7 +287,7 @@ func (m *MessengerLiteMethods) GetSessionForApp(ctx context.Context, accessToken
 	params.Set("generate_session_cookies", "1")
 	params.Set("generate_analytics_claim", "1")
 	if m.deviceID != uuid.Nil {
-		params.Set("device_id", strings.ToUpper(m.deviceID.String()))
+		params.Set("device_id", m.deviceID.String())
 	}
 	if m.machineID != "" {
 		params.Set("machine_id", m.machineID)
@@ -324,6 +341,20 @@ func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, acces
 	newCookies := m.convertCookies(resp.SessionCookies)
 	if !newCookies.IsLoggedIn() {
 		return nil, fmt.Errorf("session-for-app response is missing cookies: %v", newCookies.GetMissingCookieNames())
+	}
+	if m.client.Platform == types.MessengerLiteAndroid {
+		uid, err := resp.UID.Int64()
+		if err != nil || uid <= 0 || uid != newCookies.GetUserID() {
+			return nil, fmt.Errorf("session-for-app response account does not match cookies")
+		} else if resp.AccessToken == "" {
+			return nil, fmt.Errorf("session-for-app response is missing an access token")
+		}
+		m.SetNativeSession(&types.NativeSession{
+			AccessToken:    resp.AccessToken,
+			AppID:          useragent.MessengerLiteAndroidAppID,
+			DeviceID:       m.deviceID,
+			FamilyDeviceID: m.familyDeviceID,
+		})
 	}
 	return newCookies, nil
 }
@@ -381,12 +412,15 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		}
 		m.client.Logger.Debug().
 			Str("credential_type", loginRespPayload.CredentialType).
-			Msg("Login response didn't include session cookies, exchanging access token for a session")
+			Msg("Exchanging login access token for session cookies")
 		newCookies, err := m.ExchangeTransientToken(ctx, loginRespPayload.AccessToken)
 		if err != nil {
 			m.client.Logger.Warn().Err(err).
 				Str("credential_type", loginRespPayload.CredentialType).
 				Msg("Failed to exchange access token for session cookies")
+			return nil, nil, loginerrors.TokenExchange
+		}
+		if loginRespPayload.UID != 0 && newCookies.GetUserID() != loginRespPayload.UID {
 			return nil, nil, loginerrors.TokenExchange
 		}
 		m.client.Logger.Debug().
@@ -396,7 +430,19 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		return nil, newCookies, nil
 	}
 
-	return nil, m.convertCookies(loginRespPayload.SessionCookies), nil
+	newCookies := m.convertCookies(loginRespPayload.SessionCookies)
+	if newCookies.GetUserID() <= 0 || (loginRespPayload.UID != 0 && loginRespPayload.UID != newCookies.GetUserID()) {
+		return nil, nil, loginerrors.TokenExchange
+	}
+	if m.client.Platform == types.MessengerLiteAndroid && loginRespPayload.AccessToken != "" {
+		m.SetNativeSession(&types.NativeSession{
+			AccessToken:    loginRespPayload.AccessToken,
+			AppID:          useragent.MessengerLiteAndroidAppID,
+			DeviceID:       m.deviceID,
+			FamilyDeviceID: m.familyDeviceID,
+		})
+	}
+	return nil, newCookies, nil
 }
 
 func (m *MessengerLiteMethods) CancelLoginStep(ctx context.Context) error {

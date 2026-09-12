@@ -110,6 +110,9 @@ func (keys *PushKeys) Decrypt(ctx context.Context, push json.RawMessage) (*Decry
 	if err != nil {
 		return nil, fmt.Errorf("failed to open gcm: %w", err)
 	}
+	if len(decrypted) < 2 {
+		return nil, errors.New("missing push padding length")
+	}
 	padLen := int(binary.BigEndian.Uint16(decrypted[:2]))
 	if 2+padLen > len(decrypted) {
 		return nil, errors.New("invalid padding length")
