@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -9,7 +10,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -73,24 +76,59 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 	}, nil
 }
 
-// This creates a user login using credentials transferred from another instance of the meta bridge,
-// via the `ExportCredentials` API.
+type metaCredentials struct {
+	Platform      types.Platform       `json:"platform"`
+	Cookies       *cookies.Cookies     `json:"cookies"`
+	NativeSession *types.NativeSession `json:"native_session,omitempty"`
+}
+
+func validateNativeSession(session *types.NativeSession) error {
+	if session != nil && (session.AccessToken == "" || session.AppID != useragent.MessengerLiteAndroidAppID || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil) {
+		return fmt.Errorf("invalid native Messenger session")
+	}
+	return nil
+}
+
 func (m *MetaConnector) CreateUserLoginFromCredentials(ctx context.Context, user *bridgev2.User, credentials any) error {
 	creds, ok := credentials.(map[string]any)
 	if !ok {
 		return fmt.Errorf("invalid credentials type: %T", credentials)
 	}
-	cleanCreds := make(map[string]string, len(creds))
-	for k, v := range creds {
-		cleanCreds[k] = v.(string)
+	var transferred metaCredentials
+	if _, structured := creds["cookies"]; structured {
+		data, err := json.Marshal(creds)
+		if err != nil {
+			return fmt.Errorf("failed to encode transferred credentials: %w", err)
+		} else if err = json.Unmarshal(data, &transferred); err != nil {
+			return fmt.Errorf("failed to decode transferred credentials: %w", err)
+		} else if transferred.Cookies == nil || !transferred.Platform.IsMessenger() {
+			return fmt.Errorf("invalid transferred Messenger credentials")
+		} else if err = validateNativeSession(transferred.NativeSession); err != nil {
+			return err
+		}
+		transferred.Cookies.Platform = transferred.Platform
+	} else {
+		transferred.Platform = types.Facebook
+		if m.Config.Tor {
+			transferred.Platform = types.FacebookTor
+		}
+		transferred.Cookies = &cookies.Cookies{Platform: transferred.Platform}
+		values := make(map[cookies.MetaCookieName]string, len(creds))
+		for key, value := range creds {
+			str, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("invalid cookie value type for %s", key)
+			}
+			values[cookies.MetaCookieName(key)] = str
+		}
+		transferred.Cookies.UpdateValues(values)
 	}
-
-	login, err := m.CreateLogin(ctx, user, FlowIDFacebookCookies)
+	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
+	client, err := getMessagixClient(log, m, transferred.Cookies, m.Config.ProxyOther)
 	if err != nil {
 		return err
 	}
-
-	step, err := login.(bridgev2.LoginProcessCookies).SubmitCookies(ctx, cleanCreds)
+	step, err := loginWithCookies(ctx, log, client, user, m, transferred.Cookies, transferred.NativeSession, true)
 	if err != nil {
 		return err
 	} else if step.Type != bridgev2.LoginStepTypeComplete {
@@ -124,7 +162,7 @@ var (
 )
 
 func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowMessengerLiteIOS, loginFlowMessengerLiteAndroid}
+	return []bridgev2.LoginFlow{loginFlowMessengerLiteAndroid, loginFlowFacebook, loginFlowMessenger, loginFlowMessengerLiteIOS}
 }
 
 type MetaCookieLogin struct {
@@ -198,7 +236,15 @@ func loginWithCookies(
 	bridgeUser *bridgev2.User,
 	conn *MetaConnector,
 	c *cookies.Cookies,
+	nativeSession *types.NativeSession,
+	transfer bool,
 ) (*bridgev2.LoginStep, error) {
+	if missing := c.GetMissingCookieNames(); len(missing) > 0 {
+		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missing)
+	} else if err := validateNativeSession(nativeSession); err != nil {
+		return nil, err
+	}
+	client.MessengerLite.SetNativeSession(nativeSession)
 
 	log.Debug().
 		Strs("cookie_names", exslices.CastToString[string](slices.Collect(maps.Keys(c.GetAll())))).
@@ -221,9 +267,64 @@ func loginWithCookies(
 
 	id := user.GetFBID()
 	loginID := metaid.MakeUserLoginID(id)
+	if id != c.GetUserID() {
+		return nil, fmt.Errorf("logged-in account does not match cookies")
+	}
 	var loginUA string
 	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {
 		loginUA = req.Header.Get("User-Agent")
+	}
+	metadata := &metaid.UserLoginMetadata{}
+	existing, err := conn.Bridge.GetExistingUserLoginByID(ctx, loginID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load existing login: %w", err)
+	} else if existing != nil && existing.UserMXID != bridgeUser.MXID {
+		return nil, fmt.Errorf("that account is already logged in by another user")
+	} else if existing != nil {
+		*metadata = *existing.Metadata.(*metaid.UserLoginMetadata)
+	}
+	if nativeSession != nil {
+		deviceID := nativeSession.DeviceID
+		if transfer {
+			deviceID = uuid.New()
+		}
+		if metadata.WADeviceID != 0 {
+			device, err := conn.DeviceStore.GetDevice(ctx, waTypes.JID{User: string(loginID), Device: metadata.WADeviceID, Server: waTypes.MessengerServer})
+			if err != nil {
+				return nil, fmt.Errorf("failed to load existing encrypted device: %w", err)
+			} else if device != nil {
+				if device.FacebookUUID == uuid.Nil {
+					return nil, fmt.Errorf("existing encrypted device has no native identity")
+				}
+				deviceID = device.FacebookUUID
+			} else {
+				metadata.WADeviceID = 0
+			}
+		}
+		if deviceID != nativeSession.DeviceID {
+			authClient, err := getMessagixClient(log, conn, &cookies.Cookies{Platform: types.MessengerLiteAndroid}, conn.Config.ProxyMessengerLite)
+			if err != nil {
+				return nil, err
+			}
+			updated := *nativeSession
+			updated.DeviceID = deviceID
+			authClient.MessengerLite.SetNativeSession(&updated)
+			newCookies, err := authClient.MessengerLite.ExchangeTransientToken(ctx, nativeSession.AccessToken)
+			if err != nil {
+				return nil, fmt.Errorf("failed to prepare native session for encrypted device: %w", err)
+			} else if newCookies.GetUserID() != id {
+				return nil, fmt.Errorf("exchanged native session account does not match login")
+			}
+			nativeSession = authClient.MessengerLite.GetNativeSession()
+		}
+	}
+	metadata.Platform = c.Platform
+	metadata.Cookies = c
+	metadata.LoginUA = loginUA
+	metadata.NativeSession = nativeSession
+	client.MessengerLite.SetNativeSession(nativeSession)
+	if existing != nil && existing.Client != nil {
+		existing.Client.Disconnect()
 	}
 
 	ul, err := bridgeUser.NewLogin(ctx, &database.UserLogin{
@@ -232,11 +333,7 @@ func loginWithCookies(
 		RemoteProfile: status.RemoteProfile{
 			Name: user.GetName(),
 		},
-		Metadata: &metaid.UserLoginMetadata{
-			Platform: c.Platform,
-			Cookies:  c,
-			LoginUA:  loginUA,
-		},
+		Metadata: metadata,
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save new login: %w", err)
@@ -281,7 +378,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, c)
+	return loginWithCookies(ctx, log, client, m.User, m.Main, c, nil, false)
 }
 
 type MetaNativeLogin struct {
@@ -366,7 +463,7 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 
 	newClient.GetCookies().UpdateValues(newCookies.GetAll())
 
-	step, err = loginWithCookies(ctx, log, newClient, m.User, m.Main, newCookies)
+	step, err = loginWithCookies(ctx, log, newClient, m.User, m.Main, newCookies, m.SavedClient.MessengerLite.GetNativeSession(), false)
 	if err != nil {
 		return nil, err
 	}

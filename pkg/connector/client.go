@@ -36,15 +36,16 @@ type MetaClient struct {
 	UserLogin *bridgev2.UserLogin
 	Ghost     *bridgev2.Ghost
 
-	stopHandlingTables  atomic.Pointer[context.CancelFunc]
-	initialTable        atomic.Pointer[table.LSTable]
-	initialTableHandled atomic.Bool
-	parsedTables        chan *parsedTable
-	backfillCollectors  map[int64]*BackfillCollector
-	backfillLock        sync.Mutex
-	connectLock         sync.Mutex
-	stopConnectAttempt  atomic.Pointer[context.CancelFunc]
-	permanentErrored    atomic.Bool
+	stopHandlingTables   atomic.Pointer[context.CancelFunc]
+	initialTable         atomic.Pointer[table.LSTable]
+	initialTableHandled  atomic.Bool
+	parsedTables         chan *parsedTable
+	backfillCollectors   map[int64]*BackfillCollector
+	backfillLock         sync.Mutex
+	connectLock          sync.Mutex
+	pushRegistrationLock sync.Mutex
+	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
+	permanentErrored     atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -81,6 +82,9 @@ func (m *MetaConnector) getMessagixConfig() *messagix.Config {
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
+	if err := validateNativeSession(loginMetadata.NativeSession); err != nil {
+		return err
+	}
 	c := &MetaClient{
 		Main:      m,
 		LoginMeta: loginMetadata,
@@ -150,6 +154,7 @@ func (m *MetaClient) ensureMessagixClient() {
 			m.Main.getMessagixConfig(),
 		)
 		m.Client.SetEventHandler(m.handleMetaEvent)
+		m.Client.MessengerLite.SetNativeSession(m.LoginMeta.NativeSession)
 	}
 }
 
@@ -157,7 +162,14 @@ func (m *MetaClient) ExportCredentials(ctx context.Context) any {
 	if m.Client == nil {
 		return nil
 	}
-	return m.Client.GetCookies()
+	if m.LoginMeta.NativeSession == nil {
+		return m.Client.GetCookies()
+	}
+	return &metaCredentials{
+		Platform:      m.LoginMeta.Platform,
+		Cookies:       m.Client.GetCookies(),
+		NativeSession: m.LoginMeta.NativeSession,
+	}
 }
 
 func (m *MetaClient) Connect(ctx context.Context) {
@@ -454,9 +466,11 @@ func (m *MetaClient) connectE2EE() error {
 	if m.WADevice == nil {
 		isNew = true
 		m.WADevice = m.Main.DeviceStore.NewDevice()
-	}
-	if suggested := m.Client.MessengerLite.GetSuggestedDeviceID(); suggested != uuid.Nil {
-		m.WADevice.FacebookUUID = suggested
+		if session := m.LoginMeta.NativeSession; session != nil {
+			m.WADevice.FacebookUUID = session.DeviceID
+		} else if suggested := m.Client.MessengerLite.GetSuggestedDeviceID(); suggested != uuid.Nil {
+			m.WADevice.FacebookUUID = suggested
+		}
 	}
 	m.Client.SetDevice(m.WADevice)
 

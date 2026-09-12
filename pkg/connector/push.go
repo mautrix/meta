@@ -33,6 +33,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -45,7 +46,14 @@ var pushCfg = &bridgev2.PushConfig{
 	Web: &bridgev2.WebPushConfig{VapidKey: "BIBn3E_rWTci8Xn6P9Xj3btShT85Wdtne0LtwNUyRQ5XjFNkuTq9j4MPAVLvAFhXrUU1A9UxyxBA7YIOjqDIDHI"},
 }
 
+var nativePushCfg = &bridgev2.PushConfig{
+	FCM: &bridgev2.FCMPushConfig{SenderID: "622912139302"},
+}
+
 func (m *MetaClient) GetPushConfigs() *bridgev2.PushConfig {
+	if session := m.LoginMeta.NativeSession; session != nil && session.AccessToken != "" && session.AppID == useragent.MessengerLiteAndroidAppID {
+		return nativePushCfg
+	}
 	return pushCfg
 }
 
@@ -55,11 +63,15 @@ type DoubleToken struct {
 }
 
 func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
-	if pushType != bridgev2.PushTypeWeb {
-		return fmt.Errorf("unsupported push type %s", pushType)
-	}
+	m.pushRegistrationLock.Lock()
+	defer m.pushRegistrationLock.Unlock()
 	if token == "" {
 		return errors.New("empty push token")
+	}
+	if pushType == bridgev2.PushTypeFCM {
+		return m.registerNativePush(ctx, token)
+	} else if pushType != bridgev2.PushTypeWeb {
+		return fmt.Errorf("unsupported push type %s", pushType)
 	}
 	meta := m.UserLogin.Metadata.(*metaid.UserLoginMetadata)
 	if meta.PushKeys == nil {
@@ -84,6 +96,9 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 		encToken = dt.Encrypted
 	}
 	if encToken != "" {
+		if m.E2EEClient == nil {
+			return ErrNotConnected
+		}
 		err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
 			Endpoint: encToken,
 			Auth:     meta.PushKeys.Auth,
@@ -106,6 +121,43 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 		}
 	}
 	return err
+}
+
+func (m *MetaClient) registerNativePush(ctx context.Context, token string) error {
+	if m.Client == nil || m.LoginMeta.NativeSession == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
+	if err := m.e2eeConnectWaiter.WaitTimeoutCtx(ctx, ConnectWaitTimeout); err != nil {
+		return fmt.Errorf("waiting for encrypted push connection: %w", err)
+	}
+	client := m.Client
+	e2eeClient := m.E2EEClient
+	device := m.WADevice
+	if client == nil || e2eeClient == nil || !e2eeClient.IsLoggedIn() || device == nil {
+		return ErrNotConnected
+	}
+	session := m.LoginMeta.NativeSession
+	if device.FacebookUUID != session.DeviceID {
+		return errors.New("native push session does not match encrypted device")
+	}
+	if m.LoginMeta.NativePushKeys == nil {
+		keys, err := pushcrypto.NewNativePushKeys(metaid.ParseUserLoginID(m.UserLogin.ID))
+		if err != nil {
+			return fmt.Errorf("failed to generate native push keys: %w", err)
+		}
+		m.LoginMeta.NativePushKeys = keys
+		if err = m.UserLogin.Save(ctx); err != nil {
+			m.LoginMeta.NativePushKeys = nil
+			return fmt.Errorf("failed to save native push keys: %w", err)
+		}
+	}
+	if err := client.Facebook.RegisterNativePushNotifications(ctx, session, token, m.LoginMeta.NativePushKeys); err != nil {
+		return err
+	}
+	if err := e2eeClient.RegisterForPushNotifications(ctx, &messagix.NativePushConfig{AppID: session.AppID, DeviceID: session.DeviceID}); err != nil {
+		return fmt.Errorf("failed to register encrypted native push: %w", err)
+	}
+	return nil
 }
 
 func (m *MetaClient) notifyBackgroundConnAboutEvent(isProcessing bool) {
@@ -182,7 +234,17 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	log := zerolog.Ctx(ctx)
 	var parsedMsgID *methods.MetaMessageID
-	data, err := m.UserLogin.Metadata.(*metaid.UserLoginMetadata).PushKeys.Decrypt(ctx, params.RawData)
+	var envelope struct {
+		PIM  string `json:"pim"`
+		Data struct {
+			PIM string `json:"pim"`
+		} `json:"data"`
+	}
+	var data *pushcrypto.DecryptedPushData
+	var err error
+	if json.Unmarshal(params.RawData, &envelope) != nil || (envelope.PIM == "" && envelope.Data.PIM == "") {
+		data, err = m.LoginMeta.PushKeys.Decrypt(ctx, params.RawData)
+	}
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
