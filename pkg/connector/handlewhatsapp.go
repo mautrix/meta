@@ -32,7 +32,9 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Any("ig_transport", evt.IGTransport).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
-		m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m})
+		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
+			return false
+		}
 		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
 	case *events.ChatPresence:
 		m.handleWAChatPresence(m.Main.Bridge.BackgroundCtx, evt)
