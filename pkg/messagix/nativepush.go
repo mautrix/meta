@@ -70,7 +70,7 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 		},
 		"typed_os_settings": map[string]int{"notificationEnabled": 1},
 		"extra_data": map[string]int{
-			"android_build":          345613452,
+			"android_build":          useragent.MessengerLiteAndroidBuild,
 			"android_setting_mask":   240,
 			"orca_muted_until_ms":    0,
 			"sys_notif":              1,
