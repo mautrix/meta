@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
@@ -57,11 +56,6 @@ func (m *MetaClient) GetPushConfigs() *bridgev2.PushConfig {
 	return pushCfg
 }
 
-type DoubleToken struct {
-	Unencrypted string `json:"unencrypted"`
-	Encrypted   string `json:"encrypted"`
-}
-
 func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
 	m.pushRegistrationLock.Lock()
 	defer m.pushRegistrationLock.Unlock()
@@ -84,29 +78,6 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 	keys := messagix.PushKeys{
 		P256DH: meta.PushKeys.P256DH,
 		Auth:   meta.PushKeys.Auth,
-	}
-	var encToken string
-	if token[0] == '{' && token[len(token)-1] == '}' {
-		var dt DoubleToken
-		err := json.Unmarshal([]byte(token), &dt)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal double token: %w", err)
-		}
-		token = dt.Unencrypted
-		encToken = dt.Encrypted
-	}
-	if encToken != "" {
-		if m.E2EEClient == nil {
-			return ErrNotConnected
-		}
-		err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
-			Endpoint: encToken,
-			Auth:     meta.PushKeys.Auth,
-			P256DH:   meta.PushKeys.P256DH,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to register e2ee notifications: %w", err)
-		}
 	}
 	cli := m.Client
 	if cli == nil {
