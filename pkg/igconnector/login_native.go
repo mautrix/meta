@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -501,7 +502,22 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		}
 		defer restoreTransport()
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, restoreTransport)
+	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, restoreTransport)
+	var requestErr *url.Error
+	if ctx.Err() == nil && isClientHTTPError(err) && errors.As(err, &requestErr) &&
+		requestErr.Op == "Get" && requestErr.URL == client.GetEndpoint("messages") {
+		m.transport = loginTransport
+		return &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeUserInput,
+			StepID:       "fi.mau.meta.instagram.inbox_retry",
+			Instructions: "Your device couldn't load the Instagram inbox. Check your connection and retry to finish signing in.",
+			UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{{
+				Type: bridgev2.LoginInputFieldTypeSelect, ID: "retry", Name: "Finish signing in",
+				Options: []string{"Retry loading inbox"},
+			}}},
+		}, nil
+	}
+	return step, err
 }
 
 func isClientHTTPError(err error) bool {
