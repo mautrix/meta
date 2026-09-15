@@ -37,9 +37,8 @@ import (
 const (
 	FlowIDInstagramPassword = "instagram-password"
 
-	LoginStepIDCredentials   = "fi.mau.meta.instagram.credentials"
-	LoginStepIDWebTwoFactor  = "fi.mau.meta.instagram.web_two_factor"
-	LoginStepIDCookieConsent = "fi.mau.meta.instagram.cookie_consent"
+	LoginStepIDCredentials  = "fi.mau.meta.instagram.credentials"
+	LoginStepIDWebTwoFactor = "fi.mau.meta.instagram.web_two_factor"
 
 	loginFieldIdentifier       = "username"
 	loginFieldPassword         = "password"
@@ -99,23 +98,14 @@ type MetaNativeLogin struct {
 	User *bridgev2.User
 	Main *IGConnector
 
-	client           *instameow.Client
-	transport        http.RoundTripper
-	caaIdentifier    string
-	caaPassword      string
-	caaUserID        string
-	webTwoFactor     *instameow.InstagramWebTwoFactorChallenge
-	webSessionReady  bool
-	webCookieConsent *instagramPendingConsentCredentials
+	client          *instameow.Client
+	transport       http.RoundTripper
+	caaIdentifier   string
+	caaPassword     string
+	caaUserID       string
+	webTwoFactor    *instameow.InstagramWebTwoFactorChallenge
+	webSessionReady bool
 }
-
-type instagramPendingConsentCredentials struct {
-	identifier, password string
-	allowCAAFallback     bool
-}
-
-const instagramDeclineOptionalCookies = "Continue with required cookies only"
-const instagramCancelCookieConsent = "Cancel login"
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessCookies = (*MetaNativeLogin)(nil)
@@ -188,7 +178,6 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 	m.client = nil
 	m.webTwoFactor = nil
 	m.webSessionReady = false
-	m.webCookieConsent = nil
 	if m.User == nil || m.Main == nil {
 		return nil, errors.New("instagram login is not initialized")
 	}
@@ -223,7 +212,6 @@ func (m *MetaNativeLogin) Cancel() {
 	m.client = nil
 	m.webTwoFactor = nil
 	m.webSessionReady = false
-	m.webCookieConsent = nil
 	m.transport = nil
 }
 
@@ -245,18 +233,6 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	}
 	if m.caaIdentifier != "" {
 		return m.continueCAAFallback(ctx, input)
-	}
-	if m.webCookieConsent != nil {
-		switch input["cookie_consent"] {
-		case instagramDeclineOptionalCookies, "Decline optional cookies and continue": // Accept the previous label for pending steps.
-			pending := m.webCookieConsent
-			return m.submitWebCredentials(ctx, pending.identifier, pending.password, pending.allowCAAFallback)
-		case instagramCancelCookieConsent:
-			m.Cancel()
-			return nil, bridgev2.ErrLoginStepCancelled
-		default:
-			return instagramCookieConsentStep(), nil
-		}
 	}
 	if m.webSessionReady {
 		return m.continueWebAccountManager(ctx, input)
@@ -319,19 +295,12 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	identifier, password string,
 	allowCAAFallback bool,
 ) (*bridgev2.LoginStep, error) {
-	var challenge *instameow.InstagramWebTwoFactorChallenge
-	var err error
-	if m.webCookieConsent != nil {
-		m.webCookieConsent = nil
+	challenge, err := m.client.CreateInstagramWebSession(ctx, identifier, password)
+	if errors.Is(err, instameow.ErrInstagramWebCookieConsentRequired) {
 		challenge, err = m.client.ContinueInstagramWebSessionAfterCookieConsent(ctx, identifier, password)
-	} else {
-		challenge, err = m.client.CreateInstagramWebSession(ctx, identifier, password)
 	}
 	if err != nil {
-		if errors.Is(err, instameow.ErrInstagramWebCookieConsentRequired) {
-			m.webCookieConsent = &instagramPendingConsentCredentials{identifier: identifier, password: password, allowCAAFallback: allowCAAFallback}
-			return instagramCookieConsentStep(), nil
-		} else if isClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
+		if isClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 			m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
 		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
@@ -533,17 +502,6 @@ func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {
 				},
 			},
 		},
-	}
-}
-
-func instagramCookieConsentStep() *bridgev2.LoginStep {
-	return &bridgev2.LoginStep{
-		Type: bridgev2.LoginStepTypeUserInput, StepID: LoginStepIDCookieConsent,
-		Instructions: "Continue with the cookies Instagram needs to sign you in. Optional cookies will be declined.",
-		UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{{
-			Type: bridgev2.LoginInputFieldTypeSelect, ID: "cookie_consent", Name: "Instagram cookies",
-			Options: []string{instagramDeclineOptionalCookies, instagramCancelCookieConsent},
-		}}},
 	}
 }
 

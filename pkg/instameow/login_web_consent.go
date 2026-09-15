@@ -92,9 +92,9 @@ func (c *Client) prepareInstagramWebCookieConsent(page *instagramCAALoginPage) e
 	return ErrInstagramWebCookieConsentRequired
 }
 
-// ContinueInstagramWebSessionAfterCookieConsent is called only after the user
-// chooses to continue with optional cookies declined. It consumes the bootstrap
-// once; an ambiguous consent response must never trigger a password submission.
+// ContinueInstagramWebSessionAfterCookieConsent declines optional cookies and
+// resumes login. It consumes the bootstrap once; an ambiguous consent response
+// must never trigger a password submission.
 func (c *Client) ContinueInstagramWebSessionAfterCookieConsent(ctx context.Context, identifier, password string) (*InstagramWebTwoFactorChallenge, error) {
 	if c == nil {
 		return nil, ErrClientIsNil
