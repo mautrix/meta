@@ -232,7 +232,7 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		Msg("Instagram CAA login response")
 	// GraphQL also returns this object with null fields when no deletion is pending.
 	if deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null {
-		return nil, ErrInstagramWebCheckpointUnsupported
+		return nil, ErrInstagramWebAccountPendingDeletion
 	}
 	if twoFactor := data.Get("two_factor_result"); twoFactor.Type != gjson.Null && twoFactor.String() != "" {
 		var result instagramWebLoginResponse

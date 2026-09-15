@@ -348,6 +348,8 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting login attempts. Wait a while before starting a new login.")
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			return nil, loginerrors.AccountSuspended
+		} else if errors.Is(err, instameow.ErrInstagramWebAccountPendingDeletion) {
+			return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_ACCOUNT_PENDING_DELETION", Err: "Instagram reports that this account is scheduled for deletion. Open Instagram to review the deletion request before starting a new login.", StatusCode: http.StatusForbidden}
 		} else if errors.Is(err, httpclient.ErrChallengeRequired) || errors.Is(err, httpclient.ErrCheckpointRequired) {
 			if !allowCAAFallback {
 				return nil, errInstagramCAAFlowFailed
