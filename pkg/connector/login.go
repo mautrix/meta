@@ -162,7 +162,7 @@ var (
 )
 
 func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	return []bridgev2.LoginFlow{loginFlowMessengerLiteAndroid, loginFlowFacebook, loginFlowMessenger, loginFlowMessengerLiteIOS}
+	return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowMessengerLiteIOS, loginFlowMessengerLiteAndroid}
 }
 
 type MetaCookieLogin struct {
