@@ -1,8 +1,6 @@
 package messagix
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/ecdh"
 	"crypto/sha256"
@@ -94,14 +92,6 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 		"fb_api_req_friendly_name": {"registerPush"},
 		"fb_api_caller_class":      {"FacebookPushServerRegisterJobImpl"},
 	}
-	var body bytes.Buffer
-	compressed := gzip.NewWriter(&body)
-	if _, err = compressed.Write([]byte(form.Encode())); err != nil {
-		return fmt.Errorf("failed to compress native push request: %w", err)
-	}
-	if err = compressed.Close(); err != nil {
-		return fmt.Errorf("failed to finish native push request: %w", err)
-	}
 	headers := http.Header{}
 	headers.Set("Authorization", "OAuth "+session.AccessToken)
 	headers.Set("User-Agent", useragent.MessengerLiteAndroidUserAgent)
@@ -109,8 +99,7 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 	headers.Set("X-FB-Friendly-Name", "registerPush")
 	headers.Set("X-ZERO-STATE", "unknown")
 	headers.Set("X-FB-Family-Device-Id", session.FamilyDeviceID.String())
-	headers.Set("Content-Encoding", "gzip")
-	_, response, err := fb.client.http.MakeRequestOnceNoRedirect(ctx, "https://b-graph.facebook.com/me/register_push_tokens", http.MethodPost, headers, body.Bytes(), types.FORM)
+	_, response, err := fb.client.http.MakeRequest(ctx, "https://b-graph.facebook.com/me/register_push_tokens", http.MethodPost, headers, []byte(form.Encode()), types.FORM)
 	if err != nil {
 		return fmt.Errorf("failed to register native push: %w", err)
 	}
