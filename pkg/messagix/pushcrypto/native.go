@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"strconv"
 	"time"
+
+	"go.mau.fi/util/random"
 )
 
 type NativePushKeys struct {
@@ -19,10 +21,8 @@ func NewNativePushKeys(userID int64) (*NativePushKeys, error) {
 	if err != nil {
 		return nil, err
 	}
-	key := make([]byte, 32)
-	rand.Read(key)
 	return &NativePushKeys{
-		AESKey:         key,
+		AESKey:         random.Bytes(32),
 		AESKeyID:       userID<<8 | 1,
 		HPKEPrivateKey: private.Bytes(),
 		HPKEKeyID:      strconv.FormatInt(time.Now().UnixMilli(), 10),

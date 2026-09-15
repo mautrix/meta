@@ -185,7 +185,7 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 	})
 	log.Debug().Any("result", res).Msg("Event handling result for push backfill")
 	if !res.Success {
-		return errors.Join(errors.New("failed to queue push backfill"), res.Error)
+		return fmt.Errorf("failed to queue push backfill: %w", res.Error)
 	}
 	part, err = m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
 	if err != nil {
