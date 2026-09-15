@@ -197,7 +197,9 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 			Stringer("event_id", part.MXID).
 			Msg("Confirmed push message was bridged after backfill")
 	} else {
-		return fmt.Errorf("push message %s wasn't bridged after backfill", msgID)
+		log.Warn().
+			Str("message_id", msgID).
+			Msg("Push message still wasn't bridged after backfill")
 	}
 	return nil
 }
