@@ -191,6 +191,9 @@ func (profile browserPlatformProfile) fallbackCodeInput(
 	if profile.isInstagram && input == nil {
 		return page.FindDescendant(FilterByComponent("bk.components.TextInput"))
 	}
+	if input == nil {
+		return page.FindDescendant(FilterByAttribute("bk.components.TextInput", "type", "number"))
+	}
 	return input
 }
 

@@ -85,6 +85,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 	if err := validateNativeSession(loginMetadata.NativeSession); err != nil {
 		return err
 	}
+	if login.Client != nil {
+		login.Client.Disconnect()
+	}
 	c := &MetaClient{
 		Main:      m,
 		LoginMeta: loginMetadata,
