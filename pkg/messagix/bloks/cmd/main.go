@@ -24,7 +24,6 @@ import (
 
 var filename = flag.String("file", "", "Bloks response to parse")
 var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
-var doRedact = flag.Bool("redact", false, "Pretty-print the bundle but in redacted form")
 var doExport = flag.Bool("export", false, "Print the bundle in a format that can be parsed again")
 var doHTML = flag.Bool("html", false, "Print as HTML")
 var doLogin = flag.Bool("login", false, "Click the login button")
@@ -343,10 +342,6 @@ func mainE() error {
 		}
 	}
 	if *doPrint {
-		return bundle.Print(os.Stdout, "")
-	}
-	if *doRedact {
-		bundle.Redact()
 		return bundle.Print(os.Stdout, "")
 	}
 	if *doExport {

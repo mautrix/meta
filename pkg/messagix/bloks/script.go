@@ -41,7 +41,6 @@ type BloksScriptNodeContent interface {
 	Parse(code string, start int) (int, error)
 	Unminify(m *Unminifier)
 	Print(w io.Writer, indent string) error
-	Redact()
 }
 
 type BloksScriptFuncall struct {
@@ -133,38 +132,6 @@ func (call *BloksScriptFuncall) Print(w io.Writer, indent string) error {
 	}
 	fmt.Fprintf(w, ")")
 	return nil
-}
-
-func (call *BloksScriptFuncall) Redact() {
-	nonsensitive := map[int]bool{}
-	switch call.Function {
-	case "bk.action.qpl.MarkerAnnotate", "bk.action.qpl.MarkerEndV2":
-		nonsensitive[0] = true
-	case "bk.action.qpl.MarkerPoint":
-		nonsensitive[0] = true
-		nonsensitive[2] = true
-	case "bk.action.LogFlytrapData":
-		nonsensitive[1] = true
-	case "bk.action.bloks.WriteGlobalConsistencyStore":
-		nonsensitive[0] = true
-	case "bk.action.bloks.GetVariable2":
-		nonsensitive[0] = true
-	case "bk.action.bloks.GetScript":
-		nonsensitive[0] = true
-	case "bk.action.bloks.GetPayload":
-		nonsensitive[0] = true
-	case "bk.action.template.Make":
-		nonsensitive[0] = true
-	}
-	for idx, arg := range call.Args {
-		if nonsensitive[idx] {
-			switch arg.Content.(type) {
-			case *BloksScriptLiteral:
-				continue
-			}
-		}
-		arg.Content.Redact()
-	}
 }
 
 type BloksScriptLiteralValue any
@@ -309,12 +276,6 @@ func (lit *BloksScriptLiteral) Print(w io.Writer, indent string) error {
 
 func (lit *BloksScriptLiteral) Value() any {
 	return lit.BloksScriptLiteralValue
-}
-
-func (lit *BloksScriptLiteral) Redact() {
-	val := lit.Flatten(false)
-	redactJavaScriptValue(&val)
-	*lit = *BloksLiteralOf(val)
 }
 
 func BloksLiteralOf(val any) *BloksScriptLiteral {
