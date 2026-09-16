@@ -103,6 +103,8 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 }
 
 func (m *MetaClient) handleUpdateExistingMessageRange(tk handlerParams, rng *table.LSUpdateExistingMessageRange) bridgev2.RemoteEvent {
+	m.backfillLock.Lock()
+	defer m.backfillLock.Unlock()
 	logEvt := m.UserLogin.Log.Info().
 		Str("action", "handle meta existing range").
 		Int64("thread_key", tk.ID).
