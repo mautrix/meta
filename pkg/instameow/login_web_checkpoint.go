@@ -109,7 +109,7 @@ func (c *Client) startInstagramWebCheckpoint(
 		rawURL = result.RedirectURL
 	}
 	if instagramWebCheckpointURLKind(rawURL) == "auth_platform" {
-		return c.startInstagramAuthPlatform(ctx, rawURL, "")
+		return c.startInstagramAuthPlatform(ctx, rawURL, "", "")
 	}
 	checkpointURL, ok := normalizeInstagramWebChallengeURL(rawURL)
 	if !ok {
@@ -125,7 +125,7 @@ func (c *Client) startInstagramWebCheckpoint(
 		return nil, err
 	}
 	if instagramWebCheckpointURLKind(checkpointURL) == "auth_platform" {
-		return c.startInstagramAuthPlatform(ctx, checkpointURL, expectedUserID)
+		return c.startInstagramAuthPlatform(ctx, checkpointURL, expectedUserID, "")
 	}
 	if step.completed {
 		return nil, nil

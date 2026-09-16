@@ -48,6 +48,7 @@ type instagramAuthPlatformState struct {
 	referrer                 string
 	url                      *url.URL
 	expectedUserID, channel  string
+	loginFeedback            string
 	notice                   string
 	tryAnotherWay, enterCode bool
 	mutationID               int
@@ -121,7 +122,7 @@ func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
 	return summary
 }
 
-func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expectedUserID string) (*InstagramWebTwoFactorChallenge, error) {
+func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expectedUserID, loginFeedback string) (*InstagramWebTwoFactorChallenge, error) {
 	target, ok := resolveInstagramAuthPlatformURL("https://www.instagram.com/", rawURL)
 	if !ok || !strings.HasPrefix(target.Path, "/auth_platform/") {
 		c.log.Debug().Str("checkpoint_url_kind", instagramWebCheckpointURLKind(rawURL)).Msg("Unsupported Instagram web checkpoint URL")
@@ -133,7 +134,7 @@ func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expecte
 			return nil, ErrInstagramWebCheckpointUnsupported
 		}
 	}
-	c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login")), expectedUserID: expectedUserID}
+	c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login")), expectedUserID: expectedUserID, loginFeedback: loginFeedback}
 	if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
 		c.webAuthPlatform = nil
 		return nil, err
@@ -152,6 +153,9 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		if !ok {
 			return ErrInstagramWebCheckpointUnsupported
 		} else if err := instagramAuthPlatformAccountError(target); err != nil {
+			if errors.Is(err, ErrInstagramWebLoginRejected) {
+				return instagramWebLoginRejection(err, s.loginFeedback)
+			}
 			return err
 		}
 		s.url = target
@@ -167,6 +171,9 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			if !ok {
 				return ErrInstagramWebCheckpointUnsupported
 			} else if err := instagramAuthPlatformAccountError(target); err != nil {
+				if errors.Is(err, ErrInstagramWebLoginRejected) {
+					return instagramWebLoginRejection(err, s.loginFeedback)
+				}
 				return err
 			}
 			s.url = target
@@ -185,14 +192,14 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			// Instagram treats any e parameter on the login homepage as a rejection.
 			if target.Path == "/" && target.Query().Has("e") && instagramWebLoginResponseKind(body) == "html" {
 				c.webAuthPlatform = nil
-				return ErrInstagramWebLoginRejected
+				return instagramWebLoginRejection(ErrInstagramWebLoginRejected, s.loginFeedback)
 			}
 			c.ensureInstagramWebUserID()
 			userID := c.cookies.Get(cookies.IGCookieDSUserID)
 			if instagramWebLoginResponseKind(body) != "html" || len(c.cookies.GetMissingCookieNames()) != 0 ||
 				instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) != userID || (s.expectedUserID != "" && s.expectedUserID != userID) {
 				if instagramWebLoginResponseKind(body) == "html" && userID == "" && c.cookies.Get(cookies.IGCookieSessionID) == "" {
-					return errInstagramAuthPlatformLoggedOut
+					return instagramWebLoginRejection(errInstagramAuthPlatformLoggedOut, s.loginFeedback)
 				}
 				return ErrInstagramWebCheckpointUnsupported
 			}

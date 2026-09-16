@@ -54,6 +54,22 @@ var errInstagramWebTwoFactorSMSRejected = fmt.Errorf("%w: SMS code validation fa
 var errInstagramWebTwoFactorSMSNotSent = errors.New("instagram could not send a replacement SMS code")
 var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
 
+type instagramWebLoginRejectedError struct {
+	cause   error
+	message string
+}
+
+func (e instagramWebLoginRejectedError) Error() string      { return e.cause.Error() }
+func (e instagramWebLoginRejectedError) Unwrap() error      { return e.cause }
+func (e instagramWebLoginRejectedError) HumanError() string { return e.message }
+
+func instagramWebLoginRejection(cause error, message string) error {
+	if message = strings.TrimSpace(message); message != "" {
+		return instagramWebLoginRejectedError{cause: cause, message: message}
+	}
+	return cause
+}
+
 type InstagramWebTwoFactorChallenge struct {
 	AuthPlatform bool
 	TOTP         bool

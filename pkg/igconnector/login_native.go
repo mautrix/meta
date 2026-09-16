@@ -309,7 +309,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 			return nil, errInstagramWebCheckpointCAPTCHA
 		} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
-			return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+			return instagramCredentialsStep(instagramWebLoginRejectionInstructions(err)), nil
 		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
 			return instagramCredentialsStep(
 				"Instagram didn't accept that username or password. Check your credentials and try again.",
@@ -376,7 +376,7 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step *bridgev2.LoginStep, err error) (*bridgev2.LoginStep, error) {
 	if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 		m.webTwoFactor = nil
-		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+		return instagramCredentialsStep(instagramWebLoginRejectionInstructions(err)), nil
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 		return nil, errInstagramWebCheckpointCAPTCHA
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
@@ -394,6 +394,15 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 	}
 	m.webTwoFactor, m.webSessionReady = nil, true
 	return m.continueWebAccountManager(ctx, nil)
+}
+
+func instagramWebLoginRejectionInstructions(err error) string {
+	if humanError, ok := errors.AsType[bridgev2.HumanError](err); ok {
+		if message := strings.TrimSpace(humanError.HumanError()); message != "" {
+			return message
+		}
+	}
+	return "Instagram couldn't sign you in. Check your account in Instagram before trying again."
 }
 
 func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
