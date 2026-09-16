@@ -30,8 +30,8 @@ var ErrClientIsNil = whatsmeow.ErrClientIsNil
 type EventHandler func(ctx context.Context, evt any)
 
 type Config struct {
-	ClientSettings           exhttp.ClientSettings
-	LogRedactedBloksPayloads bool
+	ClientSettings            exhttp.ClientSettings
+	LogRedactedLoginResponses bool
 }
 
 type Client struct {
@@ -83,7 +83,7 @@ func NewClient(cookies *cookies.Cookies, logger zerolog.Logger, cfg *Config) *Cl
 	}
 	cli.configs = httpclient.NewConfigs(cli)
 	cli.http = httpclient.NewHTTPClient(cli, cli.configs, cfg.ClientSettings)
-	cli.http.LogRedactedBloksPayloads = cfg.LogRedactedBloksPayloads
+	cli.http.LogRedactedLoginResponses = cfg.LogRedactedLoginResponses
 	cli.nextTaskID.Store(-1) // start from 0
 	cli.connectionLoopStopped.Set()
 

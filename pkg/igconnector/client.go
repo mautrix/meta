@@ -128,7 +128,7 @@ func (ic *IGClient) ensureIGClient() {
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
 
-			LogRedactedBloksPayloads: ic.Main.Config.LogRedactedBloksPayloads,
+			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})
 	}
 }

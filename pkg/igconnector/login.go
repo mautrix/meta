@@ -106,11 +106,11 @@ func (m *MetaCookieLogin) Cancel() {}
 
 func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
 	client := instameow.NewClient(instameow.ClientParams{
-		Cookies:                  c,
-		Log:                      log,
-		Settings:                 conn.Bridge.GetHTTPClientSettings(),
-		DisableTyping:            conn.Config.DisableTyping,
-		LogRedactedBloksPayloads: conn.Config.LogRedactedBloksPayloads,
+		Cookies:                   c,
+		Log:                       log,
+		Settings:                  conn.Bridge.GetHTTPClientSettings(),
+		DisableTyping:             conn.Config.DisableTyping,
+		LogRedactedLoginResponses: conn.Config.LogRedactedLoginResponses,
 	})
 	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
 		client.GetHTTP().GetNewProxy = conn.getProxy

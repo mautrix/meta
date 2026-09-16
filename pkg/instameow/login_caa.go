@@ -582,7 +582,7 @@ func (c *Client) makeInstagramBloksRequest(
 	if appID == instagramCAALegacyHomepage && state != nil && instagramCAAValue(&bundle, state.AAC) == "" {
 		return nil, errors.New("instagram login page did not expose its CAA account access context")
 	}
-	if c.logRedactedBloksPayloads {
+	if c.logRedactedLoginResponses {
 		if err = bloks.LogRedactedBundle(c.log, appID, body); err != nil {
 			return nil, err
 		}

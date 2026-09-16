@@ -48,7 +48,7 @@ type Config struct {
 	DisableViewOnce bool `yaml:"disable_view_once"`
 	DisableTyping   bool `yaml:"disable_typing"`
 
-	LogRedactedBloksPayloads bool `yaml:"log_redacted_bloks_payloads"`
+	LogRedactedLoginResponses bool `yaml:"log_redacted_login_responses"`
 
 	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
 }
@@ -90,7 +90,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_xma_always")
 	helper.Copy(up.Bool, "disable_typing")
 	helper.Copy(up.Bool, "disable_view_once")
-	helper.Copy(up.Bool, "log_redacted_bloks_payloads")
+	helper.Copy(up.Bool, "log_redacted_login_responses")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
 }

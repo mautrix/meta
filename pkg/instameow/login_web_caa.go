@@ -209,7 +209,7 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		errorStyle = "other"
 	}
 	deletion := data.Get("stop_deletion_payload")
-	c.log.Debug().Int64("error_code", data.Get("error_code").Int()).
+	logEvent := c.log.Debug().Int64("error_code", data.Get("error_code").Int()).
 		Str("error_style", errorStyle).
 		Stringer("error_style_type", data.Get("error_style").Type).
 		Stringer("error_code_type", data.Get("error_code").Type).
@@ -228,8 +228,11 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		Bool("is_ig_login_recaptcha", data.Get("is_ig_login_recaptcha").Bool()).
 		Bool("has_oauth", data.Get("should_show_google_oauth_after_failure").Bool() || data.Get("google_oauth_uri").String() != "").
 		Bool("has_pending_deletion", deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null).
-		Bool("session_cookie_present", c.cookies.Get(cookies.IGCookieSessionID) != "").
-		Msg("Instagram CAA login response")
+		Bool("session_cookie_present", c.cookies.Get(cookies.IGCookieSessionID) != "")
+	if c.logRedactedLoginResponses {
+		logEvent = addRedactedLoginResponse(logEvent, body)
+	}
+	logEvent.Msg("Instagram CAA login response")
 	// GraphQL also returns this object with null fields when no deletion is pending.
 	if deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null {
 		return nil, ErrInstagramWebAccountPendingDeletion

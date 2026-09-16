@@ -38,7 +38,7 @@ type HTTPClient struct {
 	proxyAddr       string
 	GetNewProxy     func(reason string) (string, error)
 
-	LogRedactedBloksPayloads bool
+	LogRedactedLoginResponses bool
 }
 
 type Client interface {

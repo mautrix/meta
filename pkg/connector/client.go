@@ -75,8 +75,8 @@ type MetaClient struct {
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
 	return &messagix.Config{
-		ClientSettings:           m.Bridge.GetHTTPClientSettings(),
-		LogRedactedBloksPayloads: m.Config.LogRedactedBloksPayloads,
+		ClientSettings:            m.Bridge.GetHTTPClientSettings(),
+		LogRedactedLoginResponses: m.Config.LogRedactedLoginResponses,
 	}
 }
 

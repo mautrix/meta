@@ -180,7 +180,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
 	}
 
-	if c.LogRedactedBloksPayloads {
+	if c.LogRedactedLoginResponses {
 		if err = bloks.LogRedactedBundle(c.log, appID, []byte(innerData)); err != nil {
 			return nil, err
 		}
