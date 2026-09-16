@@ -36,7 +36,7 @@ var (
 	instagramAPSubmit                 = instagramAuthPlatformOperation{"useAuthPlatformSubmitCodeMutation", "25017097917894476", "xfb_auth_platform_submit_code"}
 	instagramAPResend                 = instagramAuthPlatformOperation{"useAuthPlatformSendCodeAgainMutation", "29612122925068775", "xfb_auth_platform_send_code_again"}
 	ErrInstagramWebCheckpointCAPTCHA  = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
-	errInstagramAuthPlatformLoggedOut = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebCheckpointUnsupported)
+	errInstagramAuthPlatformLoggedOut = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebLoginRejected)
 )
 
 type instagramAuthPlatformChoice struct {
@@ -74,12 +74,23 @@ func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 		if len(params["apc"]) != 1 || params.Get("apc") == "" || len(params["device_id"]) > 1 {
 			return nil, false
 		}
-	case "/", "/accounts/onetap/", "/accounts/edit/", "/direct/inbox/":
+	case "/", "/accounts/onetap/", "/accounts/edit/", "/direct/inbox/", "/accounts/login/", "/accounts/suspended/":
 	default:
 		return nil, false
 	}
 	target.Fragment = ""
 	return target, true
+}
+
+func instagramAuthPlatformAccountError(target *url.URL) error {
+	switch target.Path {
+	case "/accounts/suspended/":
+		return httpclient.ErrAccountSuspended
+	case "/accounts/login/":
+		return errInstagramAuthPlatformLoggedOut
+	default:
+		return nil
+	}
 }
 
 func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
@@ -140,6 +151,8 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
 		if !ok {
 			return ErrInstagramWebCheckpointUnsupported
+		} else if err := instagramAuthPlatformAccountError(target); err != nil {
+			return err
 		}
 		s.url = target
 		response, body, err := c.instagramWebCheckpointRequest(ctx, target.String(), http.MethodGet, nil, true, "auth_platform_render")
@@ -153,6 +166,8 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			target, ok = resolveInstagramAuthPlatformURL(target.String(), response.Request.URL.String())
 			if !ok {
 				return ErrInstagramWebCheckpointUnsupported
+			} else if err := instagramAuthPlatformAccountError(target); err != nil {
+				return err
 			}
 			s.url = target
 		}
