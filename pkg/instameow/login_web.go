@@ -714,6 +714,10 @@ func (c *Client) resendInstagramWebTwoFactorSMS(ctx context.Context, state *inst
 	}
 	var result instagramWebLoginResponse
 	parseErr := json.Unmarshal(body, &result)
+	if parseErr == nil && response != nil && response.StatusCode == http.StatusBadRequest &&
+		result.Status == "fail" && result.ErrorType == "rate_limit_error" {
+		requestErr = httpclient.ErrRateLimited
+	}
 	if requestErr != nil {
 		c.logInstagramWebRequestRejection(
 			"Instagram web two-factor SMS request was rejected",
@@ -905,6 +909,7 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 	if err != nil {
 		if errors.Is(err, errInstagramWebTwoFactorSMSRejected) && !state.smsReplacementSent &&
 			state.encryptedContext == "" && state.method == "SMS" {
+			c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
 			if resendErr := c.resendInstagramWebTwoFactorSMS(ctx, state); resendErr != nil {
 				return fmt.Errorf("failed to request a replacement Instagram SMS code: %w", resendErr)
 			}
