@@ -58,6 +58,25 @@ type instagramAuthPlatformState struct {
 	resendAfter              time.Time
 }
 
+type instagramAuthPlatformWebviewHandoff struct {
+	url string
+}
+
+func (e *instagramAuthPlatformWebviewHandoff) Error() string {
+	return ErrInstagramWebCheckpointUnsupported.Error()
+}
+func (e *instagramAuthPlatformWebviewHandoff) Unwrap() error {
+	return ErrInstagramWebCheckpointUnsupported
+}
+
+func InstagramWebChallengeURL(err error) (string, bool) {
+	var challenge *instagramAuthPlatformWebviewHandoff
+	if !errors.As(err, &challenge) {
+		return "", false
+	}
+	return challenge.url, true
+}
+
 func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 	reference, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || strings.TrimSpace(raw) == "" {
@@ -80,6 +99,36 @@ func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 	}
 	target.Fragment = ""
 	return target, true
+}
+
+func resolveInstagramAuthPlatformWebviewURL(base, raw string) (*url.URL, bool) {
+	reference, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil, false
+	}
+	target := mustParseURL(base).ResolveReference(reference)
+	params, err := url.ParseQuery(target.RawQuery)
+	if err != nil || target.Scheme != "https" || target.User != nil ||
+		(target.Port() != "" && target.Port() != "443") || !strings.EqualFold(target.Hostname(), "www.instagram.com") || target.RawPath != "" ||
+		!strings.HasPrefix(target.Path, "/auth_platform/") || len(params["apc"]) != 1 || params.Get("apc") == "" || len(params["device_id"]) > 1 {
+		return nil, false
+	}
+	for _, segment := range strings.Split(target.Path, "/") {
+		if segment == "." || segment == ".." {
+			return nil, false
+		}
+	}
+	target.Fragment = ""
+	return target, true
+}
+
+func (c *Client) instagramAuthPlatformUnsupportedRoute(base, raw string) error {
+	target, ok := resolveInstagramAuthPlatformWebviewURL(base, raw)
+	if !ok {
+		return ErrInstagramWebCheckpointUnsupported
+	}
+	c.webAuthPlatform = nil
+	return &instagramAuthPlatformWebviewHandoff{url: target.String()}
 }
 
 func instagramAuthPlatformAccountError(target *url.URL) error {
@@ -136,6 +185,9 @@ func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expecte
 	c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login")), expectedUserID: expectedUserID}
 	if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
 		c.webAuthPlatform = nil
+		if challengeURL, ok := InstagramWebChallengeURL(err); ok {
+			return &InstagramWebTwoFactorChallenge{ChallengeURL: challengeURL}, nil
+		}
 		return nil, err
 	} else if c.webAuthPlatform == nil {
 		return nil, nil
@@ -144,13 +196,16 @@ func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expecte
 }
 
 func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s := c.webAuthPlatform
 	// Redirects keep the initiating document's referrer until a new page loads.
 	s.referrer = s.url.String()
 	for range 5 {
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
 		if !ok {
-			return ErrInstagramWebCheckpointUnsupported
+			return c.instagramAuthPlatformUnsupportedRoute(s.url.String(), rawURL)
 		} else if err := instagramAuthPlatformAccountError(target); err != nil {
 			return err
 		}
@@ -163,9 +218,10 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		}
 		// Some client transports follow redirects themselves. Validate their final URL too.
 		if response.Request != nil && response.Request.URL != nil {
-			target, ok = resolveInstagramAuthPlatformURL(target.String(), response.Request.URL.String())
+			baseURL := target.String()
+			target, ok = resolveInstagramAuthPlatformURL(baseURL, response.Request.URL.String())
 			if !ok {
-				return ErrInstagramWebCheckpointUnsupported
+				return c.instagramAuthPlatformUnsupportedRoute(baseURL, response.Request.URL.String())
 			} else if err := instagramAuthPlatformAccountError(target); err != nil {
 				return err
 			}
