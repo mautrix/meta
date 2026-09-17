@@ -62,7 +62,7 @@ func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LS
 		ptks = append(ptks, ptk.ParentThreadKey)
 	}
 	c.configs.ParentThreadKeys = ptks
-	c.Logger.Debug().Msg("Configs successfully setup!")
+	c.Logger.Debug().Ints64("ptks", ptks).Msg("Configs successfully setup!")
 
 	return ls, nil
 }
