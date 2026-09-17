@@ -464,6 +464,7 @@ func (c *Client) instagramWebCheckpointRequest(
 		contentType = types.FORM
 	}
 	response, body, requestErr := c.http.MakeRequestOnceNoRedirect(ctx, requestURL, method, headers, payload, contentType)
+	c.logRedactedLoginResponse(phase, response, body)
 	if response != nil {
 		if (phase == "render" || phase == "auth_platform_render") && response.Request != nil && response.Request.URL != nil {
 			if _, ok := resolveInstagramAuthPlatformURL(requestURL, response.Request.URL.String()); !ok {

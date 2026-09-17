@@ -191,6 +191,21 @@ func (c *Client) instagramCAAWebMutation(ctx context.Context, operation, docID s
 	return c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login"), csrf)
 }
 
+// instagramWebChallengeFromRedirect returns a webview challenge for a CAA login
+// response whose redirect_uri points at a verification the bridge cannot complete
+// itself, or nil if there is no trusted instagram.com URL to hand off.
+func instagramWebChallengeFromRedirect(data gjson.Result) *InstagramWebTwoFactorChallenge {
+	redirect := strings.TrimSpace(data.Get("redirect_uri").String())
+	if redirect == "" {
+		return nil
+	}
+	target, valid := resolveInstagramAuthPlatformURL("https://www.instagram.com/", redirect)
+	if !valid {
+		return nil
+	}
+	return &InstagramWebTwoFactorChallenge{ChallengeURL: target.String()}
+}
+
 func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []byte, identifier, csrf string) (*InstagramWebTwoFactorChallenge, error) {
 	body = bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix)
 	if !gjson.ValidBytes(body) {
@@ -229,8 +244,8 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		Bool("has_oauth", data.Get("should_show_google_oauth_after_failure").Bool() || data.Get("google_oauth_uri").String() != "").
 		Bool("has_pending_deletion", deletion.Get("stop_deletion_date").Type != gjson.Null && deletion.Get("stop_deletion_nonce").Type != gjson.Null).
 		Bool("session_cookie_present", c.cookies.Get(cookies.IGCookieSessionID) != "")
-	if c.logRedactedLoginResponses {
-		logEvent = addRedactedLoginResponse(logEvent, body)
+	if redirect := data.Get("redirect_uri").String(); redirect != "" && c.logRedactedLoginResponses {
+		logEvent = logEvent.Str("redirect_uri", redirect)
 	}
 	logEvent.Msg("Instagram CAA login response")
 	// GraphQL also returns this object with null fields when no deletion is pending.
@@ -245,6 +260,9 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		return c.captureInstagramWebTwoFactor(result, identifier, csrf, http.StatusOK)
 	}
 	if data.Get("is_ig_login_recaptcha").Bool() {
+		if challenge := instagramWebChallengeFromRedirect(data); challenge != nil {
+			return challenge, nil
+		}
 		return nil, ErrInstagramWebCheckpointCAPTCHA
 	}
 	if redirect := data.Get("redirect_uri").String(); redirect != "" {
@@ -269,6 +287,12 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 				c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login"))}
 				if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
 					c.webAuthPlatform = nil
+					// An interactive verification the bridge cannot drive itself is handed
+					// to a client webview via the trusted instagram.com URL. Every other
+					// error (credential rejection, rate limits, cancellation) is preserved.
+					if errors.Is(err, ErrInstagramWebCheckpointCAPTCHA) || errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+						return &InstagramWebTwoFactorChallenge{ChallengeURL: target.String()}, nil
+					}
 					return nil, err
 				}
 				if c.webAuthPlatform != nil {
@@ -286,6 +310,9 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	if data.Get("reg_nta_context").Type != gjson.Null {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	} else if data.Get("recaptcha_needed").Bool() {
+		if challenge := instagramWebChallengeFromRedirect(data); challenge != nil {
+			return challenge, nil
+		}
 		return nil, ErrInstagramWebCheckpointCAPTCHA
 	} else if data.Get("error_style").String() == "RATE_LIMIT_BANNER" {
 		return nil, httpclient.ErrRateLimited

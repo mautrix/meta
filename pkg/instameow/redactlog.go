@@ -2,9 +2,11 @@ package instameow
 
 import (
 	"bytes"
+	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
+	"net/http"
 
-	"github.com/rs/zerolog"
 	"go.mau.fi/util/redact"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
@@ -39,13 +41,27 @@ func redactLoginResponse(body []byte) []byte {
 	return []byte(loginRedactPolicy.String(string(trimmed)))
 }
 
-func addRedactedLoginResponse(evt *zerolog.Event, body []byte) *zerolog.Event {
+func gzipBase64(data []byte) []byte {
+	var compressed bytes.Buffer
+	compressor := gzip.NewWriter(&compressed)
+	_, _ = compressor.Write(data)
+	_ = compressor.Close()
+	return base64.StdEncoding.AppendEncode(nil, compressed.Bytes())
+}
+
+func (c *Client) logRedactedLoginResponse(request string, response *http.Response, body []byte) {
+	if !c.logRedactedLoginResponses {
+		return
+	}
+	evt := c.log.Debug().Str("login_request", request)
+	if response != nil {
+		evt = evt.Int("status_code", response.StatusCode).Str("content_type", response.Header.Get("content-type"))
+	}
 	redacted := redactLoginResponse(body)
-	if len(redacted) == 0 {
-		return evt
-	}
 	if json.Valid(redacted) {
-		return evt.RawJSON("response_redacted", redacted)
+		evt = evt.RawJSON("response_redacted", redacted)
+	} else if len(redacted) > 0 {
+		evt = evt.Bytes("response_redacted_gz", gzipBase64(redacted))
 	}
-	return evt.Bytes("response_redacted", redacted)
+	evt.Msg("Instagram web login response")
 }

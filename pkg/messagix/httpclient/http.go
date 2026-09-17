@@ -526,13 +526,11 @@ func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Clien
 		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
 		return nil, nil, fmt.Errorf("%w: %w", ErrRequestFailed, err)
 	}
+	responseBody, readErr := io.ReadAll(response.Body)
 	if response.StatusCode == http.StatusTooManyRequests {
-		return response, nil, ErrRateLimited
-	}
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return response, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, err)
+		return response, responseBody, ErrRateLimited
+	} else if readErr != nil {
+		return response, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, readErr)
 	}
 
 	if response.StatusCode >= 400 {
