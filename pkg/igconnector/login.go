@@ -28,6 +28,8 @@ const (
 
 	LoginStepIDCookies  = "fi.mau.meta.cookies"
 	LoginStepIDComplete = "fi.mau.meta.complete"
+
+	instagramWebLoggedInURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$"
 )
 
 func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
@@ -97,7 +99,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 				cookieListToFields(cookies.IGRequiredCookies, "instagram.com", true),
 				cookieListToFields(cookies.IGOptionalCookies, "instagram.com", false)...,
 			),
-			WaitForURLPattern: "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$",
+			WaitForURLPattern: instagramWebLoggedInURLPattern,
 		},
 	}, nil
 }
@@ -215,7 +217,7 @@ func loginWithCookies(
 	}, nil
 }
 
-func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
@@ -228,10 +230,14 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missingCookies)
 	}
 
-	log := m.User.Log.With().Str("component", "instameow").Logger()
-	client, err := getInstaClient(log, m.Main, c, m.Main.Config.ProxyOther)
+	log := user.Log.With().Str("component", "instameow").Logger()
+	client, err := getInstaClient(log, conn, c, conn.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
+	return loginWithCookies(ctx, log, client, user, conn, c, nil)
+}
+
+func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+	return submitInstagramCookies(ctx, m.Main, m.User, strCookies)
 }

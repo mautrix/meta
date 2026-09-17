@@ -40,6 +40,7 @@ const (
 
 	LoginStepIDCredentials  = "fi.mau.meta.instagram.credentials"
 	LoginStepIDWebTwoFactor = "fi.mau.meta.instagram.web_two_factor"
+	LoginStepIDWebChallenge = "fi.mau.meta.instagram.web_challenge"
 
 	loginFieldIdentifier       = "username"
 	loginFieldPassword         = "password"
@@ -99,13 +100,14 @@ type MetaNativeLogin struct {
 	User *bridgev2.User
 	Main *IGConnector
 
-	client          *instameow.Client
-	transport       http.RoundTripper
-	caaIdentifier   string
-	caaPassword     string
-	caaUserID       string
-	webTwoFactor    *instameow.InstagramWebTwoFactorChallenge
-	webSessionReady bool
+	client                 *instameow.Client
+	transport              http.RoundTripper
+	caaIdentifier          string
+	caaPassword            string
+	caaUserID              string
+	webTwoFactor           *instameow.InstagramWebTwoFactorChallenge
+	webSessionReady        bool
+	pendingWebChallengeURL string
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
@@ -338,6 +340,9 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	}
 	if challenge != nil {
 		m.webTwoFactor = challenge
+		if challenge.ChallengeURL != "" {
+			return m.instagramWebChallengeStep(challenge.ChallengeURL), nil
+		}
 		if challenge.AuthPlatform {
 			return m.continueWebAuthPlatform(ctx, nil)
 		}
@@ -363,9 +368,44 @@ func (m *MetaNativeLogin) continueWebAuthPlatform(ctx context.Context, input map
 	return m.handleWebAuthPlatformResult(ctx, step, err)
 }
 
-// Cookies is the existing client webview handoff; this step accepts only a
-// human-solved CAPTCHA token, never browser session cookies or credentials.
+// instagramWebChallengeStep hands a verification the bridge cannot drive itself to
+// a client webview. The client loads the trusted instagram.com challenge URL,
+// carries the session forward, and submits the resulting cookies once it lands on
+// a logged-in URL.
+func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) *bridgev2.LoginStep {
+	m.pendingWebChallengeURL = challengeURL
+	if m.Main.Config.LogRedactedLoginResponses {
+		// The URL carries verification tokens, so it is logged only under the
+		// redacted-login-response debug flag, for reproduction.
+		m.User.Log.Debug().Str("challenge_url", challengeURL).Msg("Handing Instagram web challenge to client webview")
+	}
+	return &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeCookies,
+		StepID:       LoginStepIDWebChallenge,
+		Instructions: "Instagram needs you to finish a verification step. Complete it in the browser (you may need to sign in again), then your login will continue here.",
+		CookiesParams: &bridgev2.LoginCookiesParams{
+			URL: challengeURL,
+			Fields: append(
+				cookieListToFields(cookies.IGRequiredCookies, "instagram.com", true),
+				cookieListToFields(cookies.IGOptionalCookies, "instagram.com", false)...,
+			),
+			WaitForURLPattern: instagramWebLoggedInURLPattern,
+		},
+	}
+}
+
+// SubmitCookies handles the two webview handoffs of the native login: the
+// web-challenge step submits the session cookies collected after the user
+// completed the verification, and the CAPTCHA step submits a solved token.
 func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	if m.pendingWebChallengeURL != "" {
+		step, err := submitInstagramCookies(ctx, m.Main, m.User, input)
+		if err != nil {
+			return nil, err
+		}
+		m.pendingWebChallengeURL = ""
+		return step, nil
+	}
 	if m.client == nil || !m.client.HasInstagramWebCaptcha() {
 		return nil, errInstagramWebCheckpointUnsupported
 	}
