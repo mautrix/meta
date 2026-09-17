@@ -470,8 +470,16 @@ func (c *Client) instagramWebCheckpointRequest(
 			if _, ok := resolveInstagramAuthPlatformURL(requestURL, response.Request.URL.String()); !ok {
 				if _, legacyOK := resolveInstagramWebCheckpointURL(requestURL, response.Request.URL.String()); phase != "render" || !legacyOK {
 					if phase == "auth_platform_render" {
+						if requestErr != nil && !(response.StatusCode == http.StatusBadRequest && errors.Is(requestErr, httpclient.ErrUnexpectedError)) {
+							if errors.Is(requestErr, httpclient.ErrRateLimited) || errors.Is(requestErr, httpclient.ErrAccountSuspended) ||
+								errors.Is(requestErr, context.Canceled) || errors.Is(requestErr, context.DeadlineExceeded) {
+								return response, body, requestErr
+							}
+							return response, body, ErrInstagramWebCheckpointRequestFailed
+						}
 						c.log.Debug().Int("status_code", response.StatusCode).Str("redirect_source", "final_url").
 							Fields(instagramAuthPlatformURLDiagnostics(requestURL, response.Request.URL.String())).Msg("Rejected Instagram AuthPlatform redirect")
+						return response, nil, c.instagramAuthPlatformUnsupportedRoute(requestURL, response.Request.URL.String())
 					}
 					return response, nil, ErrInstagramWebCheckpointUnsupported
 				}
