@@ -467,13 +467,17 @@ func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[str
 		if encryptErr != nil {
 			return nil, encryptErr
 		}
+		params, paramsErr := instagramCAACredentialParams(state, state.Mobile, bloks.BloksParamsInner{
+			"client_input_params": map[string]any{
+				"contact_point": username, "password": encryptedPassword,
+				"password_contains_non_ascii": strings.IndexFunc(password, func(r rune) bool { return r > 127 }) >= 0,
+			},
+		})
+		if paramsErr != nil {
+			return nil, paramsErr
+		}
 		action, requestErr := c.makeInstagramBloksRequest(ctx, &bloks.BloksActionDocInstagram,
-			instagramCAASendEntrypoint, bloks.BloksParamsInner{
-				"client_input_params": map[string]any{
-					"contact_point": username, "password": encryptedPassword,
-					"password_contains_non_ascii": strings.IndexFunc(password, func(r rune) bool { return r > 127 }) >= 0,
-				},
-			}, "", "")
+			instagramCAASendEntrypoint, params, "", "")
 		if requestErr != nil {
 			return nil, requestErr
 		}
@@ -570,11 +574,6 @@ func (c *Client) makeInstagramBloksRequest(
 	if appID == instagramCAASendEntrypoint {
 		if state == nil || state.Mobile == nil || state.AAC == "" || state.AttestationNonce == "" {
 			return nil, errors.New("instagram credential request is missing CAA preflight state")
-		}
-		var normalizeErr error
-		inner, normalizeErr = instagramCAACredentialParams(state, state.Mobile, inner)
-		if normalizeErr != nil {
-			return nil, normalizeErr
 		}
 	}
 	params, err := json.Marshal(inner)
