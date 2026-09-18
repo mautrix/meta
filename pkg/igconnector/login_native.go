@@ -104,6 +104,7 @@ type MetaNativeLogin struct {
 	caaClient              *instameow.Client
 	transport              http.RoundTripper
 	nativePush             bool
+	browserFirst           bool
 	caaIdentifier          string
 	caaPassword            string
 	caaUserID              string
@@ -170,6 +171,9 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 		return nil, err
 	}
 	m.client = client
+	if m.browserFirst {
+		return (&MetaCookieLogin{User: m.User, Main: m.Main}).Start(ctx)
+	}
 	return instagramCredentialsStep(instructions), nil
 }
 
@@ -200,6 +204,13 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		), nil
 	}
 	if m.caaClient != nil {
+		if m.webSessionReady {
+			if input[loginFieldPassword] != "" {
+				input[loginFieldIdentifier] = m.caaIdentifier
+			} else if m.caaPassword == "" {
+				return instagramNativePasswordStep(m.caaIdentifier), nil
+			}
+		}
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.webSessionReady {
@@ -379,7 +390,7 @@ func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) *bridge
 // web-challenge step submits the session cookies collected after the user
 // completed the verification, and the CAPTCHA step submits a solved token.
 func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	if m.pendingWebChallengeURL != "" {
+	if m.pendingWebChallengeURL != "" || (m.browserFirst && !m.webSessionReady) {
 		if !m.nativePush {
 			step, err := submitInstagramCookies(ctx, m.Main, m.User, input, m.client.GetInstagramNativeSession(), false)
 			if err == nil {
@@ -484,6 +495,12 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 	ctx context.Context,
 	input map[string]string,
 ) (*bridgev2.LoginStep, error) {
+	if m.caaPassword != "" && m.caaUserID == "" {
+		m.caaUserID = m.client.GetCookies().Get(cookies.IGCookieDSUserID)
+		if m.caaUserID == "" {
+			m.caaPassword = ""
+		}
+	}
 	step, err := m.client.DoInstagramWebAccountManagerSteps(ctx, input)
 	if errors.Is(err, httpclient.ErrConsentRequired) {
 		return nil, loginerrors.Consent
@@ -510,8 +527,11 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify Instagram messaging profile before notification setup: %w", err)
 		}
-		if user.ID == "" || user.ID != loginCookies.Get(cookies.IGCookieDSUserID) || user.GetUsername() == "" || m.caaPassword == "" {
+		if user.ID == "" || user.ID != loginCookies.Get(cookies.IGCookieDSUserID) || user.GetUsername() == "" {
 			return nil, errInstagramCAAFlowFailed
+		}
+		if m.caaUserID != user.ID {
+			m.caaPassword = ""
 		}
 		nativeCookies := &cookies.Cookies{Platform: types.Instagram}
 		nativeCookies.UpdateValues(nil)
@@ -525,6 +545,9 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		}
 		m.caaIdentifier, m.caaUserID = user.GetUsername(), user.ID
 		m.webSessionReady = true
+		if m.caaPassword == "" {
+			return instagramNativePasswordStep(m.caaIdentifier), nil
+		}
 		return m.continueCAAFallback(ctx, map[string]string{
 			loginFieldIdentifier: m.caaIdentifier,
 			loginFieldPassword:   m.caaPassword,
@@ -573,6 +596,19 @@ func isClientHTTPError(err error) bool {
 
 func isMissingInstagramWebTwoFactorCSRF(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "instagram web two-factor challenge is missing a CSRF token")
+}
+
+func instagramNativePasswordStep(username string) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeUserInput,
+		StepID:       "fi.mau.meta.instagram.native_password",
+		Instructions: fmt.Sprintf("Enter your Instagram password to enable notifications for @%s.", username),
+		UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{{
+			Type: bridgev2.LoginInputFieldTypePassword,
+			ID:   loginFieldPassword,
+			Name: "Password",
+		}}},
+	}
 }
 
 func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {

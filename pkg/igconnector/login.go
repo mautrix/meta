@@ -40,6 +40,11 @@ func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flo
 			Main: ic,
 		}, nil
 	case FlowIDInstagramCookies:
+		if ic.Bridge != nil {
+			if _, ok := ic.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications); ok {
+				return &MetaNativeLogin{User: user, Main: ic, browserFirst: true}, nil
+			}
+		}
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}

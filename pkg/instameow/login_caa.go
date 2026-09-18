@@ -44,8 +44,7 @@ const (
 	instagramCAASendEntrypoint     = "com.bloks.www.bloks.caa.login.async.send_login_request"
 	instagramCAALegacyHomepage     = "com.bloks.www.caa.login.login_homepage"
 	instagramCAAAutomaticStepLimit = 16
-	instagramCAAAPIBase            = "https://b.i.instagram.com/api/v1/"
-	instagramCAAGraphQLURL         = "https://b.i.instagram.com/graphql_www"
+	instagramCAAGraphQLURL         = "https://i.instagram.com/graphql_www"
 	instagramUSDIDRegistrationDoc  = "124930351917786857261002920888"
 )
 
@@ -90,7 +89,7 @@ func (c *Client) ClearInstagramCAALoginState() {
 
 func (c *Client) CancelInstagramCAALoginStep(ctx context.Context) error {
 	if c == nil || c.caaLogin == nil || c.caaLogin.Browser == nil {
-		return errors.New("Instagram login browser is not initialized")
+		return errors.New("instagram login browser is not initialized")
 	}
 	return c.caaLogin.Browser.CancelLoginStep(ctx)
 }
@@ -322,7 +321,7 @@ func (c *Client) prepareInstagramCAAPreflight(ctx context.Context, state *instag
 	headers := c.mobileLoginHeaders(state.Mobile)
 	headers.Set("x-fb-friendly-name", "IgApi: attestation/create_android_keystore/")
 	form := url.Values{"app_scoped_device_id": {state.Mobile.DeviceID}, "key_hash": {""}}
-	body, err := c.makeMobileLoginRequest(ctx, state.Mobile, instagramCAAAPIBase+"attestation/create_android_keystore/", headers, []byte(form.Encode()))
+	body, err := c.makeMobileLoginRequest(ctx, state.Mobile, instagramMobileAPIBase+"attestation/create_android_keystore/", headers, []byte(form.Encode()))
 	if err != nil {
 		return err
 	}
@@ -601,10 +600,6 @@ func (c *Client) makeInstagramBloksRequest(
 	}
 	headers := c.mobileLoginHeaders(c.mobileLogin)
 	headers.Set("x-fb-friendly-name", "IgApi: "+route+appID+"/")
-	requestBase := instagramMobileAPIBase
-	if state != nil && appID != instagramCAALegacyHomepage {
-		requestBase = instagramCAAAPIBase
-	}
 	if appID == instagramCAASendEntrypoint {
 		attestation, _ := json.Marshal(map[string]any{"attestation": []any{map[string]any{
 			"version": 2, "type": "keystore", "errors": []int{-1013},
@@ -613,7 +608,7 @@ func (c *Client) makeInstagramBloksRequest(
 		headers.Set("x-ig-attest-params", string(attestation))
 	}
 	body, requestErr := c.makeMobileLoginRequest(ctx, c.mobileLogin,
-		requestBase+route+url.PathEscape(appID)+"/", headers, []byte(form.Encode()))
+		instagramMobileAPIBase+route+url.PathEscape(appID)+"/", headers, []byte(form.Encode()))
 	var bundle bloks.BloksBundle
 	if err = json.Unmarshal(body, &bundle); err != nil {
 		if requestErr != nil {

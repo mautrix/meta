@@ -345,7 +345,7 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 }
 
 func (c *Client) makeMobileLoginRequest(ctx context.Context, state *mobileLoginState, requestURL string, headers http.Header, body []byte) ([]byte, error) {
-	response, responseBody, err := c.http.MakeRequest(ctx, requestURL, http.MethodPost, headers, body, types.FORM)
+	response, responseBody, err := c.http.MakeRequestOnce(ctx, requestURL, http.MethodPost, headers, body, types.FORM)
 	if response != nil {
 		err = errors.Join(err, c.updateMobileLoginResponseState(ctx, state, response))
 	}
