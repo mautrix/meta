@@ -95,6 +95,7 @@ type ClientParams struct {
 	SeqIDTS       time.Time
 	EventHandler  EventHandler
 	DisableTyping bool
+	NativeSession *types.InstagramNativeSession
 
 	LogRedactedLoginResponses bool
 
@@ -126,6 +127,7 @@ func NewClient(params ClientParams) *Client {
 		device := *params.MobileLoginDevice
 		c.mobileLoginDevice = &device
 	}
+	c.SetInstagramNativeSession(params.NativeSession)
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)
 	c.http = httpclient.NewHTTPClient(c, c.configs, params.Settings)

@@ -72,16 +72,23 @@ type mobileLoginState struct {
 	USDIDRegistered   bool
 }
 
-type instagramMobileSession struct {
-	Authorization    string
-	UserID           string
-	Username         string
-	RUR              string
-	SHBID            string
-	SHBTS            string
-	DirectRegionHint string
-	WWWClaim         string
-	Device           types.InstagramLoginDevice
+type instagramMobileSession = types.InstagramNativeSession
+
+func (c *Client) GetInstagramNativeSession() *types.InstagramNativeSession {
+	if c == nil || c.mobileSession == nil {
+		return nil
+	}
+	session := *c.mobileSession
+	return &session
+}
+
+func (c *Client) SetInstagramNativeSession(session *types.InstagramNativeSession) {
+	if session == nil {
+		c.mobileSession = nil
+		return
+	}
+	copy := *session
+	c.mobileSession = &copy
 }
 
 type instagramMobileLoginResponse struct {

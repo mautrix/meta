@@ -127,6 +127,7 @@ func (ic *IGClient) ensureIGClient() {
 			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
+			NativeSession: ic.LoginMeta.InstagramNativeSession,
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})

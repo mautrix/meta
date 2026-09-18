@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -41,7 +42,14 @@ var pushCfg = &bridgev2.PushConfig{
 	Web: &bridgev2.WebPushConfig{VapidKey: "BIBn3E_rWTci8Xn6P9Xj3btShT85Wdtne0LtwNUyRQ5XjFNkuTq9j4MPAVLvAFhXrUU1A9UxyxBA7YIOjqDIDHI"},
 }
 
+var nativePushCfg = &bridgev2.PushConfig{
+	FCM: &bridgev2.FCMPushConfig{SenderID: "390017741467"},
+}
+
 func (ic *IGClient) GetPushConfigs() *bridgev2.PushConfig {
+	if session := ic.LoginMeta.InstagramNativeSession; session != nil && session.Authorization != "" {
+		return nativePushCfg
+	}
 	return pushCfg
 }
 
@@ -51,7 +59,11 @@ type DoubleToken struct {
 }
 
 func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
-	if pushType != bridgev2.PushTypeWeb {
+	if token == "" {
+		return errors.New("empty push token")
+	} else if pushType == bridgev2.PushTypeFCM {
+		return ic.registerNativePush(ctx, token)
+	} else if pushType != bridgev2.PushTypeWeb {
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
 	meta := ic.UserLogin.Metadata.(*metaid.UserLoginMetadata)
@@ -72,6 +84,37 @@ func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType brid
 	}
 	err := cli.RegisterPushNotifications(ctx, token, keys)
 	return err
+}
+
+func (ic *IGClient) registerNativePush(ctx context.Context, token string) error {
+	client := ic.Client
+	if client == nil {
+		return instameow.ErrClientIsNil
+	}
+	if ic.LoginMeta.NativePushKeys == nil {
+		keys, err := pushcrypto.NewNativePushKeys(metaid.ParseUserLoginID(ic.UserLogin.ID))
+		if err != nil {
+			return fmt.Errorf("failed to generate native push keys: %w", err)
+		}
+		ic.LoginMeta.NativePushKeys = keys
+		if err = ic.UserLogin.Save(ctx); err != nil {
+			ic.LoginMeta.NativePushKeys = nil
+			return fmt.Errorf("failed to save native push keys: %w", err)
+		}
+	}
+	if err := client.RegisterNativePushNotifications(ctx, token, ic.LoginMeta.NativePushKeys); err != nil {
+		return err
+	}
+	session := client.GetInstagramNativeSession()
+	if ic.LoginMeta.InstagramNativeSession == nil || *session != *ic.LoginMeta.InstagramNativeSession {
+		previous := ic.LoginMeta.InstagramNativeSession
+		ic.LoginMeta.InstagramNativeSession = session
+		if err := ic.UserLogin.Save(ctx); err != nil {
+			ic.LoginMeta.InstagramNativeSession = previous
+			return fmt.Errorf("failed to save native push session: %w", err)
+		}
+	}
+	return nil
 }
 
 func (ic *IGClient) igPushToMessageID(ctx context.Context, pd *pushcrypto.DecryptedPushData) (*methods.MetaMessageID, error) {
