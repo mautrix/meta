@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -232,7 +233,17 @@ func (ic *IGClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypt
 func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	log := zerolog.Ctx(ctx)
 	var parsedMsgID *methods.MetaMessageID
-	data, err := ic.LoginMeta.PushKeys.Decrypt(ctx, params.RawData)
+	var envelope struct {
+		PIM  string `json:"pim"`
+		Data struct {
+			PIM string `json:"pim"`
+		} `json:"data"`
+	}
+	var data *pushcrypto.DecryptedPushData
+	var err error
+	if json.Unmarshal(params.RawData, &envelope) != nil || (envelope.PIM == "" && envelope.Data.PIM == "") {
+		data, err = ic.LoginMeta.PushKeys.Decrypt(ctx, params.RawData)
+	}
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
