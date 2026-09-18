@@ -200,15 +200,19 @@ func (c *Client) ReloadIndex(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetypes.Mailbox, error) {
+func (c *Client) LoadProfile(ctx context.Context) (*types.PolarisViewer, error) {
 	if c == nil {
-		return nil, nil, ErrClientIsNil
-	} else if !c.cookies.IsLoggedIn() {
-		return nil, nil, httpclient.ErrTokenInvalidated
+		return nil, ErrClientIsNil
 	}
 	c.loadIndexLock.Lock()
 	defer c.loadIndexLock.Unlock()
+	return c.loadProfile(ctx)
+}
 
+func (c *Client) loadProfile(ctx context.Context) (*types.PolarisViewer, error) {
+	if !c.cookies.IsLoggedIn() {
+		return nil, httpclient.ErrTokenInvalidated
+	}
 	if time.Since(c.lastReload) < 5*time.Minute {
 		zerolog.Ctx(ctx).Debug().
 			Time("last_reload", c.lastReload).
@@ -216,8 +220,21 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 	} else {
 		err := c.loadIndex(ctx)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
+	}
+	return &c.configs.BrowserConfigTable.PolarisViewer, nil
+}
+
+func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetypes.Mailbox, error) {
+	if c == nil {
+		return nil, nil, ErrClientIsNil
+	}
+	c.loadIndexLock.Lock()
+	defer c.loadIndexLock.Unlock()
+	user, err := c.loadProfile(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 	c.makeNewSocket()
 	mailbox, err := c.GetMailbox(ctx)
@@ -226,7 +243,7 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 	}
 	c.seqID = mailbox.Mailbox.UQSeqID
 	c.seqIDTS = time.Now()
-	return &c.configs.BrowserConfigTable.PolarisViewer, mailbox.Mailbox, err
+	return user, mailbox.Mailbox, nil
 }
 
 func (c *Client) GetOwnFBID() int64 {

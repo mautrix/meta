@@ -523,7 +523,7 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missingCookies)
 	}
 	if m.nativePush && m.client.GetInstagramNativeSession() == nil {
-		user, _, err := m.client.LoadIndex(ctx)
+		user, err := m.client.LoadProfile(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify Instagram messaging profile before notification setup: %w", err)
 		}
