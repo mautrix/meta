@@ -144,7 +144,7 @@ func (c *Client) ForceReconnect() {
 var ErrMainStreamClosed = errors.New("main stream closed")
 
 func (c *Client) getSocketOptions() dgw.SocketOptions {
-	return dgw.SocketOptions{
+	options := dgw.SocketOptions{
 		GetCookies: c.cookies.String,
 		Origin:     c.GetEndpoint("base_url"),
 		WSURL:      c.GetEndpoint("dgw_lightspeed"),
@@ -172,6 +172,12 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
+	if c.nativeMessaging && c.mobileSession != nil {
+		options.HTTPStream = &dgw.HTTPStreamOptions{
+			Client: c.http.HTTP, URL: "https://test-gateway.instagram.com/lightspeed", GetHeaders: c.nativeSocketHeaders,
+		}
+	}
+	return options
 }
 
 type connectPayload struct {
@@ -193,6 +199,9 @@ type seqIDCursor struct {
 }
 
 func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) {
+	if c.nativeMessaging && c.mobileSession != nil {
+		return c.makeNativeStreamInitPayload(retryCount)
+	}
 	marshaledSyncParams, err := json.Marshal(&syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
@@ -234,9 +243,14 @@ type IGFrame struct {
 
 func (c *Client) handleDataFrame(ctx context.Context, frame []byte) error {
 	var igFrame IGFrame
-	err := json.Unmarshal(frame, &igFrame)
+	var err error
+	if c.nativeMessaging && c.mobileSession != nil {
+		igFrame.Payload, err = unmarshalNativeStreamResponse(frame)
+	} else {
+		err = json.Unmarshal(frame, &igFrame)
+	}
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal outermost JSON layer: %w", err)
+		return fmt.Errorf("failed to unmarshal response envelope: %w", err)
 	}
 	var lsResponse mdCoreSync.LSResponse
 	err = proto.Unmarshal(igFrame.Payload, &lsResponse)

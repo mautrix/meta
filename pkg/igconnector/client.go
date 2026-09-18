@@ -64,6 +64,9 @@ type IGClient struct {
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
+	if login.Client != nil {
+		login.Client.Disconnect()
+	}
 	c := &IGClient{
 		Main:      ic,
 		LoginMeta: loginMetadata,
@@ -121,13 +124,15 @@ func (ic *IGConnector) getProxy(reason string) (string, error) {
 func (ic *IGClient) ensureIGClient() {
 	if ic.LoginMeta.Cookies != nil && ic.Client == nil && ic.LoginMeta.Platform == types.Instagram {
 		ic.LoginMeta.Cookies.Platform = ic.LoginMeta.Platform
+		_, nativeMessaging := ic.Main.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications)
 		ic.Client = instameow.NewClient(instameow.ClientParams{
-			Cookies:       ic.LoginMeta.Cookies,
-			Log:           ic.UserLogin.Log.With().Str("component", "instameow").Logger(),
-			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
-			EventHandler:  ic.handleIGEvent,
-			DisableTyping: ic.Main.Config.DisableTyping,
-			NativeSession: ic.LoginMeta.InstagramNativeSession,
+			Cookies:         ic.LoginMeta.Cookies,
+			Log:             ic.UserLogin.Log.With().Str("component", "instameow").Logger(),
+			Settings:        ic.Main.Bridge.GetHTTPClientSettings(),
+			EventHandler:    ic.handleIGEvent,
+			DisableTyping:   ic.Main.Config.DisableTyping,
+			NativeSession:   ic.LoginMeta.InstagramNativeSession,
+			NativeMessaging: nativeMessaging,
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})

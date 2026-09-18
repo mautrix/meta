@@ -20,10 +20,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -50,7 +50,7 @@ func (c *Client) connectStreamController(ctx context.Context) {
 		} else if ctx.Err() != nil {
 			sock.Log.Debug().Err(err).Msg("Context canceled, stopping socket reconnect attempts")
 			return
-		} else if websocket.CloseStatus(err) == dgw.CloseStatusUnauthorized {
+		} else if dgw.IsUnauthorized(err) {
 			sock.Log.Err(err).Msg("Unauthorized error, not reconnecting")
 			return
 		}
@@ -93,7 +93,7 @@ type typingSubscribePayload struct {
 }
 
 func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
-	return dgw.SocketOptions{
+	options := dgw.SocketOptions{
 		GetCookies:     c.cookies.String,
 		Origin:         c.GetEndpoint("base_url"),
 		WSURL:          c.GetEndpoint("dgw_streamcontroller"),
@@ -144,6 +144,16 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 			return stream.SendData(ctx, postEstablishPayload)
 		},
 	}
+	if c.nativeMessaging && c.mobileSession != nil {
+		options.HTTPStream = &dgw.HTTPStreamOptions{
+			Client: c.http.HTTP, URL: "https://test-gateway.instagram.com/streamcontroller", GetHeaders: c.streamControllerNativeHeaders,
+		}
+	}
+	return options
+}
+
+func (c *Client) streamControllerNativeHeaders() http.Header {
+	return c.nativeStreamHeaders(c.mobileSession.Authorization, c.mobileSession.UserID, "all_sc")
 }
 
 var typingPathRegex = regexp.MustCompile(`^/direct_v2/threads/(\d+)/activity_indicator_id/.+$`)

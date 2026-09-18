@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -112,7 +111,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		stateEvt := status.StateTransientDisconnect
 		errCode := DGWConnectionError
 		var retErr error
-		if websocket.CloseStatus(evt.Error) == dgw.CloseStatusUnauthorized {
+		if dgw.IsUnauthorized(evt.Error) {
 			// TODO do full reconnect instead of this?
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized

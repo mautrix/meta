@@ -42,7 +42,7 @@ func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flo
 	case FlowIDInstagramCookies:
 		if ic.Bridge != nil {
 			if _, ok := ic.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications); ok {
-				return &MetaNativeLogin{User: user, Main: ic, browserFirst: true}, nil
+				return &MetaNativeLogin{User: user, Main: ic}, nil
 			}
 		}
 	default:
@@ -64,6 +64,11 @@ var (
 )
 
 func (ic *IGConnector) GetLoginFlows() []bridgev2.LoginFlow {
+	if ic.Bridge != nil {
+		if _, ok := ic.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications); ok {
+			return []bridgev2.LoginFlow{loginFlowInstagramPassword}
+		}
+	}
 	return []bridgev2.LoginFlow{loginFlowInstagram, loginFlowInstagramPassword}
 }
 
@@ -112,11 +117,13 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 func (m *MetaCookieLogin) Cancel() {}
 
 func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
+	_, nativeMessaging := conn.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications)
 	client := instameow.NewClient(instameow.ClientParams{
 		Cookies:                   c,
 		Log:                       log,
 		Settings:                  conn.Bridge.GetHTTPClientSettings(),
 		DisableTyping:             conn.Config.DisableTyping,
+		NativeMessaging:           nativeMessaging,
 		LogRedactedLoginResponses: conn.Config.LogRedactedLoginResponses,
 	})
 	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
@@ -142,6 +149,12 @@ func loginWithCookies(
 	log.Debug().
 		Strs("cookie_names", exslices.CastToString[string](slices.Collect(maps.Keys(c.GetAll())))).
 		Msg("Logging in with cookies")
+	if requireNative {
+		if nativeSession == nil || nativeSession.Authorization == "" || nativeSession.UserID != c.Get(cookies.IGCookieDSUserID) {
+			return nil, errInstagramCAAFlowFailed
+		}
+		client.SetInstagramNativeSession(nativeSession)
+	}
 	user, mailbox, err := client.LoadIndex(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to load messages page for login")

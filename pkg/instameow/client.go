@@ -52,6 +52,7 @@ type Client struct {
 	webCookieConsent      *instagramWebCookieConsentState
 	mobileLoginDevice     *types.InstagramLoginDevice
 	mobileSession         *instagramMobileSession
+	nativeMessaging       bool
 	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
 
 	socket        atomic.Pointer[dgw.Socket]
@@ -88,14 +89,15 @@ type EventHandler func(context.Context, slidetypes.ClientEvent) error
 var _ httpclient.Client = (*Client)(nil)
 
 type ClientParams struct {
-	Cookies       *cookies.Cookies
-	Log           zerolog.Logger
-	Settings      exhttp.ClientSettings
-	SeqID         int64
-	SeqIDTS       time.Time
-	EventHandler  EventHandler
-	DisableTyping bool
-	NativeSession *types.InstagramNativeSession
+	Cookies         *cookies.Cookies
+	Log             zerolog.Logger
+	Settings        exhttp.ClientSettings
+	SeqID           int64
+	SeqIDTS         time.Time
+	EventHandler    EventHandler
+	DisableTyping   bool
+	NativeSession   *types.InstagramNativeSession
+	NativeMessaging bool
 
 	LogRedactedLoginResponses bool
 
@@ -117,7 +119,8 @@ func NewClient(params ClientParams) *Client {
 		mqttBypassConnected:     exsync.NewEvent(),
 		streamControllerStopped: exsync.NewEvent(),
 
-		enableTyping: !params.DisableTyping,
+		enableTyping:    !params.DisableTyping,
+		nativeMessaging: params.NativeMessaging,
 
 		logRedactedLoginResponses: params.LogRedactedLoginResponses,
 
