@@ -42,6 +42,7 @@ import (
 )
 
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
+const instagramWebTwoFactorSendCodeDocID = "27297512486584094"
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
 var ErrInstagramWebLoginRejected = errors.New("instagram web sign-in was rejected")
@@ -363,6 +364,7 @@ func (c *Client) logInstagramWebRequestRejection(
 }
 
 func (c *Client) captureInstagramWebTwoFactor(
+	ctx context.Context,
 	result instagramWebLoginResponse,
 	fallbackUsername string,
 	preResponseCSRFToken string,
@@ -417,6 +419,11 @@ func (c *Client) captureInstagramWebTwoFactor(
 		Bool("csrf_rotated", responseCSRFToken != "" && responseCSRFToken != preResponseCSRFToken).
 		Bool("csrf_retained", retainedCSRFToken).
 		Msg("Captured Instagram web two-factor challenge")
+	if info.EncryptedContext != "" && (method == "SMS" || method == "WHATSAPP") {
+		if err := c.sendInstagramWebTwoFactorCode(ctx, c.webTwoFactor); err != nil {
+			return nil, err
+		}
+	}
 	return &InstagramWebTwoFactorChallenge{
 		TOTP:     info.TOTP,
 		SMS:      info.SMS,
@@ -564,7 +571,7 @@ func (c *Client) CreateInstagramWebSession(
 			if response != nil {
 				statusCode = response.StatusCode
 			}
-			return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, statusCode)
+			return c.captureInstagramWebTwoFactor(ctx, result, identifier, preResponseCSRFToken, statusCode)
 		} else if instagramWebChallengeRequired(result) && (parseErr == nil || result.RedirectURL != "") {
 			return c.startInstagramWebCheckpoint(ctx, result)
 		} else if parseErr == nil && result.Message != "" {
@@ -578,7 +585,7 @@ func (c *Client) CreateInstagramWebSession(
 	} else if instagramWebCredentialsRejected(result) {
 		return nil, ErrInstagramWebCredentialsRejected
 	} else if result.TwoFactorRequired {
-		return c.captureInstagramWebTwoFactor(result, identifier, preResponseCSRFToken, response.StatusCode)
+		return c.captureInstagramWebTwoFactor(ctx, result, identifier, preResponseCSRFToken, response.StatusCode)
 	} else if instagramWebChallengeRequired(result) {
 		return c.startInstagramWebCheckpoint(ctx, result)
 	} else if !result.Authenticated {
@@ -802,6 +809,38 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 			return errInstagramWebTwoFactorSMSRejected
 		}
 		return ErrInstagramWebTwoFactorCodeRejected
+	}
+	return nil
+}
+
+func (c *Client) sendInstagramWebTwoFactorCode(ctx context.Context, state *instagramWebTwoFactorState) error {
+	variables, err := json.Marshal(map[string]string{
+		"challenge":          state.method,
+		"encryptedContext":   state.encryptedContext,
+		"maskedContactPoint": state.maskedContactPoint,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal Instagram web verification request: %w", err)
+	}
+	c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
+	rq := c.http.NewHTTPQuery()
+	rq.FbAPIReqFriendlyName = "useTwoStepVerificationSendCodeMutation"
+	rq.DocID = instagramWebTwoFactorSendCodeDocID
+	rq.Variables = string(variables)
+	body, err := c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login_two_step_verification"), state.csrfToken)
+	if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
+		state.csrfToken = csrfToken
+	}
+	if err != nil {
+		return fmt.Errorf("failed to request an Instagram web verification code: %w", err)
+	}
+	body = bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix)
+	result := gjson.GetBytes(body, "data.xfb_two_step_verification_send_notification")
+	if result.Get("is_success").Type != gjson.True {
+		if message := result.Get("error_message").String(); message != "" {
+			return fmt.Errorf("instagram could not send a web verification code: %s", message)
+		}
+		return errors.New("instagram could not send a web verification code")
 	}
 	return nil
 }
