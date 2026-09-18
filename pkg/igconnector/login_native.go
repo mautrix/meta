@@ -389,7 +389,7 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.pendingWebChallengeURL != "" {
-		step, err := submitInstagramCookies(ctx, m.Main, m.User, input, m.client.GetInstagramNativeSession(), false)
+		step, err := submitInstagramCookies(ctx, m.Main, m.User, input, m.client.GetInstagramNativeSession())
 		if err == nil {
 			m.pendingWebChallengeURL = ""
 		}

@@ -245,7 +245,7 @@ func loginWithCookies(
 	}, nil
 }
 
-func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string, nativeSession *types.InstagramNativeSession, requireNative bool) (*bridgev2.LoginStep, error) {
+func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string, nativeSession *types.InstagramNativeSession) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
@@ -263,9 +263,9 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, user, conn, c, nativeSession, requireNative, nil)
+	return loginWithCookies(ctx, log, client, user, conn, c, nativeSession, false, nil)
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	return submitInstagramCookies(ctx, m.Main, m.User, strCookies, nil, false)
+	return submitInstagramCookies(ctx, m.Main, m.User, strCookies, nil)
 }

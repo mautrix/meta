@@ -754,6 +754,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
+		if ambientArgs[idx] == nil {
+			return BloksNull, nil
+		}
 		return ambientArgs[idx], nil
 	case "bk.action.core.SetArg":
 		idx, err := evalAs[int64](ctx, i, &call.Args[0], "setarg")
