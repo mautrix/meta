@@ -16,6 +16,8 @@ github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c h1:Axyrzr6L42CLNJI
 github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c/go.mod h1:mo9x0FBxrMo75mAnk1ALdXrHfe8NG3C25CFDf4RSRpc=
 github.com/beeper/req/v3 v3.0.0-20260808092153-100cef0a2fbd h1:IJfLD+LIFeAuBZk0ZHVG4I4dFhFuaQBxo6nsp3vJ2tI=
 github.com/beeper/req/v3 v3.0.0-20260808092153-100cef0a2fbd/go.mod h1:iY9GG/Oj7JPTmyK4y2im3tHKhegHe6IzCj6mmQOjCQs=
+github.com/beeper/req/v3 v3.0.0-20260918182906-c07496c0b6bd h1:yEWjQTM/3TW4WXoqFm+VdHBj2hPQY6cgQPyaIH/QaeU=
+github.com/beeper/req/v3 v3.0.0-20260918182906-c07496c0b6bd/go.mod h1:iY9GG/Oj7JPTmyK4y2im3tHKhegHe6IzCj6mmQOjCQs=
 github.com/coder/websocket v1.8.15 h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNUA=
 github.com/coder/websocket v1.8.15/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/coreos/go-systemd/v22 v22.7.0 h1:LAEzFkke61DFROc7zNLX/WA2i5J8gYqe0rSj9KI28KA=

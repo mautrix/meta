@@ -1,8 +1,6 @@
 package httpclient
 
 import (
-	"context"
-	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
@@ -12,65 +10,25 @@ import (
 
 	"github.com/imroc/req/v3"
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/http3"
 	"go.mau.fi/util/exhttp"
 )
 
 type instagramHTTPTransport struct {
 	*req.Transport
-	native *http3.Transport
-}
-
-type connectedPacketConn struct {
-	net.Conn
-}
-
-type instagramQUICDialError struct {
-	error
-}
-
-func (e *instagramQUICDialError) Unwrap() error {
-	return e.error
-}
-
-func (c connectedPacketConn) ReadFrom(buf []byte) (int, net.Addr, error) {
-	n, err := c.Read(buf)
-	return n, c.RemoteAddr(), err
-}
-
-func (c connectedPacketConn) WriteTo(buf []byte, addr net.Addr) (int, error) {
-	if addr.String() != c.RemoteAddr().String() {
-		return 0, net.InvalidAddrError("connected UDP peer changed")
-	}
-	return c.Write(buf)
+	native *req.Transport
 }
 
 func newInstagramHTTPTransport(base *req.Transport, settings exhttp.ClientSettings) http.RoundTripper {
 	if settings.ProxyAddress != "" || settings.HTTPProxy != nil {
 		return base
 	}
-	dial := settings.Dial
-	if dial == nil {
-		dial = (&net.Dialer{Timeout: settings.DialTimeout}).DialContext
-	}
-	native := &http3.Transport{
-		TLSClientConfig: base.TLSClientConfig,
-		QUICConfig: &quic.Config{
-			HandshakeIdleTimeout: settings.TLSHandshakeTimeout,
-		},
-		Dial: func(ctx context.Context, addr string, tlsConfig *tls.Config, config *quic.Config) (*quic.Conn, error) {
-			udp, err := dial(ctx, "udp", addr)
-			if err != nil {
-				return nil, &instagramQUICDialError{err}
-			}
-			conn, err := quic.Dial(ctx, connectedPacketConn{udp}, udp.RemoteAddr(), tlsConfig, config)
-			if err != nil {
-				_ = udp.Close()
-				return nil, &instagramQUICDialError{err}
-			}
-			context.AfterFunc(conn.Context(), func() { _ = udp.Close() })
-			return conn, nil
-		},
+	native := req.NewTransport()
+	native.Options = base.Options.Clone()
+	native.EnableForceHTTP3().DisableAutoDecode().SetHTTP3QUICConfig(&quic.Config{
+		HandshakeIdleTimeout: settings.TLSHandshakeTimeout,
+	})
+	if native.DialContext == nil {
+		native.SetDial((&net.Dialer{Timeout: settings.DialTimeout}).DialContext)
 	}
 	base.WrapRoundTripFunc(func(next http.RoundTripper) req.HttpRoundTripFunc {
 		return func(request *http.Request) (*http.Response, error) {
@@ -93,7 +51,7 @@ func newInstagramHTTPTransport(base *req.Transport, settings exhttp.ClientSettin
 			delete(h3Request.Header, req.HeaderOderKey)
 			delete(h3Request.Header, req.PseudoHeaderOderKey)
 			response, err := native.RoundTrip(h3Request)
-			var dialErr *instagramQUICDialError
+			var dialErr *req.HTTP3DialError
 			if !errors.As(err, &dialErr) || gotConn.Load() || request.Context().Err() != nil {
 				return response, err
 			}
