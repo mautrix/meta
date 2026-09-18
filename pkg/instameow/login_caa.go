@@ -88,6 +88,13 @@ func (c *Client) ClearInstagramCAALoginState() {
 	}
 }
 
+func (c *Client) CancelInstagramCAALoginStep(ctx context.Context) error {
+	if c == nil || c.caaLogin == nil || c.caaLogin.Browser == nil {
+		return errors.New("Instagram login browser is not initialized")
+	}
+	return c.caaLogin.Browser.CancelLoginStep(ctx)
+}
+
 func parseInstagramCAAResponseHeaders(rawHeaders string) (http.Header, error) {
 	decoder := json.NewDecoder(strings.NewReader(rawHeaders))
 	decoder.UseNumber()
@@ -213,8 +220,6 @@ func instagramCAACredentialParams(
 	mobile *mobileLoginState,
 	legacy bloks.BloksParamsInner,
 ) (bloks.BloksParamsInner, error) {
-	// The legacy homepage still supplies the credentials, but its generated request
-	// shape is stale. Preserve only the encrypted user values and rebuild the envelope.
 	legacyClient, ok := legacy["client_input_params"].(map[string]any)
 	if !ok {
 		return nil, errors.New("instagram credential request has invalid CAA parameters")
@@ -384,10 +389,12 @@ func (c *Client) prepareInstagramCAALogin(ctx context.Context, username string) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct Instagram CAA browser: %w", err)
 	}
-	browser.Bridge.DeviceID = mobile.DeviceID
+	browser.Bridge.DeviceID = mobile.AndroidDeviceID
 	browser.Bridge.FamilyDeviceID = mobile.PhoneID
 	browser.Bridge.AndroidDeviceID = mobile.AndroidDeviceID
-	browser.Bridge.MachineID = mobile.MachineID
+	browser.Bridge.GetMachineID = func() string {
+		return mobile.MachineID
+	}
 	waterfallID := uuid.NewString()
 	browser.Bridge.DeviceNetworkInfo = instagramDeviceNetworkInfo()
 	browser.Bridge.GetSecureNoncesForUser = func(string) any {
@@ -446,6 +453,41 @@ func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[str
 	state, err := c.prepareInstagramCAALogin(ctx, userInput["username"])
 	if err != nil {
 		return nil, err
+	}
+	if state.Browser.State == bloks.StateInitialInstagram {
+		username, password := userInput["username"], userInput["password"]
+		if username == "" || password == "" {
+			state.Browser.State = bloks.StateEmailPasswordPage
+			step, stepErr := state.Browser.DoLoginStep(ctx, nil)
+			state.Browser.State = bloks.StateInitialInstagram
+			return step, stepErr
+		}
+		delete(userInput, "username")
+		delete(userInput, "password")
+		encryptedPassword, encryptErr := state.Browser.Config.EncryptPassword(ctx, password)
+		if encryptErr != nil {
+			return nil, encryptErr
+		}
+		action, requestErr := c.makeInstagramBloksRequest(ctx, &bloks.BloksActionDocInstagram,
+			instagramCAASendEntrypoint, bloks.BloksParamsInner{
+				"client_input_params": map[string]any{
+					"contact_point": username, "password": encryptedPassword,
+					"password_contains_non_ascii": strings.IndexFunc(password, func(r rune) bool { return r > 127 }) >= 0,
+				},
+			}, "", "")
+		if requestErr != nil {
+			return nil, requestErr
+		}
+		state.Browser.CurrentPage = action
+		if err = action.SetupInterpreter(ctx, state.Browser.Bridge, nil, true); err != nil {
+			return nil, fmt.Errorf("setting up Instagram credential response: %w", err)
+		}
+		if _, err = action.Interpreter.Evaluate(ctx, action.Action()); err != nil {
+			return nil, fmt.Errorf("processing Instagram credential response: %w", err)
+		}
+		if state.Browser.State == bloks.StateInitialInstagram {
+			return nil, errors.New("instagram credential response did not return a login step")
+		}
 	}
 	for automaticSteps := 0; state.Browser.State != bloks.StateSuccess; automaticSteps++ {
 		if automaticSteps >= instagramCAAAutomaticStepLimit {

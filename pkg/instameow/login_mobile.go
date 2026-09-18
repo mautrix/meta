@@ -48,8 +48,8 @@ const (
 
 	// These values match the current first-party Android profile used by the
 	// official Instagram APK. They must be updated together.
-	instagramMobileAppVersion  = "440.0.0.19.86"
-	instagramMobileVersionCode = "384608963"
+	instagramMobileAppVersion  = "446.0.0.49.77"
+	instagramMobileVersionCode = "385211303"
 	instagramMobileUserAgent   = "Instagram " + instagramMobileAppVersion +
 		" Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " +
 		instagramMobileVersionCode + ")"

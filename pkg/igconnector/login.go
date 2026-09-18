@@ -130,6 +130,8 @@ func loginWithCookies(
 	bridgeUser *bridgev2.User,
 	conn *IGConnector,
 	c *cookies.Cookies,
+	nativeSession *types.InstagramNativeSession,
+	requireNative bool,
 	beforeClientStart func(),
 ) (*bridgev2.LoginStep, error) {
 	log.Debug().
@@ -159,6 +161,13 @@ func loginWithCookies(
 	if ownFBID == 0 {
 		return nil, fmt.Errorf("own fbid not found")
 	}
+	if nativeSession != nil && (nativeSession.UserID != user.ID || nativeSession.UserID != c.Get(cookies.IGCookieDSUserID)) {
+		nativeSession = nil
+	}
+	if requireNative && (nativeSession == nil || nativeSession.Authorization == "") {
+		return nil, errInstagramCAAFlowFailed
+	}
+	client.SetInstagramNativeSession(nativeSession)
 	loginID := metaid.MakeUserLoginID(ownFBID)
 	var loginUA string
 	if req, ok := ctx.Value("fi.mau.provision.request").(*http.Request); ok {
@@ -172,10 +181,11 @@ func loginWithCookies(
 			Name: user.GetName(),
 		},
 		Metadata: &metaid.UserLoginMetadata{
-			Platform: c.Platform,
-			Cookies:  c,
-			LoginUA:  loginUA,
-			IGID:     user.ID,
+			Platform:               c.Platform,
+			Cookies:                c,
+			LoginUA:                loginUA,
+			IGID:                   user.ID,
+			InstagramNativeSession: nativeSession,
 		},
 	}, nil)
 	if err != nil {
@@ -217,7 +227,7 @@ func loginWithCookies(
 	}, nil
 }
 
-func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string, nativeSession *types.InstagramNativeSession, requireNative bool) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
@@ -235,9 +245,9 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, user, conn, c, nil)
+	return loginWithCookies(ctx, log, client, user, conn, c, nativeSession, requireNative, nil)
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	return submitInstagramCookies(ctx, m.Main, m.User, strCookies)
+	return submitInstagramCookies(ctx, m.Main, m.User, strCookies, nil, false)
 }

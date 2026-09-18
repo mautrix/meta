@@ -25,6 +25,7 @@ type InterpBridge struct {
 	FamilyDeviceID         string
 	AndroidDeviceID        string
 	MachineID              string
+	GetMachineID           func() string
 	EncryptPassword        func(context.Context, string) (string, error)
 	GetEncryptedMSISDN     func(context.Context, string, bool) (string, error)
 	SignRequestData        func(context.Context, any) (any, error)
@@ -920,6 +921,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "bk.fx.action.GetFamilyDeviceId":
 		return BloksLiteralOf(i.Bridge.FamilyDeviceID), nil
 	case "bk.action.caa.FetchMachineID":
+		if i.Bridge.GetMachineID != nil {
+			return BloksLiteralOf(i.Bridge.GetMachineID()), nil
+		}
 		return BloksLiteralOf(i.Bridge.MachineID), nil
 	case "bk.action.string.EncryptPassword":
 		pass, err := evalAs[string](ctx, i, &call.Args[0], "encryptpassword")
