@@ -191,6 +191,7 @@ type connectPayload struct {
 type syncParams struct {
 	UserAgent                string             `json:"user_agent"`
 	SnapshotAtMS             jsontime.UnixMilli `json:"snapshot_at_ms"`
+	SnapshotAppVersion       string             `json:"snapshot_app_version,omitempty"`
 	PrevalidatedGraphQLDocID string             `json:"prevalidated_graphql_doc_id"`
 }
 
@@ -199,14 +200,17 @@ type seqIDCursor struct {
 }
 
 func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) {
-	if c.nativeMessaging && c.mobileSession != nil {
-		return c.makeNativeStreamInitPayload(retryCount)
-	}
-	marshaledSyncParams, err := json.Marshal(&syncParams{
+	native := c.nativeMessaging && c.mobileSession != nil
+	params := syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
 		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQuery,
-	})
+	}
+	if native {
+		params.UserAgent = instagramMobileUserAgent
+		params.SnapshotAppVersion = instagramMobileAppVersion
+	}
+	marshaledSyncParams, err := json.Marshal(&params)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +219,9 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 	})
 	if err != nil {
 		return nil, err
+	}
+	if native {
+		return c.makeNativeStreamInitPayload(retryCount, marshaledSyncParams, marshaledCursor)
 	}
 	marshaledDatabaseQuery, err := json.Marshal(&socket.DatabaseQuery{
 		Database:          223,

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -36,30 +34,7 @@ func (c *Client) nativeStreamHeaders(authorization, userID, group string) http.H
 	}
 }
 
-func (c *Client) makeNativeStreamInitPayload(retryCount int) ([]byte, error) {
-	_, timezoneOffset := time.Now().Zone()
-	syncParameters, err := json.Marshal(map[string]any{
-		"app_id":                             useragent.IGAndroidAppID,
-		"device_id":                          c.mobileSession.Device.DeviceID,
-		"user_agent":                         instagramMobileUserAgent,
-		"timestamp":                          time.Now().UnixMilli(),
-		"subscription_type":                  "message",
-		"timezone_offset":                    timezoneOffset,
-		"bloks_versioning_id":                bloks.BloksVersionInstagramAndroid,
-		"snapshot_at_ms":                     c.seqIDTS.UnixMilli(),
-		"snapshot_app_version":               instagramMobileAppVersion,
-		"graphql_doc_id":                     "36675319384970908755936775588",
-		"subscribe_reason":                   "initial_sequence_id-run_back_off-1",
-		"is_mdcore_pending_sync_enabled":     false,
-		"mdcore_pending_sync_graphql_doc_id": "17006828084014888061227587686",
-	})
-	if err != nil {
-		return nil, err
-	}
-	cursor, err := json.Marshal(seqIDCursor{SeqID: c.seqID})
-	if err != nil {
-		return nil, err
-	}
+func (c *Client) makeNativeStreamInitPayload(retryCount int, syncParameters, cursor []byte) ([]byte, error) {
 	payload, err := json.Marshal(map[string]any{
 		"database": "223", "epoch_id": methods.GenerateEpochID(), "format": "flatbuffer",
 		"last_applied_cursor": string(cursor), "sync_params": string(syncParameters), "version": "-2",
