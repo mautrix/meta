@@ -54,11 +54,6 @@ func (ic *IGClient) GetPushConfigs() *bridgev2.PushConfig {
 	return pushCfg
 }
 
-type DoubleToken struct {
-	Unencrypted string `json:"unencrypted"`
-	Encrypted   string `json:"encrypted"`
-}
-
 func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
 	if token == "" {
 		return errors.New("empty push token")
@@ -286,11 +281,15 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 	case <-time.After(15 * time.Second):
 		log.Debug().Msg("Closing background connection due to timeout")
 		ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
+		if !ic.caughtUp.IsSet() {
+			return errors.New("instagram background sync timed out")
+		}
 	case <-ctx.Done():
 		log.Debug().Msg("Closing background connection due to cancellation")
+		return ctx.Err()
 	case <-ic.caughtUp.GetChan():
 		log.Debug().Msg("Closing background connection as we caught up to the latest seq ID")
 		ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
 	}
-	return nil
+	return ctx.Err()
 }
