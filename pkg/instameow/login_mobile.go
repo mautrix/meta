@@ -48,8 +48,8 @@ const (
 
 	// These values match the current first-party Android profile used by the
 	// official Instagram APK. They must be updated together.
-	instagramMobileAppVersion  = "440.0.0.19.86"
-	instagramMobileVersionCode = "384608963"
+	instagramMobileAppVersion  = "446.0.0.49.77"
+	instagramMobileVersionCode = "385211303"
 	instagramMobileUserAgent   = "Instagram " + instagramMobileAppVersion +
 		" Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " +
 		instagramMobileVersionCode + ")"
@@ -72,16 +72,26 @@ type mobileLoginState struct {
 	USDIDRegistered   bool
 }
 
-type instagramMobileSession struct {
-	Authorization    string
-	UserID           string
-	Username         string
-	RUR              string
-	SHBID            string
-	SHBTS            string
-	DirectRegionHint string
-	WWWClaim         string
-	Device           types.InstagramLoginDevice
+type instagramMobileSession = types.InstagramNativeSession
+
+func (c *Client) GetInstagramNativeSession() *types.InstagramNativeSession {
+	if c == nil || c.mobileSession == nil {
+		return nil
+	}
+	session := *c.mobileSession
+	return &session
+}
+
+func (c *Client) SetInstagramNativeSession(session *types.InstagramNativeSession) {
+	if session == nil {
+		c.mobileSession = nil
+	} else {
+		copy := *session
+		c.mobileSession = &copy
+	}
+	if c.http != nil {
+		c.http.SetInstagramNativeTLS(session != nil)
+	}
 }
 
 type instagramMobileLoginResponse struct {
@@ -225,6 +235,7 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 }
 
 func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginState, error) {
+	c.http.SetInstagramNativeTLS(true)
 	if c.mobileLogin == nil {
 		// Web and app login sessions use different cookie jars.
 		c.cookies.UpdateValues(nil)

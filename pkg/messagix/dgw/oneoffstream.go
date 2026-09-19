@@ -24,7 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 )
@@ -39,7 +38,7 @@ type OneOffStream struct {
 	noData   bool
 }
 
-func newOneOffStream(conn *websocket.Conn, id StreamID, log *zerolog.Logger, noAckOrData bool) *OneOffStream {
+func newOneOffStream(conn *connection, id StreamID, log *zerolog.Logger, noAckOrData bool) *OneOffStream {
 	return &OneOffStream{
 		baseStream: newBaseStream(conn, id, log),
 		acked:      exsync.NewEvent(),

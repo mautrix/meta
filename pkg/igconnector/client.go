@@ -64,6 +64,9 @@ type IGClient struct {
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
+	if login.Client != nil {
+		login.Client.Disconnect()
+	}
 	c := &IGClient{
 		Main:      ic,
 		LoginMeta: loginMetadata,
@@ -127,6 +130,7 @@ func (ic *IGClient) ensureIGClient() {
 			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
+			NativeSession: ic.LoginMeta.InstagramNativeSession,
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})

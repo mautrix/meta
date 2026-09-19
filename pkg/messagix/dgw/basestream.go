@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
 	"go.mau.fi/util/exsync"
@@ -42,14 +41,14 @@ var (
 
 type baseStream struct {
 	log  *zerolog.Logger
-	conn *websocket.Conn
+	conn *connection
 	id   StreamID
 
 	established  *exsync.Event
 	establishErr atomic.Pointer[error]
 }
 
-func newBaseStream(conn *websocket.Conn, id StreamID, log *zerolog.Logger) baseStream {
+func newBaseStream(conn *connection, id StreamID, log *zerolog.Logger) baseStream {
 	return baseStream{
 		log:         log,
 		conn:        conn,
@@ -59,7 +58,11 @@ func newBaseStream(conn *websocket.Conn, id StreamID, log *zerolog.Logger) baseS
 }
 
 func receiveEstablish(f *EstablishStreamFrame, log *zerolog.Logger) error {
-	if res := gjson.GetBytes(f.RawParameters, "code"); !res.Exists() {
+	res := gjson.ParseBytes(f.RawParameters)
+	if res.IsObject() {
+		res = res.Get("code")
+	}
+	if !res.Exists() || res.Type != gjson.Number {
 		log.Warn().
 			Uint16("stream_id", uint16(f.StreamID)).
 			RawJSON("raw_params", f.RawParameters).

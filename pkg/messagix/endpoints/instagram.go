@@ -30,6 +30,10 @@ var InstagramEndpoints = map[string]string{
 	"dgw_mqttbypass":       instaDGWBase + "/ws/mqttbypass",
 	"dgw_streamcontroller": instaDGWBase + "/ws/streamcontroller",
 
+	"dgw_lightspeed_native":       instaDGWBase + "/lightspeed",
+	"dgw_mqttbypass_native":       instaDGWBase + "/mqttbypass",
+	"dgw_streamcontroller_native": instaDGWBase + "/streamcontroller",
+
 	"e2ee_ws_url":   "wss://web-chat-e2ee.instagram.com/ws/chat",
 	"icdc_fetch":    "https://reg-e2ee.instagram.com/v2/fb_icdc_fetch",
 	"icdc_register": "https://reg-e2ee.instagram.com/v2/fb_register_v2",

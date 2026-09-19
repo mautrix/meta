@@ -1328,8 +1328,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateAuthenticationConfirm:
-		if authenticationConfirmationPageState(b.CurrentPage) == StateAccountRecoveryPage {
-			b.State = StateAccountRecoveryPage
+		if state := authenticationConfirmationPageState(b.CurrentPage); state != StateAuthenticationConfirm {
+			b.State = state
 			break
 		}
 		btn, clickableTextCount := findAuthenticationConfirmationButton(b.CurrentPage)
@@ -2406,6 +2406,9 @@ func (b *Browser) CancelLoginStep(ctx context.Context) error {
 
 func authenticationConfirmationPageState(page *BloksBundle) BrowserState {
 	if page != nil && page.FindDescendant(FilterByComponent("bk.components.TextInput")) != nil {
+		if input := page.FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "password")); input != nil && input.GetAttribute("type") == "password" {
+			return StatePasswordFormPage
+		}
 		return StateAccountRecoveryPage
 	}
 	return StateAuthenticationConfirm

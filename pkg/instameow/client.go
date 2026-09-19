@@ -95,6 +95,7 @@ type ClientParams struct {
 	SeqIDTS       time.Time
 	EventHandler  EventHandler
 	DisableTyping bool
+	NativeSession *types.InstagramNativeSession
 
 	LogRedactedLoginResponses bool
 
@@ -126,9 +127,11 @@ func NewClient(params ClientParams) *Client {
 		device := *params.MobileLoginDevice
 		c.mobileLoginDevice = &device
 	}
+	c.SetInstagramNativeSession(params.NativeSession)
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)
 	c.http = httpclient.NewHTTPClient(c, c.configs, params.Settings)
+	c.http.SetInstagramNativeTLS(c.mobileSession != nil)
 	c.socketStopped.Set()
 	c.streamControllerStopped.Set()
 	return c
@@ -201,12 +204,12 @@ func (c *Client) ReloadIndex(ctx context.Context) (bool, error) {
 func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetypes.Mailbox, error) {
 	if c == nil {
 		return nil, nil, ErrClientIsNil
-	} else if !c.cookies.IsLoggedIn() {
-		return nil, nil, httpclient.ErrTokenInvalidated
 	}
 	c.loadIndexLock.Lock()
 	defer c.loadIndexLock.Unlock()
-
+	if !c.cookies.IsLoggedIn() {
+		return nil, nil, httpclient.ErrTokenInvalidated
+	}
 	if time.Since(c.lastReload) < 5*time.Minute {
 		zerolog.Ctx(ctx).Debug().
 			Time("last_reload", c.lastReload).
@@ -224,7 +227,7 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 	}
 	c.seqID = mailbox.Mailbox.UQSeqID
 	c.seqIDTS = time.Now()
-	return &c.configs.BrowserConfigTable.PolarisViewer, mailbox.Mailbox, err
+	return &c.configs.BrowserConfigTable.PolarisViewer, mailbox.Mailbox, nil
 }
 
 func (c *Client) GetOwnFBID() int64 {
