@@ -342,9 +342,6 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 	if state.USDIDHeader != "" {
 		headers.Set("x-meta-usdid", state.USDIDHeader)
 	}
-	if cookieHeader := c.cookies.String(); cookieHeader != "" {
-		headers.Set("cookie", cookieHeader)
-	}
 	return headers
 }
 
