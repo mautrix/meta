@@ -53,11 +53,12 @@ func setInstagramTLSFingerprint(client *req.Client) {
 		}
 		state := conn.ConnectionState()
 		return conn, &tls.ConnectionState{
-			Version:                     state.Version,
-			HandshakeComplete:           state.HandshakeComplete,
-			DidResume:                   state.DidResume,
-			CipherSuite:                 state.CipherSuite,
-			NegotiatedProtocol:          state.NegotiatedProtocol,
+			Version:            state.Version,
+			HandshakeComplete:  state.HandshakeComplete,
+			DidResume:          state.DidResume,
+			CipherSuite:        state.CipherSuite,
+			NegotiatedProtocol: state.NegotiatedProtocol,
+			//lint:ignore SA1019 req requires this field to select HTTP/2
 			NegotiatedProtocolIsMutual:  state.NegotiatedProtocolIsMutual,
 			ServerName:                  state.ServerName,
 			PeerCertificates:            state.PeerCertificates,
