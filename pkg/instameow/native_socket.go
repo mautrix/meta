@@ -9,7 +9,7 @@ import (
 
 	flatbuffers "github.com/google/flatbuffers/go"
 
-	"go.mau.fi/mautrix-meta/pkg/instameow/flatbuffer"
+	lightspeed "go.mau.fi/mautrix-meta/pkg/instameow/flatbuffer"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
