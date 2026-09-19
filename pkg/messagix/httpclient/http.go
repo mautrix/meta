@@ -35,6 +35,7 @@ type HTTPClient struct {
 
 	HTTP            *http.Client
 	HTTPSettings    exhttp.ClientSettings
+	ownedTransport  *req.Transport
 	websocketClient *http.Client
 	proxyAddr       string
 	GetNewProxy     func(reason string) (string, error)
@@ -70,10 +71,17 @@ func (c *HTTPClient) SetConfigs(configs *Configs) {
 	c.configs = configs
 }
 
-func (c *HTTPClient) SetInstagramNativeTLS(native bool) {
+func (c *HTTPClient) SetInstagramNativeMode(native bool) {
 	if c.instagramNative.Swap(native) != native {
-		c.HTTP.CloseIdleConnections()
+		c.SetConfig(c.HTTPSettings)
 	}
+}
+
+func (c *HTTPClient) SetTransportOverride(transport http.RoundTripper) {
+	if transport == nil {
+		transport = c.ownedTransport
+	}
+	c.HTTP.Transport = transport
 }
 
 func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
@@ -86,7 +94,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	if c.proxyAddr != "" {
 		c.HTTPSettings, _ = c.HTTPSettings.WithProxy(c.proxyAddr)
 	}
-	reqClient := req.C().ImpersonateChrome()
+	reqClient := req.C()
 	wsClient := req.C().ImpersonateChrome()
 	forceHTTP1ChromeFingerprint(wsClient)
 	if DisableTLSVerification {
@@ -97,16 +105,23 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 			InsecureSkipVerify: true,
 		})
 	}
-	if c.parent.GetPlatform().IsInstagram() {
-		setInstagramTLSFingerprint(reqClient, c.instagramNative.Load)
+	if c.parent.GetPlatform().IsInstagram() && c.instagramNative.Load() {
+		setInstagramNativeFingerprint(reqClient)
+	} else {
+		reqClient.ImpersonateChrome()
 	}
 
 	oldHTTP := c.HTTP
+	oldTransport := c.ownedTransport
 	c.websocketClient = req.WithTransportOverride(c.HTTPSettings.WithGlobalTimeout(WebsocketHandshakeTimeout), wsClient).Compile()
 	c.HTTP = req.WithTransportOverride(c.HTTPSettings, reqClient).Compile()
+	c.ownedTransport = reqClient.GetTransport()
 	c.HTTP.CheckRedirect = c.checkHTTPRedirect
-	if oldHTTP != nil {
-		oldHTTP.CloseIdleConnections()
+	if oldHTTP != nil && oldHTTP.Transport != oldTransport {
+		c.HTTP.Transport = oldHTTP.Transport
+	}
+	if oldTransport != nil {
+		oldTransport.CloseIdleConnections()
 	}
 
 	if DisableTLSVerification {

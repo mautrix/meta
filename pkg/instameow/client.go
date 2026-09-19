@@ -131,7 +131,7 @@ func NewClient(params ClientParams) *Client {
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)
 	c.http = httpclient.NewHTTPClient(c, c.configs, params.Settings)
-	c.http.SetInstagramNativeTLS(c.mobileSession != nil)
+	c.http.SetInstagramNativeMode(c.mobileSession != nil)
 	c.socketStopped.Set()
 	c.streamControllerStopped.Set()
 	return c

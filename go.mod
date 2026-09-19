@@ -63,4 +63,4 @@ require (
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
 
-replace github.com/imroc/req/v3 => github.com/beeper/req/v3 v3.0.0-20260808092153-100cef0a2fbd
+replace github.com/imroc/req/v3 => github.com/beeper/req/v3 v3.0.0-20260919222256-fca57bce366e

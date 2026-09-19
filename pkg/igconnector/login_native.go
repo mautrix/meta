@@ -93,7 +93,7 @@ func getInstaNativeClient(
 	})
 	if transport != nil {
 		client.GetHTTP().GetNewProxy = nil
-		client.GetHTTP().HTTP.Transport = transport
+		client.GetHTTP().SetTransportOverride(transport)
 	} else if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
 		client.GetHTTP().GetNewProxy = conn.getProxy
 		if !client.GetHTTP().UpdateProxy("login") {
@@ -519,11 +519,10 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 	m.transport = nil
 	var restoreTransport func()
 	if loginTransport != nil {
-		originalTransport := client.GetHTTP().HTTP.Transport
-		client.GetHTTP().HTTP.Transport = loginTransport
+		client.GetHTTP().SetTransportOverride(loginTransport)
 		restoreTransport = func() {
 			if loginTransport != nil {
-				client.GetHTTP().HTTP.Transport = originalTransport
+				client.GetHTTP().SetTransportOverride(nil)
 				loginTransport = nil
 			}
 		}

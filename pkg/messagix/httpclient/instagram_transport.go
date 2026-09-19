@@ -6,15 +6,17 @@ import (
 	"net"
 
 	"github.com/imroc/req/v3"
+	"github.com/imroc/req/v3/http2"
 	utls "github.com/refraction-networking/utls"
 )
 
-func setInstagramTLSFingerprint(client *req.Client, isNative func() bool) {
-	fallback := client.GetTransport().TLSHandshakeContext
+func setInstagramNativeFingerprint(client *req.Client) {
+	client.SetHTTP2SettingsFrame(
+		http2.Setting{ID: http2.SettingEnablePush, Val: 0},
+		http2.Setting{ID: http2.SettingInitialWindowSize, Val: 163840},
+	).SetHTTP2ConnectionFlow(2031617).
+		SetCommonPseudoHeaderOder(":authority", ":method", ":path", ":scheme")
 	client.SetTLSHandshake(func(ctx context.Context, addr string, plainConn net.Conn) (net.Conn, *tls.ConnectionState, error) {
-		if !isNative() {
-			return fallback(ctx, addr, plainConn)
-		}
 		host := addr
 		if name, _, err := net.SplitHostPort(addr); err == nil {
 			host = name
