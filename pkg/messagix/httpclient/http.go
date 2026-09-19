@@ -89,20 +89,16 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 			InsecureSkipVerify: true,
 		})
 	}
+	if c.parent.GetPlatform().IsInstagram() {
+		setInstagramTLSFingerprint(reqClient)
+	}
 
 	oldHTTP := c.HTTP
 	c.websocketClient = req.WithTransportOverride(c.HTTPSettings.WithGlobalTimeout(WebsocketHandshakeTimeout), wsClient).Compile()
 	c.HTTP = req.WithTransportOverride(c.HTTPSettings, reqClient).Compile()
-	if c.parent.GetPlatform().IsInstagram() {
-		c.HTTP.Transport = newInstagramHTTPTransport(reqClient.GetTransport(), c.HTTPSettings)
-	}
 	c.HTTP.CheckRedirect = c.checkHTTPRedirect
 	if oldHTTP != nil {
-		if transport, ok := oldHTTP.Transport.(*instagramHTTPTransport); ok {
-			go transport.Close()
-		} else {
-			oldHTTP.CloseIdleConnections()
-		}
+		oldHTTP.CloseIdleConnections()
 	}
 
 	if DisableTLSVerification {

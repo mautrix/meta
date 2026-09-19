@@ -14,7 +14,6 @@ require (
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/imroc/req/v3 v3.56.0
-	github.com/quic-go/quic-go v0.61.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.19.0
@@ -46,6 +45,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.52 // indirect
 	github.com/petermattis/goid v0.0.0-20260820044319-269ab09b5261 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
+	github.com/quic-go/quic-go v0.61.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -62,4 +62,4 @@ require (
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
 
-replace github.com/imroc/req/v3 => github.com/beeper/req/v3 v3.0.0-20260918182906-c07496c0b6bd
+replace github.com/imroc/req/v3 => github.com/beeper/req/v3 v3.0.0-20260808092153-100cef0a2fbd
