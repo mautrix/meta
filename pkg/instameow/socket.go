@@ -172,7 +172,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
-	if c.nativeMessaging && c.mobileSession != nil {
+	if c.mobileSession != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
 			Client: c.http.HTTP, URL: "https://test-gateway.instagram.com/lightspeed", GetHeaders: c.nativeSocketHeaders,
 		}
@@ -200,7 +200,7 @@ type seqIDCursor struct {
 }
 
 func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) {
-	native := c.nativeMessaging && c.mobileSession != nil
+	native := c.mobileSession != nil
 	params := syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
@@ -251,7 +251,7 @@ type IGFrame struct {
 func (c *Client) handleDataFrame(ctx context.Context, frame []byte) error {
 	var igFrame IGFrame
 	var err error
-	if c.nativeMessaging && c.mobileSession != nil {
+	if c.mobileSession != nil {
 		igFrame.Payload, err = unmarshalNativeStreamResponse(frame)
 	} else {
 		err = json.Unmarshal(frame, &igFrame)

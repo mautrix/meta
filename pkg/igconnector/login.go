@@ -34,17 +34,14 @@ const (
 
 func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	switch flowID {
+	case FlowIDInstagramNative:
+		return &MetaNativeLogin{User: user, Main: ic, nativeLogin: true}, nil
 	case FlowIDInstagramPassword:
 		return &MetaNativeLogin{
 			User: user,
 			Main: ic,
 		}, nil
 	case FlowIDInstagramCookies:
-		if ic.Bridge != nil {
-			if _, ok := ic.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications); ok {
-				return &MetaNativeLogin{User: user, Main: ic}, nil
-			}
-		}
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
@@ -64,12 +61,7 @@ var (
 )
 
 func (ic *IGConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	if ic.Bridge != nil {
-		if _, ok := ic.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications); ok {
-			return []bridgev2.LoginFlow{loginFlowInstagramPassword}
-		}
-	}
-	return []bridgev2.LoginFlow{loginFlowInstagram, loginFlowInstagramPassword}
+	return []bridgev2.LoginFlow{loginFlowInstagramNative, loginFlowInstagram, loginFlowInstagramPassword}
 }
 
 type MetaCookieLogin struct {
@@ -117,13 +109,11 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 func (m *MetaCookieLogin) Cancel() {}
 
 func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
-	_, nativeMessaging := conn.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications)
 	client := instameow.NewClient(instameow.ClientParams{
 		Cookies:                   c,
 		Log:                       log,
 		Settings:                  conn.Bridge.GetHTTPClientSettings(),
 		DisableTyping:             conn.Config.DisableTyping,
-		NativeMessaging:           nativeMessaging,
 		LogRedactedLoginResponses: conn.Config.LogRedactedLoginResponses,
 	})
 	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
@@ -245,7 +235,7 @@ func loginWithCookies(
 	}, nil
 }
 
-func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string, nativeSession *types.InstagramNativeSession) (*bridgev2.LoginStep, error) {
+func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
@@ -263,9 +253,9 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, user, conn, c, nativeSession, false, nil)
+	return loginWithCookies(ctx, log, client, user, conn, c, nil, false, nil)
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	return submitInstagramCookies(ctx, m.Main, m.User, strCookies, nil)
+	return submitInstagramCookies(ctx, m.Main, m.User, strCookies)
 }

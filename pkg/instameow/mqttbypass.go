@@ -100,7 +100,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 				DeviceId:     c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 				Subscription: &mqttbypass.SubscribeRequest{Topics: []string{}},
 			}
-			if c.nativeMessaging && c.mobileSession != nil {
+			if c.mobileSession != nil {
 				appInfo, err := json.Marshal(map[string]string{
 					"capabilities":              "3brTv10=",
 					"app_version":               instagramMobileAppVersion,
@@ -140,7 +140,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
-	if c.nativeMessaging && c.mobileSession != nil {
+	if c.mobileSession != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
 			Client: c.http.HTTP, URL: "https://test-gateway.instagram.com/mqttbypass", GetHeaders: c.mqttBypassNativeHeaders,
 		}

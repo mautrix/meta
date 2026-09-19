@@ -36,6 +36,7 @@ import (
 )
 
 const (
+	FlowIDInstagramNative   = "instagram-native"
 	FlowIDInstagramPassword = "instagram-password"
 
 	LoginStepIDCredentials  = "fi.mau.meta.instagram.credentials"
@@ -47,9 +48,15 @@ const (
 	loginFieldWebTwoFactorCode = "verification_code"
 )
 
-var loginFlowInstagramPassword = bridgev2.LoginFlow{
+var loginFlowInstagramNative = bridgev2.LoginFlow{
 	Name:        "Instagram",
 	Description: "Log in with your Instagram email or username and password",
+	ID:          FlowIDInstagramNative,
+}
+
+var loginFlowInstagramPassword = bridgev2.LoginFlow{
+	Name:        "Instagram (web)",
+	Description: "Log in using Instagram's website",
 	ID:          FlowIDInstagramPassword,
 }
 
@@ -70,13 +77,11 @@ func getInstaNativeClient(
 			return nil, fmt.Errorf("failed to load Instagram app installation identity: %w", err)
 		}
 	}
-	_, nativeMessaging := conn.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications)
 	client := instameow.NewClient(instameow.ClientParams{
 		Cookies:                   c,
 		Log:                       log,
 		Settings:                  conn.Bridge.GetHTTPClientSettings(),
 		DisableTyping:             conn.Config.DisableTyping,
-		NativeMessaging:           nativeMessaging,
 		LogRedactedLoginResponses: conn.Config.LogRedactedLoginResponses,
 		MobileLoginDevice:         loginDevice,
 		SaveMobileLoginDevice: func(ctx context.Context, device types.InstagramLoginDevice) error {
@@ -105,7 +110,7 @@ type MetaNativeLogin struct {
 	client                 *instameow.Client
 	caaClient              *instameow.Client
 	transport              http.RoundTripper
-	nativePush             bool
+	nativeLogin            bool
 	caaIdentifier          string
 	caaPassword            string
 	caaUserID              string
@@ -134,9 +139,6 @@ func (m *MetaNativeLogin) StartWithParams(
 	params bridgev2.LoginStartParams,
 ) (*bridgev2.LoginStep, error) {
 	m.transport = params.HTTP
-	if m.Main != nil && m.Main.Bridge != nil {
-		_, m.nativePush = m.Main.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications)
-	}
 	return m.start(ctx, "Enter your Instagram email or username and password.")
 }
 
@@ -152,7 +154,7 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 	loginCookies := &cookies.Cookies{Platform: types.Instagram}
 	loginCookies.UpdateValues(nil)
 	log := m.User.Log.With().Str("component", "instagram_login").Logger()
-	log.Debug().Bool("client_http", m.transport != nil).Bool("native_push", m.nativePush).Msg("Starting Instagram password login flow")
+	log.Debug().Bool("client_http", m.transport != nil).Bool("native_login", m.nativeLogin).Msg("Starting Instagram password login flow")
 	var userID id.UserID
 	if m.User.User != nil {
 		userID = m.User.MXID
@@ -204,7 +206,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	if m.caaClient != nil {
 		return m.continueCAAFallback(ctx, input)
 	}
-	if m.nativePush && m.client.GetInstagramNativeSession() != nil {
+	if m.nativeLogin && m.client.GetInstagramNativeSession() != nil {
 		return m.complete(ctx)
 	}
 	if m.webSessionReady {
@@ -261,7 +263,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		), nil
 	}
 	m.clearCAAFallback()
-	if m.nativePush {
+	if m.nativeLogin {
 		m.caaClient = m.client
 		return m.continueCAAFallback(ctx, map[string]string{
 			loginFieldIdentifier: identifier,
@@ -389,7 +391,7 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.pendingWebChallengeURL != "" {
-		step, err := submitInstagramCookies(ctx, m.Main, m.User, input, m.client.GetInstagramNativeSession())
+		step, err := submitInstagramCookies(ctx, m.Main, m.User, input)
 		if err == nil {
 			m.pendingWebChallengeURL = ""
 		}
@@ -432,7 +434,7 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 	}
 	var step *bridgev2.LoginStep
 	var err error
-	if m.nativePush {
+	if m.nativeLogin {
 		step, err = m.caaClient.DoInstagramCAALoginSteps(ctx, input)
 	} else {
 		step, err = m.caaClient.DoInstagramCAALoginStepsExactAccount(ctx, input, m.caaIdentifier, m.caaUserID)
@@ -467,7 +469,7 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 	nativeClient := m.caaClient
 	nativeSession := m.caaClient.GetInstagramNativeSession()
 	m.clearCAAFallback()
-	if m.nativePush {
+	if m.nativeLogin {
 		if nativeSession == nil || nativeSession.Authorization == "" || nativeSession.UserID == "" {
 			return nil, errInstagramCAAFlowFailed
 		}
@@ -527,7 +529,11 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		}
 		defer restoreTransport()
 	}
-	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, m.client.GetInstagramNativeSession(), m.nativePush, restoreTransport)
+	var nativeSession *types.InstagramNativeSession
+	if m.nativeLogin {
+		nativeSession = m.client.GetInstagramNativeSession()
+	}
+	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, nativeSession, m.nativeLogin, restoreTransport)
 	var requestErr *url.Error
 	if ctx.Err() == nil && isClientHTTPError(err) && errors.As(err, &requestErr) &&
 		requestErr.Op == "Get" && requestErr.URL == client.GetEndpoint("messages") {

@@ -124,15 +124,13 @@ func (ic *IGConnector) getProxy(reason string) (string, error) {
 func (ic *IGClient) ensureIGClient() {
 	if ic.LoginMeta.Cookies != nil && ic.Client == nil && ic.LoginMeta.Platform == types.Instagram {
 		ic.LoginMeta.Cookies.Platform = ic.LoginMeta.Platform
-		_, nativeMessaging := ic.Main.Bridge.Matrix.(bridgev2.MatrixConnectorWithNotifications)
 		ic.Client = instameow.NewClient(instameow.ClientParams{
-			Cookies:         ic.LoginMeta.Cookies,
-			Log:             ic.UserLogin.Log.With().Str("component", "instameow").Logger(),
-			Settings:        ic.Main.Bridge.GetHTTPClientSettings(),
-			EventHandler:    ic.handleIGEvent,
-			DisableTyping:   ic.Main.Config.DisableTyping,
-			NativeSession:   ic.LoginMeta.InstagramNativeSession,
-			NativeMessaging: nativeMessaging,
+			Cookies:       ic.LoginMeta.Cookies,
+			Log:           ic.UserLogin.Log.With().Str("component", "instameow").Logger(),
+			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
+			EventHandler:  ic.handleIGEvent,
+			DisableTyping: ic.Main.Config.DisableTyping,
+			NativeSession: ic.LoginMeta.InstagramNativeSession,
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})

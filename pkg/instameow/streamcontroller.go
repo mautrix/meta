@@ -144,7 +144,7 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 			return stream.SendData(ctx, postEstablishPayload)
 		},
 	}
-	if c.nativeMessaging && c.mobileSession != nil {
+	if c.mobileSession != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
 			Client: c.http.HTTP, URL: "https://test-gateway.instagram.com/streamcontroller", GetHeaders: c.streamControllerNativeHeaders,
 		}
