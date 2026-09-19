@@ -444,6 +444,7 @@ func (c *Client) CreateInstagramWebSession(
 	} else if identifier == "" || password == "" {
 		return nil, errors.New("instagram web login is missing credentials")
 	}
+	c.http.SetInstagramNativeTLS(false)
 	c.webTwoFactor = nil
 	c.webAccountManager = nil
 	c.webAuthPlatform = nil

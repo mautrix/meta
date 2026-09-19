@@ -85,10 +85,13 @@ func (c *Client) GetInstagramNativeSession() *types.InstagramNativeSession {
 func (c *Client) SetInstagramNativeSession(session *types.InstagramNativeSession) {
 	if session == nil {
 		c.mobileSession = nil
-		return
+	} else {
+		copy := *session
+		c.mobileSession = &copy
 	}
-	copy := *session
-	c.mobileSession = &copy
+	if c.http != nil {
+		c.http.SetInstagramNativeTLS(session != nil)
+	}
 }
 
 type instagramMobileLoginResponse struct {
@@ -232,6 +235,7 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 }
 
 func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginState, error) {
+	c.http.SetInstagramNativeTLS(true)
 	if c.mobileLogin == nil {
 		// Web and app login sessions use different cookie jars.
 		c.cookies.UpdateValues(nil)
@@ -345,7 +349,7 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 }
 
 func (c *Client) makeMobileLoginRequest(ctx context.Context, state *mobileLoginState, requestURL string, headers http.Header, body []byte) ([]byte, error) {
-	response, responseBody, err := c.http.MakeRequestOnce(ctx, requestURL, http.MethodPost, headers, body, types.FORM)
+	response, responseBody, err := c.http.MakeRequest(ctx, requestURL, http.MethodPost, headers, body, types.FORM)
 	if response != nil {
 		err = errors.Join(err, c.updateMobileLoginResponseState(ctx, state, response))
 	}

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -37,6 +38,7 @@ type HTTPClient struct {
 	websocketClient *http.Client
 	proxyAddr       string
 	GetNewProxy     func(reason string) (string, error)
+	instagramNative atomic.Bool
 
 	LogRedactedLoginResponses bool
 }
@@ -68,6 +70,12 @@ func (c *HTTPClient) SetConfigs(configs *Configs) {
 	c.configs = configs
 }
 
+func (c *HTTPClient) SetInstagramNativeTLS(native bool) {
+	if c.instagramNative.Swap(native) != native {
+		c.HTTP.CloseIdleConnections()
+	}
+}
+
 func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	if c == nil {
 		return
@@ -90,7 +98,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 		})
 	}
 	if c.parent.GetPlatform().IsInstagram() {
-		setInstagramTLSFingerprint(reqClient)
+		setInstagramTLSFingerprint(reqClient, c.instagramNative.Load)
 	}
 
 	oldHTTP := c.HTTP

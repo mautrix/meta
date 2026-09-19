@@ -174,7 +174,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 	}
 	if c.mobileSession != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
-			Client: c.http.HTTP, URL: "https://test-gateway.instagram.com/lightspeed", GetHeaders: c.nativeSocketHeaders,
+			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_lightspeed_native"), GetHeaders: c.nativeSocketHeaders,
 		}
 	}
 	return options

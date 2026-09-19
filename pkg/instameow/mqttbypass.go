@@ -142,7 +142,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 	}
 	if c.mobileSession != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
-			Client: c.http.HTTP, URL: "https://test-gateway.instagram.com/mqttbypass", GetHeaders: c.mqttBypassNativeHeaders,
+			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_mqttbypass_native"), GetHeaders: c.mqttBypassNativeHeaders,
 		}
 		options.DeviceID = c.mobileSession.Device.DeviceID
 		options.UserID = c.mobileSession.UserID

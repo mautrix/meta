@@ -9,15 +9,15 @@ import (
 	utls "github.com/refraction-networking/utls"
 )
 
-func setInstagramTLSFingerprint(client *req.Client) {
+func setInstagramTLSFingerprint(client *req.Client, isNative func() bool) {
 	fallback := client.GetTransport().TLSHandshakeContext
 	client.SetTLSHandshake(func(ctx context.Context, addr string, plainConn net.Conn) (net.Conn, *tls.ConnectionState, error) {
+		if !isNative() {
+			return fallback(ctx, addr, plainConn)
+		}
 		host := addr
 		if name, _, err := net.SplitHostPort(addr); err == nil {
 			host = name
-		}
-		if host != "i.instagram.com" {
-			return fallback(ctx, addr, plainConn)
 		}
 		config := client.GetTLSClientConfig()
 		conn := utls.UClient(plainConn, &utls.Config{
