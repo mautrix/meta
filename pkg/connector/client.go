@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
@@ -428,6 +430,21 @@ func (m *MetaClient) periodicReconnect() {
 }
 
 func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
+	defer func() {
+		if v := recover(); v != nil {
+			m.UserLogin.Log.Err(exerrors.RecoverToError(v)).
+				Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+				Msg("Panic in e2ee connector")
+			m.waState = status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      WAConnectError,
+				Info: map[string]any{
+					"go_error": fmt.Sprintf("panic: %v", v),
+				},
+			}
+			m.UserLogin.BridgeState.Send(m.waState)
+		}
+	}()
 	err := m.connectE2EE()
 	if err != nil {
 		if m.waState.StateEvent != status.StateBadCredentials && m.waState.StateEvent != status.StateUnknownError {
