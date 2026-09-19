@@ -72,19 +72,39 @@ func unmarshalNativeStreamResponse(b []byte) ([]byte, error) {
 		return nil, invalid
 	}
 	root := int64(binary.LittleEndian.Uint32(b))
-	if root < 4 || root+4 > int64(len(b)) {
+	if root < 4 || root%4 != 0 || root+4 > int64(len(b)) {
 		return nil, invalid
 	}
 	vtable := root - int64(int32(binary.LittleEndian.Uint32(b[root:])))
-	if vtable < 0 || vtable+8 > int64(len(b)) || binary.LittleEndian.Uint16(b[vtable:]) < 8 {
+	if vtable < 0 || vtable%2 != 0 || vtable+4 > int64(len(b)) {
 		return nil, invalid
 	}
-	field := root + int64(binary.LittleEndian.Uint16(b[vtable+6:]))
-	if field == root || field+4 > int64(len(b)) {
+	vtableLength := int64(binary.LittleEndian.Uint16(b[vtable:]))
+	if vtableLength < 4 || vtableLength%2 != 0 || vtable+vtableLength > int64(len(b)) {
 		return nil, invalid
 	}
+	objectLength := int64(binary.LittleEndian.Uint16(b[vtable+2:]))
+	if root+objectLength > int64(len(b)) {
+		return nil, invalid
+	}
+	if vtableLength >= 6 {
+		requestIDOffset := int64(binary.LittleEndian.Uint16(b[vtable+4:]))
+		if requestIDOffset != 0 && (requestIDOffset%2 != 0 || requestIDOffset+2 > objectLength) {
+			return nil, invalid
+		}
+	}
+	if vtableLength < 8 {
+		return nil, nil
+	}
+	fieldOffset := int64(binary.LittleEndian.Uint16(b[vtable+6:]))
+	if fieldOffset == 0 {
+		return nil, nil
+	} else if fieldOffset%4 != 0 || fieldOffset+4 > objectLength {
+		return nil, invalid
+	}
+	field := root + fieldOffset
 	vector := field + int64(binary.LittleEndian.Uint32(b[field:]))
-	if vector+4 > int64(len(b)) {
+	if vector <= field || vector%4 != 0 || vector+4 > int64(len(b)) {
 		return nil, invalid
 	}
 	end := vector + 4 + int64(binary.LittleEndian.Uint32(b[vector:]))
