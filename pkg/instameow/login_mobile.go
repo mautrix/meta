@@ -136,7 +136,6 @@ func initializeUSDID(device *types.InstagramLoginDevice) (*ecdsa.PrivateKey, err
 	device.USDID = uuid.NewString()
 	device.USDIDKeyID = base64.RawURLEncoding.EncodeToString(random.Bytes(32))
 	device.USDIDPrivateKey = base64.StdEncoding.EncodeToString(der)
-	device.USDIDRegistered = false
 	return key, nil
 }
 
@@ -179,7 +178,6 @@ func (state *mobileLoginState) device() types.InstagramLoginDevice {
 		USDID:           state.USDID,
 		USDIDKeyID:      state.USDIDKeyID,
 		USDIDPrivateKey: state.USDIDPrivateKey,
-		USDIDRegistered: state.USDIDRegistered,
 	}
 }
 
@@ -226,7 +224,6 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 		USDID:           device.USDID,
 		USDIDKeyID:      device.USDIDKeyID,
 		USDIDPrivateKey: device.USDIDPrivateKey,
-		USDIDRegistered: device.USDIDRegistered,
 	}
 	if err := c.persistMobileLoginDevice(ctx, state); err != nil {
 		return nil, fmt.Errorf("failed to persist Instagram app installation identity: %w", err)

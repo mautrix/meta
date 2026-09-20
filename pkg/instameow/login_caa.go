@@ -193,7 +193,7 @@ func (c *Client) registerInstagramUSDID(ctx context.Context, state *mobileLoginS
 	for key, registration := range result.Data {
 		if strings.Contains(key, "usdid_registration") && registration.Success {
 			state.USDIDRegistered = true
-			return c.persistMobileLoginDevice(ctx, state)
+			return nil
 		}
 	}
 	return errors.New("instagram rejected USDID registration")

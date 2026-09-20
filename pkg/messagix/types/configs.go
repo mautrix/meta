@@ -130,7 +130,6 @@ type InstagramLoginDevice struct {
 	USDID           string `json:"usdid,omitempty"`
 	USDIDKeyID      string `json:"usdid_key_id,omitempty"`
 	USDIDPrivateKey string `json:"usdid_private_key,omitempty"`
-	USDIDRegistered bool   `json:"usdid_registered,omitempty"`
 }
 
 type XIGSharedData struct {
