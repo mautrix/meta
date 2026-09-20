@@ -103,7 +103,7 @@ func newInstagramAccountManagerToken(session *instagramMobileSession) instagramA
 }
 
 func (c *Client) instagramAccountManagerHeaders() http.Header {
-	session := c.mobileSession
+	session := c.mobileSession.Load()
 	headers := http.Header{}
 	headers.Set("authorization", session.Authorization)
 	headers.Set("user-agent", instagramMobileUserAgent)
@@ -221,7 +221,7 @@ func (c *Client) getInstagramAccountManagerAccounts(
 	if c == nil {
 		return nil, ErrClientIsNil
 	}
-	session := c.mobileSession
+	session := c.mobileSession.Load()
 	if session == nil || session.Authorization == "" || session.UserID == "" {
 		return nil, errors.New("instagram Account Manager requires an authorized mobile session")
 	}
@@ -316,7 +316,7 @@ func (c *Client) switchInstagramAccountManagerMobileAccount(
 	if c == nil {
 		return ErrClientIsNil
 	}
-	session := c.mobileSession
+	session := c.mobileSession.Load()
 	if session == nil || session.Authorization == "" || session.UserID == "" {
 		return errors.New("instagram Account Manager requires an authorized mobile session")
 	}
@@ -365,7 +365,7 @@ func (c *Client) switchInstagramAccountManagerMobileAccount(
 	if err = c.applyMobileAuthorization(response, &loginResponse, state); err != nil {
 		return err
 	}
-	if c.mobileSession == nil || c.mobileSession.UserID != account.UserID {
+	if session = c.mobileSession.Load(); session == nil || session.UserID != account.UserID {
 		return errors.New("instagram Account Manager returned the wrong profile")
 	}
 	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {

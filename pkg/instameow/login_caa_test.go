@@ -310,7 +310,7 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 		Cookies: loginCookies,
 		Log:     zerolog.Nop(),
 	})
-	client.mobileSession = session
+	client.mobileSession.Store(session)
 	mobile := &mobileLoginState{
 		PhoneID:         session.Device.PhoneID,
 		DeviceID:        session.Device.DeviceID,
@@ -426,7 +426,7 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 	); err != nil {
 		t.Fatalf("failed to switch Account Manager profile: %v", err)
 	}
-	switchedSession := client.mobileSession
+	switchedSession := client.mobileSession.Load()
 	if switchedSession == nil ||
 		switchedSession.UserID != "222" ||
 		switchedSession.Username != "linked_user" ||

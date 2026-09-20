@@ -51,7 +51,7 @@ type Client struct {
 	webAccountManager     *instagramWebAccountManagerState
 	webCookieConsent      *instagramWebCookieConsentState
 	mobileLoginDevice     *types.InstagramLoginDevice
-	mobileSession         *instagramMobileSession
+	mobileSession         atomic.Pointer[instagramMobileSession]
 	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
 
 	socket        atomic.Pointer[dgw.Socket]
@@ -131,7 +131,7 @@ func NewClient(params ClientParams) *Client {
 	c.SetEventHandler(params.EventHandler)
 	c.configs = httpclient.NewConfigs(c)
 	c.http = httpclient.NewHTTPClient(c, c.configs, params.Settings)
-	c.http.SetInstagramNativeMode(c.mobileSession != nil)
+	c.http.SetInstagramNativeMode(c.mobileSession.Load() != nil)
 	c.socketStopped.Set()
 	c.streamControllerStopped.Set()
 	return c

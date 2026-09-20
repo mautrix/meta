@@ -100,7 +100,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 				DeviceId:     c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 				Subscription: &mqttbypass.SubscribeRequest{Topics: []string{}},
 			}
-			if c.mobileSession != nil {
+			if session := c.mobileSession.Load(); session != nil {
 				appInfo, err := json.Marshal(map[string]string{
 					"capabilities":              "3brTv10=",
 					"app_version":               instagramMobileAppVersion,
@@ -116,8 +116,8 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 				appInfoString := string(appInfo)
 				connect.ClientCapabilities = 23
 				connect.UserAgent = instagramMobileUserAgent
-				connect.DeviceId = c.mobileSession.Device.DeviceID
-				connect.FamilyDeviceId = c.mobileSession.Device.PhoneID
+				connect.DeviceId = session.Device.DeviceID
+				connect.FamilyDeviceId = session.Device.PhoneID
 				connect.Subscription.Topics = []string{"/ig_send_message_response"}
 				connect.AppSpecificInfo = &appInfoString
 			}
@@ -140,18 +140,19 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
-	if c.mobileSession != nil {
+	if session := c.mobileSession.Load(); session != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
 			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_mqttbypass_native"), GetHeaders: c.mqttBypassNativeHeaders,
 		}
-		options.DeviceID = c.mobileSession.Device.DeviceID
-		options.UserID = c.mobileSession.UserID
+		options.DeviceID = session.Device.DeviceID
+		options.UserID = session.UserID
 	}
 	return options
 }
 
 func (c *Client) mqttBypassNativeHeaders() http.Header {
-	return c.nativeStreamHeaders("authorization="+c.mobileSession.Authorization, c.mobileSession.UserID, "MqttBypass")
+	session := c.mobileSession.Load()
+	return nativeStreamHeaders(session, "authorization="+session.Authorization, session.UserID, "MqttBypass")
 }
 
 func (c *Client) connectMQTTBypassSocket(ctx context.Context) {

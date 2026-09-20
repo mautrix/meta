@@ -11,16 +11,17 @@ import (
 
 	lightspeed "go.mau.fi/mautrix-meta/pkg/instameow/flatbuffer"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 func (c *Client) nativeSocketHeaders() http.Header {
-	authorization, _ := json.Marshal(map[string]string{"authorization": c.mobileSession.Authorization})
-	return c.nativeStreamHeaders("OAuth "+base64.RawURLEncoding.EncodeToString(authorization), strconv.FormatInt(c.GetOwnFBID(), 10), "lightspeed")
+	session := c.mobileSession.Load()
+	authorization, _ := json.Marshal(map[string]string{"authorization": session.Authorization})
+	return nativeStreamHeaders(session, "OAuth "+base64.RawURLEncoding.EncodeToString(authorization), strconv.FormatInt(c.GetOwnFBID(), 10), "lightspeed")
 }
 
-func (c *Client) nativeStreamHeaders(authorization, userID, group string) http.Header {
-	session := c.mobileSession
+func nativeStreamHeaders(session *types.InstagramNativeSession, authorization, userID, group string) http.Header {
 	return http.Header{
 		"Authorization":          {authorization},
 		"User-Agent":             {instagramMobileUserAgent},

@@ -75,19 +75,23 @@ type mobileLoginState struct {
 type instagramMobileSession = types.InstagramNativeSession
 
 func (c *Client) GetInstagramNativeSession() *types.InstagramNativeSession {
-	if c == nil || c.mobileSession == nil {
+	if c == nil {
 		return nil
 	}
-	session := *c.mobileSession
+	current := c.mobileSession.Load()
+	if current == nil {
+		return nil
+	}
+	session := *current
 	return &session
 }
 
 func (c *Client) SetInstagramNativeSession(session *types.InstagramNativeSession) {
 	if session == nil {
-		c.mobileSession = nil
+		c.mobileSession.Store(nil)
 	} else {
 		copy := *session
-		c.mobileSession = &copy
+		c.mobileSession.Store(&copy)
 	}
 	if c.http != nil {
 		c.http.SetInstagramNativeMode(session != nil)
@@ -381,12 +385,13 @@ func (c *Client) updateMobileSessionHeaders(response *http.Response, state *mobi
 		return
 	}
 	authorization := response.Header.Get("ig-set-authorization")
-	if authorization == "" && c.mobileSession == nil {
+	current := c.mobileSession.Load()
+	if authorization == "" && current == nil {
 		return
 	}
 	session := instagramMobileSession{}
-	if c.mobileSession != nil {
-		session = *c.mobileSession
+	if current != nil {
+		session = *current
 	}
 	if authorization != "" {
 		session.Authorization = authorization
@@ -421,7 +426,7 @@ func (c *Client) updateMobileSessionHeaders(response *http.Response, state *mobi
 		session.UserID = value
 	}
 	session.Device = state.device()
-	c.mobileSession = &session
+	c.mobileSession.Store(&session)
 }
 
 func (c *Client) applyMobileAuthorization(
@@ -429,8 +434,9 @@ func (c *Client) applyMobileAuthorization(
 	loginResponse *instagramMobileLoginResponse,
 	state *mobileLoginState,
 ) error {
-	if c.mobileSession == nil {
-		c.mobileSession = &instagramMobileSession{Device: state.device()}
+	session := instagramMobileSession{Device: state.device()}
+	if current := c.mobileSession.Load(); current != nil {
+		session = *current
 	}
 	authorization := response.Header.Get("ig-set-authorization")
 	if authorization != "" {
@@ -457,7 +463,7 @@ func (c *Client) applyMobileAuthorization(
 		}
 		if userID := mobileAuthorizationValue(authData["ds_user_id"]); userID != "" {
 			c.cookies.Set(cookies.IGCookieDSUserID, userID)
-			c.mobileSession.UserID = userID
+			session.UserID = userID
 		}
 		for _, route := range []struct {
 			authorizationKey string
@@ -478,11 +484,11 @@ func (c *Client) applyMobileAuthorization(
 	if c.cookies.Get(cookies.IGCookieDSUserID) == "" && loginResponse.LoggedInUser != nil {
 		if userID := rawJSONScalar(loginResponse.LoggedInUser.PK); userID != "" {
 			c.cookies.Set(cookies.IGCookieDSUserID, userID)
-			c.mobileSession.UserID = userID
+			session.UserID = userID
 		}
 	}
 	if loginResponse.LoggedInUser != nil {
-		c.mobileSession.Username = loginResponse.LoggedInUser.Username
+		session.Username = loginResponse.LoggedInUser.Username
 	}
 	if c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
 		c.cookies.Set(cookies.IGCookieCSRFToken, state.CSRFToken)
@@ -496,6 +502,7 @@ func (c *Client) applyMobileAuthorization(
 	if c.cookies.Get(cookies.IGCookieSessionID) == "" {
 		return errors.New("instagram app login response did not include a session")
 	}
+	c.mobileSession.Store(&session)
 	return nil
 }
 

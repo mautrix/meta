@@ -55,6 +55,8 @@ func (ic *IGClient) GetPushConfigs() *bridgev2.PushConfig {
 }
 
 func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
+	ic.pushRegistrationLock.Lock()
+	defer ic.pushRegistrationLock.Unlock()
 	if token == "" {
 		return errors.New("empty push token")
 	} else if pushType == bridgev2.PushTypeFCM {

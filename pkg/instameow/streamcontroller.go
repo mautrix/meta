@@ -144,7 +144,7 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 			return stream.SendData(ctx, postEstablishPayload)
 		},
 	}
-	if c.mobileSession != nil {
+	if c.mobileSession.Load() != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
 			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_streamcontroller_native"), GetHeaders: c.streamControllerNativeHeaders,
 		}
@@ -153,7 +153,8 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 }
 
 func (c *Client) streamControllerNativeHeaders() http.Header {
-	return c.nativeStreamHeaders(c.mobileSession.Authorization, c.mobileSession.UserID, "all_sc")
+	session := c.mobileSession.Load()
+	return nativeStreamHeaders(session, session.Authorization, session.UserID, "all_sc")
 }
 
 var typingPathRegex = regexp.MustCompile(`^/direct_v2/threads/(\d+)/activity_indicator_id/.+$`)

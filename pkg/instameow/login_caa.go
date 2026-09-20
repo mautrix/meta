@@ -83,7 +83,7 @@ func (c *Client) ClearInstagramCAALoginState() {
 	if c != nil {
 		c.caaLogin = nil
 		c.mobileLogin = nil
-		c.mobileSession = nil
+		c.mobileSession.Store(nil)
 	}
 }
 
@@ -425,7 +425,7 @@ func (c *Client) DoInstagramCAALoginStepsExactAccount(
 	expectedUserID string,
 ) (*bridgev2.LoginStep, error) {
 	step, err := c.doInstagramCAALoginSteps(ctx, userInput, true)
-	if step == nil && err == nil && !instagramCAAAccountMatches(c.mobileSession, expectedIdentifier, expectedUserID) {
+	if step == nil && err == nil && !instagramCAAAccountMatches(c.mobileSession.Load(), expectedIdentifier, expectedUserID) {
 		return nil, ErrInstagramCAAUnsafeAccountStep
 	}
 	return step, err
@@ -546,7 +546,7 @@ func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[str
 		if selectedAccount == nil {
 			return nil, errors.New("invalid Instagram Account Manager profile selection")
 		}
-		if selectedAccount.UserID != c.mobileSession.UserID {
+		if selectedAccount.UserID != c.mobileSession.Load().UserID {
 			if err = c.switchInstagramAccountManagerProfile(ctx, state.Mobile, *selectedAccount); err != nil {
 				return nil, err
 			}

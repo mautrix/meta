@@ -56,6 +56,7 @@ type IGClient struct {
 	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
 	stopChatBackfill      atomic.Pointer[context.CancelFunc]
 	chatBackfillLock      sync.Mutex
+	pushRegistrationLock  sync.Mutex
 	mailboxProcessed      atomic.Bool
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
