@@ -36,8 +36,8 @@ import (
 )
 
 const (
-	FlowIDInstagramNative   = "instagram-native"
-	FlowIDInstagramPassword = "instagram-password"
+	FlowIDAndroidNative = "android"
+	FlowIDWebNative     = "instagram-password"
 
 	LoginStepIDCredentials  = "fi.mau.meta.instagram.credentials"
 	LoginStepIDWebTwoFactor = "fi.mau.meta.instagram.web_two_factor"
@@ -49,15 +49,15 @@ const (
 )
 
 var loginFlowInstagramNative = bridgev2.LoginFlow{
-	Name:        "Instagram",
-	Description: "Log in with your Instagram email or username and password",
-	ID:          FlowIDInstagramNative,
+	Name:        "Native Android",
+	Description: "Log in with your username and password using the Instagram Android API",
+	ID:          FlowIDAndroidNative,
 }
 
 var loginFlowInstagramPassword = bridgev2.LoginFlow{
-	Name:        "Instagram (web)",
-	Description: "Log in using Instagram's website",
-	ID:          FlowIDInstagramPassword,
+	Name:        "Native Web",
+	Description: "Log in with your username and password using the Instagram web API",
+	ID:          FlowIDWebNative,
 }
 
 func getInstaNativeClient(

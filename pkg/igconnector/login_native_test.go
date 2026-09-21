@@ -23,16 +23,16 @@ func TestInstagramLoginFlowsExposeNativeFirstAndKeepWeb(t *testing.T) {
 	if len(flows) != 3 {
 		t.Fatalf("expected three login flows, got %d", len(flows))
 	}
-	if flows[0].ID != FlowIDInstagramNative {
+	if flows[0].ID != FlowIDAndroidNative {
 		t.Fatalf("expected native flow first, got %q", flows[0].ID)
 	}
-	if flows[1].ID != FlowIDInstagramCookies || flows[2].ID != FlowIDInstagramPassword {
+	if flows[1].ID != FlowIDCookies || flows[2].ID != FlowIDWebNative {
 		t.Fatal("expected both web login flows to remain available")
 	}
 	process, err := connector.CreateLogin(
 		context.Background(),
 		&bridgev2.User{},
-		FlowIDInstagramNative,
+		FlowIDAndroidNative,
 	)
 	if err != nil {
 		t.Fatalf("failed to create native login: %v", err)

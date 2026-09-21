@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	FlowIDInstagramCookies = "instagram"
+	FlowIDCookies = "instagram"
 
 	LoginStepIDCookies  = "fi.mau.meta.cookies"
 	LoginStepIDComplete = "fi.mau.meta.complete"
@@ -34,14 +34,14 @@ const (
 
 func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	switch flowID {
-	case FlowIDInstagramNative:
+	case FlowIDAndroidNative:
 		return &MetaNativeLogin{User: user, Main: ic, nativeLogin: true}, nil
-	case FlowIDInstagramPassword:
+	case FlowIDWebNative:
 		return &MetaNativeLogin{
 			User: user,
 			Main: ic,
 		}, nil
-	case FlowIDInstagramCookies:
+	case FlowIDCookies:
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
@@ -54,9 +54,9 @@ func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flo
 
 var (
 	loginFlowInstagram = bridgev2.LoginFlow{
-		Name:        "instagram.com",
+		Name:        "Cookies",
 		Description: "Login using cookies from instagram.com",
-		ID:          FlowIDInstagramCookies,
+		ID:          FlowIDCookies,
 	}
 )
 
