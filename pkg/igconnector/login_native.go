@@ -108,7 +108,6 @@ type MetaNativeLogin struct {
 	Main *IGConnector
 
 	client                 *instameow.Client
-	caaClient              *instameow.Client
 	transport              http.RoundTripper
 	nativeLogin            bool
 	caaIdentifier          string
@@ -187,9 +186,8 @@ func (m *MetaNativeLogin) Cancel() {
 }
 
 func (m *MetaNativeLogin) clearCAAFallback() {
-	if m.caaClient != nil {
-		m.caaClient.ClearInstagramCAALoginState()
-		m.caaClient = nil
+	if m.caaIdentifier != "" && m.client != nil {
+		m.client.ClearInstagramCAALoginState()
 	}
 	m.caaIdentifier, m.caaPassword, m.caaUserID = "", "", ""
 }
@@ -203,7 +201,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 			"This Instagram login session expired. Start the login again.",
 		), nil
 	}
-	if m.caaClient != nil {
+	if m.caaIdentifier != "" {
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.nativeLogin && m.client.GetInstagramNativeSession() != nil {
@@ -264,7 +262,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	}
 	m.clearCAAFallback()
 	if m.nativeLogin {
-		m.caaClient = m.client
+		m.caaIdentifier = identifier
 		return m.continueCAAFallback(ctx, map[string]string{
 			loginFieldIdentifier: identifier,
 			loginFieldPassword:   password,
@@ -311,7 +309,6 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			if !allowCAAFallback {
 				return nil, errInstagramCAAFlowFailed
 			}
-			m.caaClient = m.client
 			m.caaIdentifier = identifier
 			m.caaPassword = password
 			m.caaUserID = m.client.GetCookies().Get(cookies.IGCookieDSUserID)
@@ -339,8 +336,8 @@ func (m *MetaNativeLogin) submitWebCredentials(
 }
 
 func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, error) {
-	if m.caaClient != nil {
-		if err := m.caaClient.CancelInstagramCAALoginStep(ctx); err != nil {
+	if m.caaIdentifier != "" {
+		if err := m.client.CancelInstagramCAALoginStep(ctx); err != nil {
 			return nil, err
 		}
 		return m.continueCAAFallback(ctx, nil)
@@ -387,7 +384,7 @@ func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) *bridge
 }
 
 func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	if m.caaClient != nil {
+	if m.caaIdentifier != "" {
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.pendingWebChallengeURL != "" {
@@ -429,15 +426,15 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 }
 
 func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	if password := input[loginFieldPassword]; password != "" {
+	if password := input[loginFieldPassword]; password != "" && !m.nativeLogin {
 		m.caaPassword = password
 	}
 	var step *bridgev2.LoginStep
 	var err error
 	if m.nativeLogin {
-		step, err = m.caaClient.DoInstagramCAALoginSteps(ctx, input)
+		step, err = m.client.DoInstagramCAALoginSteps(ctx, input)
 	} else {
-		step, err = m.caaClient.DoInstagramCAALoginStepsExactAccount(ctx, input, m.caaIdentifier, m.caaUserID)
+		step, err = m.client.DoInstagramCAALoginStepsExactAccount(ctx, input, m.caaIdentifier, m.caaUserID)
 	}
 	if errors.Is(err, bridgev2.ErrLoginStepCancelled) {
 		return nil, err
@@ -465,19 +462,17 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 	} else if step != nil {
 		return step, nil
 	}
-	identifier, password := m.caaIdentifier, m.caaPassword
-	nativeClient := m.caaClient
-	nativeSession := m.caaClient.GetInstagramNativeSession()
-	m.clearCAAFallback()
 	if m.nativeLogin {
+		nativeSession := m.client.GetInstagramNativeSession()
+		m.clearCAAFallback()
 		if nativeSession == nil || nativeSession.Authorization == "" || nativeSession.UserID == "" {
 			return nil, errInstagramCAAFlowFailed
 		}
-		m.client = nativeClient
 		m.client.SetInstagramNativeSession(nativeSession)
 		return m.complete(ctx)
 	}
-	m.client.SetInstagramNativeSession(nativeSession)
+	identifier, password := m.caaIdentifier, m.caaPassword
+	m.clearCAAFallback()
 	return m.submitWebCredentials(ctx, identifier, password, false)
 }
 

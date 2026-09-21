@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"go.mau.fi/util/exerrors"
@@ -29,6 +30,7 @@ import (
 	"go.mau.fi/util/ptr"
 	"google.golang.org/protobuf/proto"
 
+	lightspeed "go.mau.fi/mautrix-meta/pkg/instameow/flatbuffer"
 	"go.mau.fi/mautrix-meta/pkg/instameow/mdCoreSync"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
@@ -252,7 +254,7 @@ func (c *Client) handleDataFrame(ctx context.Context, frame []byte) error {
 	var igFrame IGFrame
 	var err error
 	if c.mobileSession.Load() != nil {
-		igFrame.Payload, err = unmarshalNativeStreamResponse(frame)
+		igFrame.Payload = lightspeed.GetRootAsResponse(slices.Clip(frame), 0).PayloadBytes()
 	} else {
 		err = json.Unmarshal(frame, &igFrame)
 	}

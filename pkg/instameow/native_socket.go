@@ -64,29 +64,3 @@ func marshalNativeStreamRequest(requestID uint16, userID int64, payload []byte) 
 	b.Finish(lightspeed.RequestEnd(b))
 	return b.FinishedBytes()
 }
-
-func unmarshalNativeStreamResponse(b []byte) (payload []byte, err error) {
-	b = b[:len(b):len(b)]
-	invalid := fmt.Errorf("invalid native messaging response")
-	defer func() {
-		if recover() != nil {
-			payload, err = nil, invalid
-		}
-	}()
-	response := lightspeed.GetRootAsResponse(b, 0)
-	table := response.Table()
-	vtable := int64(table.Pos) - int64(table.GetSOffsetT(table.Pos))
-	if vtable < 0 || vtable+2 > int64(len(b)) {
-		return nil, invalid
-	}
-	offset := table.Offset(6)
-	if offset == 0 {
-		return nil, nil
-	}
-	field := uint64(table.Pos) + uint64(offset)
-	relative := uint64(flatbuffers.GetUOffsetT(b[field:]))
-	if relative == 0 || field+relative+4 > uint64(len(b)) {
-		return nil, invalid
-	}
-	return response.PayloadBytes(), nil
-}
