@@ -1,0 +1,23 @@
+namespace lightspeed;
+
+table Request {
+  request_id: ushort (id: 0);
+  request_type: ushort (id: 1);
+  payload: string (id: 2);
+  user_id: long (id: 3);
+  transport: ushort (id: 4);
+  data_trace_id: string (id: 5);
+  task_labels: [long] (id: 6);
+  unused_7: ubyte (id: 7, deprecated);
+  trace: RequestTrace (id: 8);
+}
+
+table RequestTrace {
+  client_trace_id: long (id: 0);
+  sampling_reasons: [string] (id: 1);
+}
+
+table Response {
+  request_id: ushort (id: 0);
+  payload: [ubyte] (id: 1);
+}

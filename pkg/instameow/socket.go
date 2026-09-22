@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"go.mau.fi/util/exerrors"
@@ -29,6 +30,7 @@ import (
 	"go.mau.fi/util/ptr"
 	"google.golang.org/protobuf/proto"
 
+	lightspeed "go.mau.fi/mautrix-meta/pkg/instameow/flatbuffer"
 	"go.mau.fi/mautrix-meta/pkg/instameow/mdCoreSync"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
@@ -144,7 +146,7 @@ func (c *Client) ForceReconnect() {
 var ErrMainStreamClosed = errors.New("main stream closed")
 
 func (c *Client) getSocketOptions() dgw.SocketOptions {
-	return dgw.SocketOptions{
+	options := dgw.SocketOptions{
 		GetCookies: c.cookies.String,
 		Origin:     c.GetEndpoint("base_url"),
 		WSURL:      c.GetEndpoint("dgw_lightspeed"),
@@ -172,6 +174,12 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
+	if c.mobileSession.Load() != nil {
+		options.HTTPStream = &dgw.HTTPStreamOptions{
+			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_lightspeed_native"), GetHeaders: c.nativeSocketHeaders,
+		}
+	}
+	return options
 }
 
 type connectPayload struct {
@@ -185,6 +193,7 @@ type connectPayload struct {
 type syncParams struct {
 	UserAgent                string             `json:"user_agent"`
 	SnapshotAtMS             jsontime.UnixMilli `json:"snapshot_at_ms"`
+	SnapshotAppVersion       string             `json:"snapshot_app_version,omitempty"`
 	PrevalidatedGraphQLDocID string             `json:"prevalidated_graphql_doc_id"`
 }
 
@@ -193,11 +202,17 @@ type seqIDCursor struct {
 }
 
 func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) {
-	marshaledSyncParams, err := json.Marshal(&syncParams{
+	native := c.mobileSession.Load() != nil
+	params := syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
 		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQuery,
-	})
+	}
+	if native {
+		params.UserAgent = instagramMobileUserAgent
+		params.SnapshotAppVersion = instagramMobileAppVersion
+	}
+	marshaledSyncParams, err := json.Marshal(&params)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +221,9 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 	})
 	if err != nil {
 		return nil, err
+	}
+	if native {
+		return c.makeNativeStreamInitPayload(retryCount, marshaledSyncParams, marshaledCursor)
 	}
 	marshaledDatabaseQuery, err := json.Marshal(&socket.DatabaseQuery{
 		Database:          223,
@@ -234,9 +252,14 @@ type IGFrame struct {
 
 func (c *Client) handleDataFrame(ctx context.Context, frame []byte) error {
 	var igFrame IGFrame
-	err := json.Unmarshal(frame, &igFrame)
+	var err error
+	if c.mobileSession.Load() != nil {
+		igFrame.Payload = lightspeed.GetRootAsResponse(slices.Clip(frame), 0).PayloadBytes()
+	} else {
+		err = json.Unmarshal(frame, &igFrame)
+	}
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal outermost JSON layer: %w", err)
+		return fmt.Errorf("failed to unmarshal response envelope: %w", err)
 	}
 	var lsResponse mdCoreSync.LSResponse
 	err = proto.Unmarshal(igFrame.Payload, &lsResponse)

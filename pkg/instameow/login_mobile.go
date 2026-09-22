@@ -48,8 +48,8 @@ const (
 
 	// These values match the current first-party Android profile used by the
 	// official Instagram APK. They must be updated together.
-	instagramMobileAppVersion  = "440.0.0.19.86"
-	instagramMobileVersionCode = "384608963"
+	instagramMobileAppVersion  = "446.0.0.49.77"
+	instagramMobileVersionCode = "385211303"
 	instagramMobileUserAgent   = "Instagram " + instagramMobileAppVersion +
 		" Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " +
 		instagramMobileVersionCode + ")"
@@ -72,16 +72,30 @@ type mobileLoginState struct {
 	USDIDRegistered   bool
 }
 
-type instagramMobileSession struct {
-	Authorization    string
-	UserID           string
-	Username         string
-	RUR              string
-	SHBID            string
-	SHBTS            string
-	DirectRegionHint string
-	WWWClaim         string
-	Device           types.InstagramLoginDevice
+type instagramMobileSession = types.InstagramNativeSession
+
+func (c *Client) GetInstagramNativeSession() *types.InstagramNativeSession {
+	if c == nil {
+		return nil
+	}
+	current := c.mobileSession.Load()
+	if current == nil {
+		return nil
+	}
+	session := *current
+	return &session
+}
+
+func (c *Client) SetInstagramNativeSession(session *types.InstagramNativeSession) {
+	if session == nil {
+		c.mobileSession.Store(nil)
+	} else {
+		copy := *session
+		c.mobileSession.Store(&copy)
+	}
+	if c.http != nil {
+		c.http.SetInstagramNativeMode(session != nil)
+	}
 }
 
 type instagramMobileLoginResponse struct {
@@ -126,7 +140,6 @@ func initializeUSDID(device *types.InstagramLoginDevice) (*ecdsa.PrivateKey, err
 	device.USDID = uuid.NewString()
 	device.USDIDKeyID = base64.RawURLEncoding.EncodeToString(random.Bytes(32))
 	device.USDIDPrivateKey = base64.StdEncoding.EncodeToString(der)
-	device.USDIDRegistered = false
 	return key, nil
 }
 
@@ -169,7 +182,6 @@ func (state *mobileLoginState) device() types.InstagramLoginDevice {
 		USDID:           state.USDID,
 		USDIDKeyID:      state.USDIDKeyID,
 		USDIDPrivateKey: state.USDIDPrivateKey,
-		USDIDRegistered: state.USDIDRegistered,
 	}
 }
 
@@ -216,7 +228,6 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 		USDID:           device.USDID,
 		USDIDKeyID:      device.USDIDKeyID,
 		USDIDPrivateKey: device.USDIDPrivateKey,
-		USDIDRegistered: device.USDIDRegistered,
 	}
 	if err := c.persistMobileLoginDevice(ctx, state); err != nil {
 		return nil, fmt.Errorf("failed to persist Instagram app installation identity: %w", err)
@@ -225,6 +236,7 @@ func (c *Client) newMobileLoginState(ctx context.Context) (*mobileLoginState, er
 }
 
 func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginState, error) {
+	c.http.SetInstagramNativeMode(true)
 	if c.mobileLogin == nil {
 		// Web and app login sessions use different cookie jars.
 		c.cookies.UpdateValues(nil)
@@ -331,9 +343,6 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 	if state.USDIDHeader != "" {
 		headers.Set("x-meta-usdid", state.USDIDHeader)
 	}
-	if cookieHeader := c.cookies.String(); cookieHeader != "" {
-		headers.Set("cookie", cookieHeader)
-	}
 	return headers
 }
 
@@ -376,12 +385,13 @@ func (c *Client) updateMobileSessionHeaders(response *http.Response, state *mobi
 		return
 	}
 	authorization := response.Header.Get("ig-set-authorization")
-	if authorization == "" && c.mobileSession == nil {
+	current := c.mobileSession.Load()
+	if authorization == "" && current == nil {
 		return
 	}
 	session := instagramMobileSession{}
-	if c.mobileSession != nil {
-		session = *c.mobileSession
+	if current != nil {
+		session = *current
 	}
 	if authorization != "" {
 		session.Authorization = authorization
@@ -416,7 +426,7 @@ func (c *Client) updateMobileSessionHeaders(response *http.Response, state *mobi
 		session.UserID = value
 	}
 	session.Device = state.device()
-	c.mobileSession = &session
+	c.mobileSession.Store(&session)
 }
 
 func (c *Client) applyMobileAuthorization(
@@ -424,8 +434,9 @@ func (c *Client) applyMobileAuthorization(
 	loginResponse *instagramMobileLoginResponse,
 	state *mobileLoginState,
 ) error {
-	if c.mobileSession == nil {
-		c.mobileSession = &instagramMobileSession{Device: state.device()}
+	session := instagramMobileSession{Device: state.device()}
+	if current := c.mobileSession.Load(); current != nil {
+		session = *current
 	}
 	authorization := response.Header.Get("ig-set-authorization")
 	if authorization != "" {
@@ -452,7 +463,7 @@ func (c *Client) applyMobileAuthorization(
 		}
 		if userID := mobileAuthorizationValue(authData["ds_user_id"]); userID != "" {
 			c.cookies.Set(cookies.IGCookieDSUserID, userID)
-			c.mobileSession.UserID = userID
+			session.UserID = userID
 		}
 		for _, route := range []struct {
 			authorizationKey string
@@ -473,11 +484,11 @@ func (c *Client) applyMobileAuthorization(
 	if c.cookies.Get(cookies.IGCookieDSUserID) == "" && loginResponse.LoggedInUser != nil {
 		if userID := rawJSONScalar(loginResponse.LoggedInUser.PK); userID != "" {
 			c.cookies.Set(cookies.IGCookieDSUserID, userID)
-			c.mobileSession.UserID = userID
+			session.UserID = userID
 		}
 	}
 	if loginResponse.LoggedInUser != nil {
-		c.mobileSession.Username = loginResponse.LoggedInUser.Username
+		session.Username = loginResponse.LoggedInUser.Username
 	}
 	if c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
 		c.cookies.Set(cookies.IGCookieCSRFToken, state.CSRFToken)
@@ -491,6 +502,7 @@ func (c *Client) applyMobileAuthorization(
 	if c.cookies.Get(cookies.IGCookieSessionID) == "" {
 		return errors.New("instagram app login response did not include a session")
 	}
+	c.mobileSession.Store(&session)
 	return nil
 }
 

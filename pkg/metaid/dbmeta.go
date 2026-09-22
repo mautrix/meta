@@ -40,14 +40,15 @@ type GhostMetadata struct {
 }
 
 type UserLoginMetadata struct {
-	Platform       types.Platform             `json:"platform"`
-	Cookies        *cookies.Cookies           `json:"cookies"`
-	WADeviceID     uint16                     `json:"wa_device_id,omitempty"`
-	PushKeys       *pushcrypto.PushKeys       `json:"push_keys,omitempty"`
-	LoginUA        string                     `json:"login_ua,omitempty"`
-	IGID           string                     `json:"igid,omitempty"`
-	NativeSession  *types.NativeSession       `json:"native_session,omitempty"`
-	NativePushKeys *pushcrypto.NativePushKeys `json:"native_push_keys,omitempty"`
+	Platform               types.Platform                `json:"platform"`
+	Cookies                *cookies.Cookies              `json:"cookies"`
+	WADeviceID             uint16                        `json:"wa_device_id,omitempty"`
+	PushKeys               *pushcrypto.PushKeys          `json:"push_keys,omitempty"`
+	LoginUA                string                        `json:"login_ua,omitempty"`
+	IGID                   string                        `json:"igid,omitempty"`
+	NativeSession          *types.NativeSession          `json:"native_session,omitempty"`
+	NativePushKeys         *pushcrypto.NativePushKeys    `json:"native_push_keys,omitempty"`
+	InstagramNativeSession *types.InstagramNativeSession `json:"instagram_native_session,omitempty"`
 
 	// Thread backfill state
 	BackfillCompleted bool `json:"backfill_completed,omitempty"`

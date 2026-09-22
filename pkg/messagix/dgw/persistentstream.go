@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/ptr"
@@ -42,7 +41,7 @@ type PersistentStream struct {
 	frameHandler FrameHandler
 }
 
-func newStream(conn *websocket.Conn, id StreamID, frameHandler FrameHandler, onClose func(), log zerolog.Logger) *PersistentStream {
+func newStream(conn *connection, id StreamID, frameHandler FrameHandler, onClose func(), log zerolog.Logger) *PersistentStream {
 	return &PersistentStream{
 		baseStream:   newBaseStream(conn, id, &log),
 		pendingAcks:  make(map[uint16]chan bool),

@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -86,7 +85,7 @@ func (ic *IGClient) doWaitMailboxProcessed(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	return nil
+	return ctx.Err()
 }
 
 func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientEvent) error {
@@ -97,8 +96,9 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
-				_ = ic.doWaitMailboxProcessed(ctx)
-				ic.caughtUp.Set()
+				if ic.doWaitMailboxProcessed(ctx) == nil {
+					ic.caughtUp.Set()
+				}
 			}()
 		} else {
 			ic.catchingUpTo = evt.LatestSeqID
@@ -111,7 +111,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		stateEvt := status.StateTransientDisconnect
 		errCode := DGWConnectionError
 		var retErr error
-		if websocket.CloseStatus(evt.Error) == dgw.CloseStatusUnauthorized {
+		if dgw.IsUnauthorized(evt.Error) {
 			// TODO do full reconnect instead of this?
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized
@@ -142,7 +142,9 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		}
 		return nil
 	case *slidetypes.SeqIDUpdate:
-		_ = ic.doWaitMailboxProcessed(ctx)
+		if err := ic.doWaitMailboxProcessed(ctx); err != nil {
+			return err
+		}
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, evt.SeqID, evt.Timestamp)
 		if err != nil {
 			return err
@@ -231,7 +233,7 @@ func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCr
 	return key, true, err
 }
 
-func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error {
+func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retErr error) {
 	defer func() {
 		v := recover()
 		if v != nil {
@@ -239,6 +241,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 			if !ok {
 				err = fmt.Errorf("%v", v)
 			}
+			retErr = err
 			stack := debug.Stack()
 			zerolog.Ctx(ctx).Err(err).
 				Bytes(zerolog.ErrorStackFieldName, stack).
@@ -342,6 +345,9 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		return fmt.Errorf("unrecognized event type: %T", d.Data)
 	}
 	if !res.Success {
+		if res.Error == nil {
+			return errors.New("failed to handle delta")
+		}
 		return res.Error
 	}
 	return nil

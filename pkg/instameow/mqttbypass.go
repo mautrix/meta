@@ -21,9 +21,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/thrift"
@@ -84,7 +84,7 @@ func (c *Client) SetTyping(ctx context.Context, threadID string, typing bool) er
 }
 
 func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
-	return dgw.SocketOptions{
+	options := dgw.SocketOptions{
 		GetCookies: c.cookies.String,
 		Origin:     c.GetEndpoint("base_url"),
 		WSURL:      c.GetEndpoint("dgw_mqttbypass"),
@@ -96,11 +96,33 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 		UserID:     c.configs.BrowserConfigTable.PolarisViewer.ID,
 		DeviceID:   c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 		OnConnect: func(ctx context.Context, _ func(error)) error {
+			connect := &mqttbypass.ConnectRequest{
+				DeviceId:     c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
+				Subscription: &mqttbypass.SubscribeRequest{Topics: []string{}},
+			}
+			if session := c.mobileSession.Load(); session != nil {
+				appInfo, err := json.Marshal(map[string]string{
+					"capabilities":              "3brTv10=",
+					"app_version":               instagramMobileAppVersion,
+					"User-Agent":                instagramMobileUserAgent,
+					"Accept-Language":           "en-US",
+					"platform":                  "android",
+					"ig_mqtt_route":             "django",
+					"pubsub_msg_type_blacklist": "direct, typing_type",
+				})
+				if err != nil {
+					return err
+				}
+				appInfoString := string(appInfo)
+				connect.ClientCapabilities = 23
+				connect.UserAgent = instagramMobileUserAgent
+				connect.DeviceId = session.Device.DeviceID
+				connect.FamilyDeviceId = session.Device.PhoneID
+				connect.Subscription.Topics = []string{"/ig_send_message_response"}
+				connect.AppSpecificInfo = &appInfoString
+			}
 			payload, err := thrift.Marshal(&mqttbypass.RequestPayload{
-				ConnectRequest: &mqttbypass.ConnectRequest{
-					DeviceId:     c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
-					Subscription: &mqttbypass.SubscribeRequest{Topics: []string{}},
-				},
+				ConnectRequest: connect,
 			})
 			if err != nil {
 				return err
@@ -118,6 +140,19 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
+	if session := c.mobileSession.Load(); session != nil {
+		options.HTTPStream = &dgw.HTTPStreamOptions{
+			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_mqttbypass_native"), GetHeaders: c.mqttBypassNativeHeaders,
+		}
+		options.DeviceID = session.Device.DeviceID
+		options.UserID = session.UserID
+	}
+	return options
+}
+
+func (c *Client) mqttBypassNativeHeaders() http.Header {
+	session := c.mobileSession.Load()
+	return nativeStreamHeaders(session, "authorization="+session.Authorization, session.UserID, "MqttBypass")
 }
 
 func (c *Client) connectMQTTBypassSocket(ctx context.Context) {
@@ -142,7 +177,7 @@ func (c *Client) connectMQTTBypassSocket(ctx context.Context) {
 	if c.mqttBypassSocket == nil || c.mqttBypassSocket == sock {
 		c.mqttBypassStream.Store(nil)
 		// Let anything waiting for the connection fail immediately when unauthorized
-		if websocket.CloseStatus(err) == dgw.CloseStatusUnauthorized {
+		if dgw.IsUnauthorized(err) {
 			c.mqttBypassConnected.Set()
 		} else {
 			c.mqttBypassConnected.Clear()

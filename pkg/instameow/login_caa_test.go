@@ -102,12 +102,12 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 			t.Fatalf("expected Bloks POST, got %s", request.Method)
 		}
 		expectedPath := "/api/v1/bloks/async_action/" + instagramCAASendEntrypoint + "/"
-		if request.URL.Host != "b.i.instagram.com" || request.URL.Path != expectedPath {
+		if request.URL.Host != "i.instagram.com" || request.URL.Path != expectedPath {
 			t.Fatalf("unexpected CAA endpoint %q", request.URL.String())
 		}
 		if request.Header.Get("X-Bloks-Version-Id") != bloks.BloksVersionInstagramAndroid ||
 			request.Header.Get("X-Ig-App-Id") != useragent.IGAndroidAppID ||
-			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 440.0.0.19.86 Android") ||
+			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 446.0.0.49.77 Android") ||
 			request.Header.Get("X-Meta-Usdid") != "test-usdid-header" ||
 			request.Header.Get("X-Fb-Friendly-Name") != "IgApi: bloks/async_action/"+instagramCAASendEntrypoint+"/" {
 			t.Fatal("Instagram CAA headers do not match the current signed APK profile")
@@ -191,10 +191,7 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		return mobileLoginTestResponse(request, http.StatusOK, nil, `{}`), nil
 	})
 
-	_, _ = client.makeInstagramBloksRequest(
-		context.Background(),
-		&bloks.BloksActionDocInstagram,
-		instagramCAASendEntrypoint,
+	params, err := instagramCAACredentialParams(client.caaLogin, client.mobileLogin,
 		bloks.BloksParamsInner{
 			"client_input_params": map[string]any{
 				"password":                    "#PWD_INSTAGRAM:4:test-envelope",
@@ -205,9 +202,11 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 			},
 			"server_params": map[string]any{},
 		},
-		"",
-		"",
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = client.makeInstagramBloksRequest(context.Background(), &bloks.BloksActionDocInstagram, instagramCAASendEntrypoint, params, "", "")
 	if !requestSeen {
 		t.Fatal("Instagram CAA request was not sent")
 	}
@@ -311,7 +310,7 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 		Cookies: loginCookies,
 		Log:     zerolog.Nop(),
 	})
-	client.mobileSession = session
+	client.mobileSession.Store(session)
 	mobile := &mobileLoginState{
 		PhoneID:         session.Device.PhoneID,
 		DeviceID:        session.Device.DeviceID,
@@ -427,7 +426,7 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 	); err != nil {
 		t.Fatalf("failed to switch Account Manager profile: %v", err)
 	}
-	switchedSession := client.mobileSession
+	switchedSession := client.mobileSession.Load()
 	if switchedSession == nil ||
 		switchedSession.UserID != "222" ||
 		switchedSession.Username != "linked_user" ||
