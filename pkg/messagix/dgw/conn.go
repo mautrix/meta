@@ -136,10 +136,10 @@ func readFrame(reader *bufio.Reader) ([]byte, error) {
 		headerSize = 3
 	case FrameTypeDrain:
 		headerSize = 4
-	case FrameTypeAck, FrameTypeData, FrameTypeExtendedData, FrameTypeEstabStream:
+	case FrameTypeAck, FrameTypeData, FrameTypeExtendedData, FrameTypeEstabStream, FrameTypeEndOfDataWithReason:
 		headerSize = 6
 	default:
-		return nil, fmt.Errorf("dgw: unsupported HTTP stream frame type %d", frameType)
+		return nil, fmt.Errorf("dgw: unsupported HTTP stream frame type %s", FrameType(frameType))
 	}
 	data := make([]byte, headerSize)
 	data[0] = frameType
