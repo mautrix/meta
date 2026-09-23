@@ -377,7 +377,7 @@ func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.L
 	}
 	if params.HTTP != nil {
 		client.GetHTTP().GetNewProxy = nil
-		client.GetHTTP().HTTP.Transport = params.HTTP
+		client.GetHTTP().SetTransportOverride(params.HTTP)
 	}
 	m.SavedClient = client
 
