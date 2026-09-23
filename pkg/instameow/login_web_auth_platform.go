@@ -29,14 +29,15 @@ import (
 type instagramAuthPlatformOperation struct{ name, docID, field string }
 
 var (
-	instagramAPCode                   = instagramAuthPlatformOperation{"AuthPlatformCodeEntryViewQuery", "34414353874878894", "xfb_auth_platform_enter_code_content"}
-	instagramAPPicker                 = instagramAuthPlatformOperation{"AuthPlatformChallengePickerViewQuery", "26777000331897324", "xfb_auth_platform_challenges"}
-	instagramAPAnother                = instagramAuthPlatformOperation{"useAuthPlatformTryAnotherWayMutation", "9378248908953318", "xfb_auth_platform_try_another_way"}
-	instagramAPSelect                 = instagramAuthPlatformOperation{"useAuthPlatformSelectChallengeMutation", "9771607989592788", "xfb_auth_platform_select_challenge"}
-	instagramAPSubmit                 = instagramAuthPlatformOperation{"useAuthPlatformSubmitCodeMutation", "25017097917894476", "xfb_auth_platform_submit_code"}
-	instagramAPResend                 = instagramAuthPlatformOperation{"useAuthPlatformSendCodeAgainMutation", "29612122925068775", "xfb_auth_platform_send_code_again"}
-	ErrInstagramWebCheckpointCAPTCHA  = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
-	errInstagramAuthPlatformLoggedOut = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebLoginRejected)
+	instagramAPCode                     = instagramAuthPlatformOperation{"AuthPlatformCodeEntryViewQuery", "34414353874878894", "xfb_auth_platform_enter_code_content"}
+	instagramAPPicker                   = instagramAuthPlatformOperation{"AuthPlatformChallengePickerViewQuery", "26777000331897324", "xfb_auth_platform_challenges"}
+	instagramAPAnother                  = instagramAuthPlatformOperation{"useAuthPlatformTryAnotherWayMutation", "9378248908953318", "xfb_auth_platform_try_another_way"}
+	instagramAPSelect                   = instagramAuthPlatformOperation{"useAuthPlatformSelectChallengeMutation", "9771607989592788", "xfb_auth_platform_select_challenge"}
+	instagramAPSubmit                   = instagramAuthPlatformOperation{"useAuthPlatformSubmitCodeMutation", "25017097917894476", "xfb_auth_platform_submit_code"}
+	instagramAPResend                   = instagramAuthPlatformOperation{"useAuthPlatformSendCodeAgainMutation", "29612122925068775", "xfb_auth_platform_send_code_again"}
+	ErrInstagramWebCheckpointCAPTCHA    = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
+	errInstagramAuthPlatformLoggedOut   = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebLoginRejected)
+	errInstagramAuthPlatformUnknownPage = fmt.Errorf("%w: unknown AuthPlatform page", ErrInstagramWebCheckpointUnsupported)
 )
 
 type instagramAuthPlatformChoice struct {
@@ -111,6 +112,7 @@ func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
 	params, queryErr := url.ParseQuery(target.RawQuery)
 	summary["checkpoint_url_kind"] = instagramWebCheckpointURLKind(target.String())
 	summary["path_kind"] = cmp.Or(pathKind, "other")
+	summary["path"] = target.Path
 	summary["origin_allowed"] = target.Scheme == "https" && target.User == nil &&
 		(target.Port() == "" || target.Port() == "443") && strings.EqualFold(target.Hostname(), "www.instagram.com")
 	summary["escaped_path"] = target.RawPath != ""
@@ -119,6 +121,12 @@ func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
 	summary["apc_empty"] = params.Get("apc") == ""
 	summary["device_id_count"] = min(2, len(params["device_id"]))
 	return summary
+}
+
+func isUnknownInstagramAuthPlatformPage(base, raw string) bool {
+	summary := instagramAuthPlatformURLDiagnostics(base, raw)
+	path, _ := summary["path"].(string)
+	return summary["origin_allowed"] == true && summary["path_kind"] == "other" && strings.HasPrefix(path, "/auth_platform/")
 }
 
 func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expectedUserID string) (*InstagramWebTwoFactorChallenge, error) {
@@ -149,7 +157,9 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 	s.referrer = s.url.String()
 	for range 5 {
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
-		if !ok {
+		if !ok && isUnknownInstagramAuthPlatformPage(s.url.String(), rawURL) {
+			return errInstagramAuthPlatformUnknownPage
+		} else if !ok {
 			return ErrInstagramWebCheckpointUnsupported
 		} else if err := instagramAuthPlatformAccountError(target); err != nil {
 			return err

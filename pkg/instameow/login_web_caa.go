@@ -269,6 +269,9 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 		if target, valid := resolveInstagramAuthPlatformURL("https://www.instagram.com/", redirect); valid {
 			if strings.HasPrefix(target.Path, "/auth_platform/") {
 				challenge, err := c.startInstagramAuthPlatform(ctx, redirect, "")
+				if errors.Is(err, errInstagramAuthPlatformUnknownPage) {
+					return &InstagramWebTwoFactorChallenge{ChallengeURL: target.String()}, nil
+				}
 				// A credential rejection may also carry an AuthPlatform redirect. Give
 				// verification priority, but retain the rejection if it only logs us out.
 				if errors.Is(err, errInstagramAuthPlatformLoggedOut) && data.Get("error_code").Int() == 1348009 &&
