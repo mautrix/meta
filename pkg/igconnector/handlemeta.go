@@ -272,6 +272,8 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
 		*slidetypes.ParticipantLeaveEvent:
 		allowCreate = false
+	case *slidetypes.PinThreadEvent:
+		allowCreate = evt.IsPinned
 	case *slidetypes.NewMessageEvent:
 		// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
 		// so extract it from the message for finding the portal.
@@ -527,7 +529,7 @@ func (ic *IGClient) handleThreadPin(portalKey networkid.PortalKey, isPinned bool
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatInfoChange,
 			PortalKey:    portalKey,
-			CreatePortal: true,
+			CreatePortal: isPinned,
 		},
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo: &bridgev2.ChatInfo{
