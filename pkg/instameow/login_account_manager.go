@@ -406,6 +406,7 @@ func (c *Client) switchInstagramAccountManagerWebAccount(
 		[]byte(form.Encode()),
 		types.FORM,
 	)
+	c.logRedactedLoginResponse("fxcal_sso_login", response, body)
 	if response != nil {
 		c.cookies.UpdateFromResponse(response)
 	}
