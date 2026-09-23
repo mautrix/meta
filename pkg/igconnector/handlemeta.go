@@ -172,7 +172,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	}
 }
 
-func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool) *simplevent.ChatResync {
+func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool, source string) *simplevent.ChatResync {
 	var bundle any
 	// Fetching the entire inbox only returns stub messages which can't be used safely for backfilling.
 	// Let FetchMessages fetch the full thread info in such cases (which happens after checking if backfill is needed).
@@ -184,6 +184,9 @@ func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool
 			Type:         bridgev2.RemoteEventChatResync,
 			PortalKey:    ic.makePortalKey(thread.ThreadKey, thread.IsGroup),
 			CreatePortal: true,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str("resync_source", source)
+			},
 		},
 		ChatInfo:            ic.wrapChatInfo(thread),
 		LatestMessageTS:     thread.LastActivityTimestampMS.Time,
@@ -191,7 +194,7 @@ func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool
 	}
 }
 
-func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (networkid.PortalKey, error) {
+func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID, source string) (networkid.PortalKey, error) {
 	zerolog.Ctx(ctx).Debug().Str("thread_igid", threadIGID).Msg("Fetching and resyncing thread")
 	resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(threadIGID))
 	if err != nil {
@@ -205,7 +208,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to save FBID for IG thread %s: %w", threadIGID, err)
 	}
-	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread, true)
+	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread, true, source)
 	res := ic.UserLogin.QueueRemoteEvent(evt)
 	if !res.Success {
 		return evt.PortalKey, res.Error
@@ -213,7 +216,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 	return evt.PortalKey, nil
 }
 
-func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool) (networkid.PortalKey, bool, error) {
+func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool, source string) (networkid.PortalKey, bool, error) {
 	if threadIGID == "" {
 		return networkid.PortalKey{}, false, nil
 	} else if fbid, err := ic.Main.DB.GetFBIDForIGChat(ctx, threadIGID, ic.UserLogin.ID); err != nil {
@@ -230,7 +233,7 @@ func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCr
 	if !allowCreate {
 		return networkid.PortalKey{}, false, nil
 	}
-	key, err := ic.getAndResyncThread(ctx, threadIGID)
+	key, err := ic.getAndResyncThread(ctx, threadIGID, source)
 	return key, true, err
 }
 
@@ -285,7 +288,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 		}
 	}
 
-	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate)
+	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate, fmt.Sprintf("delta %s", d.TypeName))
 	if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	} else if portalKey.IsEmpty() {
@@ -324,7 +327,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	case *slidetypes.AdminChangeEvent:
 		// The event shape isn't great for making a chat info change event, just resync the chat info entirely
 		if !didResync {
-			_, err = ic.getAndResyncThread(ctx, d.ThreadIGID)
+			_, err = ic.getAndResyncThread(ctx, d.ThreadIGID, "admin change event")
 		}
 		return err
 	case *slidetypes.MarkReadEvent:
