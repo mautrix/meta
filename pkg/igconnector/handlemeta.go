@@ -544,16 +544,20 @@ func (ic *IGClient) handleMessageChatInfoChange(
 	members ...bridgev2.ChatMember,
 ) bridgev2.EventHandlingResult {
 	var memberChanges *bridgev2.ChatMemberList
+	meta := ic.makeMessageEventMeta(portalKey, msg, bridgev2.RemoteEventChatInfoChange)
 	if len(members) > 0 {
 		memberChanges = &bridgev2.ChatMemberList{
 			MemberMap: make(bridgev2.ChatMemberMap, len(members)),
 		}
 		for _, m := range members {
 			memberChanges.MemberMap.Add(m)
+			if m.Membership == event.MembershipLeave {
+				meta.CreatePortal = false
+			}
 		}
 	}
 	return ic.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
-		EventMeta: ic.makeMessageEventMeta(portalKey, msg, bridgev2.RemoteEventChatInfoChange),
+		EventMeta: meta,
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo:      change,
 			MemberChanges: memberChanges,
