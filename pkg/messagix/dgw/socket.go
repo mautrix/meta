@@ -367,15 +367,22 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 			} else {
 				s.Log.Trace().Any("frame", f).Msg("Received ack frame")
 			}
-		case *EndOfDataFrame:
-			if stream, ok := s.streams.Pop(f.StreamID); !ok {
-				s.Log.Debug().Uint16("stream_id", uint16(f.StreamID)).Msg("Received end of data frame for unknown stream")
+		case AnyEndOfDataFrame:
+			streamID := f.GetStreamID()
+			if stream, ok := s.streams.Pop(streamID); !ok {
+				s.Log.Debug().
+					Uint16("stream_id", uint16(streamID)).
+					Stringer("reason", f.GetReason()).
+					Msg("Received end of data frame for unknown stream")
 			} else {
-				s.Log.Debug().Uint16("stream_id", uint16(f.StreamID)).Msg("Received end of data frame")
+				s.Log.Debug().
+					Uint16("stream_id", uint16(streamID)).
+					Stringer("reason", f.GetReason()).
+					Msg("Received end of data frame")
 				incoming <- wrappedDataFrame{
 					s: stream,
 				}
-				s.streams.Delete(f.StreamID)
+				s.streams.Delete(streamID)
 			}
 		case *DrainFrame:
 			s.Log.Debug().Stringer("reason", f.DrainReason).Msg("Received drain frame")
