@@ -94,6 +94,16 @@ type instagramWebLoginResponse struct {
 	CheckpointURL     string                    `json:"checkpoint_url"`
 	RedirectURL       string                    `json:"redirect_url"`
 	TwoFactorInfo     instagramWebTwoFactorInfo `json:"two_factor_info"`
+	Errors            struct {
+		Error []string `json:"error"`
+	} `json:"errors"`
+}
+
+func (r instagramWebLoginResponse) errorMessage() string {
+	if r.Message != "" {
+		return r.Message
+	}
+	return strings.Join(r.Errors.Error, " ")
 }
 
 func instagramWebSprinkleToken(csrfToken string, config types.SprinkleConfig) (string, error) {
@@ -575,8 +585,8 @@ func (c *Client) CreateInstagramWebSession(
 			return c.captureInstagramWebTwoFactor(ctx, result, identifier, preResponseCSRFToken, statusCode)
 		} else if instagramWebChallengeRequired(result) && (parseErr == nil || result.RedirectURL != "") {
 			return c.startInstagramWebCheckpoint(ctx, result)
-		} else if parseErr == nil && result.Message != "" {
-			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
+		} else if parseErr == nil && result.errorMessage() != "" {
+			return nil, fmt.Errorf("instagram web login failed: %s", result.errorMessage())
 		}
 		return nil, fmt.Errorf("instagram web login request failed: %w", requestErr)
 	} else if response == nil {
@@ -593,12 +603,12 @@ func (c *Client) CreateInstagramWebSession(
 		user := gjson.GetBytes(body, "user").Type
 		c.log.Debug().Str("authenticated_type", gjson.GetBytes(body, "authenticated").Type.String()).
 			Str("user_type", user.String()).
-			Bool("has_error_message", result.Message != "").
+			Bool("has_error_message", result.errorMessage() != "").
 			Bool("has_error_type", result.ErrorType != "").
 			Bool("session_cookie_present", c.cookies.Get(cookies.IGCookieSessionID) != "").
 			Msg("Instagram web login did not authenticate")
-		if result.Message != "" {
-			return nil, fmt.Errorf("instagram web login failed: %s", result.Message)
+		if message := result.errorMessage(); message != "" {
+			return nil, fmt.Errorf("instagram web login failed: %s", message)
 		}
 		if result.Status == "ok" && result.ErrorType == "" && result.RedirectURL == "" && gjson.GetBytes(body, "authenticated").Type == gjson.False &&
 			(user == gjson.True || user == gjson.False) && c.cookies.Get(cookies.IGCookieSessionID) == "" {
