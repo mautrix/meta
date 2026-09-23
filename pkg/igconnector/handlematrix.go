@@ -355,6 +355,9 @@ func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.M
 	} else if err != nil {
 		return err
 	}
+	if cooldown := ic.Main.Config.DeletedThreadCooldown; cooldown > 0 {
+		ic.recentlyDeletedThreads.Set(meta.IGID, time.Now().Add(cooldown))
+	}
 	if chat.Portal.RoomType != database.RoomTypeDM {
 		memberInfo, err := ic.Main.Bridge.Matrix.GetMemberInfo(ctx, chat.Portal.MXID, ic.UserLogin.UserMXID)
 		if err != nil {

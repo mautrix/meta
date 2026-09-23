@@ -19,6 +19,8 @@ min_full_reconnect_interval_seconds: 3600
 force_refresh_interval_seconds: 72000
 # Should connection state be cached to allow quicker restarts?
 cache_connection_state: true
+# How long to ignore events that would recreate a chat after it was deleted from Matrix. Set 0 to disable.
+deleted_thread_cooldown: 30s
 # Disable fetching XMA media (reels, stories, etc) when backfilling.
 disable_xma_backfill: true
 # Disable fetching XMA media entirely.

@@ -42,6 +42,8 @@ type Config struct {
 	ForceRefreshIntervalSeconds     int  `yaml:"force_refresh_interval_seconds"`
 	CacheConnectionState            bool `yaml:"cache_connection_state"`
 
+	DeletedThreadCooldown time.Duration `yaml:"deleted_thread_cooldown"`
+
 	DisplaynameTemplate string             `yaml:"displayname_template"`
 	displaynameTemplate *template.Template `yaml:"-"`
 
@@ -86,6 +88,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Int, "min_full_reconnect_interval_seconds")
 	helper.Copy(up.Int, "force_refresh_interval_seconds")
 	helper.Copy(up.Bool, "cache_connection_state")
+	helper.Copy(up.Str|up.Int, "deleted_thread_cooldown")
 	helper.Copy(up.Bool, "disable_xma_backfill")
 	helper.Copy(up.Bool, "disable_xma_always")
 	helper.Copy(up.Bool, "disable_typing")

@@ -233,6 +233,17 @@ func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCr
 	return key, true, err
 }
 
+func (ic *IGClient) isRecentlyDeletedThread(threadIGID string) bool {
+	expiry, ok := ic.recentlyDeletedThreads.Get(threadIGID)
+	if !ok {
+		return false
+	} else if time.Now().After(expiry) {
+		ic.recentlyDeletedThreads.Delete(threadIGID)
+		return false
+	}
+	return true
+}
+
 func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retErr error) {
 	defer func() {
 		v := recover()
@@ -278,6 +289,10 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 				Msg("Ignoring create notice for pending creation")
 			return nil
 		}
+	}
+
+	if allowCreate && ic.isRecentlyDeletedThread(d.ThreadIGID) {
+		allowCreate = false
 	}
 
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate)
