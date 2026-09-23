@@ -341,7 +341,10 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 		values["code"] = code
 	}
 	data, err := c.instagramAuthPlatformRequest(ctx, op, values)
-	if err != nil {
+	if errors.Is(err, ErrInstagramWebCheckpointRequestFailed) && op == instagramAPSubmit {
+		c.log.Warn().Err(err).Msg("Instagram verification code submission did not complete")
+		return s.step("The verification request did not complete on this device. Enter the code again to retry."), nil
+	} else if err != nil {
 		return nil, err
 	}
 	redirect := data.Get("redirect_uri").String()
