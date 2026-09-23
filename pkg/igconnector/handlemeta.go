@@ -192,6 +192,7 @@ func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool
 }
 
 func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (networkid.PortalKey, error) {
+	zerolog.Ctx(ctx).Debug().Str("thread_igid", threadIGID).Msg("Fetching and resyncing thread")
 	resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(threadIGID))
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to get thread info for %s: %w", threadIGID, err)
@@ -234,6 +235,11 @@ func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCr
 }
 
 func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retErr error) {
+	log := zerolog.Ctx(ctx).With().
+		Str("delta_type", d.TypeName).
+		Str("thread_fbid", d.ThreadIGID).
+		Logger()
+	ctx = log.WithContext(ctx)
 	defer func() {
 		v := recover()
 		if v != nil {
@@ -243,7 +249,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 			}
 			retErr = err
 			stack := debug.Stack()
-			zerolog.Ctx(ctx).Err(err).
+			log.Err(err).
 				Bytes(zerolog.ErrorStackFieldName, stack).
 				Msg("Panic in delta handler")
 			ic.UserLogin.TrackAnalytics("Bridge Event Handler Panic", map[string]any{
@@ -253,7 +259,6 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 			})
 		}
 	}()
-	log := zerolog.Ctx(ctx)
 	log.Trace().
 		Type("event_struct", d.Data).
 		RawJSON("event_data", d.Raw).
@@ -284,10 +289,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	} else if portalKey.IsEmpty() {
-		log.Warn().
-			Str("typename", d.TypeName).
-			Str("thread_fbid", d.ThreadIGID).
-			Msg("Ignoring event with no portal")
+		log.Warn().Msg("Ignoring event with no portal")
 		return nil
 	}
 
@@ -336,10 +338,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	case *slidetypes.PinMessageEvent:
 		res = ic.handlePinMessages(portalKey, evt)
 	case slidetypes.UnknownEvent:
-		log.Warn().
-			Str("typename", d.TypeName).
-			Str("thread_fbid", d.ThreadIGID).
-			Msg("Unrecognized event type in socket")
+		log.Warn().Msg("Unrecognized event type in socket")
 		return nil
 	default:
 		return fmt.Errorf("unrecognized event type: %T", d.Data)
