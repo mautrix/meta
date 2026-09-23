@@ -78,8 +78,10 @@ func (c *HTTPClient) SetInstagramNativeMode(native bool) {
 }
 
 func (c *HTTPClient) SetTransportOverride(transport http.RoundTripper) {
+	c.HTTP.Timeout = 0
 	if transport == nil {
 		transport = c.ownedTransport
+		c.HTTP.Timeout = c.HTTPSettings.GlobalTimeout
 	}
 	c.HTTP.Transport = transport
 }
@@ -118,7 +120,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	c.ownedTransport = reqClient.GetTransport()
 	c.HTTP.CheckRedirect = c.checkHTTPRedirect
 	if oldHTTP != nil && oldHTTP.Transport != oldTransport {
-		c.HTTP.Transport = oldHTTP.Transport
+		c.SetTransportOverride(oldHTTP.Transport)
 	}
 	if oldTransport != nil {
 		oldTransport.CloseIdleConnections()
