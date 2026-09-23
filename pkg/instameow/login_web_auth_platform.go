@@ -176,6 +176,10 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			if _, valid := resolveInstagramAuthPlatformURL(s.url.String(), rawURL); !valid {
 				c.log.Debug().Int("status_code", response.StatusCode).Str("redirect_source", "location").
 					Fields(instagramAuthPlatformURLDiagnostics(s.url.String(), rawURL)).Msg("Rejected Instagram AuthPlatform redirect")
+				if !strings.HasPrefix(s.url.Path, "/auth_platform/") && instagramWebCheckpointURLKind(rawURL) == "other_instagram" && c.instagramAuthPlatformLoggedIn() {
+					c.webAuthPlatform = nil
+					return nil
+				}
 			}
 			continue
 		} else if response.StatusCode != http.StatusOK {
@@ -187,11 +191,8 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 				c.webAuthPlatform = nil
 				return ErrInstagramWebLoginRejected
 			}
-			c.ensureInstagramWebUserID()
-			userID := c.cookies.Get(cookies.IGCookieDSUserID)
-			if instagramWebLoginResponseKind(body) != "html" || len(c.cookies.GetMissingCookieNames()) != 0 ||
-				instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) != userID || (s.expectedUserID != "" && s.expectedUserID != userID) {
-				if instagramWebLoginResponseKind(body) == "html" && userID == "" && c.cookies.Get(cookies.IGCookieSessionID) == "" {
+			if instagramWebLoginResponseKind(body) != "html" || !c.instagramAuthPlatformLoggedIn() {
+				if instagramWebLoginResponseKind(body) == "html" && c.cookies.Get(cookies.IGCookieDSUserID) == "" && c.cookies.Get(cookies.IGCookieSessionID) == "" {
 					return errInstagramAuthPlatformLoggedOut
 				}
 				return ErrInstagramWebCheckpointUnsupported
@@ -252,6 +253,14 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		return nil
 	}
 	return ErrInstagramWebCheckpointUnsupported
+}
+
+func (c *Client) instagramAuthPlatformLoggedIn() bool {
+	c.ensureInstagramWebUserID()
+	userID := c.cookies.Get(cookies.IGCookieDSUserID)
+	expectedUserID := c.webAuthPlatform.expectedUserID
+	return len(c.cookies.GetMissingCookieNames()) == 0 && instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) == userID &&
+		(expectedUserID == "" || expectedUserID == userID)
 }
 
 func instagramAuthPlatformChannel(method string) string {
