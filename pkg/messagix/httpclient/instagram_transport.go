@@ -53,21 +53,32 @@ func setInstagramNativeFingerprint(client *req.Client) {
 		if err = conn.HandshakeContext(ctx); err != nil {
 			return nil, nil, err
 		}
-		state := conn.ConnectionState()
-		return conn, &tls.ConnectionState{
-			Version:            state.Version,
-			HandshakeComplete:  state.HandshakeComplete,
-			DidResume:          state.DidResume,
-			CipherSuite:        state.CipherSuite,
-			NegotiatedProtocol: state.NegotiatedProtocol,
-			//lint:ignore SA1019 req requires this field to select HTTP/2
-			NegotiatedProtocolIsMutual:  state.NegotiatedProtocolIsMutual,
-			ServerName:                  state.ServerName,
-			PeerCertificates:            state.PeerCertificates,
-			VerifiedChains:              state.VerifiedChains,
-			SignedCertificateTimestamps: state.SignedCertificateTimestamps,
-			OCSPResponse:                state.OCSPResponse,
-			TLSUnique:                   state.TLSUnique,
-		}, nil
+		tlsConn := &instagramTLSConn{conn}
+		state := tlsConn.ConnectionState()
+		return tlsConn, &state, nil
 	})
+}
+
+// instagramTLSConn exposes a crypto/tls ConnectionState, which req's HTTP/2 transport requires when it dials.
+type instagramTLSConn struct {
+	*utls.UConn
+}
+
+func (conn *instagramTLSConn) ConnectionState() tls.ConnectionState {
+	state := conn.UConn.ConnectionState()
+	return tls.ConnectionState{
+		Version:            state.Version,
+		HandshakeComplete:  state.HandshakeComplete,
+		DidResume:          state.DidResume,
+		CipherSuite:        state.CipherSuite,
+		NegotiatedProtocol: state.NegotiatedProtocol,
+		//lint:ignore SA1019 req requires this field to select HTTP/2
+		NegotiatedProtocolIsMutual:  state.NegotiatedProtocolIsMutual,
+		ServerName:                  state.ServerName,
+		PeerCertificates:            state.PeerCertificates,
+		VerifiedChains:              state.VerifiedChains,
+		SignedCertificateTimestamps: state.SignedCertificateTimestamps,
+		OCSPResponse:                state.OCSPResponse,
+		TLSUnique:                   state.TLSUnique,
+	}
 }
