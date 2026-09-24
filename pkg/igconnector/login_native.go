@@ -402,7 +402,10 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 }
 
 func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step *bridgev2.LoginStep, err error) (*bridgev2.LoginStep, error) {
-	if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
+	if challengeURL, ok := instameow.InstagramWebChallengeURL(err); ok {
+		m.webTwoFactor = nil
+		return m.instagramWebChallengeStep(challengeURL), nil
+	} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 		m.clearCAAFallback()
 		m.webTwoFactor = nil
 		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
