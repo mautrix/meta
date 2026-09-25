@@ -17,6 +17,8 @@ func (*nativeLoginRoundTripper) RoundTrip(*http.Request) (*http.Response, error)
 	return nil, nil
 }
 
+func (*nativeLoginRoundTripper) SetFingerprint(string) {}
+
 func TestInstagramLoginFlowsExposeNativeFirstAndKeepWeb(t *testing.T) {
 	connector := &IGConnector{}
 	flows := connector.GetLoginFlows()

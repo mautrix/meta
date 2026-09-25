@@ -108,7 +108,7 @@ type MetaNativeLogin struct {
 	Main *IGConnector
 
 	client                 *instameow.Client
-	transport              http.RoundTripper
+	transport              bridgev2.FingerprintingRoundTripper
 	nativeLogin            bool
 	caaIdentifier          string
 	caaPassword            string
@@ -153,7 +153,17 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 	loginCookies := &cookies.Cookies{Platform: types.Instagram}
 	loginCookies.UpdateValues(nil)
 	log := m.User.Log.With().Str("component", "instagram_login").Logger()
-	log.Debug().Bool("client_http", m.transport != nil).Bool("native_login", m.nativeLogin).Msg("Starting Instagram password login flow")
+	log.Debug().
+		Bool("client_http", m.transport != nil).
+		Bool("native_login", m.nativeLogin).
+		Msg("Starting Instagram password login flow")
+	if m.transport != nil {
+		if m.nativeLogin {
+			m.transport.SetFingerprint("instagram-android")
+		} else {
+			m.transport.SetFingerprint("chrome")
+		}
+	}
 	var userID id.UserID
 	if m.User.User != nil {
 		userID = m.User.MXID
