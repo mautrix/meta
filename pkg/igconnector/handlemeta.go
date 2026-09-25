@@ -199,6 +199,11 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID, source s
 	resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(threadIGID))
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to get thread info for %s: %w", threadIGID, err)
+	} else if resp.ThreadInfo.AsIGDirectThread == nil {
+		zerolog.Ctx(ctx).Debug().
+			Str("thread_igid", threadIGID).
+			Msg("No thread info received for portal resync")
+		return networkid.PortalKey{}, nil
 	}
 	zerolog.Ctx(ctx).Trace().
 		Any("thread_resp", resp.ThreadInfo.AsIGDirectThread).
