@@ -108,7 +108,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 		})
 	}
 	if c.parent.GetPlatform().IsInstagram() && c.instagramNative.Load() {
-		setInstagramNativeFingerprint(reqClient)
+		reqClient.ImpersonateInstagramAndroid()
 	} else {
 		reqClient.ImpersonateChrome()
 	}
