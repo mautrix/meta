@@ -24,7 +24,6 @@ import (
 	"slices"
 	"time"
 
-	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exstrings"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
@@ -144,6 +143,7 @@ func (c *Client) ForceReconnect() {
 }
 
 var ErrMainStreamClosed = errors.New("main stream closed")
+var ErrUserIDMissing = errors.New("native messaging user ID is missing")
 
 func (c *Client) getSocketOptions() dgw.SocketOptions {
 	options := dgw.SocketOptions{
@@ -157,8 +157,12 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 		UserID:     c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid,
 		DeviceID:   c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 		OnConnect: func(ctx context.Context, fatalError func(error)) error {
-			_, err := c.socket.Load().EstablishStream(ctx, dgw.StreamInit{
-				InitPayload:  exerrors.Must(c.makeStreamInitPayload(c.socketRetries)),
+			payload, err := c.makeStreamInitPayload(c.socketRetries)
+			if err != nil {
+				return err
+			}
+			_, err = c.socket.Load().EstablishStream(ctx, dgw.StreamInit{
+				InitPayload:  payload,
 				FrameHandler: c.handleDataFrame,
 				OnClose: func() {
 					go func() {

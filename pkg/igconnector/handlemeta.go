@@ -44,6 +44,7 @@ const (
 	DGWMainStreamClosed       status.BridgeStateErrorCode = "dgw-main-stream-closed"
 	MetaCookieRemoved         status.BridgeStateErrorCode = "meta-cookie-removed"
 	MetaUserIDIsZero          status.BridgeStateErrorCode = "meta-user-id-is-zero"
+	NativeIGMissingUserID     status.BridgeStateErrorCode = "ig-connect-missing-user-id"
 	MetaRedirectedToLoginPage status.BridgeStateErrorCode = "meta-redirected-to-login"
 	MetaNotLoggedIn           status.BridgeStateErrorCode = "meta-not-logged-in"
 	MetaConnectError          status.BridgeStateErrorCode = "meta-connect-error"
@@ -65,6 +66,7 @@ func init() {
 		MetaUserIDIsZero:          "Logged out, please relogin to continue",
 		MetaRedirectedToLoginPage: "Logged out, please relogin to continue",
 		MetaNotLoggedIn:           "Logged out, please relogin to continue",
+		NativeIGMissingUserID:     "Logged out, please relogin to continue",
 		IGAccountSuspended:        "Logged out, please check the Instagram website to continue",
 		IGChallengeRequired:       "Challenge required, please check the Instagram website to continue",
 		IGConsentRequired:         "Consent required, please check the Instagram website to continue",
@@ -111,10 +113,13 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		stateEvt := status.StateTransientDisconnect
 		errCode := DGWConnectionError
 		var retErr error
-		if dgw.IsUnauthorized(evt.Error) {
+		if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
 			// TODO do full reconnect instead of this?
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized
+			if errors.Is(evt.Error, instameow.ErrUserIDMissing) {
+				errCode = NativeIGMissingUserID
+			}
 			retErr = fmt.Errorf("connection unauthorized; stop reconnects")
 			ic.permanentErrored.Store(true)
 			ic.cancelPeriodicReconnect()

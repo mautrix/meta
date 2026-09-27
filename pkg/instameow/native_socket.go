@@ -3,7 +3,6 @@ package instameow
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -47,7 +46,7 @@ func (c *Client) makeNativeStreamInitPayload(retryCount int, syncParameters, cur
 	}
 	userID := c.GetOwnFBID()
 	if userID == 0 {
-		return nil, fmt.Errorf("native messaging user ID is missing")
+		return nil, ErrUserIDMissing
 	}
 	return marshalNativeStreamRequest(uint16(retryCount%65535+1), userID, payload), nil
 }
