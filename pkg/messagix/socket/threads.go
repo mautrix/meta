@@ -181,6 +181,13 @@ func (t *UpdatePollTask) GetLabel() string {
 }
 
 func (t *UpdatePollTask) Create() (any, string) {
+	// The server silently ignores the task if these are null instead of empty arrays.
+	if t.AddedOptions == nil {
+		t.AddedOptions = []map[string]int{}
+	}
+	if t.SelectedOptions == nil {
+		t.SelectedOptions = []int64{}
+	}
 	return t, "poll_update"
 }
 

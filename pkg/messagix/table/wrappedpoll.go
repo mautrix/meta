@@ -2,6 +2,7 @@ package table
 
 import (
 	"cmp"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -134,4 +135,16 @@ func DiffPollVotes(previous, current *PollData) []PollVote {
 	}
 	slices.SortFunc(changes, func(a, b PollVote) int { return cmp.Compare(a.ContactID, b.ContactID) })
 	return changes
+}
+
+// WithVote returns a copy of data with contactID's selection replaced.
+func (data *PollData) WithVote(contactID int64, optionIDs []int64) *PollData {
+	updated := *data
+	updated.Votes = maps.Clone(data.Votes)
+	if len(optionIDs) == 0 {
+		delete(updated.Votes, contactID)
+	} else {
+		updated.Votes[contactID] = slices.Compact(slices.Sorted(slices.Values(optionIDs)))
+	}
+	return &updated
 }

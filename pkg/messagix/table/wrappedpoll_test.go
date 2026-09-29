@@ -160,16 +160,15 @@ func TestDiffPollVotes(t *testing.T) {
 
 	// voterB switches from red and green to only blue, and voterD retracts
 	// their vote.
-	current := &PollData{PollID: testPollID, Options: previous.Options, Votes: map[int64][]int64{
-		voterA: {optionRed},
-		voterB: {optionBlue},
-		voterC: {optionBlue},
-	}}
+	current := previous.WithVote(voterB, []int64{optionBlue}).WithVote(voterD, nil)
 	want := []PollVote{{ContactID: voterB, OptionIDs: []int64{optionBlue}}, {ContactID: voterD}}
 	if changes := DiffPollVotes(previous, current); !reflect.DeepEqual(changes, want) {
 		t.Errorf("unexpected changes\n got: %+v\nwant: %+v", changes, want)
 	}
-	if len(DiffPollVotes(current, current)) != 0 {
-		t.Errorf("identical data should not produce changes")
+	if !reflect.DeepEqual(previous.Votes[voterB], []int64{optionRed, optionGreen}) {
+		t.Errorf("WithVote modified the original data: %v", previous.Votes)
+	}
+	if len(DiffPollVotes(current, current.WithVote(voterB, []int64{optionBlue}))) != 0 {
+		t.Errorf("setting the same selection again should not produce changes")
 	}
 }
