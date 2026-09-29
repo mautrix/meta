@@ -286,11 +286,10 @@ func (mc *MessageConverter) ToMatrix(
 		}
 	}
 
-	if cm.MergeCaption() {
+	if cm.MergeCaption() && len(importantPartIDs) > 0 {
 		// The MergeCaption method only does something if there are exactly two
-		// parts in the message, and we don't add text parts to the "important"
-		// slice, so we are safe to assume that if it returns true, then there is
-		// exactly one item in the slice and it is the media part ID.
+		// parts in the message. A notice and a text part can also be merged
+		// without either part having an important ID to preserve.
 		cm.Parts[0].ID = importantPartIDs[0]
 	}
 	return cm
