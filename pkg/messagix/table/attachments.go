@@ -324,6 +324,14 @@ type LSAddPollForThread struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+// LSHandlePlaceholderPollData precedes a complete dump of a poll's options
+// (LSAddPollOption) and votes (LSAddPollVote), replacing any previous state.
+type LSHandlePlaceholderPollData struct {
+	PollID int64 `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
 type LSAddPollOption struct {
 	OptionID                 int64  `index:"0" json:",omitempty"`
 	PollID                   int64  `index:"1" json:",omitempty"`

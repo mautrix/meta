@@ -144,6 +144,7 @@ func (mc *MessageConverter) ToMatrix(
 		importantPartIDs = append(importantPartIDs, partID)
 	}
 	var urlPreviews []*table.WrappedXMA
+	hasPoll := false
 	for i, xmaAtt := range msg.XMAAttachments {
 		partID := networkid.PartID(fmt.Sprintf("xma_attachment_%d", i))
 		ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
@@ -152,7 +153,8 @@ func (mc *MessageConverter) ToMatrix(
 			urlPreviews = append(urlPreviews, xmaAtt)
 			continue
 		} else if xmaAtt.CTA != nil && strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_") {
-			// Skip poll metadata entirely for now
+			// Polls are bridged separately (see handlePollUpdates in connector).
+			hasPoll = true
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
@@ -230,7 +232,13 @@ func (mc *MessageConverter) ToMatrix(
 			DontBridge: msg.IsAdminMessage,
 		})
 	}
-	if len(cm.Parts) == 0 {
+	if len(cm.Parts) == 0 && hasPoll {
+		cm.Parts = append(cm.Parts, &bridgev2.ConvertedMessagePart{
+			Type:       event.EventMessage,
+			Content:    &event.MessageEventContent{MsgType: event.MsgNotice, Body: "Poll"},
+			DontBridge: true,
+		})
+	} else if len(cm.Parts) == 0 {
 		cm.Parts = append(cm.Parts, &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{

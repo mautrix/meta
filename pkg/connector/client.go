@@ -73,6 +73,10 @@ type MetaClient struct {
 	waState   status.BridgeState
 
 	waLastPresence waTypes.Presence
+
+	// polls is in-memory only, so all votes are re-sent after a restart.
+	polls     map[int64]*pollState
+	pollsLock sync.Mutex
 }
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
@@ -97,6 +101,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 		parsedTables:       make(chan *parsedTable, 16),
 		backfillCollectors: make(map[int64]*BackfillCollector),
+		polls:              make(map[int64]*pollState),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 

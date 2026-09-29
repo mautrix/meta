@@ -184,6 +184,23 @@ func (t *UpdatePollTask) Create() (any, string) {
 	return t, "poll_update"
 }
 
+// PollPointQueryTask asks for a poll's full data, which arrives in a later
+// table (see WrapPollData).
+type PollPointQueryTask struct {
+	ThreadKey int64 `json:"thread_key"`
+	PollID    int64 `json:"poll_id"`
+	SyncGroup int64 `json:"sync_group"`
+	IsCMPoll  int64 `json:"is_cm_poll"`
+}
+
+func (t *PollPointQueryTask) GetLabel() string {
+	return TaskLabels["PollPointQueryTask"]
+}
+
+func (t *PollPointQueryTask) Create() (any, string) {
+	return t, "poll_point_query"
+}
+
 type ThreadMarkReadTask struct {
 	ThreadId            int64 `json:"thread_id"`
 	LastReadWatermarkTs int64 `json:"last_read_watermark_ts"`

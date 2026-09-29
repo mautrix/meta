@@ -143,6 +143,8 @@ type LSTable struct {
 	LSAddPollOptionV2                                []*LSAddPollOption                                  `json:",omitempty"`
 	LSAddPollVote                                    []*LSAddPollVote                                    `json:",omitempty"`
 	LSAddPollVoteV2                                  []*LSAddPollVote                                    `json:",omitempty"`
+	LSRemovePollVoteV2                               []*LSAddPollVote                                    `json:",omitempty"`
+	LSHandlePlaceholderPollData                      []*LSHandlePlaceholderPollData                      `json:",omitempty"`
 	LSUpdateThreadMuteSetting                        []*LSUpdateThreadMuteSetting                        `json:",omitempty"`
 	LSInsertAttachment                               []*LSInsertAttachment                               `json:",omitempty"`
 	LSUpdateExtraAttachmentColumns                   []*LSUpdateExtraAttachmentColumns                   `json:",omitempty"`
@@ -311,6 +313,8 @@ var SPTable = map[string]string{
 	"addPollOptionV2":                                "LSAddPollOptionV2",
 	"addPollVote":                                    "LSAddPollVote",
 	"addPollVoteV2":                                  "LSAddPollVoteV2",
+	"removePollVoteV2":                               "LSRemovePollVoteV2",
+	"handlePlaceholderPollData":                      "LSHandlePlaceholderPollData",
 	"addPollForThread":                               "LSAddPollForThread",
 	"deleteReaction":                                 "LSDeleteReaction",
 	"updateThreadMuteSetting":                        "LSUpdateThreadMuteSetting",
