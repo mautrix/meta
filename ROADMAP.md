@@ -42,7 +42,6 @@
     * [x] Files
     * [x] Voice messages
     * [x] Locations
-    * [ ] Polls
     * [ ] Live location sharing
     * [x] Story/reel/clip shares
     * [x] Profile shares
@@ -50,7 +49,7 @@
   * [x] Formatting
   * [x] Replies
   * [x] Mentions
-  * [ ] Polls
+  * [x] Polls
 * [x] Message unsend
 * [x] Message reactions
 * [x] Message edits
