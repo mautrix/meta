@@ -626,6 +626,28 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return i.Evaluate(ctx, &call.Args[1])
 		}
 		return i.Evaluate(ctx, &call.Args[2])
+	case "bk.action.core.While":
+		// Both bodies run in the caller's arg frame: the loop state lives in SetArg slots.
+		cond, err := unwrapLazyBloksBody(&call.Args[0], "core.while cond")
+		if err != nil {
+			return nil, err
+		}
+		body, err := unwrapLazyBloksBody(&call.Args[1], "core.while body")
+		if err != nil {
+			return nil, err
+		}
+		for {
+			keepGoing, err := i.Evaluate(ctx, cond)
+			if err != nil {
+				return nil, err
+			}
+			if !keepGoing.IsTruthy() {
+				return BloksNothing, nil
+			}
+			if _, err = i.Evaluate(ctx, body); err != nil {
+				return nil, err
+			}
+		}
 	case "bk.action.bool.Or", "bk.action.core.Coalesce":
 		first, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
@@ -803,11 +825,24 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "bk.action.f32.Const":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.f32.Add":
-		first, err := evalFloat(ctx, i, &call.Args[0], "add lhs")
+		lhs, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
 			return nil, err
 		}
-		second, err := evalFloat(ctx, i, &call.Args[1], "add rhs")
+		rhs, err := i.Evaluate(ctx, &call.Args[1])
+		if err != nil {
+			return nil, err
+		}
+		lhsInt, lhsIsInt := lhs.Value().(int64)
+		rhsInt, rhsIsInt := rhs.Value().(int64)
+		if lhsIsInt && rhsIsInt {
+			return BloksLiteralOf(lhsInt + rhsInt), nil
+		}
+		first, err := castFloat(lhs, "add lhs")
+		if err != nil {
+			return nil, err
+		}
+		second, err := castFloat(rhs, "add rhs")
 		if err != nil {
 			return nil, err
 		}

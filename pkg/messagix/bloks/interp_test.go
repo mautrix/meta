@@ -2,6 +2,7 @@ package bloks
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -82,5 +83,22 @@ func TestInstagramNativeDialog(t *testing.T) {
 	}
 	if !changed {
 		t.Fatal("positive dialog callback did not execute its Bloks action")
+	}
+}
+
+func TestWhileArrayContains(t *testing.T) {
+	const contains = `(bk.action.core.Apply (bk.action.core.FuncConst (bk.action.core.TakeLast (bk.action.core.SetArg 2 false) (bk.action.core.SetArg 3 0) (bk.action.core.While (bk.action.core.FuncConst (bk.action.core.If (bk.action.f32.Lt (bk.action.core.GetArg 3) (bk.action.array.Length (bk.action.core.GetArg 0))) (bk.action.bool.Not (bk.action.core.GetArg 2)) false)) (bk.action.core.FuncConst (bk.action.core.TakeLast (bk.action.core.If (bk.action.f32.Eq (bk.action.array.Get (bk.action.core.GetArg 0) (bk.action.core.GetArg 3)) (bk.action.core.GetArg 1)) (bk.action.core.SetArg 2 true) null) (bk.action.core.SetArg 3 (bk.action.f32.Add (bk.action.core.GetArg 3) 1))))) (bk.action.core.GetArg 2))) (bk.action.array.Make "sms" "email" "whatsapp") %q)`
+	for needle, expected := range map[string]bool{"sms": true, "whatsapp": true, "totp": false} {
+		var action BloksScriptNode
+		if _, err := action.ParseAny(fmt.Sprintf(contains, needle), 0); err != nil {
+			t.Fatalf("failed to parse array contains script: %v", err)
+		}
+		result, err := (&Interpreter{}).Evaluate(context.Background(), &action)
+		if err != nil {
+			t.Fatalf("array contains %q returned error: %v", needle, err)
+		}
+		if result.Value() != expected {
+			t.Fatalf("array contains %q returned %#v instead of %v", needle, result.Value(), expected)
+		}
 	}
 }
