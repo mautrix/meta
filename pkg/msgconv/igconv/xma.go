@@ -84,6 +84,17 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 		targetURL.RawQuery = ""
 		captionHTML += fmt.Sprintf(`<p><a href="%s">%s</a></p>`, html.EscapeString(fullTargetURL), html.EscapeString(targetURL.String()))
 	}
+	var buttons strings.Builder
+	for _, cta := range xma.CTAButtons {
+		if cta == nil || cta.Title == "" || cta.ActionURL == "" {
+			continue
+		}
+		fmt.Fprintf(&buttons, `<li><a href="%s">%s</a></li>`,
+			html.EscapeString(cta.ActionURL), html.EscapeString(cta.Title))
+	}
+	if buttons.Len() > 0 {
+		captionHTML += "<ul>" + buttons.String() + "</ul>"
+	}
 	if captionHTML == "" {
 		return nil
 	}
