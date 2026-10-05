@@ -26,6 +26,9 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+
+	// PollID is the Facebook poll ID of a poll-start message.
+	PollID int64 `json:"poll_id,omitempty"`
 }
 
 type XMAFetchMeta struct {

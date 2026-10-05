@@ -366,6 +366,8 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	for _, resync := range threadResyncs {
 		innerQueue = append(innerQueue, resync)
 	}
+	// Queued after resyncs so that the portal exists.
+	m.handlePollUpdates(params, tbl, &innerQueue)
 
 	collectPortalEvents(params, insert, m.handleMessageInsert, &innerQueue)
 	// Edits are special snowflakes that don't include the thread key
