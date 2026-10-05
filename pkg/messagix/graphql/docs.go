@@ -154,6 +154,14 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "27243106098639056",
 		FriendlyName: "useIGDLeaveChatMutation",
 	},
+	"IGDBlockUserDialogOffMsysMutation": {
+		DocID:        "28875204315418002",
+		FriendlyName: "IGDBlockUserDialogOffMsysMutation",
+	},
+	"IGDBlockUserDialogOffMsysUnblockMutation": {
+		DocID:        "28615617751365746",
+		FriendlyName: "IGDBlockUserDialogOffMsysUnblockMutation",
+	},
 }
 
 type IGDeleteThreadGraphQLRequestPayload struct {

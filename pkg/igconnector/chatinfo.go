@@ -244,12 +244,17 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 		members.OtherUserID = metaid.MakeUserID(info.ThreadKey)
 		members.MemberMap = makeNoteToSelfMembers(members.OtherUserID, ic.wrapUserInfo(info.Viewer))
 	}
+	var blocked *bool
+	if roomType == database.RoomTypeDM && len(info.Users) == 1 {
+		blocked = info.Users[0].FriendshipStatus.Blocking
+	}
 	return &bridgev2.ChatInfo{
-		Name:      name,
-		Avatar:    avatar,
-		Members:   members,
-		Type:      &roomType,
-		Disappear: nil, // TODO
+		Name:        name,
+		UserBlocked: blocked,
+		Avatar:      avatar,
+		Members:     members,
+		Type:        &roomType,
+		Disappear:   nil, // TODO
 		UserLocal: &bridgev2.UserLocalPortalInfo{
 			MutedUntil: mutedUntil,
 			Tag:        tag,
