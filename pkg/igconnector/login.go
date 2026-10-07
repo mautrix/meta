@@ -132,6 +132,7 @@ func loginWithCookies(
 	bridgeUser *bridgev2.User,
 	conn *IGConnector,
 	c *cookies.Cookies,
+	expectedUserID string,
 	nativeSession *types.InstagramNativeSession,
 	requireNative bool,
 	beforeClientStart func(),
@@ -165,6 +166,10 @@ func loginWithCookies(
 		}
 	}
 
+	if expectedUserID != "" && (user.ID != expectedUserID || c.Get(cookies.IGCookieDSUserID) != expectedUserID ||
+		!client.IsAuthenticated() || len(c.GetMissingCookieNames()) > 0) {
+		return nil, errors.New("instagram web session no longer matches the selected current profile")
+	}
 	ownFBID := client.GetOwnFBID()
 	if ownFBID == 0 {
 		return nil, fmt.Errorf("own fbid not found")
@@ -253,7 +258,7 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, user, conn, c, nil, false, nil)
+	return loginWithCookies(ctx, log, client, user, conn, c, "", nil, false, nil)
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {

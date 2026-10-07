@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -85,9 +86,53 @@ type instagramWebAccountManagerResponse struct {
 }
 
 type instagramWebAccountManagerState struct {
-	Accounts  []instagramAccountManagerAccount
-	CSRFToken string
-	Complete  bool
+	Accounts             []instagramAccountManagerAccount
+	CSRFToken            string
+	Complete             bool
+	CurrentProfileUserID string
+}
+
+type instagramWebAccountManagerProfilesError struct {
+	error
+	allowCurrentProfile bool
+}
+
+func (e instagramWebAccountManagerProfilesError) Unwrap() error {
+	return e.error
+}
+
+func canOfferInstagramWebCurrentProfile(response *http.Response, body []byte, requestErr error) bool {
+	if response == nil || response.StatusCode != http.StatusBadRequest ||
+		!errors.Is(requestErr, httpclient.ErrUnexpectedError) || httpclient.IsPermanentRequestError(requestErr) {
+		return false
+	}
+	// Unknown fields may carry authentication, verification or consent requirements.
+	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+		return false
+	}
+	failure := make(map[string]string, 3)
+	for decoder.More() {
+		token, err := decoder.Token()
+		key, ok := token.(string)
+		if err != nil || !ok || (key != "status" && key != "error_type" && key != "message") {
+			return false
+		}
+		if _, duplicate := failure[key]; duplicate {
+			return false
+		}
+		token, err = decoder.Token()
+		value, ok := token.(string)
+		if err != nil || !ok {
+			return false
+		}
+		failure[key] = value
+	}
+	if token, err := decoder.Token(); err != nil || token != json.Delim('}') {
+		return false
+	}
+	_, err := decoder.Token()
+	return err == io.EOF && failure["status"] == "fail" && failure["error_type"] == "" && failure["message"] == ""
 }
 
 func newInstagramAccountManagerToken(session *instagramMobileSession) instagramAccountManagerToken {
@@ -454,12 +499,16 @@ func (c *Client) getInstagramWebAccountManagerAccounts(
 		c.cookies.UpdateFromResponse(response)
 	}
 	if requestErr != nil {
-		return nil, instagramAccountManagerRequestError(
+		profileErr := instagramAccountManagerRequestError(
 			"failed to load Instagram web Account Manager profiles",
 			response,
 			body,
 			requestErr,
 		)
+		return nil, instagramWebAccountManagerProfilesError{
+			error:               profileErr,
+			allowCurrentProfile: canOfferInstagramWebCurrentProfile(response, body, requestErr),
+		}
 	}
 	var result instagramWebAccountManagerResponse
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -478,6 +527,29 @@ func (c *Client) getInstagramWebAccountManagerAccounts(
 	return accounts, nil
 }
 
+func (c *Client) verifyInstagramWebAccountManagerCurrentProfile(ctx context.Context, userID, username string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.loadIndex(ctx); err != nil {
+		return fmt.Errorf("failed to verify the current Instagram web session: %w", err)
+	}
+	viewer := &c.configs.BrowserConfigTable.PolarisViewer
+	if userID == "" || !c.IsAuthenticated() || len(c.cookies.GetMissingCookieNames()) > 0 ||
+		viewer.ID != userID || c.cookies.Get(cookies.IGCookieDSUserID) != userID ||
+		!strings.EqualFold(strings.TrimSpace(viewer.GetUsername()), username) {
+		return errors.New("instagram web session no longer matches the verified current profile")
+	}
+	return nil
+}
+
+func (c *Client) GetInstagramWebAccountManagerExpectedUserID() string {
+	if c.webAccountManager == nil {
+		return ""
+	}
+	return c.webAccountManager.CurrentProfileUserID
+}
+
 func (c *Client) DoInstagramWebAccountManagerSteps(
 	ctx context.Context,
 	userInput map[string]string,
@@ -494,14 +566,25 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 		if currentUsername == "" {
 			return nil, errors.New("instagram web login did not return the current profile")
 		}
+		currentUserID := c.configs.BrowserConfigTable.PolarisViewer.ID
 		accounts, err := c.getInstagramWebAccountManagerAccounts(ctx, currentUsername)
+		var currentProfileUserID string
 		if err != nil {
-			return nil, err
+			var profileErr instagramWebAccountManagerProfilesError
+			if !errors.As(err, &profileErr) || !profileErr.allowCurrentProfile {
+				return nil, err
+			}
+			if verifyErr := c.verifyInstagramWebAccountManagerCurrentProfile(ctx, currentUserID, currentUsername); verifyErr != nil {
+				return nil, verifyErr
+			}
+			accounts = []instagramAccountManagerAccount{{Username: currentUsername}}
+			currentProfileUserID = currentUserID
 		}
 		state = &instagramWebAccountManagerState{
-			Accounts:  accounts,
-			CSRFToken: c.cookies.Get(cookies.IGCookieCSRFToken),
-			Complete:  len(accounts) == 1,
+			Accounts:             accounts,
+			CSRFToken:            c.cookies.Get(cookies.IGCookieCSRFToken),
+			Complete:             len(accounts) == 1 && currentProfileUserID == "",
+			CurrentProfileUserID: currentProfileUserID,
 		}
 		c.webAccountManager = state
 	}
@@ -510,12 +593,21 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 	}
 	selectedUsername := strings.TrimSpace(userInput[instagramAccountManagerField])
 	if selectedUsername == "" {
-		return instagramAccountManagerSelectionStep(state.Accounts), nil
+		step := instagramAccountManagerSelectionStep(state.Accounts)
+		if state.CurrentProfileUserID != "" {
+			step.Instructions = "Instagram couldn't load linked profiles. Choose the currently signed-in profile to connect it, or start a new login to use another profile."
+		}
+		return step, nil
 	}
 	for i := range state.Accounts {
 		selectedAccount := &state.Accounts[i]
 		if !strings.EqualFold(selectedAccount.Username, selectedUsername) {
 			continue
+		}
+		if state.CurrentProfileUserID != "" {
+			if err := c.verifyInstagramWebAccountManagerCurrentProfile(ctx, state.CurrentProfileUserID, selectedAccount.Username); err != nil {
+				return nil, err
+			}
 		}
 		if i != 0 {
 			if err := c.switchInstagramAccountManagerWebAccount(ctx, selectedAccount.Username); err != nil {
