@@ -63,6 +63,9 @@ type LSTable struct {
 	LSInsertXmaAttachment                            []*LSInsertXmaAttachment                            `json:",omitempty"`
 	LSUpdateUnsentMessageCollapsedStatus             []*LSUpdateUnsentMessageCollapsedStatus             `json:",omitempty"`
 	LSDeleteThenInsertMessage                        []*LSDeleteThenInsertMessage                        `json:",omitempty"`
+	LSResetUserBlockStatus                           []*LSResetUserBlockStatus                           `json:",omitempty"`
+	LSUpdateCommunityMemberBlockStatus               []*LSUpdateCommunityMemberBlockStatus               `json:",omitempty"`
+	LSUpdatePublicChannelMemberBlockStatus           []*LSUpdatePublicChannelMemberBlockStatus           `json:",omitempty"`
 	LSUpdateThreadSnippetFromLastMessage             []*LSUpdateThreadSnippetFromLastMessage             `json:",omitempty"`
 	LSUpdateForRollCallMessageDeleted                []*LSUpdateForRollCallMessageDeleted                `json:",omitempty"`
 	LSInsertBlobAttachment                           []*LSInsertBlobAttachment                           `json:",omitempty"`
@@ -268,6 +271,9 @@ var SPTable = map[string]string{
 	"taskExists":                                     "LSTaskExists",
 	"removeTask":                                     "LSRemoveTask",
 	"deleteThenInsertMessage":                        "LSDeleteThenInsertMessage",
+	"resetUserBlockStatus":                           "LSResetUserBlockStatus",
+	"updateCommunityMemberBlockStatus":               "LSUpdateCommunityMemberBlockStatus",
+	"updatePublicChannelMemberBlockStatus":           "LSUpdatePublicChannelMemberBlockStatus",
 	"deleteThenInsertContact":                        "LSDeleteThenInsertContact",
 	"updateTypingIndicator":                          "LSUpdateTypingIndicator",
 	"checkAuthoritativeMessageExists":                "LSCheckAuthoritativeMessageExists",

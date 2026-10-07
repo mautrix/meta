@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/util/variationselector"
@@ -818,4 +819,37 @@ func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.M
 		return nil, err
 	}
 	return &bridgev2.MatrixMembershipResult{}, nil
+}
+
+var _ bridgev2.UserBlockingNetworkAPI = (*MetaClient)(nil)
+
+func (m *MetaClient) HandleMatrixBlockUser(ctx context.Context, msg *bridgev2.MatrixBlockUser) error {
+	if m.Client == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
+	if msg.Content.ReportSpam {
+		return fmt.Errorf("spam reporting is not supported")
+	}
+	userID := metaid.ParseUserID(msg.Portal.OtherUserID)
+	if userID == 0 {
+		return fmt.Errorf("DM recipient is unknown")
+	}
+	action := 0
+	if msg.Content.Block {
+		action = 1
+	}
+	resp, err := m.Client.ExecuteTasks(ctx, &socket.SetUserBlockStatusTask{
+		BlockeeID:       userID,
+		RequestID:       uuid.NewString(),
+		UserBlockAction: action,
+	})
+	if err == nil {
+		zerolog.Ctx(ctx).Debug().Any("block_response", resp).Msg("Raw response data for block update")
+		for _, reset := range resp.LSResetUserBlockStatus {
+			if reset.ContactID == userID && !reset.Success {
+				return fmt.Errorf("block status update was rejected by server")
+			}
+		}
+	}
+	return err
 }

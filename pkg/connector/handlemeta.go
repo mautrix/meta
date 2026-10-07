@@ -293,6 +293,13 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		folderResyncs[folder.ThreadKey] = rs
 		innerQueue = append(innerQueue, rs)
 	}
+	blocks := make(map[int64]*bool)
+	for _, contact := range tbl.LSDeleteThenInsertContact {
+		blocks[contact.GetFBID()] = new(contact.BlockedByViewerStatus != 0)
+	}
+	for _, contact := range tbl.LSVerifyContactRowExists {
+		blocks[contact.GetFBID()] = new(contact.IsBlocked || contact.BlockedByViewerStatus != 0)
+	}
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
@@ -302,6 +309,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			if err := m.Main.DB.SetHybridThreadMessageRequest(ctx, m.UserLogin.ID, fbKey, thread.FolderName == folderPending); err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid message request status")
 			}
+		}
+		if info.UserBlocked == nil {
+			info.UserBlocked = blocks[thread.ThreadKey]
 		}
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
@@ -325,6 +335,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			if err := m.Main.DB.SetHybridThreadMessageRequest(ctx, m.UserLogin.ID, fbKey, thread.FolderName == folderPending); err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid message request status")
 			}
+		}
+		if info.UserBlocked == nil {
+			info.UserBlocked = blocks[thread.ThreadKey]
 		}
 		threadResyncs[thread.ThreadKey] = &FBChatResync{
 			PortalKey: m.makeFBPortalKey(thread.ThreadKey, thread.ThreadType),
@@ -365,6 +378,24 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 
 	for _, resync := range threadResyncs {
 		innerQueue = append(innerQueue, resync)
+	}
+
+	blockUpdates := make(map[int64]*simplevent.ChatInfoChange)
+	updateBlock := func(contactID int64, isBlocked bool, changeType string) {
+		blockUpdates[contactID] = m.wrapChatInfoChange(contactID, 0, table.UNKNOWN_THREAD_TYPE, &bridgev2.ChatInfoChange{
+			ChatInfo: &bridgev2.ChatInfo{
+				UserBlocked: new(isBlocked),
+			},
+		}, changeType)
+	}
+	for _, update := range tbl.LSUpdateCommunityMemberBlockStatus {
+		updateBlock(update.ContactID, update.IsBlocked, "LSUpdateCommunityMemberBlockStatus")
+	}
+	for _, update := range tbl.LSUpdatePublicChannelMemberBlockStatus {
+		updateBlock(update.ContactID, update.IsBlocked, "LSUpdatePublicChannelMemberBlockStatus")
+	}
+	for _, update := range blockUpdates {
+		innerQueue = append(innerQueue, update)
 	}
 
 	collectPortalEvents(params, insert, m.handleMessageInsert, &innerQueue)
