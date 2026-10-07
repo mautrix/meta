@@ -14,6 +14,7 @@ import (
 type LSTable struct {
 	LSMciTraceLog                                    []*LSMciTraceLog                                    `json:",omitempty"`
 	LSExecuteFirstBlockForSyncTransaction            []*LSExecuteFirstBlockForSyncTransaction            `json:",omitempty"`
+	LSExecuteFirstBlockForSyncTransactionV4          []*LSExecuteFirstBlockForSyncTransactionV4          `json:",omitempty"`
 	LSTruncateMetadataThreads                        []*LSTruncateMetadataThreads                        `json:",omitempty"`
 	LSTruncateThreadRangeTablesForSyncGroup          []*LSTruncateThreadRangeTablesForSyncGroup          `json:",omitempty"`
 	LSUpsertSyncGroupThreadsRange                    []*LSUpsertSyncGroupThreadsRange                    `json:",omitempty"`
@@ -62,6 +63,9 @@ type LSTable struct {
 	LSInsertXmaAttachment                            []*LSInsertXmaAttachment                            `json:",omitempty"`
 	LSUpdateUnsentMessageCollapsedStatus             []*LSUpdateUnsentMessageCollapsedStatus             `json:",omitempty"`
 	LSDeleteThenInsertMessage                        []*LSDeleteThenInsertMessage                        `json:",omitempty"`
+	LSResetUserBlockStatus                           []*LSResetUserBlockStatus                           `json:",omitempty"`
+	LSUpdateCommunityMemberBlockStatus               []*LSUpdateCommunityMemberBlockStatus               `json:",omitempty"`
+	LSUpdatePublicChannelMemberBlockStatus           []*LSUpdatePublicChannelMemberBlockStatus           `json:",omitempty"`
 	LSUpdateThreadSnippetFromLastMessage             []*LSUpdateThreadSnippetFromLastMessage             `json:",omitempty"`
 	LSUpdateForRollCallMessageDeleted                []*LSUpdateForRollCallMessageDeleted                `json:",omitempty"`
 	LSInsertBlobAttachment                           []*LSInsertBlobAttachment                           `json:",omitempty"`
@@ -241,6 +245,7 @@ var SPTable = map[string]string{
 	"insertNewMessageRange":                          "LSInsertNewMessageRange",
 	"updateExistingMessageRange":                     "LSUpdateExistingMessageRange",
 	"threadsRangesQuery":                             "LSThreadsRangesQuery",
+	"setRegionHint":                                  "LSSetRegionHint",
 	"updateThreadSnippetFromLastMessage":             "LSUpdateThreadSnippetFromLastMessage",
 	"upsertInboxThreadsRange":                        "LSUpsertInboxThreadsRange",
 	"deleteThenInsertThread":                         "LSDeleteThenInsertThread",
@@ -251,6 +256,7 @@ var SPTable = map[string]string{
 	"insertBlobAttachment":                           "LSInsertBlobAttachment",
 	"updateUnsentMessageCollapsedStatus":             "LSUpdateUnsentMessageCollapsedStatus",
 	"executeFirstBlockForSyncTransaction":            "LSExecuteFirstBlockForSyncTransaction",
+	"executeFirstBlockForSyncTransactionV4":          "LSExecuteFirstBlockForSyncTransactionV4",
 	"updateThreadsRangesV2":                          "LSUpdateThreadsRangesV2",
 	"upsertSyncGroupThreadsRange":                    "LSUpsertSyncGroupThreadsRange",
 	"upsertFolder":                                   "LSUpsertFolder",
@@ -265,6 +271,9 @@ var SPTable = map[string]string{
 	"taskExists":                                     "LSTaskExists",
 	"removeTask":                                     "LSRemoveTask",
 	"deleteThenInsertMessage":                        "LSDeleteThenInsertMessage",
+	"resetUserBlockStatus":                           "LSResetUserBlockStatus",
+	"updateCommunityMemberBlockStatus":               "LSUpdateCommunityMemberBlockStatus",
+	"updatePublicChannelMemberBlockStatus":           "LSUpdatePublicChannelMemberBlockStatus",
 	"deleteThenInsertContact":                        "LSDeleteThenInsertContact",
 	"updateTypingIndicator":                          "LSUpdateTypingIndicator",
 	"checkAuthoritativeMessageExists":                "LSCheckAuthoritativeMessageExists",

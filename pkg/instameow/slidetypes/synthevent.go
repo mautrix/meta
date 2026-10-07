@@ -42,7 +42,8 @@ type Connected struct {
 }
 
 type Disconnected struct {
-	Error error
+	Error        error
+	FailureCount int
 }
 
 type AuthError struct {

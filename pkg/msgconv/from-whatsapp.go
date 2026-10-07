@@ -524,6 +524,76 @@ func (mc *MessageConverter) waStoryReplyMessageToMatrix(ctx context.Context, con
 	return
 }
 
+func (mc *MessageConverter) waExternalLinkShareToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) *bridgev2.ConvertedMessagePart {
+	var link string
+	for _, cta := range content.GetCtas() {
+		for _, candidate := range []string{cta.GetNativeURL(), cta.GetActionURL()} {
+			parsed, err := url.Parse(candidate)
+			if err == nil && (parsed.Scheme == "https" || parsed.Scheme == "http") && parsed.Host != "" {
+				link = candidate
+				break
+			}
+		}
+		if link != "" {
+			break
+		}
+	}
+	if link == "" {
+		return nil
+	}
+	body := content.GetMessageText()
+	if !strings.Contains(body, link) {
+		if body == "" {
+			body = link
+		} else {
+			body += "\n\n" + link
+		}
+	}
+	part := mc.WhatsAppTextToMatrix(ctx, &waCommon.MessageText{
+		Text:         &body,
+		MentionedJID: content.GetMentionedJID(),
+		Commands:     content.GetCommands(),
+		Mentions:     content.GetMentions(),
+	})
+	preview := &event.BeeperLinkPreview{
+		LinkPreview: event.LinkPreview{
+			CanonicalURL: link,
+			Title:        content.GetTitleText(),
+			Description:  content.GetSubtitleText(),
+		},
+		MatchedURL: link,
+	}
+	part.Content.BeeperLinkPreviews = []*event.BeeperLinkPreview{preview}
+	for _, rawPreview := range content.GetPreviews() {
+		image, err := armadilloutil.Unmarshal(&waMediaTransport.ImageTransport{}, rawPreview, 2)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to decode external link preview image")
+			continue
+		}
+		transport := image.GetIntegral().GetTransport()
+		if transport.GetIntegral().GetDirectPath() == "" {
+			continue
+		}
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, transport, whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
+			return data, mimeType, "preview" + exmime.ExtensionFromMimetype(mimeType), nil
+		})
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload external link preview image")
+			continue
+		}
+		addImageMetadata(converted, image.GetAncillary())
+		preview.ImageURL = converted.Content.URL
+		preview.ImageEncryption = converted.Content.File
+		preview.ImageWidth = event.IntOrString(converted.Content.Info.Width)
+		preview.ImageHeight = event.IntOrString(converted.Content.Info.Height)
+		preview.ImageSize = event.IntOrString(converted.Content.Info.Size)
+		preview.ImageType = converted.Content.Info.MimeType
+		part.DBMetadata = converted.DBMetadata
+		break
+	}
+	return part
+}
+
 func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart) {
 	body := content.GetMessageText()
 	nativeURL := ""
@@ -550,6 +620,10 @@ func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context
 		msgtype = event.MsgNotice
 	}
 	switch content.GetTargetType() {
+	case waArmadilloXMA.ExtendedContentMessage_MSG_EXTERNAL_LINK_SHARE:
+		if part := mc.waExternalLinkShareToMatrix(ctx, content); part != nil {
+			return []*bridgev2.ConvertedMessagePart{part}
+		}
 	case waArmadilloXMA.ExtendedContentMessage_FB_STORY_REPLY:
 		parts, err := mc.waStoryReplyMessageToMatrix(ctx, content)
 		if err != nil {

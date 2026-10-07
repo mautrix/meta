@@ -25,6 +25,7 @@ const MessengerLiteIOSUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/571
 const MessengerLiteAndroidAppID = "256002347743983"
 const MessengerLiteAndroidAccessToken = MessengerLiteAndroidAppID + "|374e60f8b9bb6b8cbb30f78030438895"
 const MessengerLiteAndroidUserAgent = "Dalvik/2.1.0 (Linux; U; Android 16; Pixel 7 Build/BP2A.250805.005) [FBAN/Orca-Android;FBAV/569.0.0.44.91;FBPN/com.facebook.orca;FBLC/en_US;FBBV/1012430703;FBCR/Tello;FBMF/Google;FBBD/google;FBDV/Pixel 7;FBSV/16;FBCA/arm64-v8a:null;FBDM/{density=2.625,width=1080,height=2400};FB_FW/1;]"
+const MessengerLiteAndroidBuild = 345613452 // FIXME the user agent above and this build number don't match
 
 const IGDUserAgent = "WMI Web"
 

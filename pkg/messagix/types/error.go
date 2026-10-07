@@ -48,6 +48,10 @@ func (gqe *GraphQLError) Error() string {
 	return fmt.Sprintf("graphql error at %s: %s", strings.Join(gqe.Path, "."), message)
 }
 
+func (gqe *GraphQLError) HumanError() string {
+	return gqe.Description
+}
+
 var ErrPleaseReloadPage = &ErrorResponse{ErrorCode: 1357004}
 
 func (er *ErrorResponse) Is(other error) bool {

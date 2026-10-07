@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
@@ -36,15 +38,16 @@ type MetaClient struct {
 	UserLogin *bridgev2.UserLogin
 	Ghost     *bridgev2.Ghost
 
-	stopHandlingTables  atomic.Pointer[context.CancelFunc]
-	initialTable        atomic.Pointer[table.LSTable]
-	initialTableHandled atomic.Bool
-	parsedTables        chan *parsedTable
-	backfillCollectors  map[int64]*BackfillCollector
-	backfillLock        sync.Mutex
-	connectLock         sync.Mutex
-	stopConnectAttempt  atomic.Pointer[context.CancelFunc]
-	permanentErrored    atomic.Bool
+	stopHandlingTables   atomic.Pointer[context.CancelFunc]
+	initialTable         atomic.Pointer[table.LSTable]
+	initialTableHandled  atomic.Bool
+	parsedTables         chan *parsedTable
+	backfillCollectors   map[int64]*BackfillCollector
+	backfillLock         sync.Mutex
+	connectLock          sync.Mutex
+	pushRegistrationLock sync.Mutex
+	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
+	permanentErrored     atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -74,13 +77,19 @@ type MetaClient struct {
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
 	return &messagix.Config{
-		ClientSettings:           m.Bridge.GetHTTPClientSettings(),
-		LogRedactedBloksPayloads: m.Config.LogRedactedBloksPayloads,
+		ClientSettings:            m.Bridge.GetHTTPClientSettings(),
+		LogRedactedLoginResponses: m.Config.LogRedactedLoginResponses,
 	}
 }
 
 func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*metaid.UserLoginMetadata)
+	if err := validateNativeSession(loginMetadata.NativeSession); err != nil {
+		return err
+	}
+	if login.Client != nil {
+		login.Client.Disconnect()
+	}
 	c := &MetaClient{
 		Main:      m,
 		LoginMeta: loginMetadata,
@@ -154,6 +163,7 @@ func (m *MetaClient) ensureMessagixClient() {
 			m.Main.getMessagixConfig(),
 		)
 		m.Client.SetEventHandler(m.handleMetaEvent)
+		m.Client.MessengerLite.SetNativeSession(m.LoginMeta.NativeSession)
 	}
 }
 
@@ -161,7 +171,14 @@ func (m *MetaClient) ExportCredentials(ctx context.Context) any {
 	if m.Client == nil {
 		return nil
 	}
-	return m.Client.GetCookies()
+	if m.LoginMeta.NativeSession == nil {
+		return m.Client.GetCookies()
+	}
+	return &metaCredentials{
+		Platform:      m.LoginMeta.Platform,
+		Cookies:       m.Client.GetCookies(),
+		NativeSession: m.LoginMeta.NativeSession,
+	}
 }
 
 func (m *MetaClient) Connect(ctx context.Context) {
@@ -417,6 +434,21 @@ func (m *MetaClient) periodicReconnect() {
 }
 
 func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
+	defer func() {
+		if v := recover(); v != nil {
+			m.UserLogin.Log.Err(exerrors.RecoverToError(v)).
+				Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+				Msg("Panic in e2ee connector")
+			m.waState = status.BridgeState{
+				StateEvent: status.StateUnknownError,
+				Error:      WAConnectError,
+				Info: map[string]any{
+					"go_error": fmt.Sprintf("panic: %v", v),
+				},
+			}
+			m.UserLogin.BridgeState.Send(m.waState)
+		}
+	}()
 	err := m.connectE2EE()
 	if err != nil {
 		if m.waState.StateEvent != status.StateBadCredentials && m.waState.StateEvent != status.StateUnknownError {
@@ -458,9 +490,11 @@ func (m *MetaClient) connectE2EE() error {
 	if m.WADevice == nil {
 		isNew = true
 		m.WADevice = m.Main.DeviceStore.NewDevice()
-	}
-	if suggested := m.Client.MessengerLite.GetSuggestedDeviceID(); suggested != uuid.Nil {
-		m.WADevice.FacebookUUID = suggested
+		if session := m.LoginMeta.NativeSession; session != nil {
+			m.WADevice.FacebookUUID = session.DeviceID
+		} else if suggested := m.Client.MessengerLite.GetSuggestedDeviceID(); suggested != uuid.Nil {
+			m.WADevice.FacebookUUID = suggested
+		}
 	}
 	m.Client.SetDevice(m.WADevice)
 
@@ -488,7 +522,7 @@ func (m *MetaClient) connectE2EE() error {
 	if m.Main.Config.ProxyE2EE && m.Main.Config.Proxy != "" {
 		m.E2EEClient.SetProxyAddress(m.Main.Config.Proxy)
 	}
-	if bridgev2.PortalEventBuffer == 0 {
+	if m.Main.Bridge.Config.PortalEventBuffer == 0 {
 		m.E2EEClient.SynchronousAck = true
 		m.E2EEClient.EnableDecryptedEventBuffer = true
 	}

@@ -91,10 +91,13 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 }
 
 func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {
-	return len(xma.CTAButtons) == 1 && strings.HasPrefix(xma.CTAButtons[0].ActionURL, "https://api.whatsapp.com/send")
+	return xma != nil && len(xma.CTAButtons) == 1 && strings.HasPrefix(xma.CTAButtons[0].ActionURL, "https://api.whatsapp.com/send")
 }
 
 func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent) *bridgev2.ConvertedMessagePart {
+	if xma == nil {
+		return nil
+	}
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
 	captionPart := mc.wrapXMACaption(ctx, xma)
 	if previewPart == nil {

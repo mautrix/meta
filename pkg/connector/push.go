@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
@@ -33,6 +32,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -45,17 +45,26 @@ var pushCfg = &bridgev2.PushConfig{
 	Web: &bridgev2.WebPushConfig{VapidKey: "BIBn3E_rWTci8Xn6P9Xj3btShT85Wdtne0LtwNUyRQ5XjFNkuTq9j4MPAVLvAFhXrUU1A9UxyxBA7YIOjqDIDHI"},
 }
 
+var nativePushCfg = &bridgev2.PushConfig{
+	FCM: &bridgev2.FCMPushConfig{SenderID: "622912139302"},
+}
+
 func (m *MetaClient) GetPushConfigs() *bridgev2.PushConfig {
+	if session := m.LoginMeta.NativeSession; session != nil && session.AccessToken != "" && session.AppID == useragent.MessengerLiteAndroidAppID {
+		return nativePushCfg
+	}
 	return pushCfg
 }
 
-type DoubleToken struct {
-	Unencrypted string `json:"unencrypted"`
-	Encrypted   string `json:"encrypted"`
-}
-
 func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
-	if pushType != bridgev2.PushTypeWeb {
+	m.pushRegistrationLock.Lock()
+	defer m.pushRegistrationLock.Unlock()
+	if token == "" {
+		return errors.New("empty push token")
+	}
+	if pushType == bridgev2.PushTypeFCM {
+		return m.registerNativePush(ctx, token)
+	} else if pushType != bridgev2.PushTypeWeb {
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
 	meta := m.UserLogin.Metadata.(*metaid.UserLoginMetadata)
@@ -69,26 +78,6 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 	keys := messagix.PushKeys{
 		P256DH: meta.PushKeys.P256DH,
 		Auth:   meta.PushKeys.Auth,
-	}
-	var encToken string
-	if token[0] == '{' && token[len(token)-1] == '}' {
-		var dt DoubleToken
-		err := json.Unmarshal([]byte(token), &dt)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal double token: %w", err)
-		}
-		token = dt.Unencrypted
-		encToken = dt.Encrypted
-	}
-	if encToken != "" {
-		err := m.E2EEClient.RegisterForPushNotifications(ctx, &whatsmeow.WebPushConfig{
-			Endpoint: encToken,
-			Auth:     meta.PushKeys.Auth,
-			P256DH:   meta.PushKeys.P256DH,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to register e2ee notifications: %w", err)
-		}
 	}
 	cli := m.Client
 	if cli == nil {
@@ -105,6 +94,43 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 	return err
 }
 
+func (m *MetaClient) registerNativePush(ctx context.Context, token string) error {
+	if m.Client == nil || m.LoginMeta.NativeSession == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
+	if err := m.e2eeConnectWaiter.WaitTimeoutCtx(ctx, ConnectWaitTimeout); err != nil {
+		return fmt.Errorf("waiting for encrypted push connection: %w", err)
+	}
+	client := m.Client
+	e2eeClient := m.E2EEClient
+	device := m.WADevice
+	if client == nil || e2eeClient == nil || !e2eeClient.IsLoggedIn() || device == nil {
+		return ErrNotConnected
+	}
+	session := m.LoginMeta.NativeSession
+	if device.FacebookUUID != session.DeviceID {
+		return errors.New("native push session does not match encrypted device")
+	}
+	if m.LoginMeta.NativePushKeys == nil {
+		keys, err := pushcrypto.NewNativePushKeys(metaid.ParseUserLoginID(m.UserLogin.ID))
+		if err != nil {
+			return fmt.Errorf("failed to generate native push keys: %w", err)
+		}
+		m.LoginMeta.NativePushKeys = keys
+		if err = m.UserLogin.Save(ctx); err != nil {
+			m.LoginMeta.NativePushKeys = nil
+			return fmt.Errorf("failed to save native push keys: %w", err)
+		}
+	}
+	if err := client.Facebook.RegisterNativePushNotifications(ctx, session, token, m.LoginMeta.NativePushKeys); err != nil {
+		return err
+	}
+	if err := e2eeClient.RegisterForPushNotifications(ctx, &messagix.NativePushConfig{AppID: session.AppID, DeviceID: session.DeviceID}); err != nil {
+		return fmt.Errorf("failed to register encrypted native push: %w", err)
+	}
+	return nil
+}
+
 func (m *MetaClient) notifyBackgroundConnAboutEvent(isProcessing bool) {
 	if ch := m.connectBackgroundEvt; ch != nil {
 		select {
@@ -118,17 +144,15 @@ type connectBackgroundEvent struct {
 	isProcessing bool
 }
 
-func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypto.DecryptedPushData, parsed *methods.MetaMessageID) {
+func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcrypto.DecryptedPushData, parsed *methods.MetaMessageID) error {
 	if pd == nil || parsed == nil {
-		return
+		return nil
 	}
 	log := zerolog.Ctx(ctx)
 	msgID := parsed.String()
 	part, err := m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
 	if err != nil {
-		log.Err(err).Str("message_id", msgID).
-			Msg("Failed to look up push message in database")
-		return
+		return fmt.Errorf("failed to look up push message %s: %w", msgID, err)
 	} else if part != nil {
 		log.Debug().
 			Str("message_id", msgID).
@@ -136,7 +160,7 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 			Str("f_param", pd.Params["f"]).
 			Stringer("event_id", part.MXID).
 			Msg("Confirmed push message was bridged")
-		return
+		return nil
 	}
 	threadType := table.ONE_TO_ONE
 	chatID := parsed.ChatID
@@ -160,10 +184,12 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 		LatestMessageTS: parsed.Time,
 	})
 	log.Debug().Any("result", res).Msg("Event handling result for push backfill")
+	if !res.Success {
+		return fmt.Errorf("failed to queue push backfill: %w", res.Error)
+	}
 	part, err = m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, m.UserLogin.ID, metaid.MakeFBMessageID(msgID))
 	if err != nil {
-		log.Err(err).Str("message_id", msgID).
-			Msg("Failed to look up push message in database after backfill")
+		return fmt.Errorf("failed to look up push message %s after backfill: %w", msgID, err)
 	} else if part != nil {
 		log.Debug().
 			Str("message_id", msgID).
@@ -175,12 +201,23 @@ func (m *MetaClient) ensurePushMessageReceived(ctx context.Context, pd *pushcryp
 			Str("message_id", msgID).
 			Msg("Push message still wasn't bridged after backfill")
 	}
+	return nil
 }
 
 func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	log := zerolog.Ctx(ctx)
 	var parsedMsgID *methods.MetaMessageID
-	data, err := m.UserLogin.Metadata.(*metaid.UserLoginMetadata).PushKeys.Decrypt(ctx, params.RawData)
+	var envelope struct {
+		PIM  string `json:"pim"`
+		Data struct {
+			PIM string `json:"pim"`
+		} `json:"data"`
+	}
+	var data *pushcrypto.DecryptedPushData
+	var err error
+	if json.Unmarshal(params.RawData, &envelope) != nil || (envelope.PIM == "" && envelope.Data.PIM == "") {
+		data, err = m.LoginMeta.PushKeys.Decrypt(ctx, params.RawData)
+	}
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
@@ -231,8 +268,10 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to timeout")
-			m.ensurePushMessageReceived(ctx, data, parsedMsgID)
-			return nil
+			if parsedMsgID == nil && m.LoginMeta.Platform.IsMessenger() && !m.connectBackgroundWAOfflineSync.IsSet() {
+				return errors.New("encrypted offline sync did not complete")
+			}
+			return m.ensurePushMessageReceived(ctx, data, parsedMsgID)
 		case <-ctx.Done():
 			log.Debug().
 				Bool("fb_tables_received", anythingReceived).
@@ -240,7 +279,7 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 				Bool("wa_queue_empty", waDone).
 				Int("wa_message_count", waCount).
 				Msg("Closing background connection due to cancellation")
-			return nil
+			return ctx.Err()
 		case <-waOfflineSyncChan:
 			waOfflineSyncChan = nil
 			waDone = true

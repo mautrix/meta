@@ -63,3 +63,13 @@ func (t *SearchUserTask) Create() (any, string) {
 	}
 	return t, fmt.Sprintf(`["search_primary",%d]`, time.Now().UnixMilli())
 }
+
+type SetUserBlockStatusTask struct {
+	BlockeeID            int64  `json:"blockee_id"`
+	RequestID            string `json:"request_id"`
+	IsMessengerNoteBlock bool   `json:"is_messenger_note_block"`
+	UserBlockAction      int    `json:"user_block_action"`
+}
+
+func (t *SetUserBlockStatusTask) GetLabel() string      { return "334" }
+func (t *SetUserBlockStatusTask) Create() (any, string) { return t, "native_sync_block" }

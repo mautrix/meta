@@ -2,7 +2,6 @@ package httpclient
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -56,9 +55,10 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 	headers.Set("x-fb-client-ip", "True")
 	headers.Set("x-fb-server-cluster", "True")
 
+	var clientAppID string
 	switch c.GetPlatform() {
 	case types.MessengerLiteIOS:
-		appID = useragent.MessengerLiteIOSAppID
+		clientAppID = useragent.MessengerLiteIOSAppID
 		payload.Purpose = "fetch"
 		payload.EnableCanonicalNaming = "true"
 		payload.EnableCanonicalVariableOverrides = "true"
@@ -82,7 +82,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		//
 		// headers.Set("accept-encoding", "zstd")
 	case types.MessengerLiteAndroid:
-		appID = useragent.MessengerLiteAndroidAppID
+		clientAppID = useragent.MessengerLiteAndroidAppID
 		payload.FbAPICallerClass = "graphservice"
 		payload.FbAPIClientContext = `{"is_background":false}`
 		payload.FbAPIAnalyticsTags = `["GraphServices"]`
@@ -118,7 +118,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		return nil, fmt.Errorf("platform %s does not support bloks", c.GetPlatform().String())
 	}
 
-	analyticsTags, err := MakeRequestAnalyticsHeader(appID)
+	analyticsTags, err := MakeRequestAnalyticsHeader(clientAppID)
 	if err != nil {
 		return nil, err
 	}
@@ -180,29 +180,10 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
 	}
 
-	if c.LogRedactedBloksPayloads {
-		var redactedRespInner bloks.BloksBundle
-		err = json.Unmarshal([]byte(innerData), &redactedRespInner)
-		if err != nil {
-			return nil, fmt.Errorf("second time parsing inner bloks payload: %w", err)
+	if c.LogRedactedLoginResponses {
+		if err = bloks.LogRedactedBundle(c.log, appID, []byte(innerData)); err != nil {
+			return nil, err
 		}
-		redactedRespInner.Redact()
-		redacted, err := json.Marshal(redactedRespInner)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling redacted bloks payload: %w", err)
-		}
-		compressed := bytes.Buffer{}
-		compressor := gzip.NewWriter(&compressed)
-		_, err = compressor.Write(redacted)
-		if err != nil {
-			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
-		}
-		err = compressor.Close()
-		if err != nil {
-			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
-		}
-		enc := base64.StdEncoding.AppendEncode(nil, compressed.Bytes())
-		c.log.Debug().Str("bloks_app", appID).Bytes("resp_gz", enc).Msg("Logging redacted Bloks response")
 	}
 
 	return &respInner, nil

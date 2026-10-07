@@ -46,8 +46,8 @@ const (
 )
 
 var FBRequiredCookies = []MetaCookieName{FBCookieXS, FBCookieCUser, MetaCookieDatr}
-var IGRequiredCookies = []MetaCookieName{IGCookieSessionID, IGCookieCSRFToken, IGCookieDSUserID, IGCookieMachineID, IGCookieDeviceID}
-var IGOptionalCookies = []MetaCookieName{IGCookieRUR, IGCookieSHBID, IGCookieSHBTS}
+var IGRequiredCookies = []MetaCookieName{IGCookieSessionID, IGCookieCSRFToken, IGCookieDSUserID}
+var IGOptionalCookies = []MetaCookieName{IGCookieRUR, IGCookieSHBID, IGCookieSHBTS, IGCookieMachineID, IGCookieDeviceID}
 
 type Cookies struct {
 	Platform types.Platform
@@ -188,7 +188,7 @@ func (c *Cookies) UpdateFromResponse(r *http.Response) {
 	}
 	now := time.Now()
 	for _, cookie := range r.Cookies() {
-		if cookie.MaxAge < 0 || (!cookie.Expires.IsZero() && cookie.Expires.Before(now)) {
+		if cookie.MaxAge < 0 || (cookie.MaxAge == 0 && !cookie.Expires.IsZero() && cookie.Expires.Before(now)) {
 			delete(c.values, MetaCookieName(cookie.Name))
 		} else {
 			c.values[MetaCookieName(cookie.Name)] = cookie.Value

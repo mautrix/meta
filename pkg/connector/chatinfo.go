@@ -245,6 +245,9 @@ func (m *MetaClient) wrapChatInfo(tbl table.ThreadInfo) *bridgev2.ChatInfo {
 		chatInfo.UserLocal = &bridgev2.UserLocalPortalInfo{}
 	}
 	chatInfo.MessageRequest = ptr.Ptr(tbl.GetFolderName() == folderPending)
+	if *chatInfo.Type == database.RoomTypeDM && tbl.GetFolderName() == folderBlocked {
+		chatInfo.UserBlocked = ptr.Ptr(true)
+	}
 	if tbl.GetFolderName() == folderE2EECutover {
 		chatInfo.ExtraUpdates = bridgev2.MergeExtraUpdaters(chatInfo.ExtraUpdates, markPortalAsEncrypted)
 	}
