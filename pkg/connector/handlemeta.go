@@ -388,6 +388,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			},
 		}, changeType)
 	}
+	for _, update := range tbl.LSChangeViewerStatus {
+		updateBlock(update.ThreadKey, update.CannotReplyReason == "blocked", "LSChangeViewerStatus")
+	}
 	for _, update := range tbl.LSUpdateCommunityMemberBlockStatus {
 		updateBlock(update.ContactID, update.IsBlocked, "LSUpdateCommunityMemberBlockStatus")
 	}
