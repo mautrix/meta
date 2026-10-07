@@ -23,6 +23,10 @@ cache_connection_state: true
 disable_xma_backfill: true
 # Disable fetching XMA media entirely.
 disable_xma_always: false
+# Don't bridge the preview image of XMA media at all, only the caption and a link to the original.
+# The disable_xma_* options above only stop the extra requests for the full quality media,
+# the preview is still reuploaded. This drops it too, so nothing is stored on the homeserver.
+suppress_xma: false
 # Should typing notification bridging be disabled?
 # Bridging typing notifications requires 2 extra connections per user (one for receiving and one for sending),
 # because Meta only employs professional software engineers who make excellent architecture decisions.

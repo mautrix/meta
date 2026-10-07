@@ -139,7 +139,11 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
-	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
 		return "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 	var respData respGetProxy
@@ -541,7 +545,7 @@ func (m *MetaClient) saveConnectionState(ctx context.Context, state json.RawMess
 	}
 	m.lastStateSaveLock.Unlock()
 	if state == nil {
-		if !ratelimited {
+		if ratelimited {
 			return
 		}
 		state, _ = m.Client.DumpState()

@@ -17,6 +17,7 @@
 package msgconv
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -34,6 +35,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
@@ -152,7 +154,9 @@ func (mc *MessageConverter) ToMatrix(
 			urlPreviews = append(urlPreviews, xmaAtt)
 			continue
 		} else if xmaAtt.CTA != nil && strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_") {
-			// Skip poll metadata entirely for now
+			if pollPart := mc.xmaPollToMatrix(ctx, xmaAtt); pollPart != nil {
+				cm.Parts = append(cm.Parts, pollPart)
+			}
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
@@ -339,6 +343,7 @@ func (mc *MessageConverter) blobAttachmentToMatrix(ctx context.Context, att *tab
 
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
+		mediadl.ParseWaveformString(att.WaveformData),
 		refreshMeta,
 	)
 	if err != nil {
@@ -401,6 +406,7 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), int(duration),
+		nil,
 		refreshMeta,
 	)
 	if err != nil {
@@ -426,7 +432,7 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 	// Stickers don't typically expire, so no refresh metadata needed
 	converted, err := mc.reuploadAttachment(
 		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, stickerSize, stickerSize, 0,
-		nil,
+		nil, nil,
 	)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")
@@ -490,7 +496,7 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 		// URL previews don't typically need refresh metadata
 		converted, err := mc.reuploadAttachment(
 			ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, 0, int(att.PreviewWidth), int(att.PreviewHeight), 0,
-			nil,
+			nil, nil,
 		)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload URL preview image")
@@ -503,6 +509,70 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 		}
 	}
 	return preview
+}
+
+type xmaPollOption struct {
+	Text       string
+	VoteCount  int64
+	Percentage int64
+}
+
+func (opt xmaPollOption) FormatVotes() string {
+	switch {
+	case opt.VoteCount == 1:
+		return " (1 vote)"
+	case opt.VoteCount > 1:
+		return fmt.Sprintf(" (%d votes)", opt.VoteCount)
+	case opt.Percentage > 0:
+		return fmt.Sprintf(" (%d%%)", opt.Percentage)
+	default:
+		return ""
+	}
+}
+
+// The XMA attachment of a poll only carries the first few options, the rest are behind
+// a "see all" button in the Messenger client.
+func xmaPollOptions(att *table.LSInsertXmaAttachment) []xmaPollOption {
+	all := []xmaPollOption{
+		{att.ListItemTitleText1, att.ListItemTotalCount1, att.ListItemProgressBarFilledPercentage1},
+		{att.ListItemTitleText2, att.ListItemTotalCount2, att.ListItemProgressBarFilledPercentage2},
+		{att.ListItemTitleText3, att.ListItemTotalCount3, att.ListItemProgressBarFilledPercentage3},
+	}
+	options := make([]xmaPollOption, 0, len(all))
+	for _, opt := range all {
+		if opt.Text != "" {
+			options = append(options, opt)
+		}
+	}
+	return options
+}
+
+// xmaPollToMatrix renders a poll as a text message. Polls can't be bridged as real
+// Matrix polls, because bridgev2 has no way for a network connector to send poll
+// events, but the attachment has the question and the options with their vote counts,
+// so the message is at least readable instead of being dropped entirely.
+func (mc *MessageConverter) xmaPollToMatrix(ctx context.Context, att *table.WrappedXMA) *bridgev2.ConvertedMessagePart {
+	question := cmp.Or(att.TitleText, att.ListItemsDescriptionText)
+	options := xmaPollOptions(att.LSInsertXmaAttachment)
+	if question == "" && len(options) == 0 {
+		zerolog.Ctx(ctx).Debug().Msg("Not bridging poll attachment with no question nor options")
+		return nil
+	}
+	var body strings.Builder
+	if question != "" {
+		fmt.Fprintf(&body, "<strong>%s</strong>", html.EscapeString(question))
+	}
+	if len(options) > 0 {
+		body.WriteString("<ul>")
+		for _, opt := range options {
+			fmt.Fprintf(&body, "<li>%s%s</li>", html.EscapeString(opt.Text), opt.FormatVotes())
+		}
+		body.WriteString("</ul>")
+	}
+	return &bridgev2.ConvertedMessagePart{
+		Type:    event.EventMessage,
+		Content: ptr.Ptr(format.HTMLToContent(body.String())),
+	}
 }
 
 func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) []*bridgev2.ConvertedMessagePart {
@@ -525,7 +595,7 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	// This is minimal conversion; fetchFullXMA will enhance with proper refresh metadata
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), 0,
-		nil,
+		nil, nil,
 	)
 	if errors.Is(err, mediadl.ErrURLNotFound) && att.TitleText != "" {
 		return []*bridgev2.ConvertedMessagePart{{
@@ -557,6 +627,7 @@ func (mc *MessageConverter) reuploadAttachment(
 	ctx context.Context, attachmentType table.AttachmentType,
 	url, fileName, mimeType string,
 	fileSize, width, height, duration int,
+	waveform []int,
 	refreshMeta *mediadl.MediaRefreshMeta,
 ) (*bridgev2.ConvertedMessagePart, error) {
 	return mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
@@ -568,6 +639,7 @@ func (mc *MessageConverter) reuploadAttachment(
 		Width:          width,
 		Height:         height,
 		Duration:       duration,
+		Waveform:       waveform,
 		RefreshMeta:    refreshMeta,
 		DirectMedia:    mc.DirectMedia,
 		MaxFileSize:    mc.MaxFileSize,

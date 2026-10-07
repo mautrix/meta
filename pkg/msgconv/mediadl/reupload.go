@@ -86,6 +86,7 @@ type ReuploadParams struct {
 	Width    int
 	Height   int
 	Duration int
+	Waveform []int
 
 	PreviewWidth  int
 	PreviewHeight int
@@ -156,7 +157,7 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 			content.MSC3245Voice = &event.MSC3245Voice{}
 			content.MSC1767Audio = &event.MSC1767Audio{
 				Duration: params.Duration,
-				Waveform: []int{},
+				Waveform: params.Waveform,
 			}
 		default:
 			switch strings.Split(params.MimeType, "/")[0] {

@@ -143,6 +143,7 @@ func (m *MetaClient) parseAndQueueTable(ctx context.Context, tbl *table.LSTable,
 	}
 	if ctx.Err() != nil {
 		zerolog.Ctx(ctx).Warn().Err(ctx.Err()).Msg("Not dispatching parsed table, context is canceled")
+		return
 	}
 	select {
 	case m.parsedTables <- wrapped:
