@@ -52,6 +52,7 @@ var (
 	_ bridgev2.TagHandlingNetworkAPI             = (*IGClient)(nil)
 	_ bridgev2.RoomNameHandlingNetworkAPI        = (*IGClient)(nil)
 	_ bridgev2.RoomAvatarHandlingNetworkAPI      = (*IGClient)(nil)
+	_ bridgev2.UserBlockingNetworkAPI            = (*IGClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*IGConnector)(nil)
@@ -355,7 +356,17 @@ func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.M
 	} else if err != nil {
 		return err
 	}
-
+	if chat.Portal.RoomType != database.RoomTypeDM {
+		memberInfo, err := ic.Main.Bridge.Matrix.GetMemberInfo(ctx, chat.Portal.MXID, ic.UserLogin.UserMXID)
+		if err != nil {
+			return fmt.Errorf("failed to get own member info: %w", err)
+		} else if memberInfo.Membership == event.MembershipJoin {
+			_, err = ic.Client.LeaveGroup(ctx, &slidetypes.LeaveThreadRequest{ThreadID: meta.IGID})
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to leave group on delete chat request")
+			}
+		}
+	}
 	_, err = ic.Client.DeleteThread(ctx, &slidetypes.DeleteThreadRequest{
 		ThreadID:   meta.IGID,
 		MarkAsSpam: false,
@@ -505,4 +516,25 @@ func (ic *IGClient) HandleRoomTag(ctx context.Context, msg *bridgev2.MatrixRoomT
 		Pin:      pinned,
 	})
 	return err
+}
+
+func (ic *IGClient) HandleMatrixBlockUser(ctx context.Context, msg *bridgev2.MatrixBlockUser) error {
+	if ic.Client == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
+	if msg.Content.ReportSpam {
+		return fmt.Errorf("spam reporting is not supported")
+	}
+	userID := metaid.ParseUserID(msg.Portal.OtherUserID)
+	if userID == 0 {
+		return fmt.Errorf("DM recipient is unknown")
+	}
+	igid, err := ic.Main.DB.GetIGUserForFBID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if igid == "" {
+		return fmt.Errorf("recipient Instagram ID is unknown")
+	}
+	return ic.Client.SetUserBlocked(ctx, igid, msg.Content.Block)
 }

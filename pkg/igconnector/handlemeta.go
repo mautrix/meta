@@ -18,12 +18,12 @@ package igconnector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strconv"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -32,6 +32,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -40,8 +41,10 @@ import (
 const (
 	DGWConnectionError        status.BridgeStateErrorCode = "ig-dgw-connection-error"
 	DGWConnectionUnauthorized status.BridgeStateErrorCode = "dgw-connection-unauthorized"
+	DGWMainStreamClosed       status.BridgeStateErrorCode = "dgw-main-stream-closed"
 	MetaCookieRemoved         status.BridgeStateErrorCode = "meta-cookie-removed"
 	MetaUserIDIsZero          status.BridgeStateErrorCode = "meta-user-id-is-zero"
+	NativeIGMissingUserID     status.BridgeStateErrorCode = "ig-connect-missing-user-id"
 	MetaRedirectedToLoginPage status.BridgeStateErrorCode = "meta-redirected-to-login"
 	MetaNotLoggedIn           status.BridgeStateErrorCode = "meta-not-logged-in"
 	MetaConnectError          status.BridgeStateErrorCode = "meta-connect-error"
@@ -57,11 +60,13 @@ const (
 func init() {
 	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
 		DGWConnectionError:        "Disconnected from server, trying to reconnect",
+		DGWMainStreamClosed:       "Unexpected repeated error connecting to Instagram server",
 		DGWConnectionUnauthorized: "Logged out, please relogin to continue",
 		MetaCookieRemoved:         "Logged out, please relogin to continue",
 		MetaUserIDIsZero:          "Logged out, please relogin to continue",
 		MetaRedirectedToLoginPage: "Logged out, please relogin to continue",
 		MetaNotLoggedIn:           "Logged out, please relogin to continue",
+		NativeIGMissingUserID:     "Logged out, please relogin to continue",
 		IGAccountSuspended:        "Logged out, please check the Instagram website to continue",
 		IGChallengeRequired:       "Challenge required, please check the Instagram website to continue",
 		IGConsentRequired:         "Consent required, please check the Instagram website to continue",
@@ -82,7 +87,7 @@ func (ic *IGClient) doWaitMailboxProcessed(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	return nil
+	return ctx.Err()
 }
 
 func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientEvent) error {
@@ -93,8 +98,9 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
-				_ = ic.doWaitMailboxProcessed(ctx)
-				ic.caughtUp.Set()
+				if ic.doWaitMailboxProcessed(ctx) == nil {
+					ic.caughtUp.Set()
+				}
 			}()
 		} else {
 			ic.catchingUpTo = evt.LatestSeqID
@@ -107,12 +113,22 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		stateEvt := status.StateTransientDisconnect
 		errCode := DGWConnectionError
 		var retErr error
-		if websocket.CloseStatus(evt.Error) == dgw.CloseStatusUnauthorized {
+		if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
 			// TODO do full reconnect instead of this?
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized
+			if errors.Is(evt.Error, instameow.ErrUserIDMissing) {
+				errCode = NativeIGMissingUserID
+			}
 			retErr = fmt.Errorf("connection unauthorized; stop reconnects")
 			ic.permanentErrored.Store(true)
+			ic.cancelPeriodicReconnect()
+		} else if evt.FailureCount > 5 && errors.Is(evt.Error, instameow.ErrMainStreamClosed) {
+			stateEvt = status.StateUnknownError
+			errCode = DGWMainStreamClosed
+			retErr = fmt.Errorf("main stream closed too many times; stop reconnects")
+			ic.permanentErrored.Store(true)
+			ic.cancelPeriodicReconnect()
 		}
 		ic.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: stateEvt,
@@ -131,7 +147,9 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		}
 		return nil
 	case *slidetypes.SeqIDUpdate:
-		_ = ic.doWaitMailboxProcessed(ctx)
+		if err := ic.doWaitMailboxProcessed(ctx); err != nil {
+			return err
+		}
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, evt.SeqID, evt.Timestamp)
 		if err != nil {
 			return err
@@ -143,8 +161,9 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	case *slidetypes.ReconnectionStateUpdate:
 		return ic.Main.DB.PutReconnectionState(ctx, ic.UserLogin.ID, evt.State)
 	case *slidetypes.ResnapshotRequired:
+		ic.cancelPeriodicReconnect()
 		_ = ic.doWaitMailboxProcessed(ctx)
-		go ic.FullReconnect(true)
+		go ic.FullReconnect(true, false)
 		return nil
 	case *slidetypes.Delta:
 		if err := ic.doWaitMailboxProcessed(ctx); err != nil {
@@ -158,7 +177,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	}
 }
 
-func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool) *simplevent.ChatResync {
+func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool, source string) *simplevent.ChatResync {
 	var bundle any
 	// Fetching the entire inbox only returns stub messages which can't be used safely for backfilling.
 	// Let FetchMessages fetch the full thread info in such cases (which happens after checking if backfill is needed).
@@ -170,6 +189,9 @@ func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool
 			Type:         bridgev2.RemoteEventChatResync,
 			PortalKey:    ic.makePortalKey(thread.ThreadKey, thread.IsGroup),
 			CreatePortal: true,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str("resync_source", source)
+			},
 		},
 		ChatInfo:            ic.wrapChatInfo(thread),
 		LatestMessageTS:     thread.LastActivityTimestampMS.Time,
@@ -177,10 +199,16 @@ func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool
 	}
 }
 
-func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (networkid.PortalKey, error) {
+func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID, source string) (networkid.PortalKey, error) {
+	zerolog.Ctx(ctx).Debug().Str("thread_igid", threadIGID).Msg("Fetching and resyncing thread")
 	resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(threadIGID))
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to get thread info for %s: %w", threadIGID, err)
+	} else if resp.ThreadInfo.AsIGDirectThread == nil {
+		zerolog.Ctx(ctx).Debug().
+			Str("thread_igid", threadIGID).
+			Msg("No thread info received for portal resync")
+		return networkid.PortalKey{}, nil
 	}
 	zerolog.Ctx(ctx).Trace().
 		Any("thread_resp", resp.ThreadInfo.AsIGDirectThread).
@@ -190,7 +218,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 	if err != nil {
 		return networkid.PortalKey{}, fmt.Errorf("failed to save FBID for IG thread %s: %w", threadIGID, err)
 	}
-	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread, true)
+	evt := ic.wrapChatResync(resp.ThreadInfo.AsIGDirectThread, true, source)
 	res := ic.UserLogin.QueueRemoteEvent(evt)
 	if !res.Success {
 		return evt.PortalKey, res.Error
@@ -198,7 +226,7 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID string) (
 	return evt.PortalKey, nil
 }
 
-func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool) (networkid.PortalKey, bool, error) {
+func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool, source string) (networkid.PortalKey, bool, error) {
 	if threadIGID == "" {
 		return networkid.PortalKey{}, false, nil
 	} else if fbid, err := ic.Main.DB.GetFBIDForIGChat(ctx, threadIGID, ic.UserLogin.ID); err != nil {
@@ -215,11 +243,16 @@ func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCr
 	if !allowCreate {
 		return networkid.PortalKey{}, false, nil
 	}
-	key, err := ic.getAndResyncThread(ctx, threadIGID)
+	key, err := ic.getAndResyncThread(ctx, threadIGID, source)
 	return key, true, err
 }
 
-func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error {
+func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retErr error) {
+	log := zerolog.Ctx(ctx).With().
+		Str("delta_type", d.TypeName).
+		Str("thread_fbid", d.ThreadIGID).
+		Logger()
+	ctx = log.WithContext(ctx)
 	defer func() {
 		v := recover()
 		if v != nil {
@@ -227,8 +260,9 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 			if !ok {
 				err = fmt.Errorf("%v", v)
 			}
+			retErr = err
 			stack := debug.Stack()
-			zerolog.Ctx(ctx).Err(err).
+			log.Err(err).
 				Bytes(zerolog.ErrorStackFieldName, stack).
 				Msg("Panic in delta handler")
 			ic.UserLogin.TrackAnalytics("Bridge Event Handler Panic", map[string]any{
@@ -238,7 +272,6 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 			})
 		}
 	}()
-	log := zerolog.Ctx(ctx)
 	log.Trace().
 		Type("event_struct", d.Data).
 		RawJSON("event_data", d.Raw).
@@ -249,6 +282,8 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
 		*slidetypes.ParticipantLeaveEvent:
 		allowCreate = false
+	case *slidetypes.PinThreadEvent:
+		allowCreate = evt.IsPinned
 	case *slidetypes.NewMessageEvent:
 		// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
 		// so extract it from the message for finding the portal.
@@ -265,14 +300,11 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 		}
 	}
 
-	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate)
+	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate, fmt.Sprintf("delta %s", d.TypeName))
 	if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	} else if portalKey.IsEmpty() {
-		log.Warn().
-			Str("typename", d.TypeName).
-			Str("thread_fbid", d.ThreadIGID).
-			Msg("Ignoring event with no portal")
+		log.Warn().Msg("Ignoring event with no portal")
 		return nil
 	}
 
@@ -307,7 +339,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	case *slidetypes.AdminChangeEvent:
 		// The event shape isn't great for making a chat info change event, just resync the chat info entirely
 		if !didResync {
-			_, err = ic.getAndResyncThread(ctx, d.ThreadIGID)
+			_, err = ic.getAndResyncThread(ctx, d.ThreadIGID, "admin change event")
 		}
 		return err
 	case *slidetypes.MarkReadEvent:
@@ -321,15 +353,15 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) error 
 	case *slidetypes.PinMessageEvent:
 		res = ic.handlePinMessages(portalKey, evt)
 	case slidetypes.UnknownEvent:
-		log.Warn().
-			Str("typename", d.TypeName).
-			Str("thread_fbid", d.ThreadIGID).
-			Msg("Unrecognized event type in socket")
+		log.Warn().Msg("Unrecognized event type in socket")
 		return nil
 	default:
 		return fmt.Errorf("unrecognized event type: %T", d.Data)
 	}
 	if !res.Success {
+		if res.Error == nil {
+			return errors.New("failed to handle delta")
+		}
 		return res.Error
 	}
 	return nil
@@ -507,7 +539,7 @@ func (ic *IGClient) handleThreadPin(portalKey networkid.PortalKey, isPinned bool
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatInfoChange,
 			PortalKey:    portalKey,
-			CreatePortal: true,
+			CreatePortal: isPinned,
 		},
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo: &bridgev2.ChatInfo{
@@ -526,16 +558,20 @@ func (ic *IGClient) handleMessageChatInfoChange(
 	members ...bridgev2.ChatMember,
 ) bridgev2.EventHandlingResult {
 	var memberChanges *bridgev2.ChatMemberList
+	meta := ic.makeMessageEventMeta(portalKey, msg, bridgev2.RemoteEventChatInfoChange)
 	if len(members) > 0 {
 		memberChanges = &bridgev2.ChatMemberList{
 			MemberMap: make(bridgev2.ChatMemberMap, len(members)),
 		}
 		for _, m := range members {
 			memberChanges.MemberMap.Add(m)
+			if m.Membership == event.MembershipLeave {
+				meta.CreatePortal = false
+			}
 		}
 	}
 	return ic.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
-		EventMeta: ic.makeMessageEventMeta(portalKey, msg, bridgev2.RemoteEventChatInfoChange),
+		EventMeta: meta,
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo:      change,
 			MemberChanges: memberChanges,

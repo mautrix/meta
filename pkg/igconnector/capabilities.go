@@ -51,10 +51,10 @@ func (ic *IGConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (ic *IGConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 16
+	return 1, 18
 }
 
-const MaxTextLength = 20000
+const MaxTextLength = 1000
 const MaxFileSize = 25 * 1000 * 1000
 const MaxImageSize = 8 * 1000 * 1000
 
@@ -66,7 +66,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.instagram.capabilities.2026_08_24"
+	base := "fi.mau.instagram.capabilities.2026_10_01"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -156,6 +156,7 @@ var igCaps = &event.RoomFeatures{
 }
 
 var igCapsGroup *event.RoomFeatures
+var igCapsSelf *event.RoomFeatures
 
 func init() {
 	igCapsGroup = igCaps.Clone()
@@ -169,10 +170,18 @@ func init() {
 		event.MemberActionInvite: event.CapLevelFullySupported,
 		event.MemberActionKick:   event.CapLevelFullySupported,
 	}
+
+	igCapsSelf = igCaps.Clone()
+	igCapsSelf.ID += "+self"
+
+	igCaps.BlockUser = true
 }
 
 func (ic *IGClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	if portal.RoomType == database.RoomTypeDM {
+		if ic.IsThisUser(ctx, portal.OtherUserID) {
+			return igCapsSelf
+		}
 		return igCaps
 	}
 	return igCapsGroup

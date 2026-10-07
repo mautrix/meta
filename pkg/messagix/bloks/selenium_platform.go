@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"go.mau.fi/mautrix-meta/pkg/loginerrors"
+	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -190,6 +190,9 @@ func (profile browserPlatformProfile) fallbackCodeInput(
 ) *BloksTreeComponent {
 	if profile.isInstagram && input == nil {
 		return page.FindDescendant(FilterByComponent("bk.components.TextInput"))
+	}
+	if input == nil {
+		return page.FindDescendant(FilterByAttribute("bk.components.TextInput", "type", "number"))
 	}
 	return input
 }

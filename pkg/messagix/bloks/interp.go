@@ -25,6 +25,7 @@ type InterpBridge struct {
 	FamilyDeviceID         string
 	AndroidDeviceID        string
 	MachineID              string
+	GetMachineID           func() string
 	EncryptPassword        func(context.Context, string) (string, error)
 	GetEncryptedMSISDN     func(context.Context, string, bool) (string, error)
 	SignRequestData        func(context.Context, any) (any, error)
@@ -625,6 +626,28 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return i.Evaluate(ctx, &call.Args[1])
 		}
 		return i.Evaluate(ctx, &call.Args[2])
+	case "bk.action.core.While":
+		// Both bodies run in the caller's arg frame: the loop state lives in SetArg slots.
+		cond, err := unwrapLazyBloksBody(&call.Args[0], "core.while cond")
+		if err != nil {
+			return nil, err
+		}
+		body, err := unwrapLazyBloksBody(&call.Args[1], "core.while body")
+		if err != nil {
+			return nil, err
+		}
+		for {
+			keepGoing, err := i.Evaluate(ctx, cond)
+			if err != nil {
+				return nil, err
+			}
+			if !keepGoing.IsTruthy() {
+				return BloksNothing, nil
+			}
+			if _, err = i.Evaluate(ctx, body); err != nil {
+				return nil, err
+			}
+		}
 	case "bk.action.bool.Or", "bk.action.core.Coalesce":
 		first, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
@@ -753,6 +776,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		if err != nil {
 			return nil, err
 		}
+		if ambientArgs[idx] == nil {
+			return BloksNull, nil
+		}
 		return ambientArgs[idx], nil
 	case "bk.action.core.SetArg":
 		idx, err := evalAs[int64](ctx, i, &call.Args[0], "setarg")
@@ -799,11 +825,24 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "bk.action.f32.Const":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.f32.Add":
-		first, err := evalFloat(ctx, i, &call.Args[0], "add lhs")
+		lhs, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
 			return nil, err
 		}
-		second, err := evalFloat(ctx, i, &call.Args[1], "add rhs")
+		rhs, err := i.Evaluate(ctx, &call.Args[1])
+		if err != nil {
+			return nil, err
+		}
+		lhsInt, lhsIsInt := lhs.Value().(int64)
+		rhsInt, rhsIsInt := rhs.Value().(int64)
+		if lhsIsInt && rhsIsInt {
+			return BloksLiteralOf(lhsInt + rhsInt), nil
+		}
+		first, err := castFloat(lhs, "add lhs")
+		if err != nil {
+			return nil, err
+		}
+		second, err := castFloat(rhs, "add rhs")
 		if err != nil {
 			return nil, err
 		}
@@ -920,6 +959,9 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 	case "bk.fx.action.GetFamilyDeviceId":
 		return BloksLiteralOf(i.Bridge.FamilyDeviceID), nil
 	case "bk.action.caa.FetchMachineID":
+		if i.Bridge.GetMachineID != nil {
+			return BloksLiteralOf(i.Bridge.GetMachineID()), nil
+		}
 		return BloksLiteralOf(i.Bridge.MachineID), nil
 	case "bk.action.string.EncryptPassword":
 		pass, err := evalAs[string](ctx, i, &call.Args[0], "encryptpassword")
@@ -1732,10 +1774,18 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.caa.GetSPIEligibility":
 		return BloksNull, nil
 	case "bk.action.core.Delay":
-		// First argument is time delay in milliseconds. It seems to be for
-		// triggering asynchronous execution. I really hope we can get away
-		// without actually doing that.
-		return i.Evaluate(ctx, &call.Args[1])
+		// The first argument is the delay in milliseconds. The interpreter is
+		// synchronous, so ignore the duration, but still invoke the callback.
+		callback, err := evalAs[*BloksLambda](ctx, i, &call.Args[1], "delay")
+		if err != nil {
+			return nil, err
+		}
+		return i.Evaluate(ctx, &BloksScriptNode{
+			Content: &BloksScriptFuncall{
+				Function: "bk.action.core.Apply",
+				Args:     []BloksScriptNode{{Content: BloksLiteralOf(callback)}},
+			},
+		})
 	case "bk.action.i64.Convert":
 		arg, err := i.Evaluate(ctx, &call.Args[0])
 		if err != nil {
@@ -1763,6 +1813,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.bloks.FetchAsyncComponents",
 		"bk.action.qpl.MarkerPoint",
 		"bk.action.qpl.MarkerEndV2",
+		"bk.action.qpl.MarkerDrop",
 		"bk.action.bloks.DismissKeyboard",
 		"bk.action.accessibility.Announcement",
 		"bk.action.toast.ShowToastV2",
@@ -1770,6 +1821,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.qpl.userflow.MarkPointV2",
 		"bk.action.qpl.userflow.EndFlowSuccessV2",
 		"bk.action.qpl.userflow.AnnotateV2",
+		"bk.action.qpl.userflow.StartFlowV2",
+		"bk.action.qpl.userflow.StartFlowV2IfNotOngoing",
+		"bk.action.qpl.userflow.EndFlowCancelV2",
+		"bk.action.qpl.userflow.EndFlowFailureV2",
+		"bk.action.qpl.userflow.MarkErrorV2",
 		"bk.action.logging.LogEventImmediately",
 		"bk.action.text_input.ClearText",
 		"bk.action.caa.reg.SaveCachedInfo",

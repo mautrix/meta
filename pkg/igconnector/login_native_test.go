@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 )
 
@@ -18,22 +17,24 @@ func (*nativeLoginRoundTripper) RoundTrip(*http.Request) (*http.Response, error)
 	return nil, nil
 }
 
-func TestInstagramLoginFlowsExposeNativeFirstAndKeepCookies(t *testing.T) {
+func (*nativeLoginRoundTripper) SetFingerprint(string) {}
+
+func TestInstagramLoginFlowsExposeNativeFirstAndKeepWeb(t *testing.T) {
 	connector := &IGConnector{}
 	flows := connector.GetLoginFlows()
-	if len(flows) != 2 {
-		t.Fatalf("expected two login flows, got %d", len(flows))
+	if len(flows) != 3 {
+		t.Fatalf("expected three login flows, got %d", len(flows))
 	}
-	if flows[0].ID != FlowIDInstagramPassword {
+	if flows[0].ID != FlowIDAndroidNative {
 		t.Fatalf("expected native flow first, got %q", flows[0].ID)
 	}
-	if flows[1].ID != FlowIDInstagramCookies {
-		t.Fatalf("expected cookie fallback second, got %q", flows[1].ID)
+	if flows[1].ID != FlowIDCookies || flows[2].ID != FlowIDWebNative {
+		t.Fatal("expected both web login flows to remain available")
 	}
 	process, err := connector.CreateLogin(
 		context.Background(),
 		&bridgev2.User{},
-		FlowIDInstagramPassword,
+		FlowIDAndroidNative,
 	)
 	if err != nil {
 		t.Fatalf("failed to create native login: %v", err)
@@ -69,21 +70,6 @@ func TestInstagramCookieLoginIncludesOptionalRoutingCookies(t *testing.T) {
 
 func TestInstagramNativeCredentialsStep(t *testing.T) {
 	assertInstagramCredentialsStep(t, instagramCredentialsStep("Enter your credentials"))
-}
-
-func TestInstagramNativeWebTwoFactorStep(t *testing.T) {
-	step := instagramWebTwoFactorStep(&instameow.InstagramWebTwoFactorChallenge{TOTP: true}, "")
-	if step == nil ||
-		step.Type != bridgev2.LoginStepTypeUserInput ||
-		step.StepID != LoginStepIDWebTwoFactor ||
-		step.UserInputParams == nil ||
-		len(step.UserInputParams.Fields) != 1 {
-		t.Fatalf("unexpected Instagram web two-factor step: %+v", step)
-	}
-	field := step.UserInputParams.Fields[0]
-	if field.ID != loginFieldWebTwoFactorCode || field.Type != bridgev2.LoginInputFieldType2FACode {
-		t.Fatalf("unexpected Instagram web two-factor field: %+v", field)
-	}
 }
 
 func TestInstagramNativeLoginUsesClientHTTPTransport(t *testing.T) {

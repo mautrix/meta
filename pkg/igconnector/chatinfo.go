@@ -74,23 +74,31 @@ func (ic *IGClient) updateGhostIGID(username, igid string, fbid int64) bridgev2.
 }
 
 func (ic *IGClient) wrapUserInfo(info *slidetypes.User) *bridgev2.UserInfo {
+	var identifiers []string
+	if info.Username != "" {
+		identifiers = []string{fmt.Sprintf("instagram:%s", info.Username)}
+	}
 	return &bridgev2.UserInfo{
-		Identifiers: []string{fmt.Sprintf("instagram:%s", info.Username)},
-		Name: ptr.Ptr(ic.Main.Config.FormatDisplayname(DisplaynameParams{
+		Identifiers: identifiers,
+		Name: new(ic.Main.Config.FormatDisplayname(DisplaynameParams{
 			DisplayName: info.FullName,
 			Username:    info.Username,
 			ID:          info.InteropMessagingUserFBID,
 		})),
 		Avatar:       wrapAvatar(info.ProfilePicURL),
-		IsBot:        ptr.Ptr(info.AIAgentType != ""),
+		IsBot:        new(info.AIAgentType != ""),
 		ExtraUpdates: ic.updateGhostIGID(info.Username, info.ID, info.InteropMessagingUserFBID),
 	}
 }
 
 func (ic *IGClient) wrapSearchResultInfo(info *slidetypes.SearchResult) *bridgev2.UserInfo {
+	var identifiers []string
+	if info.Username != "" {
+		identifiers = []string{fmt.Sprintf("instagram:%s", info.Username)}
+	}
 	return &bridgev2.UserInfo{
-		Identifiers: []string{fmt.Sprintf("instagram:%s", info.Username)},
-		Name: ptr.Ptr(ic.Main.Config.FormatDisplayname(DisplaynameParams{
+		Identifiers: identifiers,
+		Name: new(ic.Main.Config.FormatDisplayname(DisplaynameParams{
 			DisplayName: info.FullName,
 			Username:    info.Username,
 			ID:          info.InteropMessagingUserFBID,
@@ -236,12 +244,17 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 		members.OtherUserID = metaid.MakeUserID(info.ThreadKey)
 		members.MemberMap = makeNoteToSelfMembers(members.OtherUserID, ic.wrapUserInfo(info.Viewer))
 	}
+	var blocked *bool
+	if roomType == database.RoomTypeDM && len(info.Users) == 1 {
+		blocked = info.Users[0].FriendshipStatus.Blocking
+	}
 	return &bridgev2.ChatInfo{
-		Name:      name,
-		Avatar:    avatar,
-		Members:   members,
-		Type:      &roomType,
-		Disappear: nil, // TODO
+		Name:        name,
+		UserBlocked: blocked,
+		Avatar:      avatar,
+		Members:     members,
+		Type:        &roomType,
+		Disappear:   nil, // TODO
 		UserLocal: &bridgev2.UserLocalPortalInfo{
 			MutedUntil: mutedUntil,
 			Tag:        tag,

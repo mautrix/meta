@@ -77,6 +77,7 @@ func PreprocessJSObject(s string) string {
 
 func NeedUpdateSyncGroups(data *table.LSTable) bool {
 	return len(data.LSExecuteFirstBlockForSyncTransaction) > 0 ||
+		len(data.LSExecuteFirstBlockForSyncTransactionV4) > 0 ||
 		len(data.LSUpsertSyncGroupThreadsRange) > 0
 }
 

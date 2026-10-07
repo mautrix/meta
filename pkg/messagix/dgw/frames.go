@@ -40,11 +40,12 @@ const (
 type DrainReason uint8
 
 const (
-	DrainReasonELB                DrainReason = 0
-	DrainReasonSLB                DrainReason = 1
-	DrainReasonAppServerPush      DrainReason = 2
-	DrainReasonGracePeriodExpired DrainReason = 3
-	DrainReasonUnknown            DrainReason = 4
+	DrainReasonELB                      DrainReason = 0
+	DrainReasonSLB                      DrainReason = 1
+	DrainReasonAppServerPush            DrainReason = 2
+	DrainReasonGracePeriodExpired       DrainReason = 3
+	DrainReasonUnknown                  DrainReason = 4
+	DrainReasonMaxConnectionAgeExceeded DrainReason = 5
 )
 
 func (dr DrainReason) String() string {
@@ -59,8 +60,52 @@ func (dr DrainReason) String() string {
 		return "GracePeriodExpired"
 	case DrainReasonUnknown:
 		return "Unknown"
+	case DrainReasonMaxConnectionAgeExceeded:
+		return "MaxConnectionAgeExceeded"
 	default:
 		return fmt.Sprintf("DrainReason(%d)", dr)
+	}
+}
+
+type EndOfDataReason byte
+
+const (
+	EndOfDataReasonUnknown                    EndOfDataReason = 0
+	EndOfDataReasonUpstreamTermination        EndOfDataReason = 1
+	EndOfDataReasonClientHasFinishedSending   EndOfDataReason = 2
+	EndOfDataReasonStreamError                EndOfDataReason = 3
+	EndOfDataReasonAuthError                  EndOfDataReason = 4
+	EndOfDataReasonParsingError               EndOfDataReason = 5
+	EndOfDataReasonClientPubackError          EndOfDataReason = 6
+	EndOfDataReasonUpstreamException          EndOfDataReason = 7
+	EndOfDataReasonDraining                   EndOfDataReason = 8
+	EndOfDataReasonEndpointRegistrationFailed EndOfDataReason = 9
+)
+
+func (eodr EndOfDataReason) String() string {
+	switch eodr {
+	case EndOfDataReasonUnknown:
+		return "Unknown"
+	case EndOfDataReasonUpstreamTermination:
+		return "UpstreamTermination"
+	case EndOfDataReasonClientHasFinishedSending:
+		return "ClientHasFinishedSending"
+	case EndOfDataReasonStreamError:
+		return "StreamError"
+	case EndOfDataReasonAuthError:
+		return "AuthError"
+	case EndOfDataReasonParsingError:
+		return "ParsingError"
+	case EndOfDataReasonClientPubackError:
+		return "ClientPubackError"
+	case EndOfDataReasonUpstreamException:
+		return "UpstreamException"
+	case EndOfDataReasonDraining:
+		return "Draining"
+	case EndOfDataReasonEndpointRegistrationFailed:
+		return "EndpointRegistrationFailed"
+	default:
+		return fmt.Sprintf("EndOfDataReason(%d)", eodr)
 	}
 }
 
@@ -80,6 +125,8 @@ const (
 	FrameTypeData                  FrameType = 13
 	FrameTypeEndOfData             FrameType = 14
 	FrameTypeEstabStream           FrameType = 15
+	FrameTypeEndOfDataWithReason   FrameType = 16
+	FrameTypeExtendedData          FrameType = 17
 )
 
 func (ft FrameType) String() string {
@@ -110,6 +157,10 @@ func (ft FrameType) String() string {
 		return "FrameTypeEndOfData"
 	case FrameTypeEstabStream:
 		return "FrameTypeEstabStream"
+	case FrameTypeEndOfDataWithReason:
+		return "FrameTypeEndOfDataWithReason"
+	case FrameTypeExtendedData:
+		return "FrameTypeExtendedData"
 	default:
 		return fmt.Sprintf("FrameType(%d)", ft)
 	}
@@ -127,12 +178,14 @@ func CheckFrameType(b []byte) Frame {
 		return &PongFrame{}
 	case FrameTypeAck:
 		return &AckFrame{}
-	case FrameTypeData:
+	case FrameTypeData, FrameTypeExtendedData:
 		return &DataFrame{}
 	case FrameTypeEstabStream:
 		return &EstablishStreamFrame{}
 	case FrameTypeEndOfData:
 		return &EndOfDataFrame{}
+	case FrameTypeEndOfDataWithReason:
+		return &EndOfDataWithReasonFrame{}
 	default:
 		return &UnsupportedFrame{}
 	}
@@ -147,6 +200,22 @@ type Frame interface {
 	MarshalAppend([]byte) []byte
 	Unmarshal([]byte) ([]byte, error)
 }
+
+type StreamFrame interface {
+	Frame
+	GetStreamID() StreamID
+}
+
+type AnyEndOfDataFrame interface {
+	StreamFrame
+	GetReason() EndOfDataReason
+}
+
+func (f *DataFrame) GetStreamID() StreamID                { return f.StreamID }
+func (f *AckFrame) GetStreamID() StreamID                 { return f.StreamID }
+func (f *EndOfDataFrame) GetStreamID() StreamID           { return f.StreamID }
+func (f *EndOfDataWithReasonFrame) GetStreamID() StreamID { return f.StreamID }
+func (f *EstablishStreamFrame) GetStreamID() StreamID     { return f.StreamID }
 
 type UnsupportedFrame struct {
 	Raw []byte
@@ -265,6 +334,7 @@ type DataFrame struct {
 	Payload     []byte
 	RequiresAck bool
 	AckID       uint16
+	ContentType *byte
 }
 
 func appendUint24LE(b []byte, v uint32) []byte {
@@ -281,17 +351,27 @@ func uint24LE(b []byte) uint32 {
 }
 
 func (f *DataFrame) Length() int {
+	if f.ContentType != nil {
+		return 9 + len(f.Payload)
+	}
 	return 8 + len(f.Payload)
 }
 
 func (f *DataFrame) MarshalAppend(b []byte) []byte {
-	b = append(b, byte(FrameTypeData))
+	frameType := FrameTypeData
+	if f.ContentType != nil {
+		frameType = FrameTypeExtendedData
+	}
+	b = append(b, byte(frameType))
 	b = binary.LittleEndian.AppendUint16(b, uint16(f.StreamID))
-	b = appendUint24LE(b, uint32(len(f.Payload)+2))
+	b = appendUint24LE(b, uint32(f.Length()-6))
 	b = binary.LittleEndian.AppendUint16(b, f.AckID)
 	b[len(b)-1] &= 0b0111_1111
 	if f.RequiresAck {
 		b[len(b)-1] |= 0b1000_0000
+	}
+	if f.ContentType != nil {
+		b = append(b, *f.ContentType)
 	}
 	b = append(b, f.Payload...)
 	return b
@@ -302,14 +382,23 @@ func (f *DataFrame) Unmarshal(b []byte) ([]byte, error) {
 		return nil, fmt.Errorf("input too short for DataFrame")
 	}
 	f.StreamID = StreamID(binary.LittleEndian.Uint16(b[1:3]))
-	payloadLength := uint24LE(b[3:6]) - 2
-	f.AckID = binary.LittleEndian.Uint16(b[6:8]) & 0b0111_1111_1111_1111
-	f.RequiresAck = b[7]&0b1000_0000 > 0
-	if len(b) < int(8+payloadLength) {
+	length := int(uint24LE(b[3:6]))
+	headerSize := 8
+	f.ContentType = nil
+	if FrameType(b[0]) == FrameTypeExtendedData {
+		headerSize = 9
+	}
+	if length < headerSize-6 || len(b) < 6+length {
 		return nil, fmt.Errorf("input too short for DataFrame payload")
 	}
-	f.Payload = b[8 : 8+payloadLength]
-	return b[8+payloadLength:], nil
+	f.AckID = binary.LittleEndian.Uint16(b[6:8]) & 0b0111_1111_1111_1111
+	f.RequiresAck = b[7]&0b1000_0000 > 0
+	if headerSize == 9 {
+		contentType := b[8]
+		f.ContentType = &contentType
+	}
+	f.Payload = b[headerSize : 6+length]
+	return b[6+length:], nil
 }
 
 func (f *DataFrame) String() string {
@@ -358,6 +447,10 @@ type EndOfDataFrame struct {
 	StreamID StreamID
 }
 
+func (f *EndOfDataFrame) GetReason() EndOfDataReason {
+	return EndOfDataReasonUnknown
+}
+
 func (f *EndOfDataFrame) Length() int {
 	return 3
 }
@@ -380,13 +473,51 @@ func (f *EndOfDataFrame) String() string {
 	return fmt.Sprintf("EndOfDataFrame{StreamID: %d}", f.StreamID)
 }
 
+type EndOfDataWithReasonFrame struct {
+	StreamID StreamID
+	Reason   EndOfDataReason
+}
+
+func (f *EndOfDataWithReasonFrame) GetReason() EndOfDataReason {
+	return f.Reason
+}
+
+func (f *EndOfDataWithReasonFrame) Length() int {
+	return 7
+}
+
+func (f *EndOfDataWithReasonFrame) MarshalAppend(b []byte) []byte {
+	b = append(b, byte(FrameTypeEndOfDataWithReason))
+	b = binary.LittleEndian.AppendUint16(b, uint16(f.StreamID))
+	b = appendUint24LE(b, 1)
+	b = append(b, byte(f.Reason))
+	return b
+}
+
+func (f *EndOfDataWithReasonFrame) Unmarshal(bytes []byte) ([]byte, error) {
+	if len(bytes) < 7 {
+		return nil, fmt.Errorf("input too short for EndOfDataWithReasonFrame")
+	}
+	f.StreamID = StreamID(binary.LittleEndian.Uint16(bytes[1:3]))
+	remainingLength := uint24LE(bytes[3:6])
+	if remainingLength < 1 {
+		return nil, fmt.Errorf("unnatural EndOfDataWithReasonFrame")
+	}
+	f.Reason = EndOfDataReason(bytes[6])
+	return bytes[6+remainingLength:], nil
+}
+
+func (f *EndOfDataWithReasonFrame) String() string {
+	return fmt.Sprintf("EndOfDataWithReasonFrame{StreamID: %d, Reason: %d}", f.StreamID, f.Reason)
+}
+
 type EstablishStreamFrame struct {
 	StreamID      StreamID
 	RawParameters json.RawMessage
 }
 
 func (f *EstablishStreamFrame) Length() int {
-	return 5 + len(f.RawParameters)
+	return 6 + len(f.RawParameters)
 }
 
 func (f *EstablishStreamFrame) MarshalAppend(b []byte) []byte {
@@ -417,13 +548,22 @@ func (f *EstablishStreamFrame) String() string {
 	return fmt.Sprintf("OpenFrame{StreamID: %d, Parameters: %s}", f.StreamID, f.RawParameters)
 }
 
-func writeFrames(ctx context.Context, conn *websocket.Conn, frames ...Frame) error {
+func writeFrames(ctx context.Context, conn *connection, frames ...Frame) error {
 	var totalLength int
 	for _, frame := range frames {
 		totalLength += frame.Length()
+		if data, ok := frame.(*DataFrame); ok && conn.extendedData && data.ContentType == nil {
+			totalLength++
+		}
 	}
 	b := make([]byte, 0, totalLength)
 	for _, frame := range frames {
+		if data, ok := frame.(*DataFrame); ok && conn.extendedData {
+			nativeData := *data
+			contentType := byte(0)
+			nativeData.ContentType = &contentType
+			frame = &nativeData
+		}
 		b = frame.MarshalAppend(b)
 	}
 	writeCtx, cancel := context.WithTimeout(ctx, WriteTimeout)

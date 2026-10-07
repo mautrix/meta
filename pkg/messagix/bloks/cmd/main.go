@@ -24,7 +24,6 @@ import (
 
 var filename = flag.String("file", "", "Bloks response to parse")
 var doPrint = flag.Bool("print", false, "Pretty-print the bundle")
-var doRedact = flag.Bool("redact", false, "Pretty-print the bundle but in redacted form")
 var doExport = flag.Bool("export", false, "Print the bundle in a format that can be parsed again")
 var doHTML = flag.Bool("html", false, "Print as HTML")
 var doLogin = flag.Bool("login", false, "Click the login button")
@@ -60,6 +59,7 @@ var appAuth = flag.Bool("app-auth", false, "Send the first-party app authorizati
 var sweepAppIDs = flag.Bool("sweep-app-ids", false, "Try -exchange-token against every known first-party app ID")
 var doRecaptcha = flag.Bool("recaptcha", false, "Extract the recaptcha webview url")
 var doContinue = flag.Bool("continue", false, "Just tap the continue button")
+var doPassword = flag.Bool("password", false, "Fill the password field and click log in (account-recovery password form)")
 
 // Known first-party app IDs, for finding one that the session exchange accepts.
 var knownAppIDs = []struct{ ID, Name string }{
@@ -344,10 +344,6 @@ func mainE() error {
 	if *doPrint {
 		return bundle.Print(os.Stdout, "")
 	}
-	if *doRedact {
-		bundle.Redact()
-		return bundle.Print(os.Stdout, "")
-	}
 	if *doExport {
 		out, err := json.Marshal(bundle)
 		if err != nil {
@@ -454,6 +450,15 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
+	} else if *doPassword {
+		err = fillTextInput("password", "correct horse battery staple")
+		if err != nil {
+			return err
+		}
+		err = tapButton("Log in")
+		if err != nil {
+			return err
+		}
 	} else if *do2FA != "" {
 		codeInput := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 			if comp.ComponentID != "bk.components.TextInput" {
@@ -525,6 +530,7 @@ func mainE() error {
 				"We sent a",
 				"Open the notification",
 				"You need to sign in on",
+				"Check your notifications",
 			} {
 				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
 					return true

@@ -39,10 +39,11 @@ import (
 
 type SocketOptions struct {
 	GetCookies     func() string
-	OnConnect      func(context.Context) error
+	OnConnect      func(context.Context, func(error)) error
 	Origin         string
 	WSURL          string
 	DialOpts       websocket.DialOptions
+	HTTPStream     *HTTPStreamOptions
 	Log            zerolog.Logger
 	Facebook       bool
 	LoggingID      bool
@@ -54,7 +55,7 @@ type SocketOptions struct {
 
 type Socket struct {
 	SocketOptions
-	conn         atomic.Pointer[websocket.Conn]
+	conn         atomic.Pointer[connection]
 	err          atomic.Pointer[error]
 	nextStreamID atomic.Uint64
 	streams      *exsync.Map[StreamID, Stream]
@@ -116,6 +117,7 @@ type StreamInit struct {
 	InitPayload  []byte
 	LogName      string
 	FrameHandler FrameHandler
+	OnClose      func()
 }
 
 func (s *Socket) DoOneOffStream(ctx context.Context, payload []byte, noAckOrData bool) ([]byte, error) {
@@ -167,7 +169,7 @@ func (s *Socket) EstablishStream(ctx context.Context, init StreamInit) (stream *
 	if init.LogName != "" {
 		logWith = logWith.Str("stream_name", init.LogName)
 	}
-	stream = newStream(conn, streamID, init.FrameHandler, logWith.Logger())
+	stream = newStream(conn, streamID, init.FrameHandler, init.OnClose, logWith.Logger())
 	_, replaced := s.streams.Swap(streamID, stream)
 	if replaced {
 		// This should never happen in practice, since it'd require 65535 simultaneous stream creations
@@ -183,6 +185,11 @@ var ErrSocketNotOpen = errors.New("dgw: socket is not open")
 var ErrSocketAlreadyOpen = errors.New("dgw: socket is already open")
 var ErrDial = errors.New("dgw: failed to dial socket")
 var ErrPongTimeout = errors.New("dgw: pong timeout")
+var ErrUnauthorized = errors.New("dgw: unauthorized")
+
+func IsUnauthorized(err error) bool {
+	return errors.Is(err, ErrUnauthorized) || websocket.CloseStatus(err) == CloseStatusUnauthorized
+}
 
 type wrappedDataFrame struct {
 	s Stream
@@ -195,16 +202,24 @@ func (s *Socket) Connect(ctx context.Context) (err error) {
 	} else if s.stopping.Load() {
 		return nil
 	}
-	s.DialOpts.HTTPHeader = s.getConnHeaders()
-
-	conn, resp, err := websocket.Dial(ctx, s.getConnURL(), &s.DialOpts)
-	if err != nil {
-		if resp != nil {
-			return fmt.Errorf("%w: %w (status code %d)", ErrDial, err, resp.StatusCode)
+	var conn *connection
+	if s.HTTPStream != nil {
+		conn, err = newHTTPConnection(ctx, s.HTTPStream)
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf("%w: %w", ErrDial, err)
+	} else {
+		s.DialOpts.HTTPHeader = s.getConnHeaders()
+		wsConn, resp, dialErr := websocket.Dial(ctx, s.getConnURL(), &s.DialOpts)
+		if dialErr != nil {
+			if resp != nil {
+				return fmt.Errorf("%w: %w (status code %d)", ErrDial, dialErr, resp.StatusCode)
+			}
+			return fmt.Errorf("%w: %w", ErrDial, dialErr)
+		}
+		wsConn.SetReadLimit(-1)
+		conn = &connection{connectionTransport: wsConn}
 	}
-	conn.SetReadLimit(-1)
 	s.conn.Store(conn)
 	if s.stopping.Load() {
 		s.conn.Store(nil)
@@ -242,7 +257,7 @@ const PingInterval = 10 * time.Second
 const PongTimeout = 30 * time.Second
 const WriteTimeout = 20 * time.Second
 
-func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
+func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 	done := make(chan struct{})
 	var errorOnce sync.Once
 	var wg sync.WaitGroup
@@ -307,7 +322,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 						return
 					}
 				} else {
-					frame.s.close()
+					frame.s.close(true)
 				}
 			case <-done:
 				return
@@ -352,20 +367,30 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			} else {
 				s.Log.Trace().Any("frame", f).Msg("Received ack frame")
 			}
-		case *EndOfDataFrame:
-			if stream, ok := s.streams.Pop(f.StreamID); !ok {
-				s.Log.Debug().Uint16("stream_id", uint16(f.StreamID)).Msg("Received end of data frame for unknown stream")
+		case AnyEndOfDataFrame:
+			streamID := f.GetStreamID()
+			if stream, ok := s.streams.Pop(streamID); !ok {
+				s.Log.Debug().
+					Uint16("stream_id", uint16(streamID)).
+					Stringer("reason", f.GetReason()).
+					Msg("Received end of data frame for unknown stream")
 			} else {
-				s.Log.Debug().Uint16("stream_id", uint16(f.StreamID)).Msg("Received end of data frame")
+				s.Log.Debug().
+					Uint16("stream_id", uint16(streamID)).
+					Stringer("reason", f.GetReason()).
+					Msg("Received end of data frame")
 				incoming <- wrappedDataFrame{
 					s: stream,
 				}
-				s.streams.Delete(f.StreamID)
+				s.streams.Delete(streamID)
 			}
 		case *DrainFrame:
 			s.Log.Debug().Stringer("reason", f.DrainReason).Msg("Received drain frame")
 		case *DeauthFrame:
 			s.Log.Debug().Msg("Received deauth frame")
+			if conn.extendedData {
+				fatalError(ErrUnauthorized)
+			}
 		case *UnsupportedFrame:
 			s.Log.Warn().
 				Stringer("frame_type", FrameType(f.Raw[0])).
@@ -441,7 +466,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		}
 	}()
 
-	err := s.OnConnect(ctx)
+	err := s.OnConnect(ctx, fatalError)
 	if err != nil {
 		fatalError(fmt.Errorf("dgw: OnConnect error: %w", err))
 	} else {
@@ -461,7 +486,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	s.Log.Debug().Msg("DGW socket closed")
 
 	for _, stream := range s.streams.SwapData(nil) {
-		stream.close()
+		stream.close(false)
 	}
 	s.nextStreamID.Store(0)
 

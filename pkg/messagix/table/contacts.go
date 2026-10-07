@@ -208,3 +208,27 @@ type LSUpsertCommunityMemberRanges struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSResetUserBlockStatus struct {
+	ContactID                   int64  `index:"0" json:",omitempty"`
+	UserBlockAction             int64  `index:"1" json:",omitempty"`
+	Success                     bool   `index:"2" json:",omitempty"`
+	BlockedByViewerStatus       *int64 `index:"3" json:",omitempty"`
+	FbUnblockedSinceTimestampMs int64  `index:"4" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSUpdateCommunityMemberBlockStatus struct {
+	ContactID int64 `index:"0" json:",omitempty"`
+	IsBlocked bool  `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSUpdatePublicChannelMemberBlockStatus struct {
+	ContactID int64 `index:"0" json:",omitempty"`
+	IsBlocked bool  `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}

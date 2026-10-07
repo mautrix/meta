@@ -25,7 +25,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"go.mau.fi/mautrix-meta/pkg/loginerrors"
+	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -295,6 +295,7 @@ const (
 	StateDialog                 BrowserState = "dialog"
 	StateAccountSelectionPage   BrowserState = "account-selection-page"
 	StateAccountRecoveryPage    BrowserState = "account-recovery-page"
+	StatePasswordFormPage       BrowserState = "password-form-page"
 	StateCodeEntryPage          BrowserState = "enter-code-page"
 	StateCaptchaPage            BrowserState = "captcha-page"
 	StateReCaptchaPage          BrowserState = "recaptcha-page"
@@ -338,6 +339,7 @@ type Browser struct {
 	AFADNotification string
 	AFADInterval     time.Duration
 	AFADCallback     func() error
+	MFACanGoBack     bool
 
 	LoginData    string
 	DisplayedURL string
@@ -375,6 +377,8 @@ func instagramLoginSubmissionErrorDiagnostic(err error) (kind, detail string) {
 		return "unlinked_identifier", ""
 	case strings.Contains(message, "com.bloks.www.caa.assistive_login_confirmation"):
 		return "invalid_identifier", ""
+	case strings.Contains(message, "unexpected HTTP status 429"):
+		return "rate_limited", ""
 	}
 	match := instagramLoginSafeDiagnosticPattern.FindStringSubmatch(message)
 	if len(match) == 3 {
@@ -797,9 +801,11 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_step_verification.no_op_captcha":
 				newState = StateSilentCaptchaPage
 			case "com.bloks.www.two_step_verification.google_recaptcha":
-				return b.profile.errors.ReCaptcha
+				newState = StateReCaptchaPage
 			case "com.bloks.www.caa.login.password_as_id_confirmation":
 				newState = StateSuggestedAccountPage
+			case "com.bloks.www.caa.ar.password_form":
+				newState = StatePasswordFormPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
 			}
@@ -1314,14 +1320,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				// comes up, but it's the only one sighted thus far. Update this if
 				// something new is discovered.
 				b.LastError = "Invalid email address"
+			} else if errorKind == "rate_limited" {
+				return nil, loginerrors.RateLimited
 			} else {
 				return nil, b.profile.unhandledCredentialError(err, errorKind, safeDetail)
 			}
 		}
 
 	case StateAuthenticationConfirm:
-		if authenticationConfirmationPageState(b.CurrentPage) == StateAccountRecoveryPage {
-			b.State = StateAccountRecoveryPage
+		if state := authenticationConfirmationPageState(b.CurrentPage); state != StateAuthenticationConfirm {
+			b.State = state
 			break
 		}
 		btn, clickableTextCount := findAuthenticationConfirmationButton(b.CurrentPage)
@@ -1380,6 +1388,51 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateAccountRecoveryPage:
 		return nil, b.profile.errors.AccountRecovery
 
+	case StatePasswordFormPage:
+		password := userInput["password"]
+		if password == "" {
+			instructions := fmt.Sprintf("Re-enter your %s password.", b.profile.serviceName)
+			if b.LastError != "" {
+				instructions = fmt.Sprintf(
+					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
+				)
+				b.LastError = ""
+			}
+			step = &bridgev2.LoginStep{
+				Type:         bridgev2.LoginStepTypeUserInput,
+				StepID:       b.stepID("password"),
+				Instructions: instructions,
+				UserInputParams: &bridgev2.LoginUserInputParams{
+					Fields: []bridgev2.LoginInputDataField{
+						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+					},
+				},
+			}
+			break
+		}
+
+		delete(userInput, "password")
+		b.LastError = b.profile.loginRejected
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "password")).
+			FillInput(ctx, b.CurrentPage.Interpreter, password)
+		if err != nil {
+			return nil, fmt.Errorf("filling password input: %w", err)
+		}
+
+		err = b.CurrentPage.
+			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Log in")).
+			FindContainingButton().
+			TapButton(ctx, b.CurrentPage.Interpreter)
+		if err != nil {
+			if strings.Contains(err.Error(), "Invalid username or password") {
+				b.LastError = "The password you entered is incorrect"
+			} else {
+				return nil, fmt.Errorf("tapping password form log in button: %w", err)
+			}
+		}
+
 	case StateCodeEntryPage:
 		otpCode := userInput["otp_code"]
 		if otpCode == "" {
@@ -1398,6 +1451,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("otp_code"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{
 							ID:   "otp_code",
@@ -1465,6 +1519,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("backup_code"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "backup_code", Name: "Backup code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -1673,12 +1728,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if url == "" {
 				return nil, fmt.Errorf("reCAPTCHA webview has no URL")
 			}
-			pageBytes, _, err := b.Config.FetchAsset(ctx, url)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to fetch recaptcha webview html")
-			} else {
-				log.Debug().Bytes("resp", pageBytes).Msg("Fetching recaptcha webview html")
-			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeCookies,
 				StepID:       "fi.mau.meta.messengerlite.recaptcha",
@@ -1694,7 +1743,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						window.FbLoginRecaptcha = {
 							onRecaptcha: data => {
 								try {
-									resolve(JSON.parse(data)["g-recaptcha-response"]);
+									resolve({recaptcha_token: JSON.parse(data)["g-recaptcha-response"]});
 								} catch (err) {
 									reject(err);
 								}
@@ -1738,6 +1787,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateChooseMFAPage:
 		foundMethods, methodNames, numIgnored := b.profile.findMFAMethods(b.CurrentPage, log)
+		b.MFACanGoBack = false
 
 		if len(foundMethods) == 0 {
 			if numIgnored == 0 {
@@ -1778,6 +1828,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		if err != nil {
 			return nil, b.profile.mfaMethodTapError(chosenMethod, err)
 		}
+		b.MFACanGoBack = len(foundMethods) > 1
 		if !b.profile.shouldContinueAfterMFAMethod(b.State) {
 			break
 		}
@@ -1805,6 +1856,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("totp"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -1865,6 +1917,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				"We sent a",
 				"Open the notification",
 				"You need to sign in on",
+				"Check your notifications",
 			} {
 				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
 					return true
@@ -1904,7 +1957,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			StepID:       b.stepID("afad_wait"),
 			Instructions: b.AFADNotification,
 			DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-				Type: bridgev2.LoginDisplayTypeNothing,
+				Type:      bridgev2.LoginDisplayTypeNothing,
+				CanCancel: b.MFACanGoBack,
 			},
 		}
 		b.State = StateAFADPageWaiting
@@ -1914,10 +1968,19 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if b.AFADCallback == nil {
 				return nil, loginerrors.AFADStopped
 			}
-			time.Sleep(b.AFADInterval)
+			select {
+			case <-time.After(b.AFADInterval):
+			case <-ctx.Done():
+				if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+					return nil, bridgev2.ErrLoginStepCancelled
+				}
+				return nil, fmt.Errorf("login cancelled while waiting for approval: %w", ctx.Err())
+			}
 			err := b.AFADCallback()
 			if err != nil {
-				if ctxErr := ctx.Err(); ctxErr != nil {
+				if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+					return nil, bridgev2.ErrLoginStepCancelled
+				} else if ctxErr := ctx.Err(); ctxErr != nil {
 					return nil, fmt.Errorf("login cancelled while waiting for approval: %w", ctxErr)
 				}
 				return nil, fmt.Errorf("AFAD callback: %w", err)
@@ -1925,12 +1988,24 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateOAuthPage:
-		b.DisplayedURL = ""
-
-		err = b.CurrentPage.
+		oauthButton := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Verify with Google")).
-			FindContainingButton().
-			TapButton(ctx, b.CurrentPage.Interpreter)
+			FindContainingButton()
+		if oauthButton == nil {
+			return nil, fmt.Errorf("couldn't find verify with Google button")
+		}
+
+		oauthRedirectURL := userInput["oauth_token"]
+		if oauthRedirectURL != "" {
+			delete(userInput, "oauth_token")
+			zerolog.Ctx(ctx).Debug().
+				Str("oauth_redirect_url", oauthRedirectURL).
+				Msg("Google OAuth reached the Meta redirect URL")
+			return nil, fmt.Errorf("google sign-in not yet fully implemented")
+		}
+
+		b.DisplayedURL = ""
+		err = oauthButton.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			return nil, fmt.Errorf("tapping verify: %w", err)
 		}
@@ -1950,7 +2025,20 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					Required: true,
 					Sources:  []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "oauth_token"}},
 				}},
-				ExtractJS: `new Promise((resolve, reject) => reject("not implemented yet"))`,
+				ExtractJS: `new Promise((resolve, reject) => {
+					const url = new URL(window.location.href);
+					const isMetaHost = ["m.facebook.com", "www.facebook.com", "web.facebook.com"].includes(url.hostname);
+					if (!isMetaHost || url.pathname !== "/oauth2/redirect/") {
+						return;
+					}
+					const fragment = new URLSearchParams(url.hash.slice(1));
+					const error = url.searchParams.get("error") || fragment.get("error");
+					if (error) {
+						reject(new Error("Google OAuth failed: " + error));
+						return;
+					}
+					resolve({oauth_token: window.location.href});
+				})`,
 			},
 		}
 
@@ -2025,6 +2113,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("sms"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "sms_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -2167,6 +2256,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("whatsapp"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
+					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
 						{ID: "whatsapp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
 					},
@@ -2291,8 +2381,34 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	return step, nil
 }
 
+func (b *Browser) CancelLoginStep(ctx context.Context) error {
+	if !b.MFACanGoBack {
+		return fmt.Errorf("current login step cannot be cancelled")
+	}
+	switch b.State {
+	case StateCodeEntryPage, StateBackupCodePage, StateTOTPPage,
+		StateSMSPageAfterSend, StateWhatsAppPageAfterSend, StateAFADPageWaiting:
+	default:
+		return fmt.Errorf("current login step cannot be cancelled")
+	}
+	btn := b.CurrentPage.
+		FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).
+		FindContainingButton()
+	if btn == nil {
+		return fmt.Errorf("couldn't find try another way button")
+	}
+	if err := btn.TapButton(ctx, b.CurrentPage.Interpreter); err != nil {
+		return fmt.Errorf("tapping try another way button: %w", err)
+	}
+	b.MFACanGoBack = false
+	return nil
+}
+
 func authenticationConfirmationPageState(page *BloksBundle) BrowserState {
 	if page != nil && page.FindDescendant(FilterByComponent("bk.components.TextInput")) != nil {
+		if input := page.FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "password")); input != nil && input.GetAttribute("type") == "password" {
+			return StatePasswordFormPage
+		}
 		return StateAccountRecoveryPage
 	}
 	return StateAuthenticationConfirm

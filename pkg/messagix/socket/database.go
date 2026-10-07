@@ -11,7 +11,8 @@ type QueryMetadata struct {
 	DatabaseID        int64
 	SendSyncParams    bool
 	LastAppliedCursor *string
-	SyncParams        interface{}
+	CurrentSeqID      int64
+	SyncParams        any
 	SyncChannel
 }
 
@@ -23,14 +24,14 @@ type KeyStoreData struct {
 }
 
 type FetchThreadsTask struct {
-	IsAfter                    int         `json:"is_after"`
-	ParentThreadKey            int64       `json:"parent_thread_key"`
-	ReferenceThreadKey         int64       `json:"reference_thread_key"`
-	ReferenceActivityTimestamp int64       `json:"reference_activity_timestamp"`
-	AdditionalPagesToFetch     int         `json:"additional_pages_to_fetch"`
-	Cursor                     interface{} `json:"cursor"`
-	MessagingTag               interface{} `json:"messaging_tag"`
-	SyncGroup                  int         `json:"sync_group"`
+	IsAfter                    int   `json:"is_after"`
+	ParentThreadKey            int64 `json:"parent_thread_key"`
+	ReferenceThreadKey         int64 `json:"reference_thread_key"`
+	ReferenceActivityTimestamp int64 `json:"reference_activity_timestamp"`
+	AdditionalPagesToFetch     int   `json:"additional_pages_to_fetch"`
+	Cursor                     any   `json:"cursor"`
+	MessagingTag               any   `json:"messaging_tag"`
+	SyncGroup                  int   `json:"sync_group"`
 }
 
 func (t *FetchThreadsTask) GetLabel() string {

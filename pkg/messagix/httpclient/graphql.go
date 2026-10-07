@@ -2,7 +2,6 @@ package httpclient
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -181,29 +180,10 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		return nil, fmt.Errorf("parsing inner bloks payload: %w", err)
 	}
 
-	if c.LogRedactedBloksPayloads {
-		var redactedRespInner bloks.BloksBundle
-		err = json.Unmarshal([]byte(innerData), &redactedRespInner)
-		if err != nil {
-			return nil, fmt.Errorf("second time parsing inner bloks payload: %w", err)
+	if c.LogRedactedLoginResponses {
+		if err = bloks.LogRedactedBundle(c.log, appID, []byte(innerData)); err != nil {
+			return nil, err
 		}
-		redactedRespInner.Redact()
-		redacted, err := json.Marshal(redactedRespInner)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling redacted bloks payload: %w", err)
-		}
-		compressed := bytes.Buffer{}
-		compressor := gzip.NewWriter(&compressed)
-		_, err = compressor.Write(redacted)
-		if err != nil {
-			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
-		}
-		err = compressor.Close()
-		if err != nil {
-			return nil, fmt.Errorf("compressing redacted bloks payload: %w", err)
-		}
-		enc := base64.StdEncoding.AppendEncode(nil, compressed.Bytes())
-		c.log.Debug().Str("bloks_app", appID).Bytes("resp_gz", enc).Msg("Logging redacted Bloks response")
 	}
 
 	return &respInner, nil

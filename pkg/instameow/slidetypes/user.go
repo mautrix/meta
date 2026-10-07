@@ -28,9 +28,9 @@ type User struct {
 	IsVerified               bool   `json:"is_verified"`
 	AIAgentType              string `json:"ai_agent_type"`
 	FriendshipStatus         struct {
-		IsRestricted bool `json:"is_restricted"`
-		Blocking     bool `json:"blocking"`
-		Following    bool `json:"following"`
+		IsRestricted bool  `json:"is_restricted"`
+		Blocking     *bool `json:"blocking"`
+		Following    bool  `json:"following"`
 	} `json:"friendship_status"`
 	PK                string `json:"pk"`
 	FBIDV2            string `json:"fbid_v2"`
