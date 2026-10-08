@@ -75,7 +75,16 @@ type instagramAccountManagerError struct {
 }
 
 type instagramAccountManagerWebLoginResponse struct {
-	Authenticated bool `json:"authenticated"`
+	Authenticated  bool   `json:"authenticated"`
+	FailureMessage string `json:"failure_message"`
+}
+
+type InstagramAccountManagerTwoFactorError struct {
+	Username string
+}
+
+func (*InstagramAccountManagerTwoFactorError) Error() string {
+	return "instagram Account Manager requires selected-profile authentication"
 }
 
 type instagramWebAccountManagerResponse struct {
@@ -423,6 +432,9 @@ func (c *Client) switchInstagramAccountManagerWebAccount(
 		return fmt.Errorf("failed to parse the Instagram Account Manager web login: %w", err)
 	}
 	if !result.Authenticated {
+		if result.FailureMessage == "ig_sso_two_factor_required" {
+			return &InstagramAccountManagerTwoFactorError{Username: username}
+		}
 		return errors.New("instagram Account Manager did not authenticate the selected web profile")
 	}
 	return nil
