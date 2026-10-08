@@ -141,7 +141,7 @@ func loginWithCookies(
 		Msg("Logging in with cookies")
 	if requireNative {
 		if nativeSession == nil || nativeSession.Authorization == "" || nativeSession.UserID != c.Get(cookies.IGCookieDSUserID) {
-			return nil, errInstagramCAAFlowFailed
+			return nil, errMissingAuth
 		}
 		client.SetInstagramNativeSession(nativeSession)
 	}
@@ -173,7 +173,7 @@ func loginWithCookies(
 		nativeSession = nil
 	}
 	if requireNative && (nativeSession == nil || nativeSession.Authorization == "") {
-		return nil, errInstagramCAAFlowFailed
+		return nil, errMissingAuth
 	}
 	client.SetInstagramNativeSession(nativeSession)
 	loginID := metaid.MakeUserLoginID(ownFBID)

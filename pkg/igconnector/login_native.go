@@ -125,7 +125,10 @@ var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessStepCancel = (*MetaNativeLogin)(nil)
 
 var errInstagramCAAUnsupportedStep = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_CAA_STEP", Err: "Instagram returned a sign-in step this bridge cannot safely complete", StatusCode: http.StatusBadRequest}
-var errInstagramCAAFlowFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadGateway, CanRetry: true}
+var errCAAFlowFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadRequest}
+var errCAAClientHTTPFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_CLIENT_HTTP_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadRequest}
+var errMissingAuth = bridgev2.RespError{ErrCode: "FI.MAU.IG_MISSING_AUTH", Err: "Native auth token missing after login. Please try again.", StatusCode: http.StatusBadRequest}
+var errUnexpectedCheckpoint = bridgev2.RespError{ErrCode: "FI.MAU.IG_CAA_FALLBACK_DISABLED", Err: "Instagram returned an unexpected verification step.", StatusCode: http.StatusBadRequest}
 var errInstagramWebCheckpointUnsupported = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_WEB_CHECKPOINT", Err: "Instagram returned a verification step this bridge cannot safely complete. Finish it in Instagram, then start a new login.", StatusCode: http.StatusBadRequest}
 var errInstagramWebCheckpointCAPTCHA = bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_CAPTCHA", Err: "Instagram requires an interactive CAPTCHA check. This login flow cannot display that check yet.", StatusCode: http.StatusBadRequest}
 
@@ -317,7 +320,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_ACCOUNT_PENDING_DELETION", Err: "Instagram reports that this account is scheduled for deletion. Open Instagram to review the deletion request before starting a new login.", StatusCode: http.StatusForbidden}
 		} else if errors.Is(err, httpclient.ErrChallengeRequired) || errors.Is(err, httpclient.ErrCheckpointRequired) {
 			if !allowCAAFallback {
-				return nil, errInstagramCAAFlowFailed
+				return nil, errUnexpectedCheckpoint
 			}
 			m.caaIdentifier = identifier
 			m.caaPassword = password
@@ -462,7 +465,7 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 			if !m.webSessionReady {
 				return m.start(ctx, "The request did not complete on this device. Please try again.")
 			}
-			return nil, errInstagramCAAFlowFailed
+			return nil, errCAAClientHTTPFailed
 		} else if errors.Is(err, instameow.ErrInstagramCAAUnsafeAccountStep) {
 			return nil, errInstagramCAAUnsupportedStep
 		}
@@ -471,7 +474,8 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 			errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
-		return nil, errInstagramCAAFlowFailed
+		zerolog.Ctx(ctx).Err(err).Msg("Unexpected error during Instagram CAA login flow")
+		return nil, errCAAFlowFailed
 	} else if step != nil {
 		return step, nil
 	}
@@ -479,7 +483,7 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 		nativeSession := m.client.GetInstagramNativeSession()
 		m.clearCAAFallback()
 		if nativeSession == nil || nativeSession.Authorization == "" || nativeSession.UserID == "" {
-			return nil, errInstagramCAAFlowFailed
+			return nil, errMissingAuth
 		}
 		m.client.SetInstagramNativeSession(nativeSession)
 		return m.complete(ctx)
