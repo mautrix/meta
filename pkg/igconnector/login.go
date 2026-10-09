@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -134,6 +135,7 @@ func loginWithCookies(
 	c *cookies.Cookies,
 	nativeSession *types.InstagramNativeSession,
 	requireNative bool,
+	expectedUsername string,
 	beforeClientStart func(),
 ) (*bridgev2.LoginStep, error) {
 	log.Debug().
@@ -165,6 +167,10 @@ func loginWithCookies(
 		}
 	}
 
+	if expectedUsername != "" && (user.ID == "" || !strings.EqualFold(user.GetUsername(), expectedUsername) ||
+		user.ID != c.Get(cookies.IGCookieDSUserID) || len(c.GetMissingCookieNames()) > 0) {
+		return nil, errors.New("instagram login returned a different profile than the selected account")
+	}
 	ownFBID := client.GetOwnFBID()
 	if ownFBID == 0 {
 		return nil, fmt.Errorf("own fbid not found")
@@ -235,7 +241,7 @@ func loginWithCookies(
 	}, nil
 }
 
-func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string, expectedUsername string, transport http.RoundTripper) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
@@ -253,9 +259,20 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, user, conn, c, nil, false, nil)
+	var restoreTransport func()
+	if transport != nil {
+		client.GetHTTP().SetTransportOverride(transport)
+		restoreTransport = func() {
+			if transport != nil {
+				client.GetHTTP().SetTransportOverride(nil)
+				transport = nil
+			}
+		}
+		defer restoreTransport()
+	}
+	return loginWithCookies(ctx, log, client, user, conn, c, nil, false, expectedUsername, restoreTransport)
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	return submitInstagramCookies(ctx, m.Main, m.User, strCookies)
+	return submitInstagramCookies(ctx, m.Main, m.User, strCookies, "", nil)
 }
