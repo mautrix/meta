@@ -1333,6 +1333,40 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			break
 		}
 		btn, clickableTextCount := findAuthenticationConfirmationButton(b.CurrentPage)
+		if btn == nil && b.profile.isInstagram &&
+			b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Check your SMS")) != nil {
+			btn = b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).FindContainingButton()
+			if btn != nil {
+				if err = ctx.Err(); err != nil {
+					return nil, err
+				}
+				choice := userInput["confirmation_action"]
+				if choice == "" {
+					instructions := "Instagram sent a sign-in link by SMS. To use a different verification method, choose Try another way."
+					if b.LastError != "" {
+						instructions = b.LastError + " " + instructions
+						b.LastError = ""
+					}
+					step = &bridgev2.LoginStep{
+						Type:         bridgev2.LoginStepTypeUserInput,
+						StepID:       b.stepID("confirmation_action"),
+						Instructions: instructions,
+						UserInputParams: &bridgev2.LoginUserInputParams{
+							Fields: []bridgev2.LoginInputDataField{{
+								ID: "confirmation_action", Name: "Verification method", Type: bridgev2.LoginInputFieldTypeSelect,
+								Options: []string{"Try another way"},
+							}},
+						},
+					}
+					break
+				}
+				if choice != "Try another way" {
+					return nil, fmt.Errorf("invalid authentication confirmation action")
+				}
+				delete(userInput, "confirmation_action")
+				b.LastError = "Instagram did not advance to another verification method."
+			}
+		}
 		if btn == nil {
 			return nil, fmt.Errorf(
 				"couldn't find authentication confirmation action (clickable_text_count=%d)",
