@@ -26,8 +26,8 @@ func BlindACSNonce() (*ACSNonce, string, error) {
 	}
 	blind, _ := ristretto255.NewScalar().SetUniformBytes(seed)
 	hash := sha512.Sum512(nonce)
-	point, _ := ristretto255.NewElement().SetUniformBytes(hash[:])
-	blinded := ristretto255.NewElement().ScalarMult(blind, point)
+	point, _ := ristretto255.NewIdentityElement().SetUniformBytes(hash[:])
+	blinded := ristretto255.NewIdentityElement().ScalarMult(blind, point)
 	return &ACSNonce{nonce, blind}, base64.RawURLEncoding.EncodeToString(blinded.Bytes()), nil
 }
 
@@ -36,11 +36,11 @@ func (n *ACSNonce) Redeem(evaluation string) (credential, tag string, err error)
 	if err != nil {
 		return "", "", fmt.Errorf("invalid acs evaluation: %w", err)
 	}
-	point, err := ristretto255.NewElement().SetCanonicalBytes(data)
+	point, err := ristretto255.NewIdentityElement().SetCanonicalBytes(data)
 	if err != nil {
 		return "", "", fmt.Errorf("invalid evaluated element: %w", err)
 	}
-	unblinded := ristretto255.NewElement().ScalarMult(ristretto255.NewScalar().Invert(n.blind), point)
+	unblinded := ristretto255.NewIdentityElement().ScalarMult(ristretto255.NewScalar().Invert(n.blind), point)
 	hash := sha512.New()
 	hash.Write(n.nonce)
 	hash.Write(unblinded.Bytes())
