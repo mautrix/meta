@@ -753,7 +753,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = b.profile.twoStepEntrypointState(page)
 				b.profile.logTwoStepEntrypoint(log, page, newState)
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
-				"com.bloks.www.caa.ar.sms_captcha":
+				"com.bloks.www.caa.ar.sms_captcha",
+				"com.bloks.www.ap.anti_scripting.text_captcha":
 				newState = StateCaptchaPage
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device",
 				"com.bloks.www.two_step_verification.approve_from_another_device":
@@ -1571,7 +1572,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if imageURL == "" {
 				return nil, fmt.Errorf("captcha image has no url")
 			}
-			log.Trace().Str("image_url", imageURL).Msg("Found image captcha")
 
 			audio := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.data.TextSpan" {
@@ -1599,7 +1599,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, fmt.Errorf("clicking on audio text failed to open url")
 			}
 			audioURL := strings.Replace(b.DisplayedURL, "/player/", "/", 1)
-			log.Trace().Str("audio_url", audioURL).Msg("Found audio captcha")
 
 			imageBytes, imageMime, err := b.Config.FetchAsset(ctx, imageURL)
 			if err != nil {

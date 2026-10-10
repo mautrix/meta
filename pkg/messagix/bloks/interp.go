@@ -1741,6 +1741,15 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, i.Bridge.OpenURL(url)
+	case "bk.action.caa.PlayVoiceCaptchaAudio":
+		if len(call.Args) != 2 {
+			return nil, fmt.Errorf("PlayVoiceCaptchaAudio expects 2 arguments, got %d", len(call.Args))
+		}
+		url, err := evalAs[string](ctx, i, &call.Args[1], "captcha audio URL")
+		if err != nil {
+			return nil, err
+		}
+		return BloksNothing, i.Bridge.OpenURL(url)
 	case "bk.action.caa.GenerateUUID":
 		// This may be wrong, just guessed the implementation based on the function name, it seems to work
 		return BloksLiteralOf(uuid.New().String()), nil
