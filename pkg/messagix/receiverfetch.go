@@ -5,351 +5,327 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/acs"
+	"github.com/openpcc/bhttp"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
-	"go.mau.fi/mautrix-meta/pkg/messagix/ohai"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-const (
-	receiverFetchProjectName = "LS_MediaReceiverFetch"
-	receiverFetchQuery       = "MSGRMediaReceiverFetchDeidentifiedQuery"
-	ohaiRelayURL             = "https://meta-ohttp-relay-prod.fastly-edge.com/"
-	deidentifiedGraphQLURL   = "https://www.facebook.com/api/graphql"
-)
+const receiverFetchProjectName = "LS_MediaReceiverFetch"
+
+type receiverFetchToken struct {
+	configID      string
+	credential    string
+	tag           string
+	remainingUses int
+	expiresAt     time.Time
+}
 
 type receiverFetchState struct {
-	lock      sync.Mutex
-	ohaiKey   *ohai.KeyConfig
-	acsConfig *acs.Config
-	tokens    []*acs.Token
+	sync.Mutex
+	keyID        byte
+	publicKey    []byte
+	keyExpiresAt time.Time
+	tokens       []*receiverFetchToken
 }
 
 type ReceiverFetchMedia struct {
-	URL       string
-	MimeType  string
-	Width     int
-	Height    int
-	ExpiresAt time.Time
+	URL      string
+	MimeType string
+	Width    int
+	Height   int
 }
 
-type graphQLResponse[T any] struct {
-	Data *T `json:"data"`
-	types.ErrorResponse
-}
-
-func makeGraphQLQuery[T any](ctx context.Context, c *Client, name string, variables any) (*T, error) {
-	_, respData, err := c.http.MakeGraphQLRequest(ctx, name, variables)
-	if err != nil {
-		return nil, err
-	}
-	return parseGraphQLResponse[T](respData)
-}
-
-func parseGraphQLResponse[T any](respData []byte) (*T, error) {
-	var resp graphQLResponse[T]
-	err := json.Unmarshal(bytes.TrimPrefix(respData, httpclient.AntiJSPrefix), &resp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	} else if len(resp.Errors) > 0 {
-		return nil, resp.Errors[0]
-	} else if resp.ErrorCode != 0 {
-		return nil, &resp.ErrorResponse
-	} else if resp.Data == nil {
-		return nil, fmt.Errorf("response didn't contain data")
-	}
-	return resp.Data, nil
-}
-
-func jsonNumberToInt(num json.Number) int64 {
-	val, err := strconv.ParseInt(num.String(), 10, 64)
-	if err != nil {
-		return 0
-	}
-	return val
-}
-
-type ohaiConfigsResponse struct {
+type receiverFetchOHAIConfigs struct {
 	Configurations struct {
 		Configs []struct {
-			KeyID          json.Number `json:"key_id"`
-			PublicKey      string      `json:"public_key"`
-			KEMID          json.Number `json:"kem_id"`
-			KDFID          json.Number `json:"kdf_id"`
-			AEADID         json.Number `json:"aead_id"`
-			ExpirationDate json.Number `json:"expiration_date"`
+			KeyID     json.Number `json:"key_id"`
+			PublicKey string      `json:"public_key"`
+			KEMID     json.Number `json:"kem_id"`
+			KDFID     json.Number `json:"kdf_id"`
+			AEADID    json.Number `json:"aead_id"`
+			ExpiresAt json.Number `json:"expiration_date"`
 		} `json:"ohai_configs"`
 	} `json:"xfb_ohai_configurations"`
 }
 
-func (c *Client) getOHAIKey(ctx context.Context) (*ohai.KeyConfig, error) {
-	if key := c.receiverFetch.ohaiKey; key != nil && time.Now().Add(time.Minute).Before(key.ExpiresAt) {
-		return key, nil
-	}
-	resp, err := makeGraphQLQuery[ohaiConfigsResponse](ctx, c, "OhaiWebClientMessengerConfigsQuery", struct{}{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch ohai configs: %w", err)
-	}
-	for _, cfg := range resp.Configurations.Configs {
-		expiresAt := time.Unix(jsonNumberToInt(cfg.ExpirationDate), 0)
-		if time.Now().Add(time.Minute).After(expiresAt) {
-			continue
-		}
-		publicKey, err := hex.DecodeString(cfg.PublicKey)
-		if err != nil {
-			return nil, fmt.Errorf("invalid ohai public key: %w", err)
-		}
-		c.receiverFetch.ohaiKey = &ohai.KeyConfig{
-			KeyID:     uint8(jsonNumberToInt(cfg.KeyID)),
-			KEMID:     uint16(jsonNumberToInt(cfg.KEMID)),
-			KDFID:     uint16(jsonNumberToInt(cfg.KDFID)),
-			AEADID:    uint16(jsonNumberToInt(cfg.AEADID)),
-			PublicKey: publicKey,
-			ExpiresAt: expiresAt,
-		}
-		return c.receiverFetch.ohaiKey, nil
-	}
-	return nil, fmt.Errorf("no valid ohai configs in response")
-}
-
-type acsConfigResponse struct {
+type receiverFetchACSConfig struct {
 	Config struct {
 		ID              string      `json:"id"`
 		CipherSuite     json.Number `json:"cipher_suite"`
-		PublicKey       string      `json:"public_key"`
 		MaxEvals        json.Number `json:"max_evals"`
 		RedemptionLimit json.Number `json:"redemption_limit"`
-		ExpireTime      json.Number `json:"expire_time"`
+		ExpiresAt       json.Number `json:"expire_time"`
 		TokenTTL        json.Number `json:"token_ttl"`
 	} `json:"acs_config"`
 }
 
-func (c *Client) getACSConfig(ctx context.Context) (*acs.Config, error) {
-	if cfg := c.receiverFetch.acsConfig; cfg != nil && time.Now().Add(time.Minute).Before(cfg.ExpiresAt) {
-		return cfg, nil
-	}
-	resp, err := makeGraphQLQuery[acsConfigResponse](ctx, c, "MessagingWebACSGraphQLServerProviderConfigQuery", map[string]any{
-		"project_name": receiverFetchProjectName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch acs config: %w", err)
-	}
-	publicKey, err := acs.DecodeBase64(resp.Config.PublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("invalid acs public key: %w", err)
-	}
-	cfg := &acs.Config{
-		ID:              resp.Config.ID,
-		CipherSuite:     int(jsonNumberToInt(resp.Config.CipherSuite)),
-		PublicKey:       publicKey,
-		MaxEvals:        int(jsonNumberToInt(resp.Config.MaxEvals)),
-		RedemptionLimit: int(jsonNumberToInt(resp.Config.RedemptionLimit)),
-		ExpiresAt:       time.Unix(jsonNumberToInt(resp.Config.ExpireTime), 0),
-		TokenTTL:        time.Duration(jsonNumberToInt(resp.Config.TokenTTL)) * time.Second,
-	}
-	if cfg.CipherSuite != acs.CipherSuiteRistrettoHMACSHA512 {
-		return nil, fmt.Errorf("unsupported acs cipher suite %d", cfg.CipherSuite)
-	} else if cfg.MaxEvals <= 0 || cfg.RedemptionLimit <= 0 {
-		return nil, fmt.Errorf("invalid acs limits (max evals %d, redemption limit %d)", cfg.MaxEvals, cfg.RedemptionLimit)
-	}
-	c.receiverFetch.acsConfig = cfg
-	return cfg, nil
-}
-
-type acsIssueResponse struct {
+type receiverFetchACSIssue struct {
 	Issue struct {
-		Evaluation []struct {
+		Evaluations []struct {
 			Data string `json:"data"`
 		} `json:"evaluation"`
 	} `json:"xfb_messaging_acs_issue"`
 }
 
-func (c *Client) issueACSTokens(ctx context.Context, cfg *acs.Config) ([]*acs.Token, error) {
-	batchSize := min(cfg.MaxEvals, 5)
-	blinded := make([]*acs.BlindedToken, batchSize)
+type receiverFetchMediaResponse struct {
+	Media *struct {
+		URL      string      `json:"cdn_url"`
+		MimeType string      `json:"mime_type"`
+		Width    json.Number `json:"width"`
+		Height   json.Number `json:"height"`
+	} `json:"media_receiver_fetch_deidentified"`
+}
+
+func receiverFetchInt(number json.Number) int64 {
+	value, err := number.Int64()
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+func parseReceiverFetchResponse(data []byte, result any) error {
+	var envelope struct {
+		types.ErrorResponse
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(bytes.TrimPrefix(data, httpclient.AntiJSPrefix), &envelope); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	} else if err = envelope.AsError(); err != nil {
+		return err
+	} else if len(envelope.Data) == 0 || bytes.Equal(envelope.Data, []byte("null")) {
+		return fmt.Errorf("response didn't contain data")
+	}
+	return json.Unmarshal(envelope.Data, result)
+}
+
+func (c *Client) receiverFetchGraphQL(ctx context.Context, name string, variables, result any) error {
+	_, data, err := c.http.MakeGraphQLRequest(ctx, name, variables)
+	if err != nil {
+		return err
+	}
+	return parseReceiverFetchResponse(data, result)
+}
+
+func (c *Client) refreshReceiverFetchKey(ctx context.Context) error {
+	if time.Now().Add(time.Minute).Before(c.receiverFetch.keyExpiresAt) {
+		return nil
+	}
+	var data receiverFetchOHAIConfigs
+	if err := c.receiverFetchGraphQL(ctx, "OhaiWebClientMessengerConfigsQuery", struct{}{}, &data); err != nil {
+		return err
+	}
+	for _, key := range data.Configurations.Configs {
+		expiresAt := time.Unix(receiverFetchInt(key.ExpiresAt), 0)
+		id := receiverFetchInt(key.KeyID)
+		if !time.Now().Add(time.Minute).Before(expiresAt) || id < 0 || id > 255 ||
+			receiverFetchInt(key.KEMID) != 32 || receiverFetchInt(key.KDFID) != 1 || receiverFetchInt(key.AEADID) != 1 {
+			continue
+		}
+		publicKey, err := hex.DecodeString(key.PublicKey)
+		if err != nil {
+			return fmt.Errorf("invalid ohai public key: %w", err)
+		}
+		c.receiverFetch.keyID = byte(id)
+		c.receiverFetch.publicKey = publicKey
+		c.receiverFetch.keyExpiresAt = expiresAt
+		return nil
+	}
+	return fmt.Errorf("no supported, valid ohai key in response")
+}
+
+func (c *Client) getReceiverFetchToken(ctx context.Context) (*receiverFetchToken, error) {
+	for len(c.receiverFetch.tokens) > 0 {
+		token := c.receiverFetch.tokens[0]
+		if token.remainingUses > 0 && time.Now().Add(time.Minute).Before(token.expiresAt) {
+			token.remainingUses--
+			return token, nil
+		}
+		c.receiverFetch.tokens = c.receiverFetch.tokens[1:]
+	}
+	var data receiverFetchACSConfig
+	if err := c.receiverFetchGraphQL(ctx, "MessagingWebACSGraphQLServerProviderConfigQuery", map[string]string{"project_name": receiverFetchProjectName}, &data); err != nil {
+		return nil, err
+	}
+	config := data.Config
+	configID := config.ID
+	batchSize := int(min(receiverFetchInt(config.MaxEvals), 5))
+	uses := int(receiverFetchInt(config.RedemptionLimit))
+	if configID == "" || receiverFetchInt(config.CipherSuite) != 1 || batchSize <= 0 || uses <= 0 {
+		return nil, fmt.Errorf("invalid or unsupported acs configuration")
+	}
+	expiresAt := time.Unix(receiverFetchInt(config.ExpiresAt), 0)
+	if ttl := receiverFetchInt(config.TokenTTL); ttl > 0 {
+		expiresAt = time.Now().Add(time.Duration(ttl) * time.Second)
+	}
+	nonces := make([]*crypto.ACSNonce, batchSize)
 	issueElements := make([]map[string]string, batchSize)
-	for i := range blinded {
-		var err error
-		blinded[i], err = acs.NewBlindedToken()
+	for i := range nonces {
+		nonce, blinded, err := crypto.BlindACSNonce()
 		if err != nil {
 			return nil, err
 		}
-		issueElements[i] = map[string]string{"issue_data": acs.EncodeBase64(blinded[i].Blinded)}
+		nonces[i] = nonce
+		issueElements[i] = map[string]string{"issue_data": blinded}
 	}
-	resp, err := makeGraphQLQuery[acsIssueResponse](ctx, c, "MessagingWebACSGraphQLServerProviderTokenIssuanceQuery", map[string]any{
+	var issue receiverFetchACSIssue
+	if err := c.receiverFetchGraphQL(ctx, "MessagingWebACSGraphQLServerProviderTokenIssuanceQuery", map[string]any{
 		"projectName": receiverFetchProjectName,
-		"configId":    cfg.ID,
+		"configId":    configID,
 		"message": map[string]any{
 			"issue_element": issueElements,
 			"request_proof": false,
 		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to issue acs tokens: %w", err)
-	} else if len(resp.Issue.Evaluation) != len(blinded) {
-		return nil, fmt.Errorf("got %d acs evaluations for %d blinded tokens", len(resp.Issue.Evaluation), len(blinded))
+	}, &issue); err != nil {
+		return nil, err
 	}
-	tokens := make([]*acs.Token, len(blinded))
-	for i, eval := range resp.Issue.Evaluation {
-		var data struct {
-			EvaluationData string `json:"evaluation_data"`
+	evaluations := issue.Issue.Evaluations
+	if len(evaluations) != len(nonces) {
+		return nil, fmt.Errorf("got %d acs evaluations for %d nonces", len(evaluations), len(nonces))
+	}
+	tokens := make([]*receiverFetchToken, len(nonces))
+	for i, evaluation := range evaluations {
+		var evaluated struct {
+			Data string `json:"evaluation_data"`
 		}
-		if err = json.Unmarshal([]byte(eval.Data), &data); err != nil {
+		if err := json.Unmarshal([]byte(evaluation.Data), &evaluated); err != nil {
 			return nil, fmt.Errorf("failed to parse acs evaluation: %w", err)
 		}
-		evaluated, err := acs.DecodeBase64(data.EvaluationData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode acs evaluation: %w", err)
-		}
-		tokens[i], err = blinded[i].Unblind(cfg, evaluated)
+		credential, tag, err := nonces[i].Redeem(evaluated.Data)
 		if err != nil {
 			return nil, err
 		}
-	}
-	return tokens, nil
-}
-
-func (c *Client) redeemACSToken(ctx context.Context) (*acs.Token, error) {
-	for len(c.receiverFetch.tokens) > 0 && !c.receiverFetch.tokens[0].Usable() {
-		c.receiverFetch.tokens = c.receiverFetch.tokens[1:]
-	}
-	if len(c.receiverFetch.tokens) == 0 {
-		cfg, err := c.getACSConfig(ctx)
-		if err != nil {
-			return nil, err
-		}
-		c.receiverFetch.tokens, err = c.issueACSTokens(ctx, cfg)
-		if err != nil {
-			return nil, err
+		tokens[i] = &receiverFetchToken{
+			configID:      configID,
+			credential:    credential,
+			tag:           tag,
+			remainingUses: uses,
+			expiresAt:     expiresAt,
 		}
 	}
-	token := c.receiverFetch.tokens[0]
-	token.RemainingUses--
-	return token, nil
-}
-
-type receiverFetchResponse struct {
-	Media *struct {
-		ReceiverFetchID     string      `json:"receiver_fetch_id"`
-		CDNURL              string      `json:"cdn_url"`
-		ExpirationTimestamp json.Number `json:"expiration_timestamp_ms"`
-		MimeType            string      `json:"mime_type"`
-		Width               json.Number `json:"width"`
-		Height              json.Number `json:"height"`
-	} `json:"media_receiver_fetch_deidentified"`
-}
-
-type receiverFetchRetryError struct {
-	error
-}
-
-func (err receiverFetchRetryError) Unwrap() error {
-	return err.error
+	c.receiverFetch.tokens = tokens
+	tokens[0].remainingUses--
+	return tokens[0], nil
 }
 
 func (c *Client) FetchReceiverFetchMedia(ctx context.Context, receiverFetchID string) (*ReceiverFetchMedia, error) {
-	c.receiverFetch.lock.Lock()
-	defer c.receiverFetch.lock.Unlock()
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
+	c.receiverFetch.Lock()
+	defer c.receiverFetch.Unlock()
+	if err := c.refreshReceiverFetchKey(ctx); err != nil {
+		return nil, err
+	}
 	for attempt := 0; ; attempt++ {
-		media, err := c.fetchReceiverFetchMedia(ctx, receiverFetchID)
-		if _, retryable := errors.AsType[receiverFetchRetryError](err); !retryable || attempt == 2 || ctx.Err() != nil {
-			return media, err
+		token, err := c.getReceiverFetchToken(ctx)
+		if err != nil {
+			return nil, err
 		}
-		select {
-		case <-time.After(time.Duration(attempt+1) * 3 * time.Second):
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		doc := graphql.GraphQLDocs["MSGRMediaReceiverFetchDeidentifiedQuery"]
+		variables, _ := json.Marshal(map[string]string{"receiverFetchId": receiverFetchID})
+		form := url.Values{
+			"doc_id":                   {doc.DocID},
+			"fb_api_caller_class":      {doc.CallerClass},
+			"fb_api_req_friendly_name": {doc.FriendlyName},
+			"variables":                {string(variables)},
 		}
-	}
-}
-
-func (c *Client) fetchReceiverFetchMedia(ctx context.Context, receiverFetchID string) (*ReceiverFetchMedia, error) {
-	key, err := c.getOHAIKey(ctx)
-	if err != nil {
-		return nil, err
-	}
-	token, err := c.redeemACSToken(ctx)
-	if err != nil {
-		return nil, err
-	}
-	doc := graphql.GraphQLDocs[receiverFetchQuery]
-	variables, _ := json.Marshal(map[string]string{"receiverFetchId": receiverFetchID})
-	body := url.Values{
-		"doc_id":                   {doc.DocID},
-		"fb_api_caller_class":      {doc.CallerClass},
-		"fb_api_req_friendly_name": {doc.FriendlyName},
-		"variables":                {string(variables)},
-	}.Encode()
-	innerHeaders := http.Header{}
-	for name, value := range token.Headers(receiverFetchProjectName, nil) {
-		innerHeaders[name] = []string{value}
-	}
-	innerHeaders.Set("Content-Type", "application/x-www-form-urlencoded")
-	innerHeaders.Set("X-FB-Friendly-Name", doc.FriendlyName)
-	target, _ := url.Parse(deidentifiedGraphQLURL)
-	encapsulated, respCtx, err := key.Encapsulate(ohai.EncodeRequest(http.MethodPost, target, innerHeaders, []byte(body)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to encapsulate request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ohaiRelayURL, bytes.NewReader(encapsulated))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "message/ohttp-req")
-	req.Header.Set("User-Agent", useragent.UserAgent)
-	req.Header.Set("Origin", c.GetEndpoint("base_url"))
-	resp, err := c.http.HTTP.Do(req)
-	if err != nil {
-		return nil, receiverFetchRetryError{fmt.Errorf("failed to send ohttp request: %w", err)}
-	}
-	defer resp.Body.Close()
-	respData, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, receiverFetchRetryError{fmt.Errorf("failed to read ohttp response: %w", err)}
-	} else if resp.StatusCode != http.StatusOK {
-		err = fmt.Errorf("ohttp relay returned HTTP %d: %s", resp.StatusCode, respData)
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			err = receiverFetchRetryError{err}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://www.facebook.com/api/graphql", strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
-	}
-	decapsulated, err := respCtx.Decapsulate(respData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decapsulate response: %w", err)
-	}
-	status, _, innerBody, err := ohai.DecodeResponse(decapsulated)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	} else if status != http.StatusOK {
-		err = fmt.Errorf("receiver fetch returned HTTP %d: %s", status, innerBody)
-		if status == http.StatusTooManyRequests || status >= 500 {
-			err = receiverFetchRetryError{err}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-FB-Friendly-Name", doc.FriendlyName)
+		req.Header.Set("X-ACS-ATTRIBUTE-IDENTIFIER", "")
+		req.Header.Set("X-ACS-CONFIG-ID", token.configID)
+		req.Header.Set("X-ACS-CREDENTIAL", token.credential)
+		req.Header.Set("X-ACS-PROJECT-NAME", receiverFetchProjectName)
+		req.Header.Set("X-ACS-TAG", token.tag)
+		encoder := bhttp.NewKnownLengthRequestEncoder()
+		encoder.MapFunc = func(req *http.Request) (*bhttp.Request, error) {
+			req.Header.Set("Host", req.Host)
+			return &bhttp.Request{
+				KnownLength:   true,
+				ContentLength: req.ContentLength,
+				Header:        req.Header,
+				Body:          req.Body,
+				ControlData: bhttp.RequestControlData{
+					Method:    []byte(req.Method),
+					Scheme:    []byte(req.URL.Scheme),
+					Authority: []byte(req.Host),
+					Path:      []byte(req.URL.RequestURI()),
+				},
+			}, nil
 		}
-		return nil, err
+		message, err := encoder.EncodeRequest(req)
+		if err != nil {
+			return nil, err
+		}
+		binaryRequest, err := io.ReadAll(message)
+		if err != nil {
+			return nil, err
+		}
+		encapsulated, decrypt, err := crypto.EncapsulateOHAI(c.receiverFetch.keyID, c.receiverFetch.publicKey, binaryRequest)
+		if err != nil {
+			return nil, err
+		}
+		_, response, err := c.http.MakeRequest(ctx, "https://meta-ohttp-relay-prod.fastly-edge.com/", http.MethodPost, http.Header{
+			"Content-Type": {"message/ohttp-req"},
+			"User-Agent":   {useragent.UserAgent},
+			"Origin":       {c.GetEndpoint("base_url")},
+		}, encapsulated, types.NONE)
+		if err != nil {
+			return nil, err
+		}
+		decrypted, err := decrypt(response)
+		if err != nil {
+			return nil, err
+		}
+		inner, err := (&bhttp.ResponseDecoder{}).DecodeResponse(ctx, bytes.NewReader(decrypted))
+		if err != nil {
+			return nil, err
+		}
+		response, err = io.ReadAll(inner.Body)
+		inner.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if inner.StatusCode != http.StatusOK {
+			if attempt < 2 && (inner.StatusCode == http.StatusTooManyRequests || inner.StatusCode >= 500) {
+				select {
+				case <-time.After(time.Duration(attempt+1) * 3 * time.Second):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return nil, fmt.Errorf("receiver fetch returned HTTP %d", inner.StatusCode)
+		}
+		var data receiverFetchMediaResponse
+		if err := parseReceiverFetchResponse(response, &data); err != nil {
+			return nil, err
+		}
+		media := data.Media
+		if media == nil || media.URL == "" {
+			return nil, fmt.Errorf("receiver fetch response didn't contain media")
+		}
+		return &ReceiverFetchMedia{
+			URL:      media.URL,
+			MimeType: media.MimeType,
+			Width:    int(receiverFetchInt(media.Width)),
+			Height:   int(receiverFetchInt(media.Height)),
+		}, nil
 	}
-	parsed, err := parseGraphQLResponse[receiverFetchResponse](innerBody)
-	if err != nil {
-		return nil, err
-	} else if parsed.Media == nil || parsed.Media.CDNURL == "" {
-		return nil, errors.New("receiver fetch response didn't contain media")
-	}
-	return &ReceiverFetchMedia{
-		URL:       parsed.Media.CDNURL,
-		MimeType:  parsed.Media.MimeType,
-		Width:     int(jsonNumberToInt(parsed.Media.Width)),
-		Height:    int(jsonNumberToInt(parsed.Media.Height)),
-		ExpiresAt: time.UnixMilli(jsonNumberToInt(parsed.Media.ExpirationTimestamp)),
-	}, nil
 }
