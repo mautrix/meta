@@ -498,7 +498,7 @@ func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[str
 		}
 		if exactAccount {
 			switch state.Browser.State {
-			case bloks.StateAuthenticationConfirm, bloks.StateAccountSelectionPage, bloks.StateSuggestedAccountPage,
+			case bloks.StateAuthenticationConfirm, bloks.StateAuthenticationCodePage, bloks.StateAccountSelectionPage, bloks.StateSuggestedAccountPage,
 				bloks.StateCaptchaPage, bloks.StateReCaptchaPage, bloks.StateOAuthPage,
 				bloks.StateChooseContactPointPage:
 				return nil, ErrInstagramCAAUnsafeAccountStep

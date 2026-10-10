@@ -292,6 +292,7 @@ const (
 	StateLandingPage            BrowserState = "landing-page"
 	StateEmailPasswordPage      BrowserState = "enter-email-and-password-page"
 	StateAuthenticationConfirm  BrowserState = "authentication-confirmation-page"
+	StateAuthenticationCodePage BrowserState = "authentication-code-page"
 	StateDialog                 BrowserState = "dialog"
 	StateAccountSelectionPage   BrowserState = "account-selection-page"
 	StateAccountRecoveryPage    BrowserState = "account-recovery-page"
@@ -913,7 +914,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				}
 				b.LastError = msg
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
-				if b.State != StateCodeEntryPage {
+				if b.State != StateCodeEntryPage && b.State != StateAuthenticationCodePage {
 					break
 				}
 				msg, ok := value.Value().(string)
@@ -1433,7 +1434,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 		}
 
-	case StateCodeEntryPage:
+	case StateCodeEntryPage, StateAuthenticationCodePage:
+		codeState := b.State
 		otpCode := userInput["otp_code"]
 		if otpCode == "" {
 			instructions := b.getCodeInstructions()
@@ -1501,7 +1503,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, fmt.Errorf("tapping continue: %w", err)
 			}
 		}
-		b.profile.finishCodeSubmission(b, StateCodeEntryPage, actionRPCCountBefore)
+		b.profile.finishCodeSubmission(b, codeState, actionRPCCountBefore)
 
 	case StateBackupCodePage:
 		backupCode := userInput["backup_code"]
@@ -2386,7 +2388,7 @@ func (b *Browser) CancelLoginStep(ctx context.Context) error {
 		return fmt.Errorf("current login step cannot be cancelled")
 	}
 	switch b.State {
-	case StateCodeEntryPage, StateBackupCodePage, StateTOTPPage,
+	case StateCodeEntryPage, StateAuthenticationCodePage, StateBackupCodePage, StateTOTPPage,
 		StateSMSPageAfterSend, StateWhatsAppPageAfterSend, StateAFADPageWaiting:
 	default:
 		return fmt.Errorf("current login step cannot be cancelled")
@@ -2408,6 +2410,11 @@ func authenticationConfirmationPageState(page *BloksBundle) BrowserState {
 	if page != nil && page.FindDescendant(FilterByComponent("bk.components.TextInput")) != nil {
 		if input := page.FindDescendant(FilterByAttribute("bk.components.TextInput", "html_name", "password")); input != nil && input.GetAttribute("type") == "password" {
 			return StatePasswordFormPage
+		}
+		inputs := page.FindDescendants(FilterByComponent("bk.components.TextInput"))
+		if len(inputs) == 1 && inputs[0].GetAttribute("type") == "number" &&
+			page.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Enter code")) != nil {
+			return StateAuthenticationCodePage
 		}
 		return StateAccountRecoveryPage
 	}
