@@ -25,9 +25,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"maps"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -562,120 +560,116 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	return parts
 }
 
-type xmaBloksDataclass struct {
+type xmaTemplateDataclass struct {
 	Content struct {
-		CustomTemplateData struct {
+		CustomTemplateData *struct {
 			Payload string `json:"payload"`
 		} `json:"custom_template_data"`
 	} `json:"content"`
 }
 
-type xmaBloksPayload struct {
-	Layout struct {
-		BloksPayload struct {
-			Tree any `json:"tree"`
-		} `json:"bloks_payload"`
-	} `json:"layout"`
-}
-
-type xmaBloksContent struct {
-	Lines    []string
-	ImageURL string
-	LinkURL  string
-}
-
-func (c *xmaBloksContent) collect(node any, isButton bool) {
-	switch n := node.(type) {
-	case []any:
-		for _, child := range n {
-			c.collect(child, isButton)
-		}
-	case map[string]any:
-		if onClick, ok := n["on_click"].(string); ok {
-			isButton = isButton || strings.Contains(onClick, "bk.action.xs.SendTextMessageCTA")
-			if c.LinkURL == "" {
-				c.LinkURL = findBloksOpenURL(onClick)
-			}
-		}
-		if text, ok := n["bk.components.Text"].(map[string]any); ok {
-			if str, _ := text["text"].(string); str != "" {
-				if isButton {
-					str = "• " + str
-				}
-				c.Lines = append(c.Lines, str)
-			}
-		}
-		if image, ok := n["bk.components.Image"].(map[string]any); ok && c.ImageURL == "" {
-			c.ImageURL, _ = image["url"].(string)
-		}
-		for _, key := range slices.Sorted(maps.Keys(n)) {
-			c.collect(n[key], isButton)
-		}
+func findBloksCall(node *bloks.BloksScriptNode, fn bloks.BloksFunctionID) *bloks.BloksScriptFuncall {
+	if node == nil {
+		return nil
 	}
-}
-
-func findBloksOpenURL(script string) string {
-	var node bloks.BloksScriptNode
-	if _, err := node.ParseAny(script, 0); err != nil {
-		return ""
-	}
-	return findBloksOpenURLArg(&node)
-}
-
-func findBloksOpenURLArg(node *bloks.BloksScriptNode) string {
 	call, ok := node.Content.(*bloks.BloksScriptFuncall)
 	if !ok {
-		return ""
+		return nil
+	} else if call.Function == fn {
+		return call
 	}
-	if call.Function == "bk.action.navigation.OpenUrlV2" && len(call.Args) > 0 {
-		if lit, ok := call.Args[0].Content.(*bloks.BloksScriptLiteral); ok {
-			if str, ok := lit.Value().(string); ok {
-				return str
-			}
-		}
-	}
-	for i := range call.Args {
-		if found := findBloksOpenURLArg(&call.Args[i]); found != "" {
+	for idx := range call.Args {
+		if found := findBloksCall(&call.Args[idx], fn); found != nil {
 			return found
 		}
 	}
-	return ""
+	return nil
+}
+
+func findBloksOnClick(comp *bloks.BloksTreeComponent, fn bloks.BloksFunctionID) *bloks.BloksScriptFuncall {
+	script := comp.GetScript("on_click")
+	if script == nil {
+		return nil
+	}
+	return findBloksCall(&script.AST, fn)
 }
 
 func (mc *MessageConverter) xmaBloksTemplateToMatrix(ctx context.Context, dataclass string) *bridgev2.ConvertedMessagePart {
-	var dc xmaBloksDataclass
-	var payload xmaBloksPayload
-	if json.Unmarshal([]byte(dataclass), &dc) != nil || json.Unmarshal([]byte(dc.Content.CustomTemplateData.Payload), &payload) != nil {
+	var dc xmaTemplateDataclass
+	var bundle bloks.BloksBundle
+	if err := json.Unmarshal([]byte(dataclass), &dc); err != nil || dc.Content.CustomTemplateData == nil {
+		return nil
+	} else if err = json.Unmarshal([]byte(dc.Content.CustomTemplateData.Payload), &bundle); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to parse XMA Bloks template")
 		return nil
 	}
-	var content xmaBloksContent
-	content.collect(payload.Layout.BloksPayload.Tree, false)
-	if len(content.Lines) == 0 {
-		return nil
-	}
-	if content.ImageURL != "" {
-		converted, err := mc.reuploadAttachment(ctx, table.AttachmentTypeImage, content.ImageURL, "", "", 0, 0, 0, 0, nil)
-		if err == nil {
-			converted.Content.FileName = converted.Content.Body
-			converted.Content.Body = strings.Join(content.Lines, "\n")
-			if content.LinkURL != "" {
-				converted.Extra["external_url"] = content.LinkURL
-				addExternalURLCaption(converted.Content, content.LinkURL)
-			}
-			return converted
+	var lines, buttons []string
+	texts := bundle.FindDescendants(func(comp *bloks.BloksTreeComponent) bool {
+		return comp.ComponentID == "bk.components.Text"
+	})
+	for _, text := range texts {
+		str := text.GetAttribute("text")
+		if str == "" {
+			continue
 		}
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA template image")
+		isButton := text.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
+			return findBloksOnClick(comp, "bk.action.xs.SendTextMessageCTA") != nil
+		}) != nil
+		if isButton {
+			buttons = append(buttons, fmt.Sprintf("<%s>", str))
+		} else {
+			lines = append(lines, str)
+		}
 	}
-	if content.LinkURL != "" {
-		content.Lines = append(content.Lines, "", content.LinkURL)
+	if len(lines) == 0 && len(buttons) == 0 {
+		return nil
 	}
-	return &bridgev2.ConvertedMessagePart{
-		Type: event.EventMessage,
-		Content: &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    strings.Join(content.Lines, "\n"),
-		},
+	body := strings.Join(lines, "\n")
+	if len(buttons) > 0 {
+		body = strings.TrimSpace(fmt.Sprintf("%s\n\n%s\nUse the %s to click buttons", body, strings.Join(buttons, " - "), appName(ctx)))
 	}
+	var externalURL string
+	bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+		if call := findBloksOnClick(comp, "bk.action.navigation.OpenUrlV2"); call != nil && len(call.Args) > 0 {
+			if lit, ok := call.Args[0].Content.(*bloks.BloksScriptLiteral); ok {
+				externalURL, _ = lit.Value().(string)
+			}
+		}
+		return externalURL != ""
+	})
+	imageURL := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
+		return comp.ComponentID == "bk.components.Image"
+	}).GetAttribute("url")
+
+	var converted *bridgev2.ConvertedMessagePart
+	if imageURL != "" {
+		var err error
+		converted, err = mc.reuploadAttachment(ctx, table.AttachmentTypeImage, imageURL, "", "", 0, 0, 0, 0, nil)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA template image")
+		} else {
+			converted.Content.FileName = converted.Content.Body
+			converted.Content.Body = body
+		}
+	}
+	if converted == nil {
+		converted = &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    body,
+			},
+			Extra: map[string]any{},
+		}
+		if externalURL != "" {
+			converted.Extra["external_url"] = externalURL
+			converted.Content.Body = fmt.Sprintf("%s\n\n%s", body, externalURL)
+		}
+	} else if externalURL != "" {
+		converted.Extra["external_url"] = externalURL
+		addExternalURLCaption(converted.Content, externalURL)
+	}
+	return converted
 }
 
 func (mc *MessageConverter) reuploadAttachment(
