@@ -753,7 +753,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = b.profile.twoStepEntrypointState(page)
 				b.profile.logTwoStepEntrypoint(log, page, newState)
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
-				"com.bloks.www.caa.ar.sms_captcha":
+				"com.bloks.www.caa.ar.sms_captcha",
+				"com.bloks.www.ap.anti_scripting.text_captcha":
 				newState = StateCaptchaPage
 			case "com.bloks.www.ap.two_step_verification.approve_from_another_device",
 				"com.bloks.www.two_step_verification.approve_from_another_device":
