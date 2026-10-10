@@ -14,6 +14,7 @@ require (
 	github.com/google/flatbuffers v25.12.19+incompatible
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
+	github.com/gtank/ristretto255 v0.2.0
 	github.com/imroc/req/v3 v3.56.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/rs/zerolog v1.35.1

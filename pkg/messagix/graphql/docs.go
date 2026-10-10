@@ -26,6 +26,23 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "MAWCatQuery",
 		Jsessw:       "1",
 	},
+	"OhaiWebClientMessengerConfigsQuery": {
+		DocID:        "25661686400163633",
+		FriendlyName: "OhaiWebClientMessengerConfigsQuery",
+	},
+	"MessagingWebACSGraphQLServerProviderConfigQuery": {
+		DocID:        "34400859499527881",
+		FriendlyName: "MessagingWebACSGraphQLServerProviderConfigQuery",
+	},
+	"MessagingWebACSGraphQLServerProviderTokenIssuanceQuery": {
+		DocID:        "26385769824353967",
+		FriendlyName: "MessagingWebACSGraphQLServerProviderTokenIssuanceQuery",
+	},
+	"MSGRMediaReceiverFetchDeidentifiedQuery": {
+		DocID:        "26354607094238870",
+		CallerClass:  "DeidentifiedRelayEnvironment",
+		FriendlyName: "MSGRMediaReceiverFetchDeidentifiedQuery",
+	},
 	"IGDEditThreadNameDialogOffMsysMutation": {
 		DocID:        "26508340268868683",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
