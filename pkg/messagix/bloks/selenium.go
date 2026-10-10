@@ -1572,6 +1572,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if imageURL == "" {
 				return nil, fmt.Errorf("captcha image has no url")
 			}
+			log.Trace().Str("image_url", imageURL).Msg("Found image captcha")
 
 			audio := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
 				if comp.ComponentID != "bk.data.TextSpan" {
@@ -1599,6 +1600,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				return nil, fmt.Errorf("clicking on audio text failed to open url")
 			}
 			audioURL := strings.Replace(b.DisplayedURL, "/player/", "/", 1)
+			log.Trace().Str("audio_url", audioURL).Msg("Found audio captcha")
 
 			imageBytes, imageMime, err := b.Config.FetchAsset(ctx, imageURL)
 			if err != nil {
