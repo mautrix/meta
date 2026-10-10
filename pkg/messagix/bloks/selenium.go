@@ -800,7 +800,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StatePasskeyPage
 			case "com.bloks.www.two_step_verification.no_op_captcha":
 				newState = StateSilentCaptchaPage
-			case "com.bloks.www.two_step_verification.google_recaptcha":
+			case "com.bloks.www.two_step_verification.google_recaptcha",
+				"com.bloks.www.ap.anti_scripting.recaptcha":
 				newState = StateReCaptchaPage
 			case "com.bloks.www.caa.login.password_as_id_confirmation":
 				newState = StateSuggestedAccountPage
@@ -1730,7 +1731,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeCookies,
-				StepID:       "fi.mau.meta.messengerlite.recaptcha",
+				StepID:       b.stepID("recaptcha"),
 				Instructions: "Complete the Google reCAPTCHA challenge.",
 				CookiesParams: &bridgev2.LoginCookiesParams{
 					URL: url,
@@ -1754,7 +1755,6 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 			break
 		}
-		log.Debug().Str("recaptcha_token", token).Msg("Got recaptcha token from webview")
 		callback := webview.GetScript("callback")
 		if callback == nil {
 			return nil, fmt.Errorf("reCAPTCHA webview has no callback")
