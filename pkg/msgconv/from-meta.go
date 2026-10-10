@@ -18,13 +18,16 @@ package msgconv
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"maps"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -37,6 +40,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -535,7 +539,12 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 				Body:    att.TitleText,
 			},
 		}}
-	} else if err != nil {
+	} else if errors.Is(err, mediadl.ErrURLNotFound) && att.XmaDataclass != "" {
+		if part := mc.xmaBloksTemplateToMatrix(ctx, att.XmaDataclass); part != nil {
+			return []*bridgev2.ConvertedMessagePart{part}
+		}
+	}
+	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA media")
 		converted = errorToNotice(err, "XMA")
 	}
@@ -551,6 +560,122 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		converted.Extra["com.beeper.meta.caption_body_text"] = att.CaptionBodyText
 	}
 	return parts
+}
+
+type xmaBloksDataclass struct {
+	Content struct {
+		CustomTemplateData struct {
+			Payload string `json:"payload"`
+		} `json:"custom_template_data"`
+	} `json:"content"`
+}
+
+type xmaBloksPayload struct {
+	Layout struct {
+		BloksPayload struct {
+			Tree any `json:"tree"`
+		} `json:"bloks_payload"`
+	} `json:"layout"`
+}
+
+type xmaBloksContent struct {
+	Lines    []string
+	ImageURL string
+	LinkURL  string
+}
+
+func (c *xmaBloksContent) collect(node any, isButton bool) {
+	switch n := node.(type) {
+	case []any:
+		for _, child := range n {
+			c.collect(child, isButton)
+		}
+	case map[string]any:
+		if onClick, ok := n["on_click"].(string); ok {
+			isButton = isButton || strings.Contains(onClick, "bk.action.xs.SendTextMessageCTA")
+			if c.LinkURL == "" {
+				c.LinkURL = findBloksOpenURL(onClick)
+			}
+		}
+		if text, ok := n["bk.components.Text"].(map[string]any); ok {
+			if str, _ := text["text"].(string); str != "" {
+				if isButton {
+					str = "• " + str
+				}
+				c.Lines = append(c.Lines, str)
+			}
+		}
+		if image, ok := n["bk.components.Image"].(map[string]any); ok && c.ImageURL == "" {
+			c.ImageURL, _ = image["url"].(string)
+		}
+		for _, key := range slices.Sorted(maps.Keys(n)) {
+			c.collect(n[key], isButton)
+		}
+	}
+}
+
+func findBloksOpenURL(script string) string {
+	var node bloks.BloksScriptNode
+	if _, err := node.ParseAny(script, 0); err != nil {
+		return ""
+	}
+	return findBloksOpenURLArg(&node)
+}
+
+func findBloksOpenURLArg(node *bloks.BloksScriptNode) string {
+	call, ok := node.Content.(*bloks.BloksScriptFuncall)
+	if !ok {
+		return ""
+	}
+	if call.Function == "bk.action.navigation.OpenUrlV2" && len(call.Args) > 0 {
+		if lit, ok := call.Args[0].Content.(*bloks.BloksScriptLiteral); ok {
+			if str, ok := lit.Value().(string); ok {
+				return str
+			}
+		}
+	}
+	for i := range call.Args {
+		if found := findBloksOpenURLArg(&call.Args[i]); found != "" {
+			return found
+		}
+	}
+	return ""
+}
+
+func (mc *MessageConverter) xmaBloksTemplateToMatrix(ctx context.Context, dataclass string) *bridgev2.ConvertedMessagePart {
+	var dc xmaBloksDataclass
+	var payload xmaBloksPayload
+	if json.Unmarshal([]byte(dataclass), &dc) != nil || json.Unmarshal([]byte(dc.Content.CustomTemplateData.Payload), &payload) != nil {
+		return nil
+	}
+	var content xmaBloksContent
+	content.collect(payload.Layout.BloksPayload.Tree, false)
+	if len(content.Lines) == 0 {
+		return nil
+	}
+	if content.ImageURL != "" {
+		converted, err := mc.reuploadAttachment(ctx, table.AttachmentTypeImage, content.ImageURL, "", "", 0, 0, 0, 0, nil)
+		if err == nil {
+			converted.Content.FileName = converted.Content.Body
+			converted.Content.Body = strings.Join(content.Lines, "\n")
+			if content.LinkURL != "" {
+				converted.Extra["external_url"] = content.LinkURL
+				addExternalURLCaption(converted.Content, content.LinkURL)
+			}
+			return converted
+		}
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer XMA template image")
+	}
+	if content.LinkURL != "" {
+		content.Lines = append(content.Lines, "", content.LinkURL)
+	}
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    strings.Join(content.Lines, "\n"),
+		},
+	}
 }
 
 func (mc *MessageConverter) reuploadAttachment(
