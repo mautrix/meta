@@ -278,6 +278,9 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		}
 		if op == instagramAPCode {
 			s.channel = instagramAuthPlatformChannel(data.Get("challenge_name").String())
+			if s.channel == "SMS" && strings.Contains(data.Get("screen_content_heading").String(), "WhatsApp") {
+				s.channel = "WhatsApp or SMS"
+			}
 			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
 			s.configureCodeResend(data)
 			if s.channel == "" || (data.Get("error_message").String() != "" && data.Get("error_style").String() != "INLINE") {
