@@ -261,10 +261,11 @@ func (ic *IGClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	if !ok {
 		return fmt.Errorf("unexpected parsed message ID type")
 	}
+	text, _ := ic.Main.MsgConv.HTMLParser.Parse(ctx, edit.Content, edit.Portal)
 	_, err = ic.Client.EditMessage(ctx, &slidetypes.EditMessageRequest{
 		ThreadID:           meta.IGID,
 		TargetItemID:       "",
-		Body:               slidetypes.SensitiveString{Value: edit.Content.Body},
+		Body:               slidetypes.SensitiveString{Value: text},
 		OfflineThreadingID: strconv.FormatInt(otid, 10),
 		TargetMessageID:    messageID.ID,
 	})
