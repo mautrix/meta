@@ -28,6 +28,27 @@ func readBinaryHTTPBytes(message *bytes.Buffer) ([]byte, error) {
 	return message.Next(int(length)), nil
 }
 
+func readBinaryHTTPFields(message *bytes.Buffer) error {
+	fields, err := readBinaryHTTPBytes(message)
+	if err != nil {
+		return err
+	}
+	for data := bytes.NewBuffer(fields); data.Len() > 0; {
+		name, err := readBinaryHTTPBytes(data)
+		if err != nil {
+			return err
+		} else if len(name) == 0 {
+			return fmt.Errorf("empty binary http field name")
+		} else if data.Len() == 0 {
+			return io.ErrUnexpectedEOF
+		}
+		if _, err = readBinaryHTTPBytes(data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func encodeBinaryHTTPRequest(req *http.Request, body []byte) []byte {
 	message := []byte{0}
 	message = appendBinaryHTTPBytes(message, []byte(req.Method))
@@ -68,13 +89,18 @@ func decodeBinaryHTTPResponse(data []byte) (int, []byte, error) {
 		} else if status < 100 || status > 599 {
 			return 0, nil, fmt.Errorf("invalid binary http status %d", status)
 		}
-		if _, err = readBinaryHTTPBytes(message); err != nil {
+		if err = readBinaryHTTPFields(message); err != nil {
 			return 0, nil, err
 		}
 		if status < 200 {
 			continue
 		}
 		body, err := readBinaryHTTPBytes(message)
-		return int(status), body, err
+		if err != nil {
+			return 0, nil, err
+		} else if err = readBinaryHTTPFields(message); err != nil {
+			return 0, nil, err
+		}
+		return int(status), body, nil
 	}
 }
