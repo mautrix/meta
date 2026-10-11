@@ -6,14 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/openpcc/bhttp"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
@@ -242,7 +238,7 @@ func (c *Client) FetchReceiverFetchMedia(ctx context.Context, receiverFetchID st
 			"fb_api_req_friendly_name": {doc.FriendlyName},
 			"variables":                {string(variables)},
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://www.facebook.com/api/graphql", strings.NewReader(form.Encode()))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://www.facebook.com/api/graphql", nil)
 		if err != nil {
 			return nil, err
 		}
@@ -253,30 +249,7 @@ func (c *Client) FetchReceiverFetchMedia(ctx context.Context, receiverFetchID st
 		req.Header.Set("X-ACS-CREDENTIAL", token.credential)
 		req.Header.Set("X-ACS-PROJECT-NAME", receiverFetchProjectName)
 		req.Header.Set("X-ACS-TAG", token.tag)
-		encoder := bhttp.NewKnownLengthRequestEncoder()
-		encoder.MapFunc = func(req *http.Request) (*bhttp.Request, error) {
-			req.Header.Set("Host", req.Host)
-			return &bhttp.Request{
-				KnownLength:   true,
-				ContentLength: req.ContentLength,
-				Header:        req.Header,
-				Body:          req.Body,
-				ControlData: bhttp.RequestControlData{
-					Method:    []byte(req.Method),
-					Scheme:    []byte(req.URL.Scheme),
-					Authority: []byte(req.Host),
-					Path:      []byte(req.URL.RequestURI()),
-				},
-			}, nil
-		}
-		message, err := encoder.EncodeRequest(req)
-		if err != nil {
-			return nil, err
-		}
-		binaryRequest, err := io.ReadAll(message)
-		if err != nil {
-			return nil, err
-		}
+		binaryRequest := encodeBinaryHTTPRequest(req, []byte(form.Encode()))
 		encapsulated, decrypt, err := crypto.EncapsulateOHAI(c.receiverFetch.keyID, c.receiverFetch.publicKey, binaryRequest)
 		if err != nil {
 			return nil, err
@@ -293,17 +266,12 @@ func (c *Client) FetchReceiverFetchMedia(ctx context.Context, receiverFetchID st
 		if err != nil {
 			return nil, err
 		}
-		inner, err := (&bhttp.ResponseDecoder{}).DecodeResponse(ctx, bytes.NewReader(decrypted))
+		status, response, err := decodeBinaryHTTPResponse(decrypted)
 		if err != nil {
 			return nil, err
 		}
-		response, err = io.ReadAll(inner.Body)
-		inner.Body.Close()
-		if err != nil {
-			return nil, err
-		}
-		if inner.StatusCode != http.StatusOK {
-			if attempt < 2 && (inner.StatusCode == http.StatusTooManyRequests || inner.StatusCode >= 500) {
+		if status != http.StatusOK {
+			if attempt < 2 && (status == http.StatusTooManyRequests || status >= 500) {
 				select {
 				case <-time.After(time.Duration(attempt+1) * 3 * time.Second):
 					continue
@@ -311,7 +279,7 @@ func (c *Client) FetchReceiverFetchMedia(ctx context.Context, receiverFetchID st
 					return nil, ctx.Err()
 				}
 			}
-			return nil, fmt.Errorf("receiver fetch returned HTTP %d", inner.StatusCode)
+			return nil, fmt.Errorf("receiver fetch returned HTTP %d", status)
 		}
 		var data receiverFetchMediaResponse
 		if err := parseReceiverFetchResponse(response, &data); err != nil {
