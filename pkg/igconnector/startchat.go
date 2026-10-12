@@ -25,6 +25,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exslices"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
@@ -53,7 +54,7 @@ func (ic *IGClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 
 	id, err := metaid.ParseIDFromString(identifier)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse identifier: %w", err)
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("failed to parse identifier: %w", err), mautrix.MInvalidParam)
 	}
 	userID := metaid.MakeUserID(id)
 	ghost, err := ic.Main.Bridge.GetGhostByID(ctx, userID)
