@@ -29,6 +29,7 @@ type MessageConverter struct {
 	MaxFileSize     int64
 	AsyncFiles      bool
 	DisableViewOnce bool
+	SuppressXMA     bool
 	BridgeMode      types.Platform
 	HTMLParser      *textfmt.MatrixHTMLParser
 	DB              *metadb.MetaDB

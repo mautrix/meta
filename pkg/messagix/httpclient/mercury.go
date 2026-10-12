@@ -91,7 +91,7 @@ func (c *HTTPClient) SendMercuryUploadRequest(ctx context.Context, threadID int6
 		h.Set("sec-fetch-mode", "cors")
 		h.Set("sec-fetch-site", "same-origin") // header is required
 
-		_, respBody, err := c.MakeRequest(ctx, url, http.MethodPost, h, payload, types.NONE)
+		_, respBody, err := c.MakeUploadRequest(ctx, url, http.MethodPost, h, payload, types.NONE)
 		if err != nil {
 			// MakeRequest retries itself, so bail immediately if that fails
 			return nil, fmt.Errorf("failed to send MercuryUploadRequest: %w", err)
