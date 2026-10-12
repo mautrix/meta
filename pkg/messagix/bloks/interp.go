@@ -813,11 +813,11 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return BloksLiteralOf(first < second), nil
 	case "bk.action.f32.Gt", "bk.action.i64.Gt":
-		first, err := evalAs[int64](ctx, i, &call.Args[0], "gt lhs")
+		first, err := evalFloat(ctx, i, &call.Args[0], "gt lhs")
 		if err != nil {
 			return nil, err
 		}
-		second, err := evalAs[int64](ctx, i, &call.Args[1], "gt rhs")
+		second, err := evalFloat(ctx, i, &call.Args[1], "gt rhs")
 		if err != nil {
 			return nil, err
 		}
@@ -1607,6 +1607,16 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(int64(len(str))), nil
+	case "bk.action.string.StartsWith":
+		str, err := evalAs[string](ctx, i, &call.Args[0], "string.startswith")
+		if err != nil {
+			return nil, err
+		}
+		prefix, err := evalAs[string](ctx, i, &call.Args[1], "string.startswith")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(strings.HasPrefix(str, prefix)), nil
 	case "bk.action.mins.Ge":
 		lhs, err := evalAs[int64](ctx, i, &call.Args[0], "mins.ge")
 		if err != nil {
