@@ -1,37 +1,33 @@
-package crypto
+package receiverfetch
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha512"
 	"encoding/base64"
 	"fmt"
 	"strings"
 
 	"github.com/gtank/ristretto255"
+	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/random"
 )
 
-type ACSNonce struct {
+type Nonce struct {
 	nonce []byte
 	blind *ristretto255.Scalar
 }
 
-func BlindACSNonce() (*ACSNonce, string, error) {
-	nonce := make([]byte, 32)
-	seed := make([]byte, 64)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, "", err
-	} else if _, err = rand.Read(seed); err != nil {
-		return nil, "", err
-	}
-	blind, _ := ristretto255.NewScalar().SetUniformBytes(seed)
+func BlindNonce() (*Nonce, string) {
+	nonce := random.Bytes(32)
+	seed := random.Bytes(64)
+	blind := exerrors.Must(ristretto255.NewScalar().SetUniformBytes(seed))
 	hash := sha512.Sum512(nonce)
-	point, _ := ristretto255.NewIdentityElement().SetUniformBytes(hash[:])
+	point := exerrors.Must(ristretto255.NewIdentityElement().SetUniformBytes(hash[:]))
 	blinded := ristretto255.NewIdentityElement().ScalarMult(blind, point)
-	return &ACSNonce{nonce, blind}, base64.RawURLEncoding.EncodeToString(blinded.Bytes()), nil
+	return &Nonce{nonce, blind}, base64.RawURLEncoding.EncodeToString(blinded.Bytes())
 }
 
-func (n *ACSNonce) Redeem(evaluation string) (credential, tag string, err error) {
+func (n *Nonce) Redeem(evaluation string) (credential, tag string, err error) {
 	data, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(evaluation, "="))
 	if err != nil {
 		return "", "", fmt.Errorf("invalid acs evaluation: %w", err)

@@ -11,9 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
-	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
+	"go.mau.fi/mautrix-meta/pkg/messagix/receiverfetch"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -93,11 +92,8 @@ func receiverFetchInt(number json.Number) int64 {
 }
 
 func parseReceiverFetchResponse(data []byte, result any) error {
-	var envelope struct {
-		types.ErrorResponse
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(bytes.TrimPrefix(data, httpclient.AntiJSPrefix), &envelope); err != nil {
+	var envelope graphql.Response[json.RawMessage]
+	if err := json.Unmarshal(data, &envelope); err != nil {
 		return fmt.Errorf("failed to parse response: %w", err)
 	} else if err = envelope.AsError(); err != nil {
 		return err
@@ -166,13 +162,10 @@ func (c *Client) getReceiverFetchToken(ctx context.Context) (*receiverFetchToken
 	if ttl := receiverFetchInt(config.TokenTTL); ttl > 0 {
 		expiresAt = time.Now().Add(time.Duration(ttl) * time.Second)
 	}
-	nonces := make([]*crypto.ACSNonce, batchSize)
+	nonces := make([]*receiverfetch.Nonce, batchSize)
 	issueElements := make([]map[string]string, batchSize)
 	for i := range nonces {
-		nonce, blinded, err := crypto.BlindACSNonce()
-		if err != nil {
-			return nil, err
-		}
+		nonce, blinded := receiverfetch.BlindNonce()
 		nonces[i] = nonce
 		issueElements[i] = map[string]string{"issue_data": blinded}
 	}
@@ -249,8 +242,8 @@ func (c *Client) FetchReceiverFetchMedia(ctx context.Context, receiverFetchID st
 		req.Header.Set("X-ACS-CREDENTIAL", token.credential)
 		req.Header.Set("X-ACS-PROJECT-NAME", receiverFetchProjectName)
 		req.Header.Set("X-ACS-TAG", token.tag)
-		binaryRequest := encodeBinaryHTTPRequest(req, []byte(form.Encode()))
-		encapsulated, decrypt, err := crypto.EncapsulateOHAI(c.receiverFetch.keyID, c.receiverFetch.publicKey, binaryRequest)
+		binaryRequest := receiverfetch.EncodeRequest(req, []byte(form.Encode()))
+		encapsulated, decrypt, err := receiverfetch.Encapsulate(c.receiverFetch.keyID, c.receiverFetch.publicKey, binaryRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -266,7 +259,7 @@ func (c *Client) FetchReceiverFetchMedia(ctx context.Context, receiverFetchID st
 		if err != nil {
 			return nil, err
 		}
-		status, response, err := decodeBinaryHTTPResponse(decrypted)
+		status, response, err := receiverfetch.DecodeResponse(decrypted)
 		if err != nil {
 			return nil, err
 		}

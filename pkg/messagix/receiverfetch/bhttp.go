@@ -1,14 +1,17 @@
-package messagix
+package receiverfetch
 
 import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/quic-go/quic-go/quicvarint"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 )
 
 func appendBinaryHTTPBytes(message, data []byte) []byte {
@@ -49,7 +52,7 @@ func readBinaryHTTPFields(message *bytes.Buffer) error {
 	return nil
 }
 
-func encodeBinaryHTTPRequest(req *http.Request, body []byte) []byte {
+func EncodeRequest(req *http.Request, body []byte) []byte {
 	message := []byte{0}
 	message = appendBinaryHTTPBytes(message, []byte(req.Method))
 	message = appendBinaryHTTPBytes(message, []byte(req.URL.Scheme))
@@ -57,11 +60,7 @@ func encodeBinaryHTTPRequest(req *http.Request, body []byte) []byte {
 	message = appendBinaryHTTPBytes(message, []byte(req.URL.RequestURI()))
 
 	req.Header.Set("Host", req.Host)
-	keys := make([]string, 0, len(req.Header))
-	for key := range req.Header {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(req.Header))
 	var headers []byte
 	for _, key := range keys {
 		for _, value := range req.Header[key] {
@@ -74,7 +73,7 @@ func encodeBinaryHTTPRequest(req *http.Request, body []byte) []byte {
 	return append(message, 0)
 }
 
-func decodeBinaryHTTPResponse(data []byte) (int, []byte, error) {
+func DecodeResponse(data []byte) (int, []byte, error) {
 	message := bytes.NewBuffer(data)
 	framing, err := quicvarint.Read(message)
 	if err != nil {
@@ -101,6 +100,6 @@ func decodeBinaryHTTPResponse(data []byte) (int, []byte, error) {
 		} else if err = readBinaryHTTPFields(message); err != nil {
 			return 0, nil, err
 		}
-		return int(status), body, nil
+		return int(status), bytes.TrimPrefix(body, httpclient.AntiJSPrefix), nil
 	}
 }

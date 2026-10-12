@@ -1,4 +1,4 @@
-package crypto
+package receiverfetch
 
 import (
 	"crypto/aes"
@@ -10,7 +10,7 @@ import (
 	"fmt"
 )
 
-func EncapsulateOHAI(keyID byte, publicKey, request []byte) ([]byte, func([]byte) ([]byte, error), error) {
+func Encapsulate(keyID byte, publicKey, request []byte) ([]byte, func([]byte) ([]byte, error), error) {
 	pub, err := ecdh.X25519().NewPublicKey(publicKey)
 	if err != nil {
 		return nil, nil, err
