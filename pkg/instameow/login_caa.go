@@ -524,7 +524,7 @@ func (c *Client) doInstagramCAALoginSteps(ctx context.Context, userInput map[str
 	if !state.AccountManagerChecked {
 		state.AccountManagerAccounts, err = c.getInstagramAccountManagerAccounts(ctx)
 		if err != nil {
-			return nil, err
+			c.log.Warn().Err(err).Msg("Failed to load Instagram Account Manager profiles, continuing with current account")
 		}
 		state.AccountManagerChecked = true
 		if len(state.AccountManagerAccounts) <= 1 {
