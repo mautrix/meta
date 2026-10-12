@@ -41,6 +41,7 @@ type MetaClient struct {
 	stopHandlingTables   atomic.Pointer[context.CancelFunc]
 	initialTable         atomic.Pointer[table.LSTable]
 	initialTableHandled  atomic.Bool
+	unhandledTables      atomic.Int32
 	parsedTables         chan *parsedTable
 	backfillCollectors   map[int64]*BackfillCollector
 	backfillLock         sync.Mutex
@@ -183,6 +184,7 @@ func (m *MetaClient) Connect(ctx context.Context) {
 		return
 	}
 	defer m.connectLock.Unlock()
+	m.unhandledTables.Store(int32(len(m.parsedTables)))
 	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
 		// Ensure both states start at CONNECTING now
 		m.metaState.StateEvent = status.StateConnecting
@@ -562,6 +564,10 @@ func (m *MetaClient) Disconnect() {
 	if !m.initialTableHandled.Load() {
 		if state != nil {
 			m.UserLogin.Log.Warn().Msg("Initial table wasn't handled before disconnect, not saving reconnection state")
+		}
+	} else if m.unhandledTables.Load() > 0 {
+		if state != nil {
+			m.UserLogin.Log.Warn().Msg("Some tables weren't handled before disconnect, not saving reconnection state")
 		}
 	} else if state != nil {
 		saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

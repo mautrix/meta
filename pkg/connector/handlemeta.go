@@ -144,6 +144,7 @@ func (m *MetaClient) parseAndQueueTable(ctx context.Context, tbl *table.LSTable,
 	if ctx.Err() != nil {
 		zerolog.Ctx(ctx).Warn().Err(ctx.Err()).Msg("Not dispatching parsed table, context is canceled")
 	}
+	m.unhandledTables.Add(1)
 	select {
 	case m.parsedTables <- wrapped:
 	default:
@@ -175,7 +176,9 @@ func (m *MetaClient) handleTableLoop(ctx context.Context) {
 		case evt := <-m.parsedTables:
 			m.notifyBackgroundConnAboutEvent(true)
 			m.handleParsedTable(ctx, evt.IsInitial, evt.Table, evt.Events)
-			m.saveConnectionState(ctx, nil)
+			if m.unhandledTables.Load() == 0 {
+				m.saveConnectionState(ctx, nil)
+			}
 			m.notifyBackgroundConnAboutEvent(false)
 		case <-ctx.Done():
 			return
@@ -216,6 +219,7 @@ func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl 
 		} else {
 			m.Client.PostHandlePublishResponse(tbl)
 		}
+		m.unhandledTables.Add(-1)
 	}
 }
 
