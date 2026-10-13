@@ -662,6 +662,25 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		Bool("is_whatsapp_e2ee", portalMeta.ThreadType.IsWhatsApp()).
 		Msg("Deleting chat")
 
+	if chat.Portal.RoomType != database.RoomTypeDM {
+		memberInfo, err := t.Main.Bridge.Matrix.GetMemberInfo(ctx, chat.Portal.MXID, t.UserLogin.UserMXID)
+		if err != nil {
+			return fmt.Errorf("failed to get own member info: %w", err)
+		} else if memberInfo.Membership == event.MembershipJoin {
+			if portalMeta.ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
+				err = t.E2EEClient.LeaveGroup(ctx, portalMeta.JID(chat.Portal.ID))
+			} else {
+				_, err = t.Client.ExecuteTasks(ctx, &socket.RemoveParticipantTask{
+					ThreadID:  threadID,
+					ContactID: metaid.ParseUserLoginID(t.UserLogin.ID),
+				})
+			}
+			if err != nil {
+				return fmt.Errorf("failed to leave group before deleting chat: %w", err)
+			}
+		}
+	}
+
 	syncGroup := int64(1)
 	if portalMeta.ThreadType.IsWhatsApp() && portalMeta.FBThreadKey != 0 {
 		threadID = portalMeta.FBThreadKey
@@ -783,6 +802,8 @@ func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.M
 			action = whatsmeow.ParticipantChangeAdd
 		case bridgev2.Kick:
 			action = whatsmeow.ParticipantChangeRemove
+		case bridgev2.Leave:
+			return nil, m.E2EEClient.LeaveGroup(ctx, portalJID)
 		default:
 			return nil, nil
 		}
@@ -806,7 +827,7 @@ func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.M
 			ContactIDs: []int64{targetID},
 			SyncGroup:  1,
 		}
-	case bridgev2.Kick:
+	case bridgev2.Kick, bridgev2.Leave:
 		task = &socket.RemoveParticipantTask{
 			ThreadID:  threadID,
 			ContactID: targetID,
