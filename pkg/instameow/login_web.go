@@ -434,9 +434,6 @@ func (c *Client) captureInstagramWebTwoFactor(
 			return nil, err
 		}
 	} else if info.EncryptedContext == "" && method == "SMS" {
-		// Legacy two_factor_info responses don't guarantee that Instagram already
-		// sent the first SMS, and the user has no way to ask for one otherwise.
-		// Instagram may still have sent a code, so a failed request isn't fatal.
 		c.cookies.Set(cookies.IGCookieCSRFToken, c.webTwoFactor.csrfToken)
 		if err := c.requestInstagramWebTwoFactorSMS(ctx, c.webTwoFactor); err != nil {
 			if ctx.Err() != nil {
