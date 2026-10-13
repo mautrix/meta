@@ -64,10 +64,11 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 		captionHTML += fmt.Sprintf("<blockquote>%s</blockquote>", html.EscapeString(xma.EyebrowText))
 	}
 	if xma.TitleText != "" {
-		if len(xma.TitleText) > 110 {
-			xma.TitleText = xma.TitleText[:100] + "…"
+		title := xma.TitleText
+		if titleRunes := []rune(title); len(titleRunes) > 110 {
+			title = string(titleRunes[:100]) + "…"
 		}
-		captionHTML += fmt.Sprintf("<strong>%s</strong>", html.EscapeString(xma.TitleText))
+		captionHTML += fmt.Sprintf("<strong>%s</strong>", html.EscapeString(title))
 	}
 	if xma.SubtitleText != "" {
 		captionHTML += fmt.Sprintf("<br>%s", html.EscapeString(xma.SubtitleText))
@@ -104,10 +105,14 @@ func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMACont
 		if captionPart == nil {
 			return nil
 		}
-		return &bridgev2.ConvertedMessagePart{
+		part := &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: captionPart,
 		}
+		if xma.TitleText != "" {
+			part.Extra = map[string]any{"com.beeper.meta.full_post_title": xma.TitleText}
+		}
+		return part
 	} else if captionPart != nil {
 		previewPart.Content.EnsureHasHTML()
 		previewPart.Content.Body = captionPart.Body
@@ -128,8 +133,9 @@ func isNumeric(str string) bool {
 }
 
 type UnresolvedMediaContent struct {
-	Kind string                     `json:"kind"`
-	Base *event.MessageEventContent `json:"fi.mau.instagram.base_part,omitempty"`
+	Kind      string                     `json:"kind"`
+	Base      *event.MessageEventContent `json:"fi.mau.instagram.base_part,omitempty"`
+	FullTitle string                     `json:"fi.mau.instagram.full_title,omitempty"`
 }
 
 func filterUnresolvedMediaContent(content *event.MessageEventContent) *event.MessageEventContent {
@@ -151,6 +157,9 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 		basePart.Extra = make(map[string]any)
 	}
 	basePart.Extra["external_url"] = xma.TargetURL
+	if xma.TitleText != "" {
+		basePart.Extra["com.beeper.meta.full_post_title"] = xma.TitleText
+	}
 	targetID, _ := strconv.ParseInt(xma.TargetID, 10, 64)
 	targetURL, _ := url.Parse(xma.TargetURL)
 	if targetURL == nil {
@@ -169,8 +178,9 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 	if !mediadl.ShouldFetchXMA(ctx) {
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "skip"
 		basePart.Extra["com.beeper.unresolved_media"] = &UnresolvedMediaContent{
-			Kind: "permanent",
-			Base: filterUnresolvedMediaContent(basePart.Content),
+			Kind:      "permanent",
+			Base:      filterUnresolvedMediaContent(basePart.Content),
+			FullTitle: xma.TitleText,
 		}
 		basePart.DBMetadata.(*metaid.MessageMetadata).XMAFetchMeta = &metaid.XMAFetchMeta{
 			TargetURL: xma.TargetURL,
@@ -195,6 +205,9 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 			Msg("Failed to fetch XMA item")
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = fetchStatus
 		return basePart
+	}
+	if xma.TitleText != "" {
+		resultPart.Extra["com.beeper.meta.full_post_title"] = xma.TitleText
 	}
 	return resultPart
 }
@@ -242,6 +255,9 @@ func (mc *MessageConverter) FetchUnresolvedXMA(
 	// TODO for some errors, there should be an edit part to remove the unresolved status
 	if err != nil {
 		return nil, err
+	}
+	if unresolvedMediaContent.FullTitle != "" {
+		resultPart.Extra["com.beeper.meta.full_post_title"] = unresolvedMediaContent.FullTitle
 	}
 	editPart := resultPart.ToEditPart(msg)
 	if editPart.TopLevelExtra == nil {
