@@ -78,7 +78,16 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 			os.Exit(1)
 		}
 
-		ls.StatementReferences[int(key)] = int64(shouldStore)
+		storedValue := int64(shouldStore)
+		// hasPollAttachmentNewerThan checks the client's local cache, which we
+		// don't have. Its placeholder result is true, which would skip the
+		// branch containing the fresh poll data.
+		if len(stepData) > 2 {
+			if call, ok := stepData[2].([]any); ok && len(call) > 1 && call[1] == "hasPollAttachmentNewerThan" {
+				storedValue = 0
+			}
+		}
+		ls.StatementReferences[int(key)] = storedValue
 		ls.Decode(s[2:])
 	case CALL_STORED_PROCEDURE:
 		referenceName, ok := stepData[0].(string)

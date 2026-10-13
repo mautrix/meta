@@ -383,6 +383,8 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	for _, resync := range threadResyncs {
 		innerQueue = append(innerQueue, resync)
 	}
+	// Queued after resyncs so that the portal exists.
+	m.handlePollUpdates(params, tbl, &innerQueue)
 
 	blockUpdates := make(map[int64]*simplevent.ChatInfoChange)
 	updateBlock := func(contactID int64, isBlocked bool, changeType string) {
