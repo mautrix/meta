@@ -48,6 +48,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
@@ -177,8 +178,9 @@ func convertWhatsAppAttachment[
 	}
 	untypedTransport := any(typedTransport)
 	if stickerTransport, ok := untypedTransport.(*waMediaTransport.StickerTransport); ok {
-		if stickerTransport.Ancillary.GetReceiverFetchID() != "" {
-			err = userVisibleError{Message: "Unsupported sticker, view in Messenger"}
+		if receiverFetchID := stickerTransport.Ancillary.GetReceiverFetchID(); receiverFetchID != "" {
+			metadata = typedTransport.GetAncillary()
+			media, err = mc.reuploadReceiverFetchSticker(ctx, receiverFetchID)
 			return
 		}
 	}
@@ -191,6 +193,22 @@ func convertWhatsAppAttachment[
 	transport := typedTransport.GetIntegral().GetTransport()
 	media, err = mc.reuploadWhatsAppAttachment(ctx, transport, mediaType, convert)
 	return
+}
+
+func (mc *MessageConverter) reuploadReceiverFetchSticker(ctx context.Context, receiverFetchID string) (*bridgev2.ConvertedMessagePart, error) {
+	client := ctx.Value(mediadl.ContextKeyFBClient).(*messagix.Client)
+	media, err := client.FetchReceiverFetchMedia(ctx, receiverFetchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch sticker %s: %w", receiverFetchID, err)
+	}
+	return mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
+		AttachmentType: table.AttachmentTypeSticker,
+		URL:            media.URL,
+		MimeType:       media.MimeType,
+		Width:          media.Width,
+		Height:         media.Height,
+		MaxFileSize:    mc.MaxFileSize,
+	})
 }
 
 func (mc *MessageConverter) reuploadWhatsAppAttachment(
@@ -308,8 +326,12 @@ func addStickerMetadata(converted *bridgev2.ConvertedMessagePart, metadata *waMe
 		return
 	}
 	converted.Type = event.EventSticker
-	converted.Content.Info.Width = int(metadata.GetWidth())
-	converted.Content.Info.Height = int(metadata.GetHeight())
+	if metadata.GetReceiverFetchID() == "" || converted.Content.Info.Width == 0 {
+		converted.Content.Info.Width = int(metadata.GetWidth())
+	}
+	if metadata.GetReceiverFetchID() == "" || converted.Content.Info.Height == 0 {
+		converted.Content.Info.Height = int(metadata.GetHeight())
+	}
 }
 
 func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, document *waConsumerApplication.ConsumerApplication_DocumentMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {

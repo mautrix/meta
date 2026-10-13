@@ -62,6 +62,8 @@ type Client struct {
 	catRefreshLock         sync.Mutex
 	unnecessaryCATRequests int
 
+	receiverFetch receiverFetchState
+
 	stopCurrentConnections atomic.Pointer[context.CancelFunc]
 	connectionLoopStopped  *exsync.Event
 	canSendMessages        *exsync.Event
