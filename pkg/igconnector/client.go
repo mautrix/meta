@@ -56,6 +56,7 @@ type IGClient struct {
 	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
 	stopChatBackfill      atomic.Pointer[context.CancelFunc]
 	chatBackfillLock      sync.Mutex
+	resyncChatsSince      atomic.Pointer[time.Time]
 	pushRegistrationLock  sync.Mutex
 	mailboxProcessed      atomic.Bool
 	waitMailboxProcessed  chan struct{}
@@ -441,6 +442,11 @@ func (ic *IGClient) FullReconnect(seqIDOnly, reconnectionStateOnly bool) {
 	ic.Disconnect()
 	var err error
 	if seqIDOnly {
+		if _, seqTS, err := ic.Main.DB.GetIGSeqID(ctx, ic.UserLogin.ID); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to get seq ID before deleting it")
+		} else if !seqTS.IsZero() {
+			ic.resyncChatsSince.Store(&seqTS)
+		}
 		err = ic.Main.DB.DeleteIGSeqID(ctx, ic.UserLogin.ID)
 	} else if reconnectionStateOnly {
 		err = ic.Main.DB.DeleteReconnectionStateOnly(ctx, ic.UserLogin.ID)
