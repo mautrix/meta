@@ -868,13 +868,23 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 			}
 		}
 	default:
-		if evt.Message == nil && evt.FBApplication.GetMetadata().GetChatEphemeralSetting() != nil {
-			portal.Metadata.(*metaid.PortalMetadata).EphemeralSettingTimestamp = evt.Info.Timestamp.Unix()
-			portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
-				Sender:    intent,
-				Timestamp: evt.Info.Timestamp,
-				Save:      true,
-			})
+		if disappear := evt.FBApplication.GetMetadata().GetChatEphemeralSetting(); evt.Message == nil && disappear != nil {
+			meta := portal.Metadata.(*metaid.PortalMetadata)
+			dontBridge := cm.Disappear == portal.Disappear
+			if disappear.EphemeralSettingTimestamp == nil || disappear.GetEphemeralSettingTimestamp() > meta.EphemeralSettingTimestamp {
+				meta.EphemeralSettingTimestamp = disappear.GetEphemeralSettingTimestamp()
+				portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
+					Sender:    intent,
+					Timestamp: evt.Info.Timestamp,
+					Save:      true,
+				})
+			} else {
+				dontBridge = true
+				zerolog.Ctx(ctx).Debug().
+					Int64("setting_timestamp", disappear.GetEphemeralSettingTimestamp()).
+					Int64("portal_setting_timestamp", meta.EphemeralSettingTimestamp).
+					Msg("Ignoring outdated disappearing timer change")
+			}
 			cm.Parts = []*bridgev2.ConvertedMessagePart{{
 				Type:    event.EventMessage,
 				Content: bridgev2.DisappearingMessageNotice(cm.Disappear.Timer, false),
@@ -886,7 +896,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 						"implicit":   false,
 					},
 				},
-				DontBridge: cm.Disappear == portal.Disappear,
+				DontBridge: dontBridge,
 			}}
 		} else {
 			cm.Parts = []*bridgev2.ConvertedMessagePart{{
