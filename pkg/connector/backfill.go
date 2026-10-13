@@ -266,6 +266,10 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		defer ticker.Stop()
 		// Finally kick off history request, we'll keep retrying this if we timeout
 		if !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
+			m.removeBackfillCollector(threadID, collector)
+			if params.Forward && params.AnchorMessage == nil && len(upsert.Messages) > 0 {
+				return m.wrapBackfillEvents(ctx, params.Portal, upsert, nil, true), nil
+			}
 			return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 		}
 		timeouts := 0
