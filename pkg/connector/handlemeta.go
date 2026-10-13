@@ -141,19 +141,13 @@ func (m *MetaClient) parseAndQueueTable(ctx context.Context, tbl *table.LSTable,
 		Events:    evts,
 		IsInitial: isInitial,
 	}
-	if ctx.Err() != nil {
-		zerolog.Ctx(ctx).Warn().Err(ctx.Err()).Msg("Not dispatching parsed table, context is canceled")
-	}
+	m.parsedTablesLock.Lock()
+	m.parsedTables = append(m.parsedTables, wrapped)
 	m.unhandledTables.Add(1)
+	m.parsedTablesLock.Unlock()
 	select {
-	case m.parsedTables <- wrapped:
+	case m.parsedTablesWake <- struct{}{}:
 	default:
-		zerolog.Ctx(ctx).Warn().Msg("Parsed table queue is full, events may get stuck")
-		select {
-		case m.parsedTables <- wrapped:
-		case <-ctx.Done():
-			zerolog.Ctx(ctx).Warn().Msg("Context was cancelled before stuck table was dispatched, dropping table")
-		}
 	}
 }
 
@@ -169,20 +163,39 @@ func (m *MetaClient) handleTableLoop(ctx context.Context) {
 	if oldCancel := m.stopHandlingTables.Swap(&cancel); oldCancel != nil {
 		(*oldCancel)()
 	}
+	m.tableLoopLock.Lock()
+	defer m.tableLoopLock.Unlock()
+	if ctx.Err() != nil {
+		return
+	}
+	m.parsedTablesLock.Lock()
+	m.unhandledTables.Store(int32(len(m.parsedTables)))
+	m.parsedTablesLock.Unlock()
 	log := m.UserLogin.Log.With().Str("action", "handle parsed table").Logger()
 	ctx = log.WithContext(ctx)
-	for {
-		select {
-		case evt := <-m.parsedTables:
-			m.notifyBackgroundConnAboutEvent(true)
-			m.handleParsedTable(ctx, evt.IsInitial, evt.Table, evt.Events)
-			if m.unhandledTables.Load() == 0 {
-				m.saveConnectionState(ctx, nil)
-			}
-			m.notifyBackgroundConnAboutEvent(false)
-		case <-ctx.Done():
-			return
+	for ctx.Err() == nil {
+		m.parsedTablesLock.Lock()
+		var evt *parsedTable
+		if len(m.parsedTables) > 0 {
+			evt = m.parsedTables[0]
+			m.parsedTables[0] = nil
+			m.parsedTables = m.parsedTables[1:]
 		}
+		m.parsedTablesLock.Unlock()
+		if evt == nil {
+			select {
+			case <-m.parsedTablesWake:
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+		m.notifyBackgroundConnAboutEvent(true)
+		m.handleParsedTable(ctx, evt.IsInitial, evt.Table, evt.Events)
+		if m.unhandledTables.Load() == 0 {
+			m.saveConnectionState(ctx, nil)
+		}
+		m.notifyBackgroundConnAboutEvent(false)
 	}
 }
 func (m *MetaClient) handleParsedTable(ctx context.Context, isInitial bool, tbl *table.LSTable, innerQueue []bridgev2.RemoteEvent) {
