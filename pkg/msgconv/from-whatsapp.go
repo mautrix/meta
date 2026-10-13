@@ -42,6 +42,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
+	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -220,6 +221,11 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	client := ctx.Value(mediadl.ContextKeyWAClient).(*whatsmeow.Client)
 	intent := ctx.Value(mediadl.ContextKeyIntent).(bridgev2.MatrixAPI)
 	portal := ctx.Value(mediadl.ContextKeyPortal).(*bridgev2.Portal)
+	paths, _ := ctx.Value(mediadl.ContextKeyWAMediaPaths).(map[string]string)
+	if path := paths[transport.GetAncillary().GetObjectID()]; path != "" && transport.GetIntegral() != nil {
+		transport = proto.CloneOf(transport)
+		transport.Integral.DirectPath = proto.String(path)
+	}
 
 	if mc.DirectMedia {
 		msgID := ctx.Value(mediadl.ContextKeyMsgID).(networkid.MessageID)
@@ -249,7 +255,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 			Type:       mediaType,
 			SHA256:     transport.Integral.FileSHA256,
 			EncSHA256:  transport.Integral.FileEncSHA256,
-			DirectPath: *transport.Integral.DirectPath,
+			DirectPath: transport.GetIntegral().GetDirectPath(),
 		})
 		if err != nil {
 			return nil, err
@@ -918,7 +924,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 		pcp, _ := types.ParseJID(replyOverride.GetParticipant())
 		// TODO what if participant is not set?
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
-			MessageID: metaid.MakeWAMessageID(evt.Info.Chat, pcp, qm.GetStanzaID()),
+			MessageID: metaid.MakeWAMessageID(evt.Info.Chat, pcp, replyOverride.GetID()),
 		}
 	}
 	for i, part := range cm.Parts {

@@ -1,0 +1,23 @@
+[package]
+name = "vesta-opaque"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+opaque-ke = { git = "https://github.com/facebook/opaque-ke", rev = "20d7f495eb8d6a9373774e05dd076ed2c72bd6fe", features = ["std"] }
+curve25519-dalek = "=3.2.0"
+rand = "0.8"
+sha2 = "0.9"
+sha2_new = { package = "sha2", version = "0.10" }
+digest = "0.9"
+generic-array = { version = "0.14", features = ["zeroize"] }
+pbkdf2 = "0.12"
+zeroize = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1

@@ -1,4 +1,5 @@
 stages:
+- build native
 - build
 - build docker
 - manifest
@@ -9,6 +10,41 @@ variables:
   IG_BINARY_NAME: mautrix-instagram
   GOTOOLCHAIN: local
 
+.build-opaque: &build-opaque
+  stage: build native
+  image: rust:1.98.1-alpine3.24
+  script:
+  - rustup target add "$RUST_TARGET"
+  - cargo build --locked --release --manifest-path pkg/messagix/securehistory/opaque/Cargo.toml --target "$RUST_TARGET"
+  - cp "pkg/messagix/securehistory/opaque/target/$RUST_TARGET/release/libvesta_opaque.a" .
+  artifacts:
+    paths:
+    - libvesta_opaque.a
+
+build opaque amd64:
+  <<: *build-opaque
+  variables:
+    RUST_TARGET: x86_64-unknown-linux-musl
+  tags:
+  - linux
+  - amd64
+
+build opaque arm64:
+  <<: *build-opaque
+  variables:
+    RUST_TARGET: aarch64-unknown-linux-musl
+  tags:
+  - linux
+  - arm64
+
+build opaque arm:
+  <<: *build-opaque
+  variables:
+    RUST_TARGET: armv7-unknown-linux-musleabihf
+  tags:
+  - linux
+  - amd64
+
 .build: &build
   stage: build
   cache:
@@ -18,6 +54,7 @@ variables:
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
   - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
+  - export CGO_LDFLAGS="${CGO_LDFLAGS:-} -L$CI_PROJECT_DIR"
   - export MAUTRIX_VERSION=$(cat go.mod | grep 'maunium.net/go/mautrix ' | awk '{ print $2 }')
   - export GO_LDFLAGS="-s -w -linkmode external -extldflags -static -X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date -Iseconds`' -X 'maunium.net/go/mautrix.GoModVersion=$MAUTRIX_VERSION'"
   script:
@@ -60,11 +97,14 @@ variables:
 
 .build-macos: &build-macos
   stage: build
+  needs: []
   variables:
     MACOSX_DEPLOYMENT_TARGET: "11.0"
   before_script:
-  - export CGO_LDFLAGS="-Wl,-headerpad_max_install_names"
-  - export PATH=/opt/homebrew/bin:$PATH
+  - export CGO_LDFLAGS="-Wl,-headerpad_max_install_names -L$CI_PROJECT_DIR/pkg/messagix/securehistory/opaque/target/release"
+  - export PATH=$HOME/.cargo/bin:/opt/homebrew/bin:$PATH
+  - rustup toolchain install 1.98.1 --profile minimal
+  - cargo +1.98.1 build --locked --release --manifest-path pkg/messagix/securehistory/opaque/Cargo.toml
   - export MAUTRIX_VERSION=$(cat go.mod | grep 'maunium.net/go/mautrix ' | awk '{ print $2 }')
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date -Iseconds`' -X 'maunium.net/go/mautrix.GoModVersion=$MAUTRIX_VERSION'"
   - export LIBRARY_PATH=$(brew --prefix)/lib
@@ -90,6 +130,8 @@ variables:
 build amd64:
   <<: *build
   image: $BUILDER_IMAGE:linux-amd64
+  needs:
+  - build opaque amd64
   tags:
   - linux
   - amd64
@@ -146,6 +188,8 @@ deploy config:
 build arm64:
   <<: *build
   image: $BUILDER_IMAGE:linux-arm64-native
+  needs:
+  - build opaque arm64
   tags:
   - linux
   - arm64
@@ -153,6 +197,8 @@ build arm64:
 build arm:
   <<: *build
   image: $BUILDER_IMAGE:linux-arm
+  needs:
+  - build opaque arm
   tags:
   - linux
   - amd64

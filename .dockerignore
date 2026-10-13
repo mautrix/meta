@@ -4,3 +4,4 @@ start
 config.yaml
 registration.yaml
 *.db
+/pkg/messagix/securehistory/opaque/target
