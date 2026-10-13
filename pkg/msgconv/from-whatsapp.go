@@ -848,6 +848,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 	default:
 		if disappear := evt.FBApplication.GetMetadata().GetChatEphemeralSetting(); evt.Message == nil && disappear != nil {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
+			dontBridge := cm.Disappear == portal.Disappear
 			if disappear.EphemeralSettingTimestamp == nil || disappear.GetEphemeralSettingTimestamp() > meta.EphemeralSettingTimestamp {
 				meta.EphemeralSettingTimestamp = disappear.GetEphemeralSettingTimestamp()
 				portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
@@ -856,6 +857,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 					Save:      true,
 				})
 			} else {
+				dontBridge = true
 				zerolog.Ctx(ctx).Debug().
 					Int64("setting_timestamp", disappear.GetEphemeralSettingTimestamp()).
 					Int64("portal_setting_timestamp", meta.EphemeralSettingTimestamp).
@@ -872,7 +874,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 						"implicit":   false,
 					},
 				},
-				DontBridge: true,
+				DontBridge: dontBridge,
 			}}
 		} else {
 			cm.Parts = []*bridgev2.ConvertedMessagePart{{
