@@ -17,6 +17,18 @@ All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
   (or [with Docker](https://docs.mau.fi/bridges/general/docker-setup.html?bridge=instagram))
 * Basic usage: [Authentication](https://docs.mau.fi/bridges/go/meta/authentication.html)
 
+### Building from source
+Both bridges also require the native library for Messenger history recovery.
+With Rust 1.98.1 installed, build it and set the library path before building the bridge:
+
+```sh
+cargo build --locked --release --manifest-path pkg/messagix/securehistory/opaque/Cargo.toml
+export CGO_LDFLAGS="${CGO_LDFLAGS:-} -L$(pwd)/pkg/messagix/securehistory/opaque/target/release"
+./build-fb.sh
+```
+
+Use `./build-ig.sh` for Instagram. The Dockerfiles build the native library automatically.
+
 ### Features & Roadmap
 [ROADMAP.md](ROADMAP.md) contains a general overview of what is supported by the bridge.
 

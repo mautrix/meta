@@ -40,7 +40,7 @@ build opaque arm64:
 build opaque arm:
   <<: *build-opaque
   variables:
-    RUST_TARGET: armv7-unknown-linux-musleabihf
+    RUST_TARGET: arm-unknown-linux-musleabihf
   tags:
   - linux
   - amd64
@@ -103,6 +103,10 @@ build opaque arm:
   before_script:
   - export CGO_LDFLAGS="-Wl,-headerpad_max_install_names -L$CI_PROJECT_DIR/pkg/messagix/securehistory/opaque/target/release"
   - export PATH=$HOME/.cargo/bin:/opt/homebrew/bin:$PATH
+  - |
+    if ! command -v rustup >/dev/null; then
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain none
+    fi
   - rustup toolchain install 1.98.1 --profile minimal
   - cargo +1.98.1 build --locked --release --manifest-path pkg/messagix/securehistory/opaque/Cargo.toml
   - export MAUTRIX_VERSION=$(cat go.mod | grep 'maunium.net/go/mautrix ' | awk '{ print $2 }')
