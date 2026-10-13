@@ -181,7 +181,28 @@ func (t *UpdatePollTask) GetLabel() string {
 }
 
 func (t *UpdatePollTask) Create() (any, string) {
+	if t.AddedOptions == nil {
+		t.AddedOptions = []map[string]int{}
+	}
+	if t.SelectedOptions == nil {
+		t.SelectedOptions = []int64{}
+	}
 	return t, "poll_update"
+}
+
+type PollPointQueryTask struct {
+	ThreadKey int64 `json:"thread_key"`
+	PollID    int64 `json:"poll_id"`
+	SyncGroup int64 `json:"sync_group"`
+	IsCMPoll  int64 `json:"is_cm_poll"`
+}
+
+func (t *PollPointQueryTask) GetLabel() string {
+	return TaskLabels["PollPointQueryTask"]
+}
+
+func (t *PollPointQueryTask) Create() (any, string) {
+	return t, "poll_point_query"
 }
 
 type ThreadMarkReadTask struct {

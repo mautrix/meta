@@ -143,9 +143,13 @@ type LSTable struct {
 	LSDeletePartialThread                            []*LSDeletePartialThread                            `json:",omitempty"`
 	LSAddPollForThread                               []*LSAddPollForThread                               `json:",omitempty"`
 	LSAddPollOption                                  []*LSAddPollOption                                  `json:",omitempty"`
-	LSAddPollOptionV2                                []*LSAddPollOption                                  `json:",omitempty"`
+	LSAddPollOptionV2                                []*LSAddPollOptionV2                                `json:",omitempty"`
 	LSAddPollVote                                    []*LSAddPollVote                                    `json:",omitempty"`
 	LSAddPollVoteV2                                  []*LSAddPollVote                                    `json:",omitempty"`
+	LSRemovePollVoteV2                               []*LSAddPollVote                                    `json:",omitempty"`
+	LSHandlePlaceholderPollData                      []*LSHandlePlaceholderPollData                      `json:",omitempty"`
+	LSUpdatePollAdminMessageSummary                  []*LSUpdatePollAdminMessageSummary                  `json:",omitempty"`
+	LSVerifyPollExists                               []*LSVerifyPollExists                               `json:",omitempty"`
 	LSUpdateThreadMuteSetting                        []*LSUpdateThreadMuteSetting                        `json:",omitempty"`
 	LSInsertAttachment                               []*LSInsertAttachment                               `json:",omitempty"`
 	LSUpdateExtraAttachmentColumns                   []*LSUpdateExtraAttachmentColumns                   `json:",omitempty"`
@@ -317,7 +321,11 @@ var SPTable = map[string]string{
 	"addPollOptionV2":                                "LSAddPollOptionV2",
 	"addPollVote":                                    "LSAddPollVote",
 	"addPollVoteV2":                                  "LSAddPollVoteV2",
+	"removePollVoteV2":                               "LSRemovePollVoteV2",
+	"handlePlaceholderPollData":                      "LSHandlePlaceholderPollData",
 	"addPollForThread":                               "LSAddPollForThread",
+	"updatePollAdminMessageSummary":                  "LSUpdatePollAdminMessageSummary",
+	"verifyPollExists":                               "LSVerifyPollExists",
 	"deleteReaction":                                 "LSDeleteReaction",
 	"updateThreadMuteSetting":                        "LSUpdateThreadMuteSetting",
 	"insertAttachment":                               "LSInsertAttachment",

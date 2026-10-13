@@ -78,6 +78,13 @@ func (ls *LightSpeedDecoder) Decode(data interface{}) interface{} {
 			os.Exit(1)
 		}
 
+		if len(stepData) == 3 {
+			if call, ok := stepData[2].([]any); ok && len(call) == 4 &&
+				call[0] == float64(CALL_STORED_PROCEDURE) && call[1] == "hasPollAttachmentNewerThan" {
+				ls.StatementReferences[int(key)] = int64(0)
+				return nil
+			}
+		}
 		ls.StatementReferences[int(key)] = int64(shouldStore)
 		ls.Decode(s[2:])
 	case CALL_STORED_PROCEDURE:
