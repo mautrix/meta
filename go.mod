@@ -9,6 +9,9 @@ tool go.mau.fi/util/cmd/maubuild
 require (
 	github.com/apache/thrift v0.24.0
 	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c
+	github.com/bytemare/cryptotools v0.0.0-20210309005813-f9985b05742f
+	github.com/bytemare/opaque v0.0.0-20210310201842-16a10d180656
+	github.com/bytemare/voprf v0.0.0-20210221170502-f0af88d24d16
 	github.com/coder/websocket v1.8.15
 	github.com/gabriel-vasile/mimetype v1.4.15
 	github.com/google/flatbuffers v25.12.19+incompatible
@@ -36,6 +39,8 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/andybalholm/brotli v1.2.4 // indirect
+	github.com/armfazh/h2c-go-ref v0.0.0-20210215173008-07e12a6f8e0d // indirect
+	github.com/armfazh/tozan-ecc v0.1.3 // indirect
 	github.com/beeper/argo-go v1.1.2 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
@@ -54,6 +59,8 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
+	github.com/vmihailenco/msgpack/v5 v5.2.0 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.8.6 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect

@@ -1,22 +1,27 @@
 package opaque
 
-/*
-#cgo !vesta_libsignal LDFLAGS: -lvesta_opaque
-#cgo vesta_libsignal LDFLAGS: -lsignal_ffi
-#cgo windows LDFLAGS: -ladvapi32 -lbcrypt -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp
-#include "vesta_opaque.h"
-*/
-import "C"
-
 import (
+	"bytes"
+	"crypto/hmac"
+	"encoding/binary"
 	"errors"
-	"unsafe"
+	"fmt"
+
+	"github.com/bytemare/cryptotools/group/ciphersuite"
+	"github.com/bytemare/cryptotools/hash"
+	"github.com/bytemare/cryptotools/mhf"
+	bytemare "github.com/bytemare/opaque"
+	"github.com/bytemare/opaque/ake"
+	"github.com/bytemare/opaque/core/envelope"
+	"github.com/bytemare/opaque/message"
+	"github.com/bytemare/voprf"
 )
 
 var ErrInvalidPIN = errors.New("incorrect recovery PIN")
 
 type Login struct {
-	state unsafe.Pointer
+	client   *bytemare.Client
+	password []byte
 }
 
 type Result struct {
@@ -29,45 +34,90 @@ func Begin(password []byte) (*Login, []byte, error) {
 	if len(password) == 0 {
 		return nil, nil, errors.New("empty recovery PIN")
 	}
-	var output C.VestaOpaqueStart
-	if err := resultError(C.vesta_opaque_begin((*C.uint8_t)(unsafe.Pointer(&password[0])), C.size_t(len(password)), &output)); err != nil {
-		return nil, nil, err
+	hardener := mhf.PBKDF2Sha512.Get()
+	hardener.Parameterize(100_000)
+	login := &Login{
+		client: bytemare.NewClient(voprf.RistrettoSha512, hash.SHA512, hash.SHA512, hash.SHA512,
+			hardener, envelope.Base, ciphersuite.Ristretto255Sha512),
+		password: bytes.Clone(password),
 	}
-	return &Login{state: output.state}, C.GoBytes(unsafe.Pointer(&output.message[0]), 98), nil
+	login.client.Ake.Initialize(nil, nil, 32)
+	return login, login.client.AuthenticationStart(login.password, nil).Serialize(), nil
 }
 
 func (l *Login) Finish(response []byte) (*Result, error) {
-	if l.state == nil || len(response) == 0 {
-		return nil, errors.New("invalid recovery login state or response")
+	if l.client == nil {
+		return nil, errors.New("invalid recovery login state")
 	}
-	var output C.VestaOpaqueFinish
-	defer clear(output.session_key[:])
-	defer clear(output.export_key[:])
-	if err := resultError(C.vesta_opaque_finish(&l.state, (*C.uint8_t)(unsafe.Pointer(&response[0])), C.size_t(len(response)), &output)); err != nil {
-		return nil, err
+	defer l.Close()
+	if len(response) < 323 || len(response)-323 > 255*64 || response[64] != byte(envelope.Base) || int(binary.BigEndian.Uint16(response[257:259])) != len(response)-323 {
+		return nil, errors.New("invalid OPAQUE response")
+	}
+	ke2, err := message.DeserializeKE2(response, 32, 32, 64, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid OPAQUE response: %w", err)
+	}
+	c := l.client
+	for _, encoded := range [][]byte{ke2.Data, ke2.Pks, ke2.EpkS} {
+		point, err := c.Ake.Group.NewElement().Decode(encoded)
+		if err != nil || point.IsIdentity() {
+			return nil, errors.New("invalid OPAQUE response point")
+		}
+	}
+	if hmac.Equal(ke2.Data, c.Ke1.Data) {
+		return nil, errors.New("reflected OPAQUE evaluation")
+	}
+	output, err := c.Core.Oprf.Finalize(&voprf.Evaluation{Elements: [][]byte{ke2.Data}})
+	if err != nil {
+		return nil, fmt.Errorf("failed to finalize OPAQUE evaluation: %w", err)
+	}
+	defer clear(output)
+	hardened := c.Core.Harden(output, []byte("OPAQUE_PBKDF2_SALT"), 64)
+	defer clear(hardened)
+	credentials, exportKey, err := c.Core.RecoverSecretNew(nil, nil, ke2.Pks, hardened, ke2.Envelope)
+	if errors.Is(err, envelope.ErrEnvelopeInvalidTag) {
+		return nil, ErrInvalidPIN
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to recover OPAQUE credentials: %w", err)
+	}
+	defer clear(credentials.Sku)
+	secret, err := c.Ake.Group.NewScalar().Decode(credentials.Sku)
+	if err != nil {
+		return nil, fmt.Errorf("invalid OPAQUE client key: %w", err)
+	}
+	public := c.Ake.Group.Base().Mult(secret)
+	ke3, serverInfo, err := c.Ake.Finalize(public.Bytes(), credentials.Sku, ke2.Pks, ke2.Pks, c.Ke1, ke2)
+	defer clear(serverInfo)
+	if errors.Is(err, ake.ErrAkeInvalidServerMac) {
+		return nil, ErrInvalidPIN
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to finalize OPAQUE login: %w", err)
 	}
 	return &Result{
-		Message:    C.GoBytes(unsafe.Pointer(&output.message[0]), 64),
-		SessionKey: C.GoBytes(unsafe.Pointer(&output.session_key[0]), 64),
-		ExportKey:  C.GoBytes(unsafe.Pointer(&output.export_key[0]), 64),
+		Message:    ke3.Serialize(),
+		SessionKey: bytes.Clone(c.SessionKey()),
+		ExportKey:  bytes.Clone(exportKey),
 	}, nil
 }
 
 func (l *Login) Close() {
-	C.vesta_opaque_free(&l.state)
-}
-
-func resultError(code C.int32_t) error {
-	switch code {
-	case 0:
-		return nil
-	case 1:
-		return errors.New("invalid OPAQUE input")
-	case 2:
-		return ErrInvalidPIN
-	case 3:
-		return errors.New("invalid OPAQUE response")
-	default:
-		return errors.New("OPAQUE client failed")
+	clear(l.password)
+	l.password = nil
+	if l.client == nil {
+		return
 	}
+	c := l.client
+	clear(c.Core.Pad)
+	clear(c.Core.AuthKey)
+	clear(c.Core.ExportKey)
+	clear(c.Core.Prk)
+	clear(c.Ake.SessionSecret)
+	if c.Ake.Keys != nil {
+		clear(c.Ake.ServerMacKey)
+		clear(c.Ake.ClientMacKey)
+		clear(c.Ake.HandshakeSecret)
+		clear(c.Ake.HandshakeEncryptKey)
+		clear(c.Ake.Keys.SessionSecret)
+	}
+	l.client = nil
 }
