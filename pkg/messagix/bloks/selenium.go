@@ -752,6 +752,9 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StateCodeEntryPage
 			case "com.bloks.www.two_step_verification.entrypoint":
 				newState = b.profile.twoStepEntrypointState(page)
+				if newState == StateMFALandingPage && isPasskeyPrompt(page) {
+					newState = StatePasskeyPage
+				}
 				b.profile.logTwoStepEntrypoint(log, page, newState)
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
 				"com.bloks.www.caa.ar.sms_captcha",
@@ -1827,10 +1830,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		b.MFACanGoBack = false
 
 		if len(foundMethods) == 0 {
-			if numIgnored == 0 {
-				return nil, fmt.Errorf("couldn't find any mfa types at all")
+			if numIgnored > 0 {
+				return nil, b.profile.errors.NoSupportedMFA
+			} else if b.PreviousPageState == StatePasskeyPage {
+				return nil, b.profile.errors.MandatoryPasskey
 			}
-			return nil, b.profile.errors.NoSupportedMFA
+			return nil, fmt.Errorf("couldn't find any mfa types at all")
 		}
 
 		chosenMethod := userInput["mfatype"]
@@ -2666,6 +2671,13 @@ func twoStepVerificationEntrypointState(page *BloksBundle) BrowserState {
 		return StateChooseMFAPage
 	}
 	return StateMFALandingPage
+}
+
+func isPasskeyPrompt(page *BloksBundle) bool {
+	return page.FindDescendant(func(comp *BloksTreeComponent) bool {
+		return comp.ComponentID == "bk.data.TextSpan" &&
+			strings.Contains(strings.ToLower(comp.GetAttribute("text")), "passkey")
+	}) != nil
 }
 
 func classifyMFAMethod(label string) (isMethod, supported bool) {
