@@ -12,8 +12,8 @@ CREATE TABLE meta_thread_cutover (
 );
 
 UPDATE backfill_task
-SET batch_count = 0, is_done = false, queue_done = false, cursor = NULL,
-    oldest_message_id = NULL, dispatched_at = NULL, completed_at = NULL,
+SET is_done = false, queue_done = false, cursor = NULL,
+    dispatched_at = NULL, completed_at = NULL,
     next_dispatch_min_ts = 0
 WHERE EXISTS (
     SELECT 1 FROM portal

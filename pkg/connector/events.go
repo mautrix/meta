@@ -265,7 +265,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 		if portal.MXID != "" {
 			return &bridgev2.ChatInfo{
 				Type:         ptr.Ptr(database.RoomTypeDefault),
-				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_GROUP),
+				ExtraUpdates: evt.m.updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_GROUP),
 			}, nil
 		}
 		groupInfo, err := evt.m.E2EEClient.GetGroupInfo(ctx, evt.JID)
@@ -278,7 +278,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 		if portal.MXID != "" {
 			return &bridgev2.ChatInfo{
 				Type:         ptr.Ptr(database.RoomTypeDM),
-				ExtraUpdates: updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
+				ExtraUpdates: evt.m.updateServerAndThreadType(evt.JID, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
 			}, nil
 		}
 		return evt.m.makeWADirectChatInfo(ctx, evt.JID), nil
