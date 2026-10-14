@@ -21,6 +21,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory/opaque"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 var ErrNoPINBackup = errors.New("no Messenger PIN backup found")
@@ -174,13 +175,13 @@ func request[T any](ctx context.Context, client *httpclient.HTTPClient, name, fi
 		return nil, fmt.Errorf("%s returned HTTP %d", name, response.StatusCode)
 	}
 	var envelope struct {
-		Data   map[string]json.RawMessage `json:"data"`
-		Errors []json.RawMessage          `json:"errors"`
+		types.ErrorResponse
+		Data map[string]json.RawMessage `json:"data"`
 	}
 	if err = json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("invalid %s response: %w", name, err)
-	} else if len(envelope.Errors) > 0 {
-		return nil, fmt.Errorf("%s returned %d GraphQL errors", name, len(envelope.Errors))
+	} else if err = envelope.AsError(); err != nil {
+		return nil, fmt.Errorf("%s failed: %w", name, err)
 	}
 	data, ok := envelope.Data[field]
 	if !ok {

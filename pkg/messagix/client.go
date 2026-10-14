@@ -156,6 +156,8 @@ func (c *Client) LoadState(state json.RawMessage) error {
 	}
 
 	c.configs = dumped.Configs
+	c.configs.SetClient(c)
+	c.http.SetConfigs(c.configs)
 	c.syncManager = c.newSyncManager()
 	c.syncManager.store = dumped.SyncStore
 	c.updateSocketIDs()
