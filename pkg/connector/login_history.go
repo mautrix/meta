@@ -11,6 +11,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
 type MessengerHistoryLogin struct {
@@ -74,7 +75,6 @@ func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[s
 	}
 	pin := []byte(input["pin"])
 	delete(input, "pin")
-	defer clear(pin)
 	client := m.historyComplete.CompleteParams.UserLogin.Client.(*MetaClient)
 	if err := m.restoreHistory(ctx, client, pin); err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to restore Messenger encrypted history")
@@ -133,12 +133,10 @@ func (m *MessengerHistoryLogin) restoreHistory(ctx context.Context, client *Meta
 	if err != nil {
 		return err
 	}
-	defer clear(recovery.Code)
-	virtual, err := history.GetVirtualDevice(ctx, m.historyBackup, string(client.UserLogin.ID), recovery.Code)
+	virtual, err := history.GetVirtualDevice(ctx, m.historyBackup, metaid.ParseUserLoginID(client.UserLogin.ID), recovery.Code)
 	if err != nil {
 		return err
 	}
-	defer clear(virtual.BlobKey)
 	epochs, err := virtual.DeriveEpochs()
 	if err != nil {
 		return err

@@ -19,6 +19,13 @@ type Enrollment struct {
 	Info   *DeviceInfo
 }
 
+type addDeviceResponse struct {
+	DeviceID  string `json:"device_id"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Retryable bool   `json:"is_retryable"`
+}
+
 type EnrollmentError struct {
 	Code string
 }
@@ -65,17 +72,14 @@ func (d *VirtualDevice) PrepareDevice(backupID, registrationID string, armadillo
 	if err != nil {
 		return nil, err
 	}
-	defer clear(ocmf)
 	var token []byte
 	state.OCMFClientState, token, err = evolveOCMF(ocmf)
 	if err != nil {
 		return nil, err
 	}
 	deviceKey := keys.NewKeyPair()
-	defer clear(deviceKey.Priv[:])
 	storageKey := keys.NewKeyPair()
 	authKey := keys.NewKeyPair()
-	defer clear(authKey.Priv[:])
 	publicKey := append([]byte{255, 1}, deviceKey.Pub[:]...)
 	state.StoragePublicKey = storageKey.Pub[:]
 	state.StoragePrivateKey = storageKey.Priv[:]
@@ -83,7 +87,6 @@ func (d *VirtualDevice) PrepareDevice(backupID, registrationID string, armadillo
 	if err != nil {
 		return nil, err
 	}
-	defer clear(deviceEpochKey)
 	mac := hmac.New(sha256.New, deviceEpochKey)
 	mac.Write(publicKey)
 	fingerprint, err := hkdf.Key(sha256.New, epoch.RootKey, nil, "meb/debug/fingerprint/MEBEpochRootKey", 18)
@@ -122,16 +125,13 @@ func evolveOCMF(state []byte) ([]byte, []byte, error) {
 	if err != nil || current.Equal(ristretto255.NewScalar()) == 1 {
 		return nil, nil, errors.New("invalid Messenger backup OCMF state")
 	}
-	defer current.Zero()
 	factor := ristretto255.NewScalar()
-	defer factor.Zero()
 	for factor.Equal(ristretto255.NewScalar()) == 1 {
 		var randomness [64]byte
 		if _, err = rand.Read(randomness[:]); err != nil {
 			return nil, nil, err
 		}
 		_, err = factor.SetUniformBytes(randomness[:])
-		clear(randomness[:])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -145,12 +145,7 @@ func (c *Client) AddDevice(ctx context.Context, enrollment *Enrollment) (*Device
 	if enrollment == nil || enrollment.Device == nil || enrollment.Info == nil || enrollment.Device.ID != "" {
 		return nil, errors.New("invalid Messenger backup enrollment")
 	}
-	response, err := request[struct {
-		DeviceID  string `json:"device_id"`
-		Code      string `json:"code"`
-		Message   string `json:"message"`
-		Retryable bool   `json:"is_retryable"`
-	}](ctx, c.HTTP, "EBAddDeviceMutation", "xfb_eb_add_device", map[string]any{
+	response, err := request[addDeviceResponse](ctx, c.HTTP, "EBAddDeviceMutation", "xfb_eb_add_device", map[string]any{
 		"input": map[string]any{
 			"device_info":      enrollment.Info,
 			"family_device_id": "",

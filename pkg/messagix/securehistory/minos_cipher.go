@@ -58,7 +58,6 @@ func decryptMinosMessage(metadata minosMessageMetadata, stanza *MinosProtobuf, m
 	if err != nil {
 		return nil, err
 	}
-	defer clear(key)
 	if mek[0] == 2 {
 		return minosDecryptDNDK(key, stanza.Encrypted, []byte(additionalData))
 	}

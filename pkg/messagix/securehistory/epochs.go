@@ -35,7 +35,6 @@ func (d *VirtualDevice) DeriveEpochs() (map[string]Epoch, error) {
 	if err != nil {
 		return nil, err
 	} else if len(rootKey) != 32 {
-		clear(rootKey)
 		return nil, errors.New("invalid Messenger backup epoch root key")
 	}
 	serverEpochs := make(map[string]SyncEpoch, len(d.Info.Epochs))
@@ -49,7 +48,6 @@ func (d *VirtualDevice) DeriveEpochs() (map[string]Epoch, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer clear(privateKey)
 		for current := base; current.ID != d.Info.LastEpochID; {
 			server, ok := serverEpochs[current.ID]
 			if !ok || server.NextID == "" {
@@ -85,15 +83,12 @@ func (d *VirtualDevice) DeriveEpochs() (map[string]Epoch, error) {
 		}
 		anonID, err := decryptEpochValue(key, server.EncryptedData.AnonID)
 		if err != nil {
-			clear(key)
 			return nil, err
 		}
 		rootKey, err := decryptEpochValue(key, server.EncryptedData.RootKey)
-		clear(key)
 		if err != nil {
 			return nil, err
 		} else if !validEpochAnonID(anonID) || len(rootKey) != 32 {
-			clear(rootKey)
 			return nil, errors.New("invalid recovered Messenger backup epoch")
 		}
 		current = Epoch{ID: previous.ID, AnonID: anonID, RootKey: rootKey}
@@ -110,7 +105,6 @@ func deriveNextEpoch(current Epoch, next SyncEpoch, publicKey, privateKey []byte
 	if err != nil {
 		return Epoch{}, err
 	}
-	defer clear(chain)
 	if pskFingerprint != "" && !matchesFingerprint(chain[32:], "MEBCryptoPreSharedKey", pskFingerprint) {
 		return Epoch{}, errors.New("backup epoch PSK fingerprint mismatch")
 	}
@@ -118,7 +112,6 @@ func deriveNextEpoch(current Epoch, next SyncEpoch, publicKey, privateKey []byte
 	if err != nil {
 		return Epoch{}, fmt.Errorf("failed to decrypt Messenger backup epoch entropy: %w", err)
 	}
-	defer clear(entropy)
 	root, err := hkdf.Key(sha256.New, entropy, chain[:32], "epoch_root_key", 32)
 	if err != nil {
 		return Epoch{}, err
@@ -183,12 +176,10 @@ func (d *Device) applyEpochs(set *EpochDerivationSet) error {
 			}
 			target = Epoch{ID: edge.To.ID, AnonID: anon}
 			target.RootKey, err = decryptEpochValue(key, edge.Backward)
-			clear(key)
 		}
 		if err != nil {
 			return err
 		} else if len(target.RootKey) != 32 || !matchesFingerprint(target.RootKey, "MEBEpochRootKey", edge.ToFingerprint) {
-			clear(target.RootKey)
 			return errors.New("backup epoch destination fingerprint mismatch")
 		}
 		d.Epochs[target.ID] = target
@@ -217,14 +208,11 @@ func decryptPublic(publicKey, privateKey, senderKey, psk, aad, ciphertext []byte
 	if err != nil {
 		return nil, err
 	}
-	defer clear(shared)
 	fresh, err := private.ECDH(ephemeral)
 	if err != nil {
 		return nil, err
 	}
-	defer clear(fresh)
 	secret := append(shared, fresh...)
-	defer clear(secret)
 	innerAAD := append([]byte{1}, senderKey...)
 	innerAAD = append(innerAAD, publicKey...)
 	innerAAD = append(innerAAD, ciphertext[1:33]...)
@@ -233,7 +221,6 @@ func decryptPublic(publicKey, privateKey, senderKey, psk, aad, ciphertext []byte
 	if err != nil {
 		return nil, err
 	}
-	defer clear(key)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -250,11 +237,9 @@ func decryptEpochValue(key, ciphertext []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt Messenger backup epoch: %w", err)
 	}
-	defer clear(value)
 	decoded := make([]byte, base64.StdEncoding.DecodedLen(len(value)))
 	n, err := base64.StdEncoding.Decode(decoded, value)
 	if err != nil {
-		clear(decoded)
 		return nil, err
 	}
 	return decoded[:n], nil

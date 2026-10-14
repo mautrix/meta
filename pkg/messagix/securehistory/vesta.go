@@ -89,6 +89,20 @@ type vestaInit struct {
 	AttemptsRemaining *int     `json:"attempts_remaining"`
 }
 
+type vestaBegin struct {
+	L2        urlBytes `json:"base64url_encoded_opaque_l2"`
+	Signature urlBytes `json:"base64url_encoded_opaque_l2_sig"`
+}
+
+type vestaFinish struct {
+	Type                     string   `json:"__typename"`
+	Payload                  urlBytes `json:"base64url_encoded_login_payload"`
+	Success                  bool     `json:"login_success"`
+	ErrorCode                string   `json:"vesta_error_code"`
+	AttemptsRemaining        *int     `json:"attempts_remaining"`
+	TriggerPostLoginRegister bool     `json:"trigger_post_login_register"`
+}
+
 func (c *Client) GetBackup(ctx context.Context) (*Backup, error) {
 	backup, err := request[Backup](ctx, c.HTTP, "useMWEncryptedBackupsFetchBackupIdsV2Query", "xfb_backup", struct{}{})
 	if err != nil {
@@ -128,10 +142,7 @@ func (c *Client) RecoverPIN(ctx context.Context, backup *Backup, pin []byte) (*R
 	defer login.Close()
 	variables["vesta_client_protocol_version"] = 1
 	variables["base64url_encoded_opaque_l1"] = base64.RawURLEncoding.EncodeToString(l1)
-	begin, err := request[struct {
-		L2        urlBytes `json:"base64url_encoded_opaque_l2"`
-		Signature urlBytes `json:"base64url_encoded_opaque_l2_sig"`
-	}](ctx, c.HTTP, "VestaServerGraphQLLoginProviderBeginLoginMutation", "fbid_based_auth_layer_vesta_begin_login", map[string]any{"input": variables})
+	begin, err := request[vestaBegin](ctx, c.HTTP, "VestaServerGraphQLLoginProviderBeginLoginMutation", "fbid_based_auth_layer_vesta_begin_login", map[string]any{"input": variables})
 	if err != nil {
 		return nil, err
 	} else if begin == nil || !ed25519.Verify(ed25519.PublicKey(init.Ed25519Key), append([]byte{2}, begin.L2...), begin.Signature) {
@@ -141,18 +152,9 @@ func (c *Client) RecoverPIN(ctx context.Context, backup *Backup, pin []byte) (*R
 	if err != nil {
 		return nil, err
 	}
-	defer clear(result.SessionKey)
-	defer clear(result.ExportKey)
 	delete(variables, "base64url_encoded_opaque_l1")
 	variables["base64url_encoded_opaque_l3"] = base64.RawURLEncoding.EncodeToString(result.Message)
-	finish, err := request[struct {
-		Type                     string   `json:"__typename"`
-		Payload                  urlBytes `json:"base64url_encoded_login_payload"`
-		Success                  bool     `json:"login_success"`
-		ErrorCode                string   `json:"vesta_error_code"`
-		AttemptsRemaining        *int     `json:"attempts_remaining"`
-		TriggerPostLoginRegister bool     `json:"trigger_post_login_register"`
-	}](ctx, c.HTTP, "VestaServerGraphQLLoginProviderFinishLoginMutation", "fbid_based_auth_layer_vesta_finish_login_v2", map[string]any{"input": variables})
+	finish, err := request[vestaFinish](ctx, c.HTTP, "VestaServerGraphQLLoginProviderFinishLoginMutation", "fbid_based_auth_layer_vesta_finish_login_v2", map[string]any{"input": variables})
 	if err != nil {
 		return nil, err
 	} else if finish == nil {
@@ -224,7 +226,6 @@ func unpackLoginPayload(payload, sessionKey, exportKey []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer clear(plaintext)
 	var inner WaBackupKeyData
 	if err = proto.Unmarshal(plaintext, &inner); err != nil {
 		return nil, fmt.Errorf("invalid recovery key data: %w", err)

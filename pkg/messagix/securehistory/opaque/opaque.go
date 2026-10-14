@@ -20,8 +20,7 @@ import (
 var ErrInvalidPIN = errors.New("incorrect recovery PIN")
 
 type Login struct {
-	client   *bytemare.Client
-	password []byte
+	client *bytemare.Client
 }
 
 type Result struct {
@@ -39,10 +38,9 @@ func Begin(password []byte) (*Login, []byte, error) {
 	login := &Login{
 		client: bytemare.NewClient(voprf.RistrettoSha512, hash.SHA512, hash.SHA512, hash.SHA512,
 			hardener, envelope.Base, ciphersuite.Ristretto255Sha512),
-		password: bytes.Clone(password),
 	}
 	login.client.Ake.Initialize(nil, nil, 32)
-	return login, login.client.AuthenticationStart(login.password, nil).Serialize(), nil
+	return login, login.client.AuthenticationStart(bytes.Clone(password), nil).Serialize(), nil
 }
 
 func (l *Login) Finish(response []byte) (*Result, error) {
@@ -71,23 +69,19 @@ func (l *Login) Finish(response []byte) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to finalize OPAQUE evaluation: %w", err)
 	}
-	defer clear(output)
 	hardened := c.Core.Harden(output, []byte("OPAQUE_PBKDF2_SALT"), 64)
-	defer clear(hardened)
 	credentials, exportKey, err := c.Core.RecoverSecretNew(nil, nil, ke2.Pks, hardened, ke2.Envelope)
 	if errors.Is(err, envelope.ErrEnvelopeInvalidTag) {
 		return nil, ErrInvalidPIN
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to recover OPAQUE credentials: %w", err)
 	}
-	defer clear(credentials.Sku)
 	secret, err := c.Ake.Group.NewScalar().Decode(credentials.Sku)
 	if err != nil {
 		return nil, fmt.Errorf("invalid OPAQUE client key: %w", err)
 	}
 	public := c.Ake.Group.Base().Mult(secret)
-	ke3, serverInfo, err := c.Ake.Finalize(public.Bytes(), credentials.Sku, ke2.Pks, ke2.Pks, c.Ke1, ke2)
-	defer clear(serverInfo)
+	ke3, _, err := c.Ake.Finalize(public.Bytes(), credentials.Sku, ke2.Pks, ke2.Pks, c.Ke1, ke2)
 	if errors.Is(err, ake.ErrAkeInvalidServerMac) {
 		return nil, ErrInvalidPIN
 	} else if err != nil {
@@ -95,29 +89,11 @@ func (l *Login) Finish(response []byte) (*Result, error) {
 	}
 	return &Result{
 		Message:    ke3.Serialize(),
-		SessionKey: bytes.Clone(c.SessionKey()),
-		ExportKey:  bytes.Clone(exportKey),
+		SessionKey: c.SessionKey(),
+		ExportKey:  exportKey,
 	}, nil
 }
 
 func (l *Login) Close() {
-	clear(l.password)
-	l.password = nil
-	if l.client == nil {
-		return
-	}
-	c := l.client
-	clear(c.Core.Pad)
-	clear(c.Core.AuthKey)
-	clear(c.Core.ExportKey)
-	clear(c.Core.Prk)
-	clear(c.Ake.SessionSecret)
-	if c.Ake.Keys != nil {
-		clear(c.Ake.ServerMacKey)
-		clear(c.Ake.ClientMacKey)
-		clear(c.Ake.HandshakeSecret)
-		clear(c.Ake.HandshakeEncryptKey)
-		clear(c.Ake.Keys.SessionSecret)
-	}
 	l.client = nil
 }

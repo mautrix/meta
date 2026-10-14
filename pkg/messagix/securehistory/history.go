@@ -60,6 +60,14 @@ type MessageRange struct {
 	DeleteMailbox bool                `json:"should_delete_mailbox"`
 }
 
+type messageRangeResponse struct {
+	Backup *struct {
+		Mailbox *struct {
+			Ranges []*MessageRange `json:"messages_from_selected_threads"`
+		} `json:"mailbox"`
+	} `json:"encrypted_backup"`
+}
+
 type ArchiveAttachment struct {
 	URL      string `json:"attachment_cdn_url"`
 	ObjectID string `json:"attachment_object_id"`
@@ -133,17 +141,19 @@ type ArchiveMessage struct {
 	ID          string              `json:"otid"`
 	Attachments []ArchiveAttachment `json:"attachment_data"`
 	Echo        json.RawMessage     `json:"echo_document"`
-	Protobufs   *struct {
-		Message       *ArchiveProtobuf   `json:"top_level_protobuf"`
-		Supplementals []*ArchiveProtobuf `json:"supplemental_protobufs"`
-		Unencrypted   *struct {
-			Message     []byte      `json:"unencrypted_protobuf"`
-			TimestampMS json.Number `json:"protobuf_timestamp_ms"`
-		} `json:"top_level_protobuf_unencrypted"`
-		MinosMessage       *MinosProtobuf   `json:"top_level_protobuf_v2"`
-		MinosSupplementals []*MinosProtobuf `json:"supplemental_protobufs_v2"`
-		Tags               []string         `json:"message_tags"`
-	} `json:"protobuf_stanzas"`
+	Protobufs   *ArchiveProtobufs   `json:"protobuf_stanzas"`
+}
+
+type ArchiveProtobufs struct {
+	Message       *ArchiveProtobuf   `json:"top_level_protobuf"`
+	Supplementals []*ArchiveProtobuf `json:"supplemental_protobufs"`
+	Unencrypted   *struct {
+		Message     []byte      `json:"unencrypted_protobuf"`
+		TimestampMS json.Number `json:"protobuf_timestamp_ms"`
+	} `json:"top_level_protobuf_unencrypted"`
+	MinosMessage       *MinosProtobuf   `json:"top_level_protobuf_v2"`
+	MinosSupplementals []*MinosProtobuf `json:"supplemental_protobufs_v2"`
+	Tags               []string         `json:"message_tags"`
 }
 
 type DecryptedProtobuf struct {
@@ -202,13 +212,7 @@ func (c *Client) FetchMessages(ctx context.Context, device *Device, threadID str
 	if err != nil {
 		return nil, err
 	}
-	response, err := request[struct {
-		Backup *struct {
-			Mailbox *struct {
-				Ranges []*MessageRange `json:"messages_from_selected_threads"`
-			} `json:"mailbox"`
-		} `json:"encrypted_backup"`
-	}](ctx, c.HTTP, "EBMessageRangeQueryForThreadsQuery", "viewer", map[string]any{
+	response, err := request[messageRangeResponse](ctx, c.HTTP, "EBMessageRangeQueryForThreadsQuery", "viewer", map[string]any{
 		"app_id":                  c.AppID,
 		"includeAttachmentData":   true,
 		"restore_payload_strings": []string{string(payload)},
@@ -250,6 +254,7 @@ func (p *ArchiveProtobuf) decrypt(device *Device, threadID string) (*DecryptedPr
 	var version int64
 	switch p.EncryptionVersion {
 	case "", "UNKNOWN":
+		version = 0
 	case "ENCRYPTION_KDF_WITH_VERSION":
 		version = 2
 	case "ENCRYPTION_KDF_WITH_NULL_SALT":
@@ -274,7 +279,6 @@ func (p *ArchiveProtobuf) decrypt(device *Device, threadID string) (*DecryptedPr
 			return nil, "", err
 		}
 		decrypted, err := decryptData(key, p.KeyCiphertext, []byte("supplemental_enc_aad"))
-		clear(key)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to decrypt Messenger archive supplemental key: %w", err)
 		}
@@ -283,7 +287,7 @@ func (p *ArchiveProtobuf) decrypt(device *Device, threadID string) (*DecryptedPr
 	return &DecryptedProtobuf{Message: message, TimestampMS: timestamp}, supplementalKey, nil
 }
 
-func (r *MessageRange) Decrypt(device *Device, threadID, selfUserID string, isGroup bool) ([]*DecryptedMessage, error) {
+func (r *MessageRange) Decrypt(device *Device, threadID string, selfUserID int64, isGroup bool) ([]*DecryptedMessage, error) {
 	keys := make(map[string]*MinosKeyEntry, len(r.MinosKeys))
 	for _, key := range r.MinosKeys {
 		if key != nil {
@@ -291,21 +295,17 @@ func (r *MessageRange) Decrypt(device *Device, threadID, selfUserID string, isGr
 		}
 	}
 	decryptedKeys := make(map[string][]byte)
-	defer func() {
-		for _, key := range decryptedKeys {
-			clear(key)
-		}
-	}()
 	minosThreadID := threadID
 	if !isGroup {
-		if selfUserID < threadID {
-			minosThreadID = selfUserID + ":" + threadID
+		self := strconv.FormatInt(selfUserID, 10)
+		if self < threadID {
+			minosThreadID = self + ":" + threadID
 		} else {
-			minosThreadID = threadID + ":" + selfUserID
+			minosThreadID = threadID + ":" + self
 		}
 	}
 	decryptMinos := func(stanza *MinosProtobuf, messageID string) (*DecryptedProtobuf, error) {
-		if stanza == nil || stanza.ActorToken == "" || messageID == "" || threadID == "" || !isGroup && selfUserID == "" {
+		if stanza == nil || stanza.ActorToken == "" || messageID == "" || threadID == "" || !isGroup && selfUserID <= 0 {
 			return nil, errors.New("missing Messenger Minos message metadata")
 		}
 		if origin := bytes.TrimSpace(stanza.ServerOriginContentType); len(origin) > 0 && !bytes.Equal(origin, []byte("null")) {
@@ -347,7 +347,6 @@ func (r *MessageRange) Decrypt(device *Device, threadID, selfUserID string, isGr
 		}
 		var message waArmadilloBackupMessage.BackupMessage
 		err = proto.Unmarshal(plaintext, &message)
-		clear(plaintext)
 		if err != nil {
 			return nil, fmt.Errorf("invalid Messenger Minos message: %w", err)
 		}

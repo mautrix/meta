@@ -93,7 +93,8 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 			}
 		}
 	}
-	page, err := m.Client.GetSecureHistoryClient().FetchMessages(ctx, device, string(params.Portal.ID), true, timestamp, params.Count)
+	chat := params.Portal.Metadata.(*metaid.PortalMetadata).JID(params.Portal.ID)
+	page, err := m.Client.GetSecureHistoryClient().FetchMessages(ctx, device, chat.User, true, timestamp, params.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -113,8 +114,7 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 		HasMore:  *page.Range.HasMoreBefore,
 		Forward:  params.Forward,
 	}
-	chat := params.Portal.Metadata.(*metaid.PortalMetadata).JID(params.Portal.ID)
-	messages, err := page.Decrypt(device, string(params.Portal.ID), string(m.UserLogin.ID), chat.Server == types.GroupServer)
+	messages, err := page.Decrypt(device, chat.User, metaid.ParseUserLoginID(m.UserLogin.ID), chat.Server == types.GroupServer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt Messenger history: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 type EncryptedSecrets struct {
@@ -61,6 +62,14 @@ type VirtualDevice struct {
 	Info    *VirtualDeviceInfo
 }
 
+type virtualDeviceResponse struct {
+	OK    bool `json:"ok"`
+	Error *struct {
+		Code string `json:"code"`
+	} `json:"error"`
+	Data *VirtualDeviceInfo `json:"data"`
+}
+
 type Epoch struct {
 	ID      string `json:"id"`
 	AnonID  []byte `json:"anon_id"`
@@ -85,11 +94,9 @@ func (d *VirtualDevice) decryptSecret(ciphertext []byte, name string) ([]byte, e
 		}
 		decoded := make([]byte, base64.StdEncoding.DecodedLen(len(value)))
 		n, err := base64.StdEncoding.Decode(decoded, value)
-		clear(value)
 		if err == nil {
 			return decoded[:n], nil
 		}
-		clear(decoded)
 	}
 	return nil, fmt.Errorf("failed to decrypt Messenger backup %s", name)
 }
@@ -106,31 +113,27 @@ func validEpochAnonID(id []byte) bool {
 	return true
 }
 
-func (c *Client) GetVirtualDevice(ctx context.Context, backup *Backup, userID string, code []byte) (*VirtualDevice, error) {
+func (c *Client) GetVirtualDevice(ctx context.Context, backup *Backup, userID int64, code []byte) (*VirtualDevice, error) {
 	if backup == nil || backup.ID == "" {
 		return nil, ErrNoPINBackup
-	} else if backup.DelegatorID != "" {
-		userID = backup.DelegatorID
+	} else if userID <= 0 && backup.DelegatorID == "" {
+		return nil, errors.New("invalid Messenger recovery account")
 	}
-	id, key, err := deriveVirtualDevice(code, userID)
+	ownerID := backup.DelegatorID
+	if ownerID == "" {
+		ownerID = strconv.FormatInt(userID, 10)
+	}
+	id, key, err := deriveVirtualDevice(code, ownerID)
 	if err != nil {
 		return nil, err
 	}
-	response, err := request[struct {
-		OK    bool `json:"ok"`
-		Error *struct {
-			Code string `json:"code"`
-		} `json:"error"`
-		Data *VirtualDeviceInfo `json:"data"`
-	}](ctx, c.HTTP, "EBAddDeviceGraphQLEBFetchVirtualDeviceInfoQuery", "fetch_virtual_device_info_for_device_addition_v2", map[string]any{
-		"request_uuid":      userID,
+	response, err := request[virtualDeviceResponse](ctx, c.HTTP, "EBAddDeviceGraphQLEBFetchVirtualDeviceInfoQuery", "fetch_virtual_device_info_for_device_addition_v2", map[string]any{
+		"request_uuid":      ownerID,
 		"virtual_device_id": base64.StdEncoding.EncodeToString(id),
 	})
 	if err != nil {
-		clear(key)
 		return nil, err
 	} else if response == nil || !response.OK || response.Data == nil {
-		clear(key)
 		if response != nil && response.Error != nil {
 			return nil, fmt.Errorf("backup device query failed: %s", response.Error.Code)
 		}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"time"
 
 	"go.mau.fi/whatsmeow"
@@ -46,7 +45,9 @@ func (m *MetaClient) decodeArchiveMessage(portal *bridgev2.Portal, message *waAr
 	metadata := message.GetMetadata()
 	if metadata.GetMessageID() == "" || metadata.GetSenderID() == "" || timestampMS < 0 {
 		return nil, errors.New("missing Messenger archive message metadata")
-	} else if _, err := strconv.ParseUint(metadata.GetSenderID(), 10, 64); err != nil {
+	}
+	senderID, err := metaid.ParseIDFromString(metadata.GetSenderID())
+	if err != nil {
 		return nil, fmt.Errorf("invalid Messenger archive sender: %w", err)
 	}
 	chat := portal.Metadata.(*metaid.PortalMetadata).JID(portal.ID)
@@ -54,7 +55,7 @@ func (m *MetaClient) decodeArchiveMessage(portal *bridgev2.Portal, message *waAr
 		MessageSource: types.MessageSource{
 			Chat:     chat,
 			Sender:   types.NewJID(metadata.GetSenderID(), types.MessengerServer),
-			IsFromMe: metadata.GetSenderID() == string(m.UserLogin.ID),
+			IsFromMe: metaid.MakeUserLoginID(senderID) == m.UserLogin.ID,
 			IsGroup:  chat.Server == types.GroupServer,
 		},
 		ID:        metadata.GetMessageID(),

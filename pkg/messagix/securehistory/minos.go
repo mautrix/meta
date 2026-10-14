@@ -45,21 +45,15 @@ func minosMailboxKeys(epoch Epoch) (*ecdh.PrivateKey, *mlkem.DecapsulationKey768
 	if err != nil {
 		return nil, nil, err
 	}
-	defer clear(seed)
 	prk := minosHPKEExtract("KEM\x00\x20", nil, "dkp_prk", seed)
-	defer clear(prk)
 	x25519Key := minosHPKEExpand("KEM\x00\x20", prk, "sk", nil, 32)
-	defer clear(x25519Key)
 	sk, err := ecdh.X25519().NewPrivateKey(x25519Key)
 	if err != nil {
 		return nil, nil, err
 	}
 	d, _ := hkdf.Key(sha256.New, seed, nil, "mlkem768.derive_keypair.d", 32)
 	z, _ := hkdf.Key(sha256.New, seed, nil, "mlkem768.derive_keypair.z", 32)
-	defer clear(d)
-	defer clear(z)
 	kemSeed := append(d, z...)
-	defer clear(kemSeed)
 	kem, err := mlkem.NewDecapsulationKey768(kemSeed)
 	return sk, kem, err
 }
@@ -80,35 +74,25 @@ func minosOpenHPKE(sk *ecdh.PrivateKey, kem *mlkem.DecapsulationKey768, authPK, 
 	if err != nil {
 		return nil, err
 	}
-	defer clear(dh)
 	authDH, err := sk.ECDH(authKey)
 	if err != nil {
 		return nil, err
 	}
-	defer clear(authDH)
 	dhInput := bytes.Join([][]byte{dh, authDH}, nil)
-	defer clear(dhInput)
 	kemContext := bytes.Join([][]byte{ephemeralPK.Bytes(), sk.PublicKey().Bytes(), authKey.Bytes()}, nil)
 	eaePRK := minosHPKEExtract("KEM\x00\x20", nil, "eae_prk", dhInput)
-	defer clear(eaePRK)
 	dhSecret := minosHPKEExpand("KEM\x00\x20", eaePRK, "shared_secret", kemContext, 32)
-	defer clear(dhSecret)
 	kemCiphertext := ciphertext[33:1121]
 	kemSecret, err := kem.Decapsulate(kemCiphertext)
 	if err != nil {
 		return nil, err
 	}
-	defer clear(kemSecret)
 	combined := bytes.Join([][]byte{dhSecret, kemSecret, ephemeralPK.Bytes(), kemCiphertext, kem.EncapsulationKey().Bytes()}, nil)
-	defer clear(combined)
 	shared, _ := hkdf.Key(sha256.New, combined, nil, "hawk_final", 32)
-	defer clear(shared)
 	const suite = "HPKE\x00\x02\x00\x01\x00\x02"
 	context := bytes.Join([][]byte{{2}, minosHPKEExtract(suite, nil, "psk_id_hash", nil), minosHPKEExtract(suite, nil, "info_hash", nil)}, nil)
 	secret := minosHPKEExtract(suite, shared, "secret", nil)
-	defer clear(secret)
 	key := minosHPKEExpand(suite, secret, "key", context, 32)
-	defer clear(key)
 	nonce := minosHPKEExpand(suite, secret, "base_nonce", context, 12)
 	block, err := aes.NewCipher(key)
 	if err != nil {
