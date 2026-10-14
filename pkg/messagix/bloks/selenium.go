@@ -752,9 +752,6 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StateCodeEntryPage
 			case "com.bloks.www.two_step_verification.entrypoint":
 				newState = b.profile.twoStepEntrypointState(page)
-				if newState == StateMFALandingPage && isPasskeyPrompt(page) {
-					newState = StatePasskeyPage
-				}
 				b.profile.logTwoStepEntrypoint(log, page, newState)
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
 				"com.bloks.www.caa.ar.sms_captcha",
@@ -2643,7 +2640,7 @@ func findMFAMethodOptions(page *BloksBundle) (map[string]*BloksTreeComponent, []
 	return found, methodNames, unsupportedCount
 }
 
-func twoStepVerificationEntrypointState(page *BloksBundle) BrowserState {
+func (profile browserPlatformProfile) twoStepEntrypointState(page *BloksBundle) BrowserState {
 	if page == nil {
 		return StateMFALandingPage
 	}
@@ -2667,8 +2664,10 @@ func twoStepVerificationEntrypointState(page *BloksBundle) BrowserState {
 		}
 		return StateCodeEntryPage
 	}
-	if foundMethods, _, _ := findMFAMethodOptions(page); len(foundMethods) > 0 {
+	if profile.hasMFAMethodsOnLanding(page) {
 		return StateChooseMFAPage
+	} else if isPasskeyPrompt(page) {
+		return StatePasskeyPage
 	}
 	return StateMFALandingPage
 }
