@@ -58,9 +58,8 @@ type UserLoginMetadata struct {
 
 func (m *UserLoginMetadata) CopyFrom(other any) {
 	updated := *other.(*UserLoginMetadata)
-	if m.Platform.IsMessenger() && updated.Platform.IsMessenger() && m.HistoryDevice != nil && m.WADeviceID != 0 {
+	if m.Platform.IsMessenger() && updated.Platform.IsMessenger() && m.HistoryDevice != nil {
 		updated.HistoryDevice = m.HistoryDevice
-		updated.WADeviceID = m.WADeviceID
 	}
 	*m = updated
 }
