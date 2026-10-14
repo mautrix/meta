@@ -35,7 +35,7 @@ func (m *MetaClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (
 			log.Err(err).Msg("Failed to fetch WhatsApp group info")
 			return nil, nil
 		}
-		return m.wrapWAGroupInfo(groupInfo), nil
+		return m.wrapWAGroupInfo(ctx, groupInfo), nil
 	case types.MessengerServer, types.DefaultUserServer:
 		return m.makeWADirectChatInfo(ctx, jid), nil
 	default:
@@ -49,7 +49,19 @@ const (
 	powerSuperAdmin = 75
 )
 
-func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatInfo {
+func (m *MetaClient) canBackfillMessenger(ctx context.Context, threadJID int64) bool {
+	if m.canBackfillEncrypted() {
+		return true
+	}
+	openThreadKey, err := m.Main.DB.GetOpenThreadKey(ctx, m.UserLogin.ID, threadJID)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get thread cutover mapping")
+		return false
+	}
+	return openThreadKey != 0
+}
+
+func (m *MetaClient) wrapWAGroupInfo(ctx context.Context, chatInfo *types.GroupInfo) *bridgev2.ChatInfo {
 	var disappear database.DisappearingSetting
 	if chatInfo.IsEphemeral {
 		disappear.Type = event.DisappearingTypeAfterSend
@@ -106,7 +118,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		Members:      ml,
 		Type:         ptr.Ptr(database.RoomTypeDefault),
 		Disappear:    &disappear,
-		CanBackfill:  m.canBackfillEncrypted(),
+		CanBackfill:  m.canBackfillMessenger(ctx, int64(chatInfo.JID.UserInt())),
 		ExtraUpdates: updateServerAndThreadType(chatInfo.JID, table.ENCRYPTED_OVER_WA_GROUP),
 	}
 }
@@ -126,7 +138,7 @@ func updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(
 	}
 }
 
-func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.ThreadType, parentThreadKey int64) *bridgev2.ChatInfo {
+func (m *MetaClient) makeMinimalChatInfo(ctx context.Context, threadID int64, threadType table.ThreadType, parentThreadKey int64) *bridgev2.ChatInfo {
 	selfEvtSender := m.selfEventSender()
 	members := &bridgev2.ChatMemberList{
 		MemberMap: map[networkid.UserID]bridgev2.ChatMember{selfEvtSender.Sender: {
@@ -159,7 +171,7 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 	return &bridgev2.ChatInfo{
 		Members:     members,
 		Type:        &roomType,
-		CanBackfill: !threadType.IsWhatsApp() || m.canBackfillEncrypted(),
+		CanBackfill: !threadType.IsWhatsApp() || m.canBackfillMessenger(ctx, threadID),
 		ParentID:    parentIDPtr,
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
@@ -176,8 +188,8 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 	}
 }
 
-func (m *MetaClient) wrapFolderInfo(folder *table.LSUpsertFolder) *bridgev2.ChatInfo {
-	chatInfo := m.makeMinimalChatInfo(folder.ThreadKey, table.FOLDER, -1)
+func (m *MetaClient) wrapFolderInfo(ctx context.Context, folder *table.LSUpsertFolder) *bridgev2.ChatInfo {
+	chatInfo := m.makeMinimalChatInfo(ctx, folder.ThreadKey, table.FOLDER, -1)
 	chatInfo.Name = &folder.ThreadName
 	chatInfo.Avatar = wrapAvatar(folder.ThreadPictureURL)
 	return chatInfo
@@ -219,7 +231,7 @@ func (m *MetaClient) makeWADirectChatInfo(ctx context.Context, recipient types.J
 		Members:      members,
 		Type:         ptr.Ptr(database.RoomTypeDM),
 		ExtraUpdates: updateServerAndThreadType(recipient, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
-		CanBackfill:  m.canBackfillEncrypted(),
+		CanBackfill:  m.canBackfillMessenger(ctx, int64(recipient.UserInt())),
 	}
 	fbThreadKey, messageRequest, err := m.Main.DB.GetHybridThreadInfoByJID(ctx, m.UserLogin.ID, int64(recipient.UserInt()))
 	if err != nil {
@@ -231,8 +243,8 @@ func (m *MetaClient) makeWADirectChatInfo(ctx context.Context, recipient types.J
 	return info
 }
 
-func (m *MetaClient) wrapChatInfo(tbl table.ThreadInfo) *bridgev2.ChatInfo {
-	chatInfo := m.makeMinimalChatInfo(tbl.GetThreadKey(), tbl.GetThreadType(), tbl.GetParentThreadKey())
+func (m *MetaClient) wrapChatInfo(ctx context.Context, tbl table.ThreadInfo) *bridgev2.ChatInfo {
+	chatInfo := m.makeMinimalChatInfo(ctx, tbl.GetThreadKey(), tbl.GetThreadType(), tbl.GetParentThreadKey())
 	if *chatInfo.Type != database.RoomTypeDM {
 		if tbl.GetThreadName() != "" {
 			chatInfo.Name = ptr.Ptr(tbl.GetThreadName())

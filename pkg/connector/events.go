@@ -112,7 +112,7 @@ func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bri
 			zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Requested full thread info")
 		}
 	}
-	chatInfo := evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType, evt.ParentThreadKey)
+	chatInfo := evt.m.makeMinimalChatInfo(ctx, evt.ThreadKey, evt.ThreadType, evt.ParentThreadKey)
 	chatInfo.MessageRequest = ptr.Ptr(evt.FolderName == folderPending)
 	return chatInfo, nil
 }
@@ -273,7 +273,7 @@ func (evt *EnsureWAChatStateEvent) GetChatInfo(ctx context.Context, portal *brid
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to fetch WhatsApp group info")
 			return nil, err
 		}
-		return evt.m.wrapWAGroupInfo(groupInfo), nil
+		return evt.m.wrapWAGroupInfo(ctx, groupInfo), nil
 	case types.MessengerServer, types.DefaultUserServer:
 		if portal.MXID != "" {
 			return &bridgev2.ChatInfo{
@@ -756,5 +756,5 @@ func (f *FBFolderResync) GetSender() bridgev2.EventSender {
 }
 
 func (f *FBFolderResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	return f.m.wrapFolderInfo(f.LSUpsertFolder), nil
+	return f.m.wrapFolderInfo(ctx, f.LSUpsertFolder), nil
 }
