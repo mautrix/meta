@@ -111,7 +111,7 @@ func (m *MetaClient) fetchMessengerHistory(ctx context.Context, params bridgev2.
 	}
 	if cursor.OpenThreadID != 0 {
 		if cursor.OpenThreadID != openThreadID {
-			return nil, fmt.Errorf("Messenger history predecessor changed")
+			return nil, fmt.Errorf("history predecessor changed")
 		}
 		params.AnchorMessage = nil
 		if cursor.MessageID != "" {
