@@ -98,10 +98,8 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 	if err != nil {
 		return nil, err
 	}
-	next, err := page.Range.Before.Int64()
-	if err != nil {
-		return nil, err
-	} else if *page.Range.HasMoreBefore && next >= timestamp {
+	next := page.Range.Before
+	if *page.Range.HasMoreBefore && next >= timestamp {
 		return nil, fmt.Errorf("history cursor did not move backwards")
 	}
 	device, err = m.saveHistoryEpochs(ctx, device, page.Epochs)

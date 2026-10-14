@@ -66,7 +66,8 @@ func (d *VirtualDevice) DeriveEpochs() (map[string]Epoch, error) {
 			epochs[current.ID] = current
 		}
 	}
-	for current := base; ; {
+	current := base
+	for {
 		server, ok := serverEpochs[current.ID]
 		if !ok || server.PreviousID == "" {
 			break

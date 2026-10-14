@@ -43,10 +43,10 @@ type EpochDerivationSet struct {
 }
 
 type MessageRangeInfo struct {
-	HasMoreBefore *bool       `json:"has_more_before"`
-	HasMoreAfter  *bool       `json:"has_more_after"`
-	Before        json.Number `json:"next_message_timestamp_ms_before"`
-	After         json.Number `json:"next_message_timestamp_ms_after"`
+	HasMoreBefore *bool `json:"has_more_before"`
+	HasMoreAfter  *bool `json:"has_more_after"`
+	Before        int64 `json:"next_message_timestamp_ms_before,string"`
+	After         int64 `json:"next_message_timestamp_ms_after,string"`
 }
 
 type MessageRange struct {
@@ -74,14 +74,14 @@ type ArchiveAttachment struct {
 }
 
 type ArchiveProtobuf struct {
-	Encrypted         []byte      `json:"encrypted_protobuf_stanza"`
-	EncryptionVersion string      `json:"encryption_version"`
-	EpochID           string      `json:"epoch_id"`
-	EpochAnonID       string      `json:"epoch_anon_id"`
-	TimestampMS       json.Number `json:"protobuf_timestamp_ms"`
-	SupplementalKey   string      `json:"supplemental_key"`
-	SupplementalID    string      `json:"supplemental_otid"`
-	KeyCiphertext     []byte      `json:"sk_ciphertext"`
+	Encrypted         []byte `json:"encrypted_protobuf_stanza"`
+	EncryptionVersion string `json:"encryption_version"`
+	EpochID           string `json:"epoch_id"`
+	EpochAnonID       string `json:"epoch_anon_id"`
+	TimestampMS       int64  `json:"protobuf_timestamp_ms,string"`
+	SupplementalKey   string `json:"supplemental_key"`
+	SupplementalID    string `json:"supplemental_otid"`
+	KeyCiphertext     []byte `json:"sk_ciphertext"`
 }
 
 type MinosProtobuf struct {
@@ -89,7 +89,7 @@ type MinosProtobuf struct {
 	Encrypted               []byte          `json:"encrypted_protobuf"`
 	MEKFBID                 string          `json:"mek_fbid"`
 	MEKID                   []byte          `json:"mek_id"`
-	Timestamp               json.Number     `json:"protobuf_timestamp"`
+	Timestamp               int64           `json:"protobuf_timestamp,string"`
 	TransportSigningPK      []byte          `json:"transport_sender_signing_pk"`
 	Signature               []byte          `json:"transport_sender_message_signature"`
 	EncryptionVersion       int             `json:"message_encryption_version"`
@@ -111,11 +111,11 @@ type MinosKeyData struct {
 }
 
 type MinosMEKInfo struct {
-	ID                []byte      `json:"mek_id"`
-	RosterHash        []byte      `json:"roster_hash"`
-	Encrypted         []byte      `json:"encrypted_mek"`
-	CreationTimestamp json.Number `json:"mek_creation_timestamp"`
-	EncryptionVersion int         `json:"mek_encryption_version"`
+	ID                []byte `json:"mek_id"`
+	RosterHash        []byte `json:"roster_hash"`
+	Encrypted         []byte `json:"encrypted_mek"`
+	CreationTimestamp int64  `json:"mek_creation_timestamp,string"`
+	EncryptionVersion int    `json:"mek_encryption_version"`
 }
 
 type MinosRecipientInfo struct {
@@ -148,8 +148,8 @@ type ArchiveProtobufs struct {
 	Message       *ArchiveProtobuf   `json:"top_level_protobuf"`
 	Supplementals []*ArchiveProtobuf `json:"supplemental_protobufs"`
 	Unencrypted   *struct {
-		Message     []byte      `json:"unencrypted_protobuf"`
-		TimestampMS json.Number `json:"protobuf_timestamp_ms"`
+		Message     []byte `json:"unencrypted_protobuf"`
+		TimestampMS int64  `json:"protobuf_timestamp_ms,string"`
 	} `json:"top_level_protobuf_unencrypted"`
 	MinosMessage       *MinosProtobuf   `json:"top_level_protobuf_v2"`
 	MinosSupplementals []*MinosProtobuf `json:"supplemental_protobufs_v2"`
@@ -238,11 +238,6 @@ func (c *Client) FetchMessages(ctx context.Context, device *Device, threadID str
 	} else if result.Range == nil || result.Range.HasMoreBefore == nil || result.Range.HasMoreAfter == nil {
 		return nil, errors.New("missing Messenger archive pagination")
 	}
-	if _, err = result.Range.Before.Int64(); err != nil {
-		return nil, fmt.Errorf("invalid Messenger archive before cursor: %w", err)
-	} else if _, err = result.Range.After.Int64(); err != nil {
-		return nil, fmt.Errorf("invalid Messenger archive after cursor: %w", err)
-	}
 	return result, nil
 }
 
@@ -264,10 +259,6 @@ func (p *ArchiveProtobuf) decrypt(device *Device, threadID string) (*DecryptedPr
 	default:
 		return nil, "", fmt.Errorf("unsupported Messenger archive encryption version %q", p.EncryptionVersion)
 	}
-	timestamp, err := p.TimestampMS.Int64()
-	if err != nil {
-		return nil, "", fmt.Errorf("invalid Messenger archive message timestamp: %w", err)
-	}
 	message, err := DecryptArchiveMessage(epoch.RootKey, p.EpochAnonID, threadID, version, p.Encrypted)
 	if err != nil {
 		return nil, "", err
@@ -284,7 +275,7 @@ func (p *ArchiveProtobuf) decrypt(device *Device, threadID string) (*DecryptedPr
 		}
 		supplementalKey = string(decrypted)
 	}
-	return &DecryptedProtobuf{Message: message, TimestampMS: timestamp}, supplementalKey, nil
+	return &DecryptedProtobuf{Message: message, TimestampMS: p.TimestampMS}, supplementalKey, nil
 }
 
 func (r *MessageRange) Decrypt(device *Device, threadID string, selfUserID int64, isGroup bool) ([]*DecryptedMessage, error) {
@@ -305,14 +296,14 @@ func (r *MessageRange) Decrypt(device *Device, threadID string, selfUserID int64
 		}
 	}
 	decryptMinos := func(stanza *MinosProtobuf, messageID string) (*DecryptedProtobuf, error) {
-		if stanza == nil || stanza.ActorToken == "" || messageID == "" || threadID == "" || !isGroup && selfUserID <= 0 {
+		if stanza == nil || stanza.ActorToken == "" || messageID == "" || threadID == "" || (!isGroup && selfUserID <= 0) {
 			return nil, errors.New("missing Messenger Minos message metadata")
 		}
 		if origin := bytes.TrimSpace(stanza.ServerOriginContentType); len(origin) > 0 && !bytes.Equal(origin, []byte("null")) {
 			return nil, errors.New("unsupported Messenger Minos server-origin message")
 		}
-		timestamp, err := stanza.Timestamp.Int64()
-		if err != nil || timestamp < 0 {
+		timestamp := stanza.Timestamp
+		if timestamp < 0 {
 			return nil, errors.New("invalid Messenger Minos message timestamp")
 		}
 		authenticatedTimestamp := uint64(timestamp)
@@ -333,6 +324,7 @@ func (r *MessageRange) Decrypt(device *Device, threadID string, selfUserID int64
 		}
 		mek, ok := decryptedKeys[stanza.MEKFBID]
 		if !ok {
+			var err error
 			mek, err = decryptMinosMEK(device, key, stanza.TransportSigningPK)
 			if err != nil {
 				return nil, err
@@ -384,15 +376,11 @@ func (m *ArchiveMessage) decrypt(device *Device, threadID string, decryptMinos f
 	if m.Protobufs.MinosMessage != nil {
 		result.Message, err = decryptMinos(m.Protobufs.MinosMessage, m.ID)
 	} else if unencrypted := m.Protobufs.Unencrypted; unencrypted != nil {
-		timestamp, err := unencrypted.TimestampMS.Int64()
-		if err != nil {
-			return nil, err
-		}
 		var message waArmadilloBackupMessage.BackupMessage
 		if err = proto.Unmarshal(unencrypted.Message, &message); err != nil {
 			return nil, fmt.Errorf("invalid unencrypted Messenger archive message: %w", err)
 		}
-		result.Message = &DecryptedProtobuf{Message: &message, TimestampMS: timestamp}
+		result.Message = &DecryptedProtobuf{Message: &message, TimestampMS: unencrypted.TimestampMS}
 	} else if m.Protobufs.Message == nil {
 		return nil, errors.New("archive message requires unsupported echo decryption")
 	} else {

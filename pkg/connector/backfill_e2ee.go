@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 	"time"
 
 	"go.mau.fi/whatsmeow"
@@ -80,8 +78,7 @@ func (m *MetaClient) convertArchiveMessage(ctx context.Context, portal *bridgev2
 	reactions := make(map[string]archiveReaction)
 	var latestEdit *waConsumerApplication.ConsumerApplication_EditMessage
 	var editTimestampMS int64
-	for _, key := range slices.Sorted(maps.Keys(message.Supplementals)) {
-		supplemental := message.Supplementals[key]
+	for _, supplemental := range message.Supplementals {
 		if supplemental == nil {
 			return nil, errors.New("missing Messenger archive supplemental")
 		}
@@ -108,7 +105,7 @@ func (m *MetaClient) convertArchiveMessage(ctx context.Context, portal *bridgev2
 			}
 			actor := decoded.Info.Sender.User
 			previous, exists := reactions[actor]
-			if !exists || timestampMS > previous.timestampMS || timestampMS == previous.timestampMS && reaction.GetText() == "" {
+			if !exists || timestampMS > previous.timestampMS || (timestampMS == previous.timestampMS && reaction.GetText() == "") {
 				reactions[actor] = archiveReaction{message: decoded, timestampMS: timestampMS, text: reaction.GetText()}
 			}
 		} else if edit := content.GetEditMessage(); edit != nil {
@@ -171,8 +168,7 @@ func (m *MetaClient) convertArchiveMessage(ctx context.Context, portal *bridgev2
 		Timestamp:        parent.Info.Timestamp,
 		StreamOrder:      parent.Info.Timestamp.UnixMilli(),
 	}
-	for _, actor := range slices.Sorted(maps.Keys(reactions)) {
-		reaction := reactions[actor]
+	for _, reaction := range reactions {
 		if reaction.text != "" {
 			result.Reactions = append(result.Reactions, &bridgev2.BackfillReaction{
 				Timestamp: reaction.message.GetTimestamp(),

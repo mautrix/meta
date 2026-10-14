@@ -26,14 +26,14 @@ require (
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.2.2
 	go.mau.fi/util v0.10.2-0.20260918225449-a4c0d5b86aa8
-	go.mau.fi/whatsmeow v0.0.0-20261013142727-4cf8bc8e0aeb
+	go.mau.fi/whatsmeow v0.0.0-20261014094007-f16f9ca30d6a
 	golang.org/x/crypto v0.57.0
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.59.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.31.1-0.20261013222246-2bc9d8811b18
+	maunium.net/go/mautrix v0.31.1-0.20261014154825-f25e16d89447
 )
 
 require (
@@ -72,5 +72,3 @@ require (
 )
 
 replace github.com/imroc/req/v3 => github.com/beeper/req/v3 v3.0.0-20260925135712-b49593750e56
-
-replace go.mau.fi/whatsmeow => github.com/iFixRobots/whatsmeow v0.0.0-20261013222338-2190b802edcd

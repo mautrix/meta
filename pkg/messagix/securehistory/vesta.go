@@ -15,8 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
+	"go.mau.fi/util/jsonbytes"
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
@@ -68,39 +68,27 @@ func (e *RecoveryError) Error() string {
 	return fmt.Sprintf("Messenger recovery failed: %s (%d attempts remaining)", e.Code, *e.AttemptsRemaining)
 }
 
-type urlBytes []byte
-
-func (b *urlBytes) UnmarshalJSON(data []byte) error {
-	var value string
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(value, "="))
-	*b = decoded
-	return err
-}
-
 type vestaInit struct {
-	RSAKey            urlBytes `json:"base64url_encoded_island_rsa_pub"`
-	RSASignature      urlBytes `json:"base64url_encoded_island_rsa_pub_signature"`
-	Ed25519Key        urlBytes `json:"base64url_encoded_island_ed25519_pub"`
-	Ed25519Signature  urlBytes `json:"base64url_encoded_island_ed25519_pub_signature"`
-	Registered        bool     `json:"is_registered"`
-	AttemptsRemaining *int     `json:"attempts_remaining"`
+	RSAKey            jsonbytes.UnpaddedURLBytes `json:"base64url_encoded_island_rsa_pub"`
+	RSASignature      jsonbytes.UnpaddedURLBytes `json:"base64url_encoded_island_rsa_pub_signature"`
+	Ed25519Key        jsonbytes.UnpaddedURLBytes `json:"base64url_encoded_island_ed25519_pub"`
+	Ed25519Signature  jsonbytes.UnpaddedURLBytes `json:"base64url_encoded_island_ed25519_pub_signature"`
+	Registered        bool                       `json:"is_registered"`
+	AttemptsRemaining *int                       `json:"attempts_remaining"`
 }
 
 type vestaBegin struct {
-	L2        urlBytes `json:"base64url_encoded_opaque_l2"`
-	Signature urlBytes `json:"base64url_encoded_opaque_l2_sig"`
+	L2        jsonbytes.UnpaddedURLBytes `json:"base64url_encoded_opaque_l2"`
+	Signature jsonbytes.UnpaddedURLBytes `json:"base64url_encoded_opaque_l2_sig"`
 }
 
 type vestaFinish struct {
-	Type                     string   `json:"__typename"`
-	Payload                  urlBytes `json:"base64url_encoded_login_payload"`
-	Success                  bool     `json:"login_success"`
-	ErrorCode                string   `json:"vesta_error_code"`
-	AttemptsRemaining        *int     `json:"attempts_remaining"`
-	TriggerPostLoginRegister bool     `json:"trigger_post_login_register"`
+	Type                     string                     `json:"__typename"`
+	Payload                  jsonbytes.UnpaddedURLBytes `json:"base64url_encoded_login_payload"`
+	Success                  bool                       `json:"login_success"`
+	ErrorCode                string                     `json:"vesta_error_code"`
+	AttemptsRemaining        *int                       `json:"attempts_remaining"`
+	TriggerPostLoginRegister bool                       `json:"trigger_post_login_register"`
 }
 
 func (c *Client) GetBackup(ctx context.Context) (*Backup, error) {

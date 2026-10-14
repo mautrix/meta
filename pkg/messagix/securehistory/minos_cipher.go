@@ -39,7 +39,7 @@ func minosVerifySignature(publicKey, signature, message []byte) error {
 }
 
 func decryptMinosMessage(metadata minosMessageMetadata, stanza *MinosProtobuf, mek []byte) ([]byte, error) {
-	if len(mek) == 0 || (mek[0] != 1 || len(mek) != 17) && (mek[0] != 2 || len(mek) != 33) {
+	if len(mek) == 0 || ((mek[0] != 1 || len(mek) != 17) && (mek[0] != 2 || len(mek) != 33)) {
 		return nil, fmt.Errorf("invalid Minos message encryption key")
 	}
 	if stanza.EncryptionVersion != 1 && stanza.EncryptionVersion != 2 {

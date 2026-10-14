@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/hkdf"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 
 	"github.com/google/uuid"
 	"github.com/gtank/ristretto255"
 	"go.mau.fi/libsignal/ecc"
+	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow/util/keys"
 )
 
@@ -127,11 +127,7 @@ func evolveOCMF(state []byte) ([]byte, []byte, error) {
 	}
 	factor := ristretto255.NewScalar()
 	for factor.Equal(ristretto255.NewScalar()) == 1 {
-		var randomness [64]byte
-		if _, err = rand.Read(randomness[:]); err != nil {
-			return nil, nil, err
-		}
-		_, err = factor.SetUniformBytes(randomness[:])
+		_, err = factor.SetUniformBytes(random.Bytes(64))
 		if err != nil {
 			return nil, nil, err
 		}
