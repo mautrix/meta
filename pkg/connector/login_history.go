@@ -9,6 +9,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory"
 )
 
@@ -80,6 +81,9 @@ func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[s
 		message := "Couldn't restore encrypted history. You can leave the PIN empty to finish signing in."
 		var recoveryErr *securehistory.RecoveryError
 		if errors.As(err, &recoveryErr) && recoveryErr.AttemptsRemaining != nil {
+			if *recoveryErr.AttemptsRemaining == 0 {
+				return nil, loginerrors.HistoryPINLimit
+			}
 			message = fmt.Sprintf("Couldn't verify your PIN. Messenger reports %d attempts remaining.", *recoveryErr.AttemptsRemaining)
 		} else if device := client.historyDevice(); device != nil && device.ID == "" {
 			message = "Messenger hasn't confirmed history setup. Leave the PIN empty to finish signing in."
