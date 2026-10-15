@@ -221,10 +221,16 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 	}
 
 	users := make([]*bridgev2.ResolveIdentifierResponse, 0)
+	seen := make(map[networkid.UserID]struct{})
 
 	for _, result := range resp.LSInsertSearchResult {
-		if result.ThreadType.IsOneToOne() && result.CanViewerMessage && result.GetFBID() != 0 {
+		canMessage := result.CanViewerMessage || (result.OtherUserId != 0 && result.BlockedByViewerStatus == 0)
+		if result.ThreadType.IsOneToOne() && canMessage && result.GetFBID() != 0 {
 			userID := metaid.MakeUserID(result.GetFBID())
+			if _, ok := seen[userID]; ok {
+				continue
+			}
+			seen[userID] = struct{}{}
 			ghost, _ := m.Main.Bridge.GetGhostByID(ctx, userID)
 			users = append(users, &bridgev2.ResolveIdentifierResponse{
 				UserID:   userID,
