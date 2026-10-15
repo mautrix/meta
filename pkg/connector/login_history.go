@@ -9,8 +9,10 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -59,6 +61,9 @@ func (m *MessengerHistoryLogin) startHistory(ctx context.Context, complete *brid
 		return complete, nil
 	} else if err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to check Messenger encrypted history")
+		if errors.Is(err, types.ErrPleaseLogIn) || errors.Is(err, httpclient.ErrTokenInvalidated) {
+			return nil, loginerrors.TokenInvalidated
+		}
 		return historyPINStep("Couldn't check your saved history. Enter your PIN to try again, or leave it empty to continue."), nil
 	}
 	return historyPINStep(""), nil
@@ -78,6 +83,9 @@ func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[s
 	client := m.historyComplete.CompleteParams.UserLogin.Client.(*MetaClient)
 	if err := m.restoreHistory(ctx, client, pin); err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to restore Messenger encrypted history")
+		if errors.Is(err, types.ErrPleaseLogIn) || errors.Is(err, httpclient.ErrTokenInvalidated) {
+			return nil, loginerrors.TokenInvalidated
+		}
 		message := "Couldn't restore encrypted history. You can leave the PIN empty to finish signing in."
 		var recoveryErr *securehistory.RecoveryError
 		if errors.As(err, &recoveryErr) && recoveryErr.AttemptsRemaining != nil {

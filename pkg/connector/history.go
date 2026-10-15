@@ -16,6 +16,11 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
+type historyReadState struct {
+	readWatermark int64
+	lastActivity  int64
+}
+
 func (m *MetaClient) historyDevice() *securehistory.Device {
 	m.backfillLock.Lock()
 	defer m.backfillLock.Unlock()
@@ -116,6 +121,7 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt Messenger history: %w", err)
 	}
+	var newestTimestamp int64
 	for _, message := range messages {
 		converted, err := m.convertArchiveMessage(ctx, params.Portal, message)
 		if err != nil {
@@ -123,9 +129,14 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 		} else if converted != nil {
 			response.Messages = append(response.Messages, converted)
 		}
+		newestTimestamp = max(newestTimestamp, message.Message.TimestampMS)
 	}
 	slices.SortFunc(response.Messages, func(a, b *bridgev2.BackfillMessage) int {
 		return cmp.Or(a.Timestamp.Compare(b.Timestamp), cmp.Compare(a.ID, b.ID))
 	})
+	if (params.Forward || params.AnchorMessage == nil) && len(response.Messages) > 0 {
+		readState, _ := m.historyReadStates.Get(metaid.ParseFBPortalID(params.Portal.ID))
+		response.MarkRead = readState.lastActivity > 0 && readState.readWatermark >= max(readState.lastActivity, newestTimestamp)
+	}
 	return response, nil
 }
