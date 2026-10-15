@@ -11,7 +11,6 @@ import (
 
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory"
@@ -111,24 +110,7 @@ func (m *MetaClient) fetchMessengerHistory(ctx context.Context, params bridgev2.
 		if cursor.OpenThreadID != openThreadID {
 			return nil, fmt.Errorf("history predecessor changed")
 		}
-		roomAnchor := params.AnchorMessage
-		params.AnchorMessage = nil
-		if cursor.MessageID != "" {
-			params.AnchorMessage = &database.Message{
-				ID:        metaid.MakeFBMessageID(cursor.MessageID),
-				Timestamp: time.UnixMilli(cursor.Timestamp),
-			}
-		}
-		response, err := m.fetchFacebookHistory(ctx, params, openThreadID, true)
-		if err != nil || response == nil {
-			return response, err
-		}
-		if roomAnchor != nil {
-			response.Messages = slices.DeleteFunc(response.Messages, func(message *bridgev2.BackfillMessage) bool {
-				return message == nil || !message.Timestamp.Before(roomAnchor.Timestamp)
-			})
-		}
-		return response, nil
+		return m.fetchFacebookHistory(ctx, params, openThreadID, &cursor)
 	}
 	params.Cursor = ""
 	if cursor.Timestamp != 0 {
@@ -151,7 +133,6 @@ func (m *MetaClient) fetchMessengerHistory(ctx context.Context, params bridgev2.
 		return nil, err
 	}
 	response.Cursor = networkid.PaginationCursor(encoded)
-	response.AggressiveDeduplication = true
 	return response, nil
 }
 

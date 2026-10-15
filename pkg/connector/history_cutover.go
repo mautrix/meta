@@ -4,8 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
@@ -32,37 +30,6 @@ func (m *MetaClient) resetMessengerBackfill(ctx context.Context, portalKey netwo
 	task.NextDispatchMinTS = time.Now()
 	err = m.Main.Bridge.DB.BackfillTask.Upsert(ctx, task)
 	return err == nil, err
-}
-
-func (m *MetaClient) setThreadType(ctx context.Context, portal *bridgev2.Portal, threadType table.ThreadType) bool {
-	meta := portal.Metadata.(*metaid.PortalMetadata)
-	previous := meta.ThreadType
-	if previous == threadType {
-		return false
-	}
-	if !previous.IsWhatsApp() && threadType.IsWhatsApp() && portal.MXID != "" {
-		var reopened bool
-		err := m.Main.DB.DoTxn(ctx, nil, func(ctx context.Context) error {
-			var err error
-			reopened, err = m.resetMessengerBackfill(ctx, portal.PortalKey)
-			if err != nil {
-				return err
-			}
-			meta.ThreadType = threadType
-			return portal.Save(ctx)
-		})
-		if err != nil {
-			meta.ThreadType = previous
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to activate encrypted history after thread conversion")
-			return false
-		}
-		if reopened {
-			m.Main.Bridge.WakeupBackfillQueue()
-		}
-	} else {
-		meta.ThreadType = threadType
-	}
-	return true
 }
 
 func (m *MetaClient) storeThreadCutover(ctx context.Context, cutover *table.LSCreateOpenToE2EEThreadLink) error {

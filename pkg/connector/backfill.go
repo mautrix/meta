@@ -161,16 +161,6 @@ func (m *MetaClient) requestMoreHistory(ctx context.Context, threadID, minTimest
 		zerolog.Ctx(ctx).Err(err).Int64("thread_id", threadID).Msg("Failed to request more history")
 		return false
 	} else {
-		m.Client.PostHandlePublishResponse(resp)
-		upserts, _ := resp.WrapMessages()
-		if upsert := upserts[threadID]; upsert != nil {
-			m.handleUpsertMessages(handlerParams{ctx: ctx, ID: threadID}, upsert)
-		}
-		for _, update := range resp.LSUpdateExistingMessageRange {
-			if update.ThreadKey == threadID {
-				m.handleUpdateExistingMessageRange(handlerParams{ctx: ctx, ID: threadID}, update)
-			}
-		}
 		zerolog.Ctx(ctx).Debug().
 			Int64("thread_id", threadID).
 			Int64("min_timestamp_ms", minTimestampMS).
@@ -208,10 +198,10 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		return m.fetchMessengerHistory(ctx, params)
 	}
 	threadID := metaid.ParseFBPortalID(params.Portal.ID)
-	return m.fetchFacebookHistory(ctx, params, threadID, false)
+	return m.fetchFacebookHistory(ctx, params, threadID, nil)
 }
 
-func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.FetchMessagesParams, threadID int64, stitched bool) (*bridgev2.FetchMessagesResponse, error) {
+func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.FetchMessagesParams, threadID int64, cursor *messengerHistoryCursor) (*bridgev2.FetchMessagesResponse, error) {
 	if threadID == 0 {
 		return nil, fmt.Errorf("invalid thread ID")
 	}
@@ -237,6 +227,9 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 		if upsert != nil {
 			oldestMessageID = upsert.Range.MinMessageId
 			oldestMessageTS = upsert.Range.MinTimestampMs
+		} else if cursor != nil {
+			oldestMessageID = cursor.MessageID
+			oldestMessageTS = cursor.Timestamp
 		} else if params.AnchorMessage != nil {
 			parsedID, ok := metaid.ParseMessageID(params.AnchorMessage.ID).(metaid.ParsedFBMessageID)
 			if !ok {
@@ -245,6 +238,11 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 			}
 			oldestMessageID = parsedID.ID
 			oldestMessageTS = params.AnchorMessage.Timestamp.UnixMilli()
+		} else {
+			zerolog.Ctx(ctx).Warn().Msg("Can't backfill chat with no messages")
+			return nil, nil
+		}
+		if upsert == nil && oldestMessageID != "" {
 			upsert = &table.UpsertMessages{
 				Range: &table.LSInsertNewMessageRange{
 					ThreadKey:              threadID,
@@ -258,9 +256,6 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					HasMoreAfter:           true,
 				},
 			}
-		} else if !stitched {
-			zerolog.Ctx(ctx).Warn().Msg("Can't backfill chat with no messages")
-			return nil, nil
 		}
 		doneCh := make(chan struct{})
 		collector := &BackfillCollector{
@@ -321,26 +316,21 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 	if upsert == nil {
 		return nil, fmt.Errorf("missing history range for thread %d", threadID)
 	}
-	anchor := params.AnchorMessage
-	if stitched {
-		if upsert.Range.HasMoreBefore && (upsert.Range.MinMessageId == "" || (anchor != nil &&
-			(upsert.Range.MinTimestampMs > anchor.Timestamp.UnixMilli() || metaid.MakeFBMessageID(upsert.Range.MinMessageId) == anchor.ID))) {
+	if cursor != nil {
+		if upsert.Range.HasMoreBefore && (upsert.Range.MinMessageId == "" || (cursor.MessageID != "" &&
+			(upsert.Range.MinTimestampMs > cursor.Timestamp || upsert.Range.MinMessageId == cursor.MessageID))) {
 			return nil, fmt.Errorf("history cursor did not move backwards")
 		}
-		anchor = nil
 	}
-	response := m.wrapBackfillEvents(ctx, params.Portal, upsert, anchor, params.Forward)
-	if stitched {
-		cursor, err := json.Marshal(messengerHistoryCursor{
-			OpenThreadID: threadID,
-			Timestamp:    upsert.Range.MinTimestampMs,
-			MessageID:    upsert.Range.MinMessageId,
-		})
+	response := m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
+	if cursor != nil {
+		cursor.Timestamp = upsert.Range.MinTimestampMs
+		cursor.MessageID = upsert.Range.MinMessageId
+		encoded, err := json.Marshal(cursor)
 		if err != nil {
 			return nil, err
 		}
-		response.Cursor = networkid.PaginationCursor(cursor)
-		response.AggressiveDeduplication = true
+		response.Cursor = networkid.PaginationCursor(encoded)
 	}
 	return response, nil
 }
@@ -377,8 +367,8 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 			})
 		}
 	}
-	wrappedMessages := make([]*bridgev2.BackfillMessage, len(upsert.Messages))
-	for i, msg := range upsert.Messages {
+	wrappedMessages := make([]*bridgev2.BackfillMessage, 0, len(upsert.Messages))
+	for _, msg := range upsert.Messages {
 		m.handleSubthread(ctx, msg)
 		log := zerolog.Ctx(ctx).With().Str("message_id", msg.MessageId).Logger()
 		ctx := log.WithContext(ctx)
@@ -397,7 +387,7 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 				Msg("Message ID timestamp mismatch in backfill")
 		}
 		msgID := metaid.MakeFBMessageID(msg.MessageId)
-		wrappedMessages[i] = &bridgev2.BackfillMessage{
+		wrapped := &bridgev2.BackfillMessage{
 			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, m.UserLogin, intent, msgID, msg),
 			Sender:           sender,
 			ID:               msgID,
@@ -408,12 +398,13 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 			//ShouldBackfillThread: msg.SubthreadKey != 0,
 		}
 		for j, reaction := range msg.Reactions {
-			wrappedMessages[i].Reactions[j] = &bridgev2.BackfillReaction{
+			wrapped.Reactions[j] = &bridgev2.BackfillReaction{
 				Timestamp: time.UnixMilli(reaction.TimestampMs),
 				Sender:    m.makeEventSender(reaction.ActorId),
 				Emoji:     reaction.Reaction,
 			}
 		}
+		wrappedMessages = append(wrappedMessages, wrapped)
 	}
 	return &bridgev2.FetchMessagesResponse{
 		Messages: wrappedMessages,
