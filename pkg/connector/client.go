@@ -47,6 +47,7 @@ type MetaClient struct {
 	parsedTablesWake     chan struct{}
 	tableLoopLock        sync.Mutex
 	backfillCollectors   map[int64]*BackfillCollector
+	historyReadStates    map[int64]historyReadState
 	backfillLock         sync.Mutex
 	connectLock          sync.Mutex
 	pushRegistrationLock sync.Mutex
@@ -191,6 +192,9 @@ func (m *MetaClient) Connect(ctx context.Context) {
 		return
 	}
 	defer m.connectLock.Unlock()
+	m.backfillLock.Lock()
+	m.historyReadStates = nil
+	m.backfillLock.Unlock()
 	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
 		// Ensure both states start at CONNECTING now
 		m.metaState.StateEvent = status.StateConnecting
