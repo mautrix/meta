@@ -137,10 +137,18 @@ type MinosCreatorInfo struct {
 	Mandrake json.RawMessage `json:"mandrake_keys"`
 }
 
+type EchoDocument struct {
+	EchoDocumentString []byte          `json:"echo_document_string"`
+	EncryptionVersion  string          `json:"encryption_version"`
+	EpochAnonID        string          `json:"epoch_anon_id"`
+	EpochID            *string         `json:"epoch_id"`
+	EpochFingerprint   json.RawMessage `json:"epoch_fingerprint"`
+}
+
 type ArchiveMessage struct {
 	ID          string              `json:"otid"`
 	Attachments []ArchiveAttachment `json:"attachment_data"`
-	Echo        json.RawMessage     `json:"echo_document"`
+	Echo        *EchoDocument       `json:"echo_document"`
 	Protobufs   *ArchiveProtobufs   `json:"protobuf_stanzas"`
 }
 
@@ -241,23 +249,29 @@ func (c *Client) FetchMessages(ctx context.Context, device *Device, threadID str
 	return result, nil
 }
 
+func archiveEncryptionVersion(version string) (int64, error) {
+	switch version {
+	case "", "UNKNOWN":
+		return 0, nil
+	case "ENCRYPTION_KDF_WITH_VERSION":
+		return 2, nil
+	case "ENCRYPTION_KDF_WITH_NULL_SALT":
+		return 3, nil
+	case "ENCRYPTION_KDF_WITH_NULL_SALT_DF_CANARY":
+		return 4, nil
+	default:
+		return 0, fmt.Errorf("unsupported Messenger archive encryption version %q", version)
+	}
+}
+
 func (p *ArchiveProtobuf) decrypt(device *Device, threadID string) (*DecryptedProtobuf, string, error) {
 	epoch, ok := device.Epochs[p.EpochID]
 	if !ok || string(epoch.AnonID) != p.EpochAnonID {
 		return nil, "", errors.New("missing Messenger archive message epoch")
 	}
-	var version int64
-	switch p.EncryptionVersion {
-	case "", "UNKNOWN":
-		version = 0
-	case "ENCRYPTION_KDF_WITH_VERSION":
-		version = 2
-	case "ENCRYPTION_KDF_WITH_NULL_SALT":
-		version = 3
-	case "ENCRYPTION_KDF_WITH_NULL_SALT_DF_CANARY":
-		version = 4
-	default:
-		return nil, "", fmt.Errorf("unsupported Messenger archive encryption version %q", p.EncryptionVersion)
+	version, err := archiveEncryptionVersion(p.EncryptionVersion)
+	if err != nil {
+		return nil, "", err
 	}
 	message, err := DecryptArchiveMessage(epoch.RootKey, p.EpochAnonID, threadID, version, p.Encrypted)
 	if err != nil {
@@ -363,8 +377,11 @@ func (r *MessageRange) Decrypt(device *Device, threadID string, selfUserID int64
 }
 
 func (m *ArchiveMessage) decrypt(device *Device, threadID string, decryptMinos func(*MinosProtobuf, string) (*DecryptedProtobuf, error)) (*DecryptedMessage, error) {
-	if m == nil || device == nil || m.ID == "" || m.Protobufs == nil {
+	if m == nil || device == nil || m.ID == "" || (m.Protobufs == nil && m.Echo == nil) {
 		return nil, errors.New("missing or unsupported Messenger archive message")
+	}
+	if m.Echo != nil && (m.Protobufs == nil || (m.Protobufs.Message == nil && m.Protobufs.Unencrypted == nil && m.Protobufs.MinosMessage == nil)) {
+		return m.decryptEcho(device, threadID)
 	}
 	result := &DecryptedMessage{
 		ID:            m.ID,
@@ -382,7 +399,7 @@ func (m *ArchiveMessage) decrypt(device *Device, threadID string, decryptMinos f
 		}
 		result.Message = &DecryptedProtobuf{Message: &message, TimestampMS: unencrypted.TimestampMS}
 	} else if m.Protobufs.Message == nil {
-		return nil, errors.New("archive message requires unsupported echo decryption")
+		return nil, errors.New("missing Messenger archive message payload")
 	} else {
 		result.Message, _, err = m.Protobufs.Message.decrypt(device, threadID)
 	}

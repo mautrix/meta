@@ -15,7 +15,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waArmadilloBackupMessage"
 )
 
-func DecryptArchiveMessage(epochRootKey []byte, epochAnonID, threadID string, version int64, envelope []byte) (*waArmadilloBackupMessage.BackupMessage, error) {
+func decryptArchivePayload(epochRootKey []byte, epochAnonID, threadID string, version int64, envelope []byte) ([]byte, error) {
 	if len(epochRootKey) != 32 || epochAnonID == "" || threadID == "" {
 		return nil, errors.New("missing or invalid archive epoch or thread")
 	}
@@ -39,11 +39,7 @@ func DecryptArchiveMessage(epochRootKey []byte, epochAnonID, threadID string, ve
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt archive message: %w", err)
 	}
-	var message waArmadilloBackupMessage.BackupMessage
-	if err = proto.Unmarshal(plaintext, &message); err != nil {
-		return nil, fmt.Errorf("failed to decode archive message: %w", err)
-	}
-	return &message, nil
+	return plaintext, nil
 }
 
 func decryptData(key, ciphertext, aad []byte) ([]byte, error) {
@@ -74,4 +70,16 @@ func decryptData(key, ciphertext, aad []byte) ([]byte, error) {
 		return nil, errors.New("length prefix exceeds plaintext")
 	}
 	return plaintext[4 : 4+length], nil
+}
+
+func DecryptArchiveMessage(epochRootKey []byte, epochAnonID, threadID string, version int64, envelope []byte) (*waArmadilloBackupMessage.BackupMessage, error) {
+	plaintext, err := decryptArchivePayload(epochRootKey, epochAnonID, threadID, version, envelope)
+	if err != nil {
+		return nil, err
+	}
+	var message waArmadilloBackupMessage.BackupMessage
+	if err = proto.Unmarshal(plaintext, &message); err != nil {
+		return nil, fmt.Errorf("failed to decode archive message: %w", err)
+	}
+	return &message, nil
 }
