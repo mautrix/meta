@@ -224,6 +224,8 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 	mailbox, err := c.GetMailbox(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get mailbox: %w", err)
+	} else if mailbox.GetMailbox() == nil {
+		return nil, nil, ErrMailboxMissing
 	}
 	c.seqID = mailbox.Mailbox.UQSeqID
 	c.seqIDTS = time.Now()
@@ -283,6 +285,7 @@ const MaxCachedStateAge = 24 * time.Hour
 
 var ErrCachedStateTooOld = errors.New("cached state is too old")
 var ErrClientIsNil = errors.New("client is nil")
+var ErrMailboxMissing = errors.New("mailbox missing from response")
 
 func (c *Client) LoadState(state json.RawMessage) error {
 	if c == nil {

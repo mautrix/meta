@@ -42,7 +42,10 @@ type MetaClient struct {
 	initialTable         atomic.Pointer[table.LSTable]
 	initialTableHandled  atomic.Bool
 	unhandledTables      atomic.Int32
-	parsedTables         chan *parsedTable
+	parsedTables         []*parsedTable
+	parsedTablesLock     sync.Mutex
+	parsedTablesWake     chan struct{}
+	tableLoopLock        sync.Mutex
 	backfillCollectors   map[int64]*BackfillCollector
 	backfillLock         sync.Mutex
 	connectLock          sync.Mutex
@@ -96,7 +99,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		LoginMeta: loginMetadata,
 		UserLogin: login,
 
-		parsedTables:       make(chan *parsedTable, 16),
+		parsedTablesWake:   make(chan struct{}, 1),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
@@ -140,7 +143,11 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
-	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
 		return "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 	var respData respGetProxy
@@ -184,7 +191,6 @@ func (m *MetaClient) Connect(ctx context.Context) {
 		return
 	}
 	defer m.connectLock.Unlock()
-	m.unhandledTables.Store(int32(len(m.parsedTables)))
 	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
 		// Ensure both states start at CONNECTING now
 		m.metaState.StateEvent = status.StateConnecting

@@ -41,7 +41,6 @@ type browserPlatformProfile struct {
 	caaCodeEntryState         BrowserState
 	authMethodState           BrowserState
 	supportsNotificationTimer bool
-	twoStepEntrypointState    func(*BloksBundle) BrowserState
 	codeInstructions          func(*BloksBundle) string
 	findMFAMethods            func(*BloksBundle, *zerolog.Logger) (map[string]*BloksTreeComponent, []string, int)
 
@@ -60,7 +59,6 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 		uninformativeMessage:   "Facebook rejected the login without providing a reason. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account",
 		caaCodeEntryState:      StateCodeEntryPage,
 		authMethodState:        StateMFALandingPage,
-		twoStepEntrypointState: func(*BloksBundle) BrowserState { return StateMFALandingPage },
 		codeInstructions:       messengerCodeInstructions,
 		findMFAMethods:         findMessengerMFAMethodOptions,
 	}
@@ -93,7 +91,6 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 	profile.caaCodeEntryState = StateAccountRecoveryPage
 	profile.authMethodState = StateChooseMFAPage
 	profile.supportsNotificationTimer = true
-	profile.twoStepEntrypointState = twoStepVerificationEntrypointState
 	profile.codeInstructions = instagramCodeInstructions
 	profile.findMFAMethods = func(page *BloksBundle, _ *zerolog.Logger) (map[string]*BloksTreeComponent, []string, int) {
 		return findMFAMethodOptions(page)
