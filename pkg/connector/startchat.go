@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmaps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -221,10 +222,15 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 	}
 
 	users := make([]*bridgev2.ResolveIdentifierResponse, 0)
+	seen := make(exmaps.Set[networkid.UserID])
 
 	for _, result := range resp.LSInsertSearchResult {
-		if result.ThreadType.IsOneToOne() && result.CanViewerMessage && result.GetFBID() != 0 {
+		canMessage := result.CanViewerMessage || (result.OtherUserId != 0 && result.BlockedByViewerStatus == 0)
+		if result.ThreadType.IsOneToOne() && canMessage && result.GetFBID() != 0 {
 			userID := metaid.MakeUserID(result.GetFBID())
+			if !seen.Add(userID) {
+				continue
+			}
 			ghost, _ := m.Main.Bridge.GetGhostByID(ctx, userID)
 			users = append(users, &bridgev2.ResolveIdentifierResponse{
 				UserID:   userID,
