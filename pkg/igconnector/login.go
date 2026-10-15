@@ -160,6 +160,8 @@ func loginWithCookies(
 			return nil, loginerrors.AccountSuspended
 		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
 			return nil, loginerrors.TokenInvalidated
+		} else if errors.Is(err, httpclient.ErrUnexpectedError) {
+			return nil, fmt.Errorf("%w: %w", loginerrors.InboxLoadFailed, err)
 		} else {
 			return nil, fmt.Errorf("%w: %w", loginerrors.Unknown, err)
 		}
