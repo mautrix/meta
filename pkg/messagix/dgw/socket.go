@@ -253,6 +253,7 @@ func (s *Socket) Disconnect() {
 }
 
 const AckTimeout = 5 * time.Second
+const ResponseTimeout = 30 * time.Second
 const PingInterval = 10 * time.Second
 const PongTimeout = 30 * time.Second
 const WriteTimeout = 20 * time.Second

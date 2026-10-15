@@ -91,7 +91,7 @@ func (s *OneOffStream) Do(ctx context.Context, parameters json.RawMessage, initP
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(AckTimeout):
+		case <-time.After(ResponseTimeout):
 			return nil, ErrReceiveTimeout
 		case <-s.received.GetChan():
 		}
