@@ -66,18 +66,11 @@ func (m *MetaClient) queueEncryptedBackfill(ctx context.Context) error {
 		} else if portal == nil || portal.MXID == "" || !portal.Metadata.(*metaid.PortalMetadata).ThreadType.IsWhatsApp() {
 			continue
 		}
-		task, err := m.Main.Bridge.DB.BackfillTask.GetNextForPortal(ctx, portal.PortalKey, true)
+		reopened, err := m.resetMessengerBackfill(ctx, portal.PortalKey)
 		if err != nil {
 			return err
-		} else if task != nil && task.UserLoginID != "" && task.UserLoginID != m.UserLogin.ID {
+		} else if !reopened {
 			continue
-		}
-		if err = m.Main.Bridge.DB.BackfillTask.Upsert(ctx, &database.BackfillTask{
-			PortalKey:         portal.PortalKey,
-			UserLoginID:       m.UserLogin.ID,
-			NextDispatchMinTS: time.Now(),
-		}); err != nil {
-			return err
 		}
 		m.Main.Bridge.WakeupBackfillQueue(&bridgev2.ManualBackfill{Source: m.UserLogin, Portal: portal})
 	}
@@ -113,6 +106,7 @@ func (m *MetaClient) fetchMessengerHistory(ctx context.Context, params bridgev2.
 		if cursor.OpenThreadID != openThreadID {
 			return nil, fmt.Errorf("history predecessor changed")
 		}
+		roomAnchor := params.AnchorMessage
 		params.AnchorMessage = nil
 		if cursor.MessageID != "" {
 			params.AnchorMessage = &database.Message{
@@ -120,7 +114,16 @@ func (m *MetaClient) fetchMessengerHistory(ctx context.Context, params bridgev2.
 				Timestamp: time.UnixMilli(cursor.Timestamp),
 			}
 		}
-		return m.fetchFacebookHistory(ctx, params, openThreadID, true)
+		response, err := m.fetchFacebookHistory(ctx, params, openThreadID, true)
+		if err != nil || response == nil {
+			return response, err
+		}
+		if roomAnchor != nil {
+			response.Messages = slices.DeleteFunc(response.Messages, func(message *bridgev2.BackfillMessage) bool {
+				return !message.Timestamp.Before(roomAnchor.Timestamp)
+			})
+		}
+		return response, nil
 	}
 	params.Cursor = ""
 	if cursor.Timestamp != 0 {
@@ -160,6 +163,9 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 			if err != nil {
 				return nil, fmt.Errorf("invalid Messenger history cursor: %w", err)
 			}
+		}
+		if params.AnchorMessage != nil {
+			timestamp = min(timestamp, params.AnchorMessage.Timestamp.UnixMilli())
 		}
 	}
 	chat := params.Portal.Metadata.(*metaid.PortalMetadata).JID(params.Portal.ID)

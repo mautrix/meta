@@ -119,21 +119,18 @@ func (m *MetaClient) wrapWAGroupInfo(ctx context.Context, chatInfo *types.GroupI
 		Type:         ptr.Ptr(database.RoomTypeDefault),
 		Disappear:    &disappear,
 		CanBackfill:  m.canBackfillMessenger(ctx, int64(chatInfo.JID.UserInt())),
-		ExtraUpdates: updateServerAndThreadType(chatInfo.JID, table.ENCRYPTED_OVER_WA_GROUP),
+		ExtraUpdates: m.updateServerAndThreadType(chatInfo.JID, table.ENCRYPTED_OVER_WA_GROUP),
 	}
 }
 
-func updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(context.Context, *bridgev2.Portal) bool {
+func (m *MetaClient) updateServerAndThreadType(jid types.JID, threadType table.ThreadType) func(context.Context, *bridgev2.Portal) bool {
 	return func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 		meta := portal.Metadata.(*metaid.PortalMetadata)
 		if meta.WhatsAppServer != jid.Server {
 			meta.WhatsAppServer = jid.Server
 			changed = true
 		}
-		if meta.ThreadType != threadType {
-			meta.ThreadType = threadType
-			changed = true
-		}
+		changed = m.setThreadType(ctx, portal, threadType) || changed
 		return
 	}
 }
@@ -180,8 +177,7 @@ func (m *MetaClient) makeMinimalChatInfo(ctx context.Context, threadID int64, th
 				return
 			}
 			if meta.ThreadType != threadType && !meta.ThreadType.IsWhatsApp() {
-				meta.ThreadType = threadType
-				changed = true
+				changed = m.setThreadType(ctx, portal, threadType)
 			}
 			return
 		},
@@ -230,7 +226,7 @@ func (m *MetaClient) makeWADirectChatInfo(ctx context.Context, recipient types.J
 	info := &bridgev2.ChatInfo{
 		Members:      members,
 		Type:         ptr.Ptr(database.RoomTypeDM),
-		ExtraUpdates: updateServerAndThreadType(recipient, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
+		ExtraUpdates: m.updateServerAndThreadType(recipient, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
 		CanBackfill:  m.canBackfillMessenger(ctx, int64(recipient.UserInt())),
 	}
 	fbThreadKey, messageRequest, err := m.Main.DB.GetHybridThreadInfoByJID(ctx, m.UserLogin.ID, int64(recipient.UserInt()))
@@ -261,7 +257,7 @@ func (m *MetaClient) wrapChatInfo(ctx context.Context, tbl table.ThreadInfo) *br
 		chatInfo.UserBlocked = ptr.Ptr(true)
 	}
 	if tbl.GetFolderName() == folderE2EECutover {
-		chatInfo.ExtraUpdates = bridgev2.MergeExtraUpdaters(chatInfo.ExtraUpdates, markPortalAsEncrypted)
+		chatInfo.ExtraUpdates = bridgev2.MergeExtraUpdaters(chatInfo.ExtraUpdates, m.markPortalAsEncrypted)
 	}
 	dtit, ok := tbl.(*table.LSDeleteThenInsertThread)
 	if ok {
