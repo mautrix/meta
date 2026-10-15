@@ -186,8 +186,8 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 	if m.Client == nil {
 		return nil, bridgev2.ErrNotLoggedIn
 	}
-	if params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
-		return nil, nil
+	if params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType.IsWhatsApp() {
+		return m.fetchEncryptedHistory(ctx, params)
 	}
 	threadID := metaid.ParseFBPortalID(params.Portal.ID)
 	if threadID == 0 {

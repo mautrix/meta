@@ -234,9 +234,15 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 
 	reqUrl := c.parent.GetEndpoint("graphql")
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
-	resp, respData, err := c.makeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM, func(e *zerolog.Event) *zerolog.Event {
-		return e.Str("graphql_method", name)
-	})
+	var resp *http.Response
+	var respData []byte
+	if graphQLDoc.NoRetry {
+		resp, respData, err = c.MakeRequestOnce(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
+	} else {
+		resp, respData, err = c.makeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM, func(e *zerolog.Event) *zerolog.Event {
+			return e.Str("graphql_method", name)
+		})
+	}
 	if err == nil && resp != nil {
 		c.parent.GetCookies().UpdateFromResponse(resp)
 	}

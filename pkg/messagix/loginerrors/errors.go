@@ -25,6 +25,7 @@ var (
 	TokenExchange    = bridgev2.RespError{ErrCode: "FI.MAU.META_TOKEN_EXCHANGE_FAILED", Err: "Meta returned a temporary credential after login which could not be exchanged for a usable session. It may help to try again, or to log in from the official app/website first"}
 	RateLimited      = bridgev2.RespError{ErrCode: "FI.MAU.META_RATE_LIMITED", Err: "Meta is temporarily rate-limiting login attempts from this network. Please wait a few minutes and try again", StatusCode: http.StatusBadRequest}
 	AccountSuspended = bridgev2.RespError{ErrCode: "FI.MAU.META_ACCOUNT_SUSPENDED", Err: "Instagram reports that this account is suspended. Open Instagram to review or appeal the suspension before retrying", StatusCode: http.StatusForbidden}
+	HistoryPINLimit  = bridgev2.RespError{ErrCode: "FI.MAU.META_HISTORY_PIN_EXHAUSTED", Err: "PIN entered incorrectly too many times. Open Messenger on a device where your chats are available to reset your PIN, then try restoring history again", StatusCode: http.StatusBadRequest}
 	InboxLoadFailed  = bridgev2.RespError{ErrCode: "FI.MAU.META_INBOX_LOAD_FAILED", Err: "Meta returned an error while loading your messages after login. Please try again later, or log in from the official app/website first", StatusCode: http.StatusBadGateway}
 )
 

@@ -13,6 +13,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
+	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -49,9 +50,18 @@ type UserLoginMetadata struct {
 	NativeSession          *types.NativeSession          `json:"native_session,omitempty"`
 	NativePushKeys         *pushcrypto.NativePushKeys    `json:"native_push_keys,omitempty"`
 	InstagramNativeSession *types.InstagramNativeSession `json:"instagram_native_session,omitempty"`
+	HistoryDevice          *securehistory.Device         `json:"history_device,omitempty"`
 
 	// Thread backfill state
 	BackfillCompleted bool `json:"backfill_completed,omitempty"`
+}
+
+func (m *UserLoginMetadata) CopyFrom(other any) {
+	updated := *other.(*UserLoginMetadata)
+	if m.Platform.IsMessenger() && updated.Platform.IsMessenger() && m.HistoryDevice != nil {
+		updated.HistoryDevice = m.HistoryDevice
+	}
+	*m = updated
 }
 
 func (m *UserLoginMetadata) GeneratePushKeys() {
