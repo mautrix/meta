@@ -575,6 +575,13 @@ func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, er
 	response, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
 	if response != nil {
 		c.parent.GetCookies().UpdateFromResponse(response)
+		if err != nil && c.LogRedactedLoginResponses {
+			evt := c.log.Debug().
+				Str("url", page).
+				Int("status_code", response.StatusCode).
+				Str("content_type", response.Header.Get("content-type"))
+			AddRedactedResponse(evt, responseBody).Msg("Page request failed")
+		}
 	}
 	return responseBody, err
 }
