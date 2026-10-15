@@ -304,6 +304,10 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	} else if portalKey.IsEmpty() {
+		if d.TypeName == "SlideUQPPNotYetImplementedMutation" {
+			// This may be a view-once message that isn't delivered over the socket in some regions
+			ic.queueViewOnceFallback()
+		}
 		log.Warn().Msg("Ignoring event with no portal")
 		return nil
 	}
@@ -311,6 +315,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	var res bridgev2.EventHandlingResult
 	switch evt := d.Data.(type) {
 	case *slidetypes.NewMessageEvent:
+		ic.fillViewOnceFromDirectInbox(ctx, evt.Message)
 		res = ic.handleMessage(portalKey, evt.Message)
 	case *slidetypes.AdminMessageEvent:
 		res = ic.handleMessage(portalKey, evt.Message)
@@ -393,7 +398,11 @@ func (ic *IGClient) handleMessage(portalKey networkid.PortalKey, msg *slidetypes
 		Data: msg,
 		ID:   msgID,
 		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data *slidetypes.Message) (*bridgev2.ConvertedMessage, error) {
-			return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, ic.UserLogin, intent, msgID, data, ic.Main.Config.DisableXMAAlways), ctx.Err()
+			cm := ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, ic.UserLogin, intent, msgID, data, ic.Main.Config.DisableXMAAlways)
+			if isViewOnceMedia(data) {
+				labelViewOnceParts(cm)
+			}
+			return cm, ctx.Err()
 		},
 	})
 }
