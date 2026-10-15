@@ -278,7 +278,7 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 			return nil, ErrNotConnected
 		}
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.SendReactionTask{
-			ThreadKey:       msg.TargetMessage.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Portal.ID),
+			ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
 			TimestampMs:     msg.Event.Timestamp,
 			MessageID:       messageID.ID,
 			Reaction:        msg.PreHandleResp.Emoji,
@@ -321,14 +321,8 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
 			return ErrNotConnected
 		}
-		target, err := m.Main.Bridge.DB.Message.GetPartByID(ctx, msg.Portal.Receiver, msg.TargetReaction.MessageID, msg.TargetReaction.MessagePartID)
-		if err != nil {
-			return err
-		} else if target == nil {
-			return fmt.Errorf("reaction target message not found")
-		}
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.SendReactionTask{
-			ThreadKey:       target.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Portal.ID),
+			ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
 			TimestampMs:     msg.Event.Timestamp,
 			MessageID:       messageID.ID,
 			Reaction:        "",
@@ -531,13 +525,12 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 		Int("message_count", len(messages)).
 		Msg("Handling read receipt")
 	waMessagesToRead := make(map[waTypes.JID][]string)
-	fbMessagesToRead := make(map[int64]time.Time)
+	var fbMessageToReadTS time.Time
 	for _, msg := range messages {
 		switch messageID := metaid.ParseMessageID(msg.ID).(type) {
 		case metaid.ParsedFBMessageID:
-			threadKey := msg.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Room.ID)
-			if fbMessagesToRead[threadKey].Before(msg.Timestamp) {
-				fbMessagesToRead[threadKey] = msg.Timestamp
+			if fbMessageToReadTS.Before(msg.Timestamp) {
+				fbMessageToReadTS = msg.Timestamp
 			}
 		case metaid.ParsedWAMessageID:
 			if msg.SenderID == networkid.UserID(m.UserLogin.ID) {
@@ -551,10 +544,8 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 			waMessagesToRead[key] = append(waMessagesToRead[key], messageID.ID)
 		}
 	}
-	for threadID, fbMessageToReadTS := range fbMessagesToRead {
-		if threadID == 0 || receipt.Implicit {
-			continue
-		}
+	threadID := metaid.ParseFBPortalID(receipt.Portal.ID)
+	if !fbMessageToReadTS.IsZero() && threadID != 0 && !receipt.Implicit {
 		var syncGroup int64 = 1
 		// TODO set sync group to 104 for community groups?
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.ThreadMarkReadTask{

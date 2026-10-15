@@ -19,7 +19,6 @@ import (
 )
 
 type MessageMetadata struct {
-	FBThreadKey   int64 `json:"fb_thread_key,omitempty"`
 	EditTimestamp int64 `json:"edit_timestamp,omitempty"`
 	// Default direct media meta. Used for blob media, whatsapp media and old XMA media
 	DirectMediaMeta json.RawMessage `json:"direct_media_meta,omitempty"`
@@ -28,13 +27,6 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
-}
-
-func (m *MessageMetadata) GetFBThreadKey(portalID networkid.PortalID) int64 {
-	if m.FBThreadKey != 0 {
-		return m.FBThreadKey
-	}
-	return ParseFBPortalID(portalID)
 }
 
 type XMAFetchMeta struct {

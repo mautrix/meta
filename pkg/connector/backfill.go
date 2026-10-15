@@ -3,7 +3,6 @@ package connector
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"sync"
@@ -13,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
@@ -59,8 +57,8 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 		Bool("has_more_after", upsert.Range.HasMoreAfter).
 		Int("message_count", len(upsert.Messages)).
 		Msg("Received upsert messages")
-	if collector, ok := m.backfillCollectors[upsert.GetThreadKey()]; ok {
-		if collector.UpsertMessages != nil && upsert.Range.MaxTimestampMsTemplate > collector.Range.MinTimestampMs {
+	if collector, ok := m.backfillCollectors[tk.ID]; ok {
+		if upsert.Range.MaxTimestampMsTemplate > collector.Range.MinTimestampMs {
 			log.Warn().
 				Int64("prev_min_timestamp_ms", collector.Range.MinTimestampMs).
 				Msg("Ignoring unexpected upsert messages while collecting history")
@@ -79,11 +77,11 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 			Bool("existing_messages_reached", existingMessagesReached)
 		if !messageLimitReached && !endOfChatReached && !existingMessagesReached {
 			logEvt.Msg("Requesting more history as collector still has room")
-			go m.requestMoreHistory(ctx, upsert.GetThreadKey(), upsert.Range.MinTimestampMs, upsert.Range.MinMessageId)
+			go m.requestMoreHistory(ctx, tk.ID, upsert.Range.MinTimestampMs, upsert.Range.MinMessageId)
 			return nil
 		}
 		logEvt.Msg("Processing collected history now")
-		delete(m.backfillCollectors, upsert.GetThreadKey())
+		delete(m.backfillCollectors, tk.ID)
 		collector.Done()
 		return nil
 	} else if tk.Sync != nil {
@@ -115,10 +113,8 @@ func (m *MetaClient) handleUpdateExistingMessageRange(tk handlerParams, rng *tab
 		Int64("timestamp_ms", rng.TimestampMS).
 		Bool("bool2", rng.UnknownBool2).
 		Bool("bool3", rng.UnknownBool3)
-	if collector, ok := m.backfillCollectors[rng.ThreadKey]; !ok {
+	if collector, ok := m.backfillCollectors[tk.ID]; !ok {
 		logEvt.Msg("Ignoring update existing message range command with no backfill collector")
-	} else if collector.UpsertMessages == nil {
-		logEvt.Msg("Ignoring range update before initial history range")
 	} else if collector.Range.MinTimestampMs != rng.TimestampMS {
 		logEvt.Int64("prev_timestamp_ms", collector.Range.MinTimestampMs).
 			Msg("Ignoring update existing message range command with different timestamp")
@@ -135,24 +131,20 @@ func (m *MetaClient) handleUpdateExistingMessageRange(tk handlerParams, rng *tab
 			}
 		}
 		collector.Done()
-		delete(m.backfillCollectors, rng.ThreadKey)
+		delete(m.backfillCollectors, tk.ID)
 	}
 	return nil
 }
 
 func (m *MetaClient) requestMoreHistory(ctx context.Context, threadID, minTimestampMS int64, minMessageID string) bool {
-	var task socket.Task = &socket.FetchMessagesTask{
+	resp, err := m.Client.ExecuteTasks(ctx, &socket.FetchMessagesTask{
 		ThreadKey:            threadID,
 		Direction:            0,
 		ReferenceTimestampMs: minTimestampMS,
 		ReferenceMessageId:   minMessageID,
 		SyncGroup:            1,
 		Cursor:               m.Client.GetCursor(1),
-	}
-	if minMessageID == "" {
-		task = &socket.CreateThreadTask{ThreadFBID: threadID, SyncGroup: 1}
-	}
-	resp, err := m.Client.ExecuteTasks(ctx, task)
+	})
 	zerolog.Ctx(ctx).Trace().
 		Int64("thread_id", threadID).
 		Any("resp_data", resp).
@@ -161,16 +153,6 @@ func (m *MetaClient) requestMoreHistory(ctx context.Context, threadID, minTimest
 		zerolog.Ctx(ctx).Err(err).Int64("thread_id", threadID).Msg("Failed to request more history")
 		return false
 	} else {
-		m.Client.PostHandlePublishResponse(resp)
-		upserts, _ := resp.WrapMessages()
-		if upsert := upserts[threadID]; upsert != nil {
-			m.handleUpsertMessages(handlerParams{ctx: ctx, ID: threadID}, upsert)
-		}
-		for _, update := range resp.LSUpdateExistingMessageRange {
-			if update.ThreadKey == threadID {
-				m.handleUpdateExistingMessageRange(handlerParams{ctx: ctx, ID: threadID}, update)
-			}
-		}
 		zerolog.Ctx(ctx).Debug().
 			Int64("thread_id", threadID).
 			Int64("min_timestamp_ms", minTimestampMS).
@@ -205,13 +187,9 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		return nil, bridgev2.ErrNotLoggedIn
 	}
 	if params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType.IsWhatsApp() {
-		return m.fetchMessengerHistory(ctx, params)
+		return m.fetchEncryptedHistory(ctx, params)
 	}
 	threadID := metaid.ParseFBPortalID(params.Portal.ID)
-	return m.fetchFacebookHistory(ctx, params, threadID, false)
-}
-
-func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.FetchMessagesParams, threadID int64, stitched bool) (*bridgev2.FetchMessagesResponse, error) {
 	if threadID == 0 {
 		return nil, fmt.Errorf("invalid thread ID")
 	}
@@ -258,7 +236,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					HasMoreAfter:           true,
 				},
 			}
-		} else if !stitched {
+		} else {
 			zerolog.Ctx(ctx).Warn().Msg("Can't backfill chat with no messages")
 			return nil, nil
 		}
@@ -298,7 +276,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 				upsert = collector.UpsertMessages
 				break Loop
 			case <-ticker.C:
-				if params.Forward && collector.UpsertMessages != nil && collector.UpsertMessages.Range.MinTimestampMs >= oldestMessageTS {
+				if params.Forward && collector.UpsertMessages.Range.MinTimestampMs >= oldestMessageTS {
 					zerolog.Ctx(ctx).Warn().Msg("Backfill collector did not call done, but has all messages")
 					break Loop
 				} else if time.Since(start) > timeout {
@@ -318,31 +296,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 			}
 		}
 	}
-	if upsert == nil {
-		return nil, fmt.Errorf("missing history range for thread %d", threadID)
-	}
-	anchor := params.AnchorMessage
-	if stitched {
-		if upsert.Range.HasMoreBefore && (upsert.Range.MinMessageId == "" || (anchor != nil &&
-			(upsert.Range.MinTimestampMs > anchor.Timestamp.UnixMilli() || metaid.MakeFBMessageID(upsert.Range.MinMessageId) == anchor.ID))) {
-			return nil, fmt.Errorf("history cursor did not move backwards")
-		}
-		anchor = nil
-	}
-	response := m.wrapBackfillEvents(ctx, params.Portal, upsert, anchor, params.Forward)
-	if stitched {
-		cursor, err := json.Marshal(messengerHistoryCursor{
-			OpenThreadID: threadID,
-			Timestamp:    upsert.Range.MinTimestampMs,
-			MessageID:    upsert.Range.MinMessageId,
-		})
-		if err != nil {
-			return nil, err
-		}
-		response.Cursor = networkid.PaginationCursor(cursor)
-		response.AggressiveDeduplication = true
-	}
-	return response, nil
+	return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
 }
 
 func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Portal, upsert *table.UpsertMessages, anchor *database.Message, forward bool) *bridgev2.FetchMessagesResponse {

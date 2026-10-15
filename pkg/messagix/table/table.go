@@ -155,7 +155,6 @@ type LSTable struct {
 	LSRemoveOptimisticGroupThread                    []*LSRemoveOptimisticGroupThread                    `json:",omitempty"`
 	LSUpdateOrInsertEditMessageHistory               []*LSUpdateOrInsertEditMessageHistory               `json:",omitempty"`
 	LSVerifyHybridThreadExists                       []*LSVerifyHybridThreadExists                       `json:",omitempty"`
-	LSCreateOpenToE2EEThreadLink                     []*LSCreateOpenToE2EEThreadLink                     `json:",omitempty"`
 	LSUpdateThreadAuthorityAndMappingWithOTIDFromJID []*LSUpdateThreadAuthorityAndMappingWithOTIDFromJID `json:",omitempty"`
 	LSVerifyContactParticipantExist                  []*LSVerifyContactParticipantExist                  `json:",omitempty"`
 	LSVerifyCommunityMemberContextualProfileExists   []*LSVerifyCommunityMemberContextualProfileExists   `json:",omitempty"`
@@ -329,7 +328,6 @@ var SPTable = map[string]string{
 	"removeOptimisticGroupThread":                    "LSRemoveOptimisticGroupThread",
 	"updateOrInsertEditMessageHistory":               "LSUpdateOrInsertEditMessageHistory",
 	"verifyHybridThreadExists":                       "LSVerifyHybridThreadExists",
-	"createOpenToE2EEThreadLink":                     "LSCreateOpenToE2EEThreadLink",
 	"updateThreadAuthorityAndMappingWithOTIDFromJID": "LSUpdateThreadAuthorityAndMappingWithOTIDFromJID",
 	"verifyContactParticipantExist":                  "LSVerifyContactParticipantExist",
 	"verifyCommunityMemberContextualProfileExists":   "LSVerifyCommunityMemberContextualProfileExists",
