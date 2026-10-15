@@ -329,6 +329,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
+		if thread.ThreadType.IsWhatsApp() {
+			m.historyReadStates.Set(thread.ThreadKey, historyReadState{thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs})
+		}
 		info := m.wrapChatInfo(ctx, thread)
 		if fbKey != thread.ThreadKey {
 			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbKey))
@@ -354,6 +357,9 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
 		if _, ok := threadResyncs[thread.ThreadKey]; ok {
 			continue
+		}
+		if thread.ThreadType.IsWhatsApp() {
+			m.historyReadStates.Set(thread.ThreadKey, historyReadState{thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs})
 		}
 		info := m.wrapChatInfo(ctx, thread)
 		if fbKey != thread.ThreadKey {
