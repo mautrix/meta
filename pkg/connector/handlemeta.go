@@ -598,10 +598,11 @@ func (m *MetaClient) handleDeleteMessageRequest(tk handlerParams, msg *table.LSD
 	return m.handleDeleteThreadKey(tk, tk.ID, false /* OnlyForMe */)
 }
 
-func (m *MetaClient) markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
+func markPortalAsEncrypted(ctx context.Context, portal *bridgev2.Portal) bool {
 	meta := portal.Metadata.(*metaid.PortalMetadata)
 	if meta.ThreadType == table.ONE_TO_ONE {
-		return m.setThreadType(ctx, portal, table.ENCRYPTED_OVER_WA_ONE_TO_ONE)
+		meta.ThreadType = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
+		return true
 	}
 	return false
 }
@@ -621,12 +622,12 @@ func setFBThreadKey(fbKey int64) func(context.Context, *bridgev2.Portal) bool {
 
 func (m *MetaClient) handleMoveThreadToE2EE(tk handlerParams, msg *table.LSMoveThreadToE2EECutoverFolder) bridgev2.RemoteEvent {
 	if tk.Sync != nil {
-		tk.Sync.Info.ExtraUpdates = bridgev2.MergeExtraUpdaters(tk.Sync.Info.ExtraUpdates, m.markPortalAsEncrypted)
+		tk.Sync.Info.ExtraUpdates = bridgev2.MergeExtraUpdaters(tk.Sync.Info.ExtraUpdates, markPortalAsEncrypted)
 		return nil
 	}
 	return m.wrapChatInfoChange(tk.ID, 0, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
-			ExtraUpdates: m.markPortalAsEncrypted,
+			ExtraUpdates: markPortalAsEncrypted,
 		},
 	}, "LSMoveThreadToE2EECutoverFolder")
 }
