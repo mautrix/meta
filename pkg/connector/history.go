@@ -21,15 +21,6 @@ type historyReadState struct {
 	lastActivity  int64
 }
 
-func (m *MetaClient) storeHistoryReadState(threadID, readWatermark, lastActivity int64) {
-	m.backfillLock.Lock()
-	defer m.backfillLock.Unlock()
-	if m.historyReadStates == nil {
-		m.historyReadStates = make(map[int64]historyReadState)
-	}
-	m.historyReadStates[threadID] = historyReadState{readWatermark, lastActivity}
-}
-
 func (m *MetaClient) historyDevice() *securehistory.Device {
 	m.backfillLock.Lock()
 	defer m.backfillLock.Unlock()
@@ -144,9 +135,7 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 		return cmp.Or(a.Timestamp.Compare(b.Timestamp), cmp.Compare(a.ID, b.ID))
 	})
 	if (params.Forward || params.AnchorMessage == nil) && len(response.Messages) > 0 {
-		m.backfillLock.Lock()
-		readState := m.historyReadStates[metaid.ParseFBPortalID(params.Portal.ID)]
-		m.backfillLock.Unlock()
+		readState, _ := m.historyReadStates.Get(metaid.ParseFBPortalID(params.Portal.ID))
 		response.MarkRead = readState.lastActivity > 0 && readState.readWatermark >= max(readState.lastActivity, newestTimestamp)
 	}
 	return response, nil

@@ -325,7 +325,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
 		if thread.ThreadType.IsWhatsApp() {
-			m.storeHistoryReadState(thread.ThreadKey, thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs)
+			m.historyReadStates.Set(thread.ThreadKey, historyReadState{thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs})
 		}
 		info := m.wrapChatInfo(thread)
 		if fbKey != thread.ThreadKey {
@@ -354,7 +354,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			continue
 		}
 		if thread.ThreadType.IsWhatsApp() {
-			m.storeHistoryReadState(thread.ThreadKey, thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs)
+			m.historyReadStates.Set(thread.ThreadKey, historyReadState{thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs})
 		}
 		info := m.wrapChatInfo(thread)
 		if fbKey != thread.ThreadKey {
