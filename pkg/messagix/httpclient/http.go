@@ -86,6 +86,10 @@ func (c *HTTPClient) SetTransportOverride(transport http.RoundTripper) {
 	c.HTTP.Transport = transport
 }
 
+func (c *HTTPClient) GetHTTPClient() *http.Client {
+	return c.HTTP
+}
+
 func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	if c == nil {
 		return
@@ -108,7 +112,8 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 		})
 	}
 	if c.parent.GetPlatform().IsInstagram() && c.instagramNative.Load() {
-		reqClient.ImpersonateInstagramAndroid()
+		reqClient.ImpersonateInstagramAndroid().
+			SetHTTP2ReadIdleTimeout(15 * time.Second)
 	} else {
 		reqClient.ImpersonateChrome()
 	}

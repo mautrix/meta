@@ -180,7 +180,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 	}
 	if c.mobileSession.Load() != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
-			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_lightspeed_native"), GetHeaders: c.nativeSocketHeaders,
+			GetClient: c.http.GetHTTPClient, URL: c.GetEndpoint("dgw_lightspeed_native"), GetHeaders: c.nativeSocketHeaders,
 		}
 	}
 	return options

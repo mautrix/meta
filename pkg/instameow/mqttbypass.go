@@ -142,7 +142,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 	}
 	if session := c.mobileSession.Load(); session != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
-			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_mqttbypass_native"), GetHeaders: c.mqttBypassNativeHeaders,
+			GetClient: c.http.GetHTTPClient, URL: c.GetEndpoint("dgw_mqttbypass_native"), GetHeaders: c.mqttBypassNativeHeaders,
 		}
 		options.DeviceID = session.Device.DeviceID
 		options.UserID = session.UserID
