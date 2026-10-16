@@ -371,7 +371,11 @@ func GetErrorRedirectURL(err error) string {
 
 func accountVerificationPath(path string) (challenge, checkpoint bool) {
 	path = "/" + strings.Trim(path, "/") + "/"
-	return strings.Contains(path, "/challenge/") || strings.Contains(path, "/auth_platform/"), strings.Contains(path, "/checkpoint/")
+	challenge = strings.Contains(path, "/challenge/") ||
+		strings.Contains(path, "/auth_platform/") ||
+		path == "/accounts/scraping_warning/" ||
+		path == "/accounts/update_risky_contactpoint/"
+	return challenge, strings.Contains(path, "/checkpoint/")
 }
 
 func IsPermanentRequestError(err error) bool {
