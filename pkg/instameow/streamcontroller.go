@@ -150,7 +150,7 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 	}
 	if c.mobileSession.Load() != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
-			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_streamcontroller_native"), GetHeaders: c.streamControllerNativeHeaders,
+			GetClient: c.http.GetHTTPClient, URL: c.GetEndpoint("dgw_streamcontroller_native"), GetHeaders: c.streamControllerNativeHeaders,
 		}
 	}
 	return options

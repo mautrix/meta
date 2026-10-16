@@ -25,7 +25,7 @@ type connection struct {
 }
 
 type HTTPStreamOptions struct {
-	Client     *http.Client
+	GetClient  func() *http.Client
 	URL        string
 	GetHeaders func() http.Header
 }
@@ -41,7 +41,11 @@ type httpConnection struct {
 }
 
 func newHTTPConnection(ctx context.Context, opts *HTTPStreamOptions) (*connection, error) {
-	if opts.Client == nil {
+	var client *http.Client
+	if opts.GetClient != nil {
+		client = opts.GetClient()
+	}
+	if client == nil {
 		return nil, fmt.Errorf("%w: HTTP client is required", ErrDial)
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -57,7 +61,7 @@ func newHTTPConnection(ctx context.Context, opts *HTTPStreamOptions) (*connectio
 		request.Header = opts.GetHeaders().Clone()
 	}
 	conn := &httpConnection{
-		client:  *opts.Client,
+		client:  *client,
 		request: request,
 		cancel:  cancel,
 		input:   input,
