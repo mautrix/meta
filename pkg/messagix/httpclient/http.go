@@ -112,9 +112,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 		})
 	}
 	if c.parent.GetPlatform().IsInstagram() && c.instagramNative.Load() {
-		reqClient.ImpersonateInstagramAndroid().
-			SetHTTP2ReadIdleTimeout(15 * time.Second).
-			SetHTTP2PingTimeout(5 * time.Second)
+		reqClient.ImpersonateInstagramAndroid()
 	} else {
 		reqClient.ImpersonateChrome()
 	}

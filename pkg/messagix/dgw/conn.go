@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"sync/atomic"
 
 	"github.com/coder/websocket"
@@ -38,6 +39,7 @@ type httpConnection struct {
 	output   *io.PipeWriter
 	response atomic.Pointer[http.Response]
 	reader   *bufio.Reader
+	netConn  atomic.Pointer[net.Conn]
 }
 
 func newHTTPConnection(ctx context.Context, opts *HTTPStreamOptions) (*connection, error) {
@@ -50,6 +52,17 @@ func newHTTPConnection(ctx context.Context, opts *HTTPStreamOptions) (*connectio
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	input, output := io.Pipe()
+	conn := &httpConnection{
+		client: *client,
+		cancel: cancel,
+		input:  input,
+		output: output,
+	}
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			conn.netConn.Store(&info.Conn)
+		},
+	})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, opts.URL, input)
 	if err != nil {
 		cancel()
@@ -60,13 +73,7 @@ func newHTTPConnection(ctx context.Context, opts *HTTPStreamOptions) (*connectio
 	if opts.GetHeaders != nil {
 		request.Header = opts.GetHeaders().Clone()
 	}
-	conn := &httpConnection{
-		client:  *client,
-		request: request,
-		cancel:  cancel,
-		input:   input,
-		output:  output,
-	}
+	conn.request = request
 	conn.client.Timeout = 0
 	return &connection{connectionTransport: conn, extendedData: true}, nil
 }
@@ -116,6 +123,12 @@ func (c *httpConnection) Write(ctx context.Context, _ websocket.MessageType, dat
 
 func (c *httpConnection) Close(websocket.StatusCode, string) error {
 	return c.CloseNow()
+}
+
+func (c *httpConnection) closeNetConn() {
+	if netConn := c.netConn.Load(); netConn != nil {
+		_ = (*netConn).Close()
+	}
 }
 
 func (c *httpConnection) CloseNow() error {
