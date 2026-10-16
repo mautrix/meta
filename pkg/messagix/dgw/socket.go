@@ -266,9 +266,6 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 		errorOnce.Do(func() {
 			s.err.Store(&err)
 			close(done)
-			if httpConn, ok := conn.connectionTransport.(*httpConnection); ok && errors.Is(err, ErrPongTimeout) {
-				httpConn.closeNetConn()
-			}
 			closeErr := conn.CloseNow()
 			if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
 				s.Log.Debug().
