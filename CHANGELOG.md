@@ -1,3 +1,16 @@
+# v26.10
+
+* Added support for backfilling encrypted Messenger chat history.
+  * Note: older unencrypted history will no longer be backfilled, but may be
+    re-added in a future release.
+* Added Instagram Android login flow, which can be used via bot commands too.
+* Added support for blocking and unblocking users on Instagram and Messenger.
+* Added support for leaving Messenger groups.
+* Improved Instagram and Messenger mobile login flows.
+* Fixed portals being recreated sometimes after leaving a group on Instagram.
+* Fixed sending edits of formatted messages to Instagram.
+* Fixed backfilling Instagram chats if the bridge is offline for a long time.
+
 # v26.09
 
 * Bumped minimum Go version to 1.26.
