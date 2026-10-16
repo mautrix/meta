@@ -195,7 +195,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 		return nil, bridgev2.ErrNotLoggedIn
 	}
 	if params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType.IsWhatsApp() {
-		return m.fetchMessengerHistory(ctx, params)
+		return m.fetchMixedHistory(ctx, params)
 	}
 	threadID := metaid.ParseFBPortalID(params.Portal.ID)
 	return m.fetchFacebookHistory(ctx, params, threadID, nil)

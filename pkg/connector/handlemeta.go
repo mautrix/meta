@@ -332,7 +332,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		if thread.ThreadType.IsWhatsApp() {
 			m.historyReadStates.Set(thread.ThreadKey, historyReadState{thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs})
 		}
-		info := m.wrapChatInfo(ctx, thread)
+		info := m.wrapChatInfo(thread)
 		if fbKey != thread.ThreadKey {
 			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbKey))
 			if err := m.Main.DB.SetHybridThreadMessageRequest(ctx, m.UserLogin.ID, fbKey, thread.FolderName == folderPending); err != nil {
@@ -361,7 +361,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		if thread.ThreadType.IsWhatsApp() {
 			m.historyReadStates.Set(thread.ThreadKey, historyReadState{thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs})
 		}
-		info := m.wrapChatInfo(ctx, thread)
+		info := m.wrapChatInfo(thread)
 		if fbKey != thread.ThreadKey {
 			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, setFBThreadKey(fbKey))
 			if err := m.Main.DB.SetHybridThreadMessageRequest(ctx, m.UserLogin.ID, fbKey, thread.FolderName == folderPending); err != nil {

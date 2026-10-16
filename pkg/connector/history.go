@@ -87,8 +87,8 @@ type messengerHistoryCursor struct {
 	MessageID    string `json:"message_id,omitempty"`
 }
 
-func (m *MetaClient) fetchMessengerHistory(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
-	if params.ThreadRoot != "" {
+func (m *MetaClient) fetchMixedHistory(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+	if !m.canBackfillEncrypted() || params.ThreadRoot != "" {
 		return nil, nil
 	} else if params.Forward {
 		return m.fetchEncryptedHistory(ctx, params)
@@ -102,9 +102,6 @@ func (m *MetaClient) fetchMessengerHistory(ctx context.Context, params bridgev2.
 	openThreadID, err := m.Main.DB.GetOpenThreadKey(ctx, m.UserLogin.ID, metaid.ParseFBPortalID(params.Portal.ID))
 	if err != nil {
 		return nil, err
-	}
-	if cursor.OpenThreadID == 0 && !m.canBackfillEncrypted() {
-		cursor.OpenThreadID = openThreadID
 	}
 	if cursor.OpenThreadID != 0 {
 		if cursor.OpenThreadID != openThreadID {
