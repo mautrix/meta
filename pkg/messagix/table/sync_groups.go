@@ -40,15 +40,15 @@ type LSMciTraceLog struct {
 }
 
 type LSExecuteFirstBlockForSyncTransaction struct {
-	DatabaseID               int64  `index:"0" json:",omitempty"`
-	EpochID                  int64  `index:"1" json:",omitempty"`
-	CurrentCursor            string `index:"2" json:",omitempty"`
-	NextCursor               string `index:"3" json:",omitempty"`
-	SyncStatus               int64  `index:"4" json:",omitempty"`
-	SendSyncParams           bool   `index:"5" json:",omitempty"`
-	MinTimeToSyncTimestampMS int64  `index:"6" json:",omitempty"` // fix this, use conditionIndex
-	CanIgnoreTimestamp       bool   `index:"7" json:",omitempty"`
-	SyncChannel              int64  `index:"8" json:",omitempty"`
+	DatabaseID               int64      `index:"0" json:",omitempty"`
+	EpochID                  int64      `index:"1" json:",omitempty"`
+	CurrentCursor            string     `index:"2" json:",omitempty"`
+	NextCursor               string     `index:"3" json:",omitempty"`
+	SyncStatus               SyncStatus `index:"4" json:",omitempty"`
+	SendSyncParams           bool       `index:"5" json:",omitempty"`
+	MinTimeToSyncTimestampMS int64      `index:"6" json:",omitempty"` // fix this, use conditionIndex
+	CanIgnoreTimestamp       bool       `index:"7" json:",omitempty"`
+	SyncChannel              int64      `index:"8" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -79,16 +79,16 @@ func (fb *LSExecuteFirstBlockForSyncTransaction) ToV4() *LSExecuteFirstBlockForS
 }
 
 type LSExecuteFirstBlockForSyncTransactionV4 struct {
-	DatabaseID               int64  `index:"0" json:",omitempty"`
-	EpochID                  int64  `index:"1" json:",omitempty"`
-	CurrentCursor            string `index:"2" json:",omitempty"`
-	NextCursor               string `index:"3" json:",omitempty"`
-	CurrentSeqID             int64  `index:"4" json:",omitempty"`
-	SyncStatus               int64  `index:"5" json:",omitempty"`
-	SendSyncParams           bool   `index:"6" json:",omitempty"`
-	MinTimeToSyncTimestampMS int64  `index:"7" json:",omitempty"` // fix this, use conditionIndex
-	CanIgnoreTimestamp       bool   `index:"8" json:",omitempty"`
-	SyncChannel              int64  `index:"9" json:",omitempty"`
+	DatabaseID               int64      `index:"0" json:",omitempty"`
+	EpochID                  int64      `index:"1" json:",omitempty"`
+	CurrentCursor            string     `index:"2" json:",omitempty"`
+	NextCursor               string     `index:"3" json:",omitempty"`
+	CurrentSeqID             int64      `index:"4" json:",omitempty"`
+	SyncStatus               SyncStatus `index:"5" json:",omitempty"`
+	SendSyncParams           bool       `index:"6" json:",omitempty"`
+	MinTimeToSyncTimestampMS int64      `index:"7" json:",omitempty"` // fix this, use conditionIndex
+	CanIgnoreTimestamp       bool       `index:"8" json:",omitempty"`
+	SyncChannel              int64      `index:"9" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }

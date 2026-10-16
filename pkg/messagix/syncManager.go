@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"go.mau.fi/util/exsync"
+
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
@@ -26,6 +28,7 @@ type SyncManager struct {
 	// for thread/message fetching
 	keyStore   map[int64]*socket.KeyStoreData
 	syncParams *types.LSPlatformMessengerSyncParams
+	streams    *exsync.Map[int64, *dgw.PersistentStream]
 }
 
 func (c *Client) newSyncManager() *SyncManager {
@@ -60,6 +63,7 @@ func (c *Client) newSyncManager() *SyncManager {
 			95: {MinThreadKey: 0, ParentThreadKey: -1, MinLastActivityTimestampMs: 9999999999999, HasMoreBefore: false},
 		},
 		syncParams: &types.LSPlatformMessengerSyncParams{},
+		streams:    exsync.NewMap[int64, *dgw.PersistentStream](),
 	}
 }
 
@@ -153,6 +157,7 @@ func (sm *SyncManager) recursivelySyncSocketData(
 		if err != nil {
 			return fmt.Errorf("failed to establish stream: %w", err)
 		}
+		sm.streams.Set(databaseID, stream)
 	} else {
 		err = stream.SendData(ctx, req)
 		if err != nil {
@@ -218,6 +223,31 @@ func (sm *SyncManager) recursivelySyncSocketData(
 	}
 
 	return sm.recursivelySyncSocketData(ctx, databaseID, db, stream)
+}
+
+func (sm *SyncManager) handleLiveSyncResets(ctx context.Context, tbl *table.LSTable) {
+	for _, block := range tbl.GetLSExecuteFirstBlockForSyncTransactionV4() {
+		if block.SyncStatus != table.SyncStatusResync || !shouldRecurseDatabase[block.DatabaseID] {
+			continue
+		}
+		sm.client.Logger.Debug().
+			Int64("database_id", block.DatabaseID).
+			Msg("Got sync reset on live connection, resyncing database")
+		stream, _ := sm.streams.Get(block.DatabaseID)
+		db := &socket.QueryMetadata{
+			LastAppliedCursor: &block.NextCursor,
+			SendSyncParams:    block.SendSyncParams,
+			SyncChannel:       socket.SyncChannel(block.SyncChannel),
+		}
+		go func() {
+			err := sm.recursivelySyncSocketData(ctx, block.DatabaseID, db, stream)
+			if err != nil {
+				sm.client.Logger.Err(err).
+					Int64("database_id", block.DatabaseID).
+					Msg("Failed to resync database after live sync reset")
+			}
+		}()
+	}
 }
 
 func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table.LSTable, error) {
