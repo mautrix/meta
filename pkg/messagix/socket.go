@@ -156,6 +156,7 @@ func (c *Client) handleFrame(ctx context.Context, frame []byte) error {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to parse table")
 	} else {
 		c.HandleEvent(ctx, tbl)
+		c.syncManager.handleLiveSyncResets(ctx, tbl)
 	}
 	return nil
 }

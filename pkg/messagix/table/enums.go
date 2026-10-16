@@ -348,3 +348,9 @@ const (
 	EphemeralMediaStateReplayed
 	EphemeralMediaStateExpired
 )
+
+type SyncStatus int64
+
+const (
+	SyncStatusResync SyncStatus = 3
+)
