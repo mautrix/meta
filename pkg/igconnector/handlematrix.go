@@ -153,6 +153,9 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	log.Debug().Msg("Sending Matrix message to Meta")
 	converted, err := ic.Main.MsgConv.ToInstagram(ctx, ic.Client, msg.Event, msg.Content, msg.ReplyTo, otid, msg.OrigSender != nil, msg.Portal)
 	if err != nil {
+		if state := ic.errorToBridgeState(ctx, err); state != nil {
+			ic.UserLogin.BridgeState.Send(*state)
+		}
 		return nil, err
 	}
 
