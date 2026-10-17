@@ -248,7 +248,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	if mimeType == "" {
 		mimeType = http.DetectContentType(data)
 	}
-	if content.MSC3245Voice != nil && ffmpeg.Supported() {
+	if content.MSC3245Voice != nil && mimeType != "audio/mp4" && ffmpeg.Supported() {
 		data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mimeType)
 		if err != nil {
 			return nil, "", fmt.Errorf("%w voice message to m4a: %w", bridgev2.ErrMediaConvertFailed, err)
