@@ -468,6 +468,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 }
 
 func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThreadReadV2) bridgev2.RemoteEvent {
+	m.mapPersistedHybridThread(&tk, msg.ThreadKey)
 	return &simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventReadReceipt,
@@ -483,6 +484,7 @@ func (m *MetaClient) handleMarkThreadRead(tk handlerParams, msg *table.LSMarkThr
 }
 
 func (m *MetaClient) handleUpdateReadReceipt(tk handlerParams, msg *table.LSUpdateReadReceipt) bridgev2.RemoteEvent {
+	m.mapPersistedHybridThread(&tk, msg.ThreadKey)
 	// Only set timestamp if Instagram provides a valid one
 	var timestamp time.Time
 	if msg.ReadActionTimestampMs > 0 {
@@ -598,18 +600,23 @@ func (m *MetaClient) handleDeleteThread(tk handlerParams, msg *table.LSDeleteThr
 }
 
 func (m *MetaClient) handleDeletePartialThread(tk handlerParams, msg *table.LSDeletePartialThread) bridgev2.RemoteEvent {
-	if tk.Type == table.UNKNOWN_THREAD_TYPE {
-		threadJID, threadType, err := m.Main.DB.GetHybridThreadJID(tk.ctx, m.UserLogin.ID, msg.ThreadKey)
-		if err != nil {
-			zerolog.Ctx(tk.ctx).Warn().Err(err).Int64("thread_key", msg.ThreadKey).
-				Msg("Failed to get persisted hybrid thread mapping")
-		} else if threadJID != 0 {
-			tk.ID = threadJID
-			tk.Type = table.ThreadType(threadType)
-			tk.Portal = m.makeFBPortalKey(threadJID, tk.Type)
-		}
-	}
+	m.mapPersistedHybridThread(&tk, msg.ThreadKey)
 	return m.handleDeleteThreadKey(tk, tk.ID, true /* OnlyForMe */)
+}
+
+func (m *MetaClient) mapPersistedHybridThread(tk *handlerParams, threadKey int64) {
+	if tk.Type != table.UNKNOWN_THREAD_TYPE {
+		return
+	}
+	threadJID, threadType, err := m.Main.DB.GetHybridThreadJID(tk.ctx, m.UserLogin.ID, threadKey)
+	if err != nil {
+		zerolog.Ctx(tk.ctx).Warn().Err(err).Int64("thread_key", threadKey).
+			Msg("Failed to get persisted hybrid thread mapping")
+	} else if threadJID != 0 {
+		tk.ID = threadJID
+		tk.Type = table.ThreadType(threadType)
+		tk.Portal = m.makeFBPortalKey(threadJID, tk.Type)
+	}
 }
 
 func (m *MetaClient) handleDeleteMessageRequest(tk handlerParams, msg *table.LSDeleteMessageRequest) bridgev2.RemoteEvent {
