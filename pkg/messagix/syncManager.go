@@ -252,6 +252,7 @@ func (sm *SyncManager) handleLiveSyncResets(ctx context.Context, tbl *table.LSTa
 
 func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table.LSTable, error) {
 	var tableData *table.LSTable
+	var cutoverLinks []*table.LSCreateOpenToE2EEThreadLink
 	for _, db := range dbs {
 		database, ok := sm.store[db]
 		if !ok {
@@ -275,6 +276,8 @@ func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table
 
 		if db == 1 {
 			tableData = lsTable
+		} else if db == 95 {
+			cutoverLinks = append(cutoverLinks, lsTable.LSCreateOpenToE2EEThreadLink...)
 		}
 		err = sm.updateSyncGroupCursors(lsTable)
 		if err != nil {
@@ -282,6 +285,9 @@ func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table
 		}
 	}
 
+	if tableData != nil {
+		tableData.LSCreateOpenToE2EEThreadLink = append(tableData.LSCreateOpenToE2EEThreadLink, cutoverLinks...)
+	}
 	return tableData, nil
 }
 

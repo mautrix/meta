@@ -252,6 +252,11 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 }
 
 func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
+	for _, cutover := range tbl.LSCreateOpenToE2EEThreadLink {
+		if err := m.storeThreadCutover(ctx, cutover); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist thread cutover mapping")
+		}
+	}
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
 	folderResyncs := make(map[int64]*FBFolderResync, len(tbl.LSUpsertFolder))
