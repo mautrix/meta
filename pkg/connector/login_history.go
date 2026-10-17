@@ -49,11 +49,8 @@ func historyPINStep(message string) *bridgev2.LoginStep {
 func (m *MessengerHistoryLogin) startHistory(ctx context.Context, complete *bridgev2.LoginStep) (*bridgev2.LoginStep, error) {
 	m.historyComplete = complete
 	client := complete.CompleteParams.UserLogin.Client.(*MetaClient)
-	if !client.LoginMeta.Platform.IsMessenger() {
+	if client.canBackfillEncrypted() || !client.Main.Config.E2EEBackfill {
 		return complete, nil
-	}
-	if client.canBackfillEncrypted() {
-		return m.finishHistory(ctx)
 	}
 	var err error
 	m.historyBackup, err = client.Client.GetSecureHistoryClient().GetBackup(ctx)
