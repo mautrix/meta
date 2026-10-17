@@ -3,6 +3,7 @@ package connector
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -207,7 +208,7 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 					Int64("bundled_min_ts", upsert.Range.MinTimestampMs).
 					Int64("anchor_ts", anchorTS).
 					Msg("Forward backfill has all messages already")
-				return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
+				return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
 			}
 		}
 		var oldestMessageID string
@@ -296,10 +297,10 @@ func (m *MetaClient) FetchMessages(ctx context.Context, params bridgev2.FetchMes
 			}
 		}
 	}
-	return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
+	return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
 }
 
-func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Portal, upsert *table.UpsertMessages, anchor *database.Message, forward bool) *bridgev2.FetchMessagesResponse {
+func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Portal, upsert *table.UpsertMessages, anchor *database.Message, forward bool) (*bridgev2.FetchMessagesResponse, error) {
 	// The messages are probably already sorted in reverse order (newest to oldest). We want to sort them again to be safe,
 	// but reverse first to make the sorting algorithm's job easier if it's already sorted.
 	slices.Reverse(upsert.Messages)
@@ -351,8 +352,15 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 				Msg("Message ID timestamp mismatch in backfill")
 		}
 		msgID := metaid.MakeFBMessageID(msg.MessageId)
+		converted, err := m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, m.UserLogin, intent, msgID, msg)
+		if err != nil {
+			if !errors.Is(err, bridgev2.ErrIgnoringRemoteEvent) {
+				return nil, fmt.Errorf("failed to convert backfill message %s: %w", msg.MessageId, err)
+			}
+			continue
+		}
 		wrappedMessages[i] = &bridgev2.BackfillMessage{
-			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, m.UserLogin, intent, msgID, msg),
+			ConvertedMessage: converted,
 			Sender:           sender,
 			ID:               msgID,
 			Timestamp:        time.UnixMilli(msg.TimestampMs),
@@ -370,8 +378,20 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		}
 	}
 	return &bridgev2.FetchMessagesResponse{
-		Messages: wrappedMessages,
+		Messages: slices.DeleteFunc(wrappedMessages, func(msg *bridgev2.BackfillMessage) bool { return msg == nil }),
 		HasMore:  upsert.Range.HasMoreBefore,
 		MarkRead: upsert.MarkRead,
-	}
+		CompleteCallback: func() {
+			go func() {
+				for _, msg := range upsert.Messages {
+					evt := &FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m}
+					if msg.PollEventType == table.PollEventAddOption {
+						m.UserLogin.QueueRemoteEvent(evt)
+					} else if msg.PollEventType == table.PollEventCreate {
+						m.UserLogin.QueueRemoteEvent(evt)
+					}
+				}
+			}()
+		},
+	}, nil
 }

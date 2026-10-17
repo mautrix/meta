@@ -135,6 +135,12 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 		}},
 	}
 
+	if m.LoginMeta.Platform.IsMessenger() && threadType == table.GROUP_THREAD {
+		members.PowerLevels = &bridgev2.PowerLevelOverrides{Events: map[event.Type]int{
+			event.EventUnstablePollResponse: powerDefault,
+		}}
+	}
+
 	roomType := database.RoomTypeDefault
 	if threadType == table.FOLDER {
 		roomType = database.RoomTypeSpace

@@ -89,7 +89,7 @@ func (mc *MessageConverter) ToMatrix(
 	intent bridgev2.MatrixAPI,
 	messageID networkid.MessageID,
 	msg *table.WrappedMessage,
-) *bridgev2.ConvertedMessage {
+) (*bridgev2.ConvertedMessage, error) {
 	ctx = context.WithValue(ctx, mediadl.ContextKeyFBClient, client)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyIntent, intent)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyUserLogin, userLogin)
@@ -99,7 +99,10 @@ func (mc *MessageConverter) ToMatrix(
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
 	if msg.IsUnsent {
-		return cm
+		return cm, nil
+	}
+	if msg.PollID != 0 {
+		return mc.convertPoll(ctx, portal, msg)
 	}
 	// Display the thumbs-up sticker as a simple emoji message,
 	// which is the same way that it is displayed for encrypted
@@ -154,7 +157,6 @@ func (mc *MessageConverter) ToMatrix(
 			urlPreviews = append(urlPreviews, xmaAtt)
 			continue
 		} else if xmaAtt.CTA != nil && strings.HasPrefix(xmaAtt.CTA.Type_, "xma_poll_") {
-			// Skip poll metadata entirely for now
 			continue
 		}
 		cm.Parts = append(cm.Parts, mc.xmaAttachmentToMatrix(ctx, xmaAtt)...)
@@ -295,7 +297,7 @@ func (mc *MessageConverter) ToMatrix(
 		// exactly one item in the slice and it is the media part ID.
 		cm.Parts[0].ID = importantPartIDs[0]
 	}
-	return cm
+	return cm, nil
 }
 
 func errorToNotice(err error, attachmentContainerType string) *bridgev2.ConvertedMessagePart {
