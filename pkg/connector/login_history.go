@@ -55,18 +55,7 @@ func (m *MessengerHistoryLogin) startHistory(ctx context.Context, complete *brid
 	if client.canBackfillEncrypted() {
 		return m.finishHistory(ctx)
 	}
-	var err error
-	m.historyBackup, err = client.Client.GetSecureHistoryClient().GetBackup(ctx)
-	if errors.Is(err, securehistory.ErrNoPINBackup) {
-		return complete, nil
-	} else if err != nil {
-		client.UserLogin.Log.Warn().Err(err).Msg("Failed to check Messenger encrypted history")
-		if errors.Is(err, types.ErrPleaseLogIn) || errors.Is(err, httpclient.ErrTokenInvalidated) {
-			return nil, loginerrors.TokenInvalidated
-		}
-		return historyPINStep("Couldn't check your saved history. Enter your PIN to try again, or leave it empty to continue."), nil
-	}
-	return historyPINStep(""), nil
+	return complete, nil
 }
 
 func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
