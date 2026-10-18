@@ -592,6 +592,9 @@ func (ic *IGClient) handleThreadImage(portalKey networkid.PortalKey, evt *slidet
 }
 
 func (ic *IGClient) handleGroupJoin(portalKey networkid.PortalKey, evt *slidetypes.ParticipantJoinEvent) bridgev2.EventHandlingResult {
+	if evt.Thread.AsIGDirectThread == nil {
+		return bridgev2.EventHandlingResultIgnored
+	}
 	members := &bridgev2.ChatMemberList{
 		MemberMap: make(bridgev2.ChatMemberMap, len(evt.Thread.AsIGDirectThread.Users)),
 	}
@@ -609,9 +612,11 @@ func (ic *IGClient) handleGroupJoin(portalKey networkid.PortalKey, evt *slidetyp
 }
 
 func (ic *IGClient) handleGroupLeave(portalKey networkid.PortalKey, evt *slidetypes.ParticipantLeaveEvent) bridgev2.EventHandlingResult {
-	return ic.handleMessageChatInfoChange(portalKey, evt.Message, &bridgev2.ChatInfo{
-		Name: &evt.Thread.AsIGDirectThread.ThreadTitle,
-	}, bridgev2.ChatMember{
+	var info bridgev2.ChatInfo
+	if evt.Thread.AsIGDirectThread != nil {
+		info.Name = &evt.Thread.AsIGDirectThread.ThreadTitle
+	}
+	return ic.handleMessageChatInfoChange(portalKey, evt.Message, &info, bridgev2.ChatMember{
 		EventSender: ic.makeEventSender(evt.LeftParticipantFBID),
 		Membership:  event.MembershipLeave,
 	})
