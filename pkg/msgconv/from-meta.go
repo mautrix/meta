@@ -242,6 +242,7 @@ func (mc *MessageConverter) ToMatrix(
 			Extra: map[string]any{
 				"fi.mau.unsupported": true,
 			},
+			DontBridge: msg.IsAdminMessage,
 		})
 	}
 	if msg.ReplySourceId != "" {
