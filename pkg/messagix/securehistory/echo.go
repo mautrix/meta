@@ -473,7 +473,8 @@ func (f echoFields) xmaProtobuf(metadata *waMsgApplication.MessageApplication_Me
 			ButtonType: waArmadilloXMA.ExtendedContentMessage_OPEN_NATIVE.Enum(),
 		}}
 	}
-	if f.text("Attachment-Type") != "" {
+	// TODO some attachments just have an Attachment-ID and no encryption?
+	if f.text("Attachment-Type") != "" && f.text("X-Media-Key") != "" {
 		mediaFields := maps.Clone(f)
 		mediaFields["Attachment-Type"] = "image"
 		media, err := mediaFields.mediaContent()
