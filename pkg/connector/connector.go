@@ -7,6 +7,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
@@ -82,7 +83,15 @@ func (m *MetaConnector) ResetHTTPTransport() {
 
 func (m *MetaConnector) ResetNetworkConnections() {
 	for _, login := range m.Bridge.GetAllCachedUserLogins() {
-		login.Client.(*MetaClient).Client.ForceReconnect()
-		login.Client.(*MetaClient).E2EEClient.ResetConnection()
+		client := login.Client.(*MetaClient)
+		if login.BridgeState.GetPrev().StateEvent == status.StateUnknownError {
+			go func() {
+				client.Disconnect()
+				client.Connect(login.Log.WithContext(m.Bridge.BackgroundCtx))
+			}()
+		} else {
+			client.Client.ForceReconnect()
+			client.E2EEClient.ResetConnection()
+		}
 	}
 }

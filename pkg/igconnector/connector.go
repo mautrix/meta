@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
@@ -84,6 +85,14 @@ func (ic *IGConnector) ResetHTTPTransport() {
 
 func (ic *IGConnector) ResetNetworkConnections() {
 	for _, login := range ic.Bridge.GetAllCachedUserLogins() {
-		login.Client.(*IGClient).Client.ForceReconnect()
+		client := login.Client.(*IGClient)
+		if login.BridgeState.GetPrev().StateEvent == status.StateUnknownError {
+			go func() {
+				client.Disconnect()
+				client.Connect(login.Log.WithContext(ic.Bridge.BackgroundCtx))
+			}()
+		} else {
+			client.Client.ForceReconnect()
+		}
 	}
 }
