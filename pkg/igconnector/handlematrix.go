@@ -360,6 +360,7 @@ func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.M
 	} else if err != nil {
 		return err
 	}
+	leftGroup := false
 	if chat.Portal.RoomType != database.RoomTypeDM {
 		memberInfo, err := ic.Main.Bridge.Matrix.GetMemberInfo(ctx, chat.Portal.MXID, ic.UserLogin.UserMXID)
 		if err != nil {
@@ -368,6 +369,8 @@ func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.M
 			_, err = ic.Client.LeaveGroup(ctx, &slidetypes.LeaveThreadRequest{ThreadID: meta.IGID})
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to leave group on delete chat request")
+			} else {
+				leftGroup = true
 			}
 		}
 	}
@@ -375,6 +378,10 @@ func (ic *IGClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.M
 		ThreadID:   meta.IGID,
 		MarkAsSpam: false,
 	})
+	if err != nil && leftGroup {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Ignoring delete thread error after leaving group")
+		return nil
+	}
 	return err
 }
 
