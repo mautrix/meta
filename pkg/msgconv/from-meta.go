@@ -490,11 +490,16 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 		},
 	}
 	if att.PreviewUrl != "" {
-		// URL previews don't typically need refresh metadata
-		converted, err := mc.reuploadAttachment(
-			ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, 0, int(att.PreviewWidth), int(att.PreviewHeight), 0,
-			nil,
-		)
+		// Always reupload: previews aren't stored as message parts, so direct media can't resolve them
+		converted, err := mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
+			AttachmentType: att.AttachmentType,
+			URL:            att.PreviewUrl,
+			FileName:       "preview",
+			MimeType:       att.PreviewUrlMimeType,
+			Width:          int(att.PreviewWidth),
+			Height:         int(att.PreviewHeight),
+			MaxFileSize:    mc.MaxFileSize,
+		})
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload URL preview image")
 		} else {
