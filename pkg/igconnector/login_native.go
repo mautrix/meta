@@ -428,8 +428,10 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 		return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
 	} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 		return nil, loginerrors.AccountSuspended
-	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, bridgev2.ErrLoginStepCancelled) {
 		return nil, err
+	} else if errors.Is(err, instameow.ErrInstagramAuthPlatformApprovalExpired) {
+		return nil, loginerrors.AFADStopped
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusBadGateway}
 	} else if err != nil {
