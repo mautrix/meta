@@ -280,7 +280,8 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	allowCreate := true
 	switch evt := d.Data.(type) {
 	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
-		*slidetypes.ParticipantLeaveEvent:
+		*slidetypes.ParticipantLeaveEvent, *slidetypes.MarkReadEvent, *slidetypes.MarkUnreadEvent,
+		*slidetypes.ReadReceiptEvent:
 		allowCreate = false
 	case *slidetypes.PinThreadEvent:
 		allowCreate = evt.IsPinned
