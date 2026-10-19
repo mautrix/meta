@@ -272,14 +272,14 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
 	for _, jid := range tbl.LSUpdateThreadAuthorityAndMappingWithOTIDFromJID {
 		waThreadMap[jid.ThreadKey] = jid.ThreadJID
-		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, 0); err != nil {
+		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.UserMXID, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, 0); err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid thread mapping")
 		}
 		activeThreads.Add(jid.ThreadJID)
 	}
 	for _, jid := range tbl.LSVerifyHybridThreadExists {
 		waThreadMap[jid.ThreadKey] = jid.ThreadJID
-		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, int64(jid.ThreadType)); err != nil {
+		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.UserMXID, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, int64(jid.ThreadType)); err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist hybrid thread mapping")
 		}
 		activeThreads.Add(jid.ThreadJID)
