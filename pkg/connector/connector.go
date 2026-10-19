@@ -85,10 +85,7 @@ func (m *MetaConnector) ResetNetworkConnections() {
 	for _, login := range m.Bridge.GetAllCachedUserLogins() {
 		client := login.Client.(*MetaClient)
 		if login.BridgeState.GetPrev().StateEvent == status.StateUnknownError {
-			go func() {
-				client.Disconnect()
-				client.Connect(login.Log.WithContext(m.Bridge.BackgroundCtx))
-			}()
+			go client.reconnectAfterNetworkReset()
 		} else {
 			client.Client.ForceReconnect()
 			client.E2EEClient.ResetConnection()

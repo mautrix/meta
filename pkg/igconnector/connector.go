@@ -87,10 +87,7 @@ func (ic *IGConnector) ResetNetworkConnections() {
 	for _, login := range ic.Bridge.GetAllCachedUserLogins() {
 		client := login.Client.(*IGClient)
 		if login.BridgeState.GetPrev().StateEvent == status.StateUnknownError {
-			go func() {
-				client.Disconnect()
-				client.Connect(login.Log.WithContext(ic.Bridge.BackgroundCtx))
-			}()
+			go client.reconnectAfterNetworkReset()
 		} else {
 			client.Client.ForceReconnect()
 		}
