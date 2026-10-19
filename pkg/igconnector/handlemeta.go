@@ -284,6 +284,12 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 		allowCreate = false
 	case *slidetypes.PinThreadEvent:
 		allowCreate = evt.IsPinned
+	case *slidetypes.UpdateThreadFolderEvent:
+		log = log.With().
+			Str("folder", evt.Folder).
+			Str("ig_inbox_folder", evt.IGInboxFolder).
+			Logger()
+		ctx = log.WithContext(ctx)
 	case *slidetypes.NewMessageEvent:
 		// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
 		// so extract it from the message for finding the portal.
