@@ -364,9 +364,9 @@ func (s *instagramAuthPlatformState) step(instructions string) *bridgev2.LoginSt
 			params.Type, params.Data = bridgev2.LoginDisplayTypeCode, s.approvalCode
 		}
 		return &bridgev2.LoginStep{
-			Type: bridgev2.LoginStepTypeDisplayAndWait,
-			StepID: "fi.mau.meta.instagram.auth_platform.approve",
-			Instructions: cmp.Or(instructions, "Approve this login in the Instagram app on another device where you're signed in."),
+			Type:                 bridgev2.LoginStepTypeDisplayAndWait,
+			StepID:               "fi.mau.meta.instagram.auth_platform.approve",
+			Instructions:         cmp.Or(instructions, "Approve this login in the Instagram app on another device where you're signed in."),
 			DisplayAndWaitParams: params,
 		}
 	}
