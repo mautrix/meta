@@ -41,7 +41,7 @@ func (m *MetaClient) storeThreadCutover(ctx context.Context, cutover *table.LSCr
 		}
 		if err = m.Main.DB.PutThreadCutover(ctx, m.UserLogin.ID, cutover.ArmadilloThreadID, cutover.OpenThreadID, cutover.ShowOpenMessageHistory); err != nil {
 			return err
-		} else if !cutover.ShowOpenMessageHistory || previous == cutover.OpenThreadID {
+		} else if previous == cutover.OpenThreadID {
 			return nil
 		}
 		portal, err := m.Main.Bridge.DB.Portal.GetByIDWithUncertainReceiver(ctx, m.makeFBPortalKey(cutover.ArmadilloThreadID, table.UNKNOWN_THREAD_TYPE))

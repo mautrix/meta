@@ -194,7 +194,7 @@ func (db *MetaDB) PutThreadCutover(ctx context.Context, loginID networkid.UserLo
 func (db *MetaDB) GetOpenThreadKey(ctx context.Context, loginID networkid.UserLoginID, threadJID int64) (openThreadKey int64, err error) {
 	err = db.QueryRow(ctx, `
 		SELECT open_thread_key FROM meta_thread_cutover
-		WHERE bridge_id = $1 AND login_id = $2 AND thread_jid = $3 AND show_open_message_history = true
+		WHERE bridge_id = $1 AND login_id = $2 AND thread_jid = $3
 	`, db.BridgeID, loginID, threadJID).Scan(&openThreadKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
