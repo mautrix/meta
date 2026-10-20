@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"time"
 
@@ -100,6 +101,12 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			Error:      MetaTransientDisconnect,
 		}
 		m.UserLogin.BridgeState.Send(m.metaState)
+		if errors.Is(evt.Err, messagix.ErrFatalSocketSyncError) && m.canReconnect() {
+			// Retrying the socket reuses the sync state from the last page load, so it
+			// keeps failing the same way until the page is loaded again.
+			log.Debug().Msg("Doing full reconnect after failing to sync database 1")
+			go m.FullReconnect()
+		}
 	case *messagix.ReconnectedEvent:
 		if !m.firstE2EEConnectDone {
 			m.firstE2EEConnectDone = true
