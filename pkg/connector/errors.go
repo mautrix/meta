@@ -51,7 +51,6 @@ func wrapMetaError(err error) error {
 		errors.Is(err, whatsmeow.ErrNotConnected):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("not connected to Facebook").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(true).
 			WithSendNotice(true)
 	case errors.Is(err, dgw.ErrAckTimeout), errors.Is(err, dgw.ErrReceiveTimeout),
@@ -60,7 +59,6 @@ func wrapMetaError(err error) error {
 		errors.As(err, &disconnectErr):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("no response from Facebook").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.Is(err, whatsmeow.ErrIQRateOverLimit):
@@ -96,7 +94,6 @@ func wrapMetaError(err error) error {
 	case errors.Is(err, httpclient.ErrRequestFailed):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("failed to reach Facebook").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.Is(err, whatsmeow.ErrServerReturnedError), errors.As(err, &iqErr):

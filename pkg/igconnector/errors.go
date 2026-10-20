@@ -70,13 +70,11 @@ func wrapInstagramError(err error) error {
 	case errors.Is(err, instameow.ErrClientIsNil), errors.Is(err, dgw.ErrSocketNotOpen):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("not connected to Instagram").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(true).
 			WithSendNotice(true)
 	case isInstagramTimeout(err):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("no response from Instagram").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.Is(err, httpclient.ErrRateLimited):
@@ -104,7 +102,6 @@ func wrapInstagramError(err error) error {
 	case errors.Is(err, httpclient.ErrRequestFailed):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("failed to reach Instagram").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.As(err, &lsErr), errors.As(err, &gqlErr), errors.Is(err, httpclient.ErrUnexpectedError):

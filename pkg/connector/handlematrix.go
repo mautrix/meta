@@ -127,7 +127,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
-				UserAction: status.UserActionOpenNative,
+				UserAction: status.UserActionRestart,
 			})
 			return nil, wrapMetaError(err)
 		} else if err != nil {

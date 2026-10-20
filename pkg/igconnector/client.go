@@ -202,28 +202,28 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGChallengeRequired,
-			UserAction: status.UserActionOpenNative,
+			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGAccountSuspended,
-			UserAction: status.UserActionOpenNative,
+			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      FBCheckpointRequired,
-			UserAction: status.UserActionOpenNative,
+			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrConsentRequired) {
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGConsentRequired,
-			UserAction: status.UserActionOpenNative,
+			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	}
