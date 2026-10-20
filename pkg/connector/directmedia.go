@@ -148,8 +148,7 @@ func (m *MetaConnector) refreshBlobMedia(
 ) (string, error) {
 	log := zerolog.Ctx(ctx)
 
-	// Parse thread key from portal ID
-	threadKey := metaid.ParseFBPortalID(msg.Room.ID)
+	threadKey := msg.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Room.ID)
 	if threadKey == 0 {
 		return "", fmt.Errorf("invalid thread key")
 	}
