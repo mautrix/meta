@@ -59,6 +59,7 @@ type IGClient struct {
 	resyncChatsSince      atomic.Pointer[time.Time]
 	pushRegistrationLock  sync.Mutex
 	mailboxProcessed      atomic.Bool
+	resetReconnecting     atomic.Bool
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
@@ -436,6 +437,16 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		case <-ctx.Done():
 		}
 	}()
+}
+
+func (ic *IGClient) reconnectAfterNetworkReset() {
+	if !ic.resetReconnecting.CompareAndSwap(false, true) {
+		return
+	}
+	defer ic.resetReconnecting.Store(false)
+	ic.UserLogin.BridgeState.StopUnknownErrorReconnect()
+	ic.Disconnect()
+	ic.Connect(ic.UserLogin.Log.WithContext(ic.Main.Bridge.BackgroundCtx))
 }
 
 func (ic *IGClient) FullReconnect(seqIDOnly, reconnectionStateOnly bool) {

@@ -53,6 +53,7 @@ type MetaClient struct {
 	pushRegistrationLock sync.Mutex
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
 	permanentErrored     atomic.Bool
+	resetReconnecting    atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -651,6 +652,16 @@ func (m *MetaClient) canReconnectError24() bool {
 	}
 	m.lastError24Reconnect = time.Now()
 	return true
+}
+
+func (m *MetaClient) reconnectAfterNetworkReset() {
+	if !m.resetReconnecting.CompareAndSwap(false, true) {
+		return
+	}
+	defer m.resetReconnecting.Store(false)
+	m.UserLogin.BridgeState.StopUnknownErrorReconnect()
+	m.Disconnect()
+	m.Connect(m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx))
 }
 
 func (m *MetaClient) FullReconnect() {
