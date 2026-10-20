@@ -239,7 +239,7 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 	if graphQLDoc.NoRetry {
 		resp, respData, err = c.MakeRequestOnce(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM)
 	} else {
-		resp, respData, err = c.makeRequest(ctx, reqUrl, "POST", headers, payloadBytes, types.FORM, func(e *zerolog.Event) *zerolog.Event {
+		resp, respData, err = c.makeRequest(ctx, c.HTTP, reqUrl, "POST", headers, payloadBytes, types.FORM, func(e *zerolog.Event) *zerolog.Event {
 			return e.Str("graphql_method", name)
 		})
 	}
