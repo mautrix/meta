@@ -79,7 +79,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 				if err != nil {
 					zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after mailbox processing")
 				}
-			} else if ic.Main.Config.ThreadBackfill.Enabled() {
+			} else if ic.Main.Config.ThreadBackfill.Enabled() && ic.LoginMeta.ThreadBackfillCursor == "" {
 				backfilling = true
 				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, time.Time{})
 			}
@@ -146,7 +146,15 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 			}
 			if err := processThread(edge.Node.AsIGDirectThread); err != nil {
 				log.Err(err).Str("thread_igid", edge.Node.AsIGDirectThread.ID).Msg("Failed to process thread")
-				return false
+				if ctx.Err() != nil {
+					return false
+				}
+			}
+		}
+		if since.IsZero() {
+			ic.LoginMeta.ThreadBackfillCursor = cursor
+			if err := ic.UserLogin.Save(ctx); err != nil {
+				log.Err(err).Msg("Failed to save chat backfill cursor")
 			}
 		}
 		return true
@@ -195,6 +203,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 	}
 	log.Info().Int("total_batch_count", batchCount).Msg("Completed chat backfill successfully")
 	ic.LoginMeta.BackfillCompleted = true
+	ic.LoginMeta.ThreadBackfillCursor = ""
 	err := ic.UserLogin.Save(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to save user login after chat backfill")
