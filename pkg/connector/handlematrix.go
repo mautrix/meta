@@ -143,6 +143,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 		var resp *table.LSTable
 
+		// An attempt that fails after the tasks were written may still have been delivered, so later
+		// failures can't be certain either.
+		maybeSent := false
 		for retries := 0; retries < 5; retries++ {
 			if err = m.Client.WaitUntilCanSendMessages(ctx, 15*time.Second); err != nil {
 				log.Err(err).Msg("Error waiting to be able to send messages, retrying")
@@ -152,13 +155,20 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 					break
 				}
 				log.Err(err).Msg("Failed to send message to Meta, retrying")
+				if retries < 4 {
+					maybeSent = true
+				}
 			}
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
 		}
 		if err != nil {
-			return nil, wrapMetaError(err)
+			err = wrapMetaError(err)
+			if ms, ok := err.(bridgev2.MessageStatus); ok && maybeSent {
+				err = ms.WithIsCertain(false)
+			}
+			return nil, err
 		}
 
 		log.Trace().Any("response", resp).Msg("Meta send response")

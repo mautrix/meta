@@ -63,11 +63,18 @@ func wrapMetaError(err error) error {
 			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(false).
 			WithSendNotice(true)
-	case errors.Is(err, httpclient.ErrRateLimited), errors.Is(err, whatsmeow.ErrIQRateOverLimit):
+	case errors.Is(err, whatsmeow.ErrIQRateOverLimit):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("rate limited by Facebook").
 			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(true).
+			WithSendNotice(true)
+	case errors.Is(err, httpclient.ErrRateLimited):
+		// httpclient retries after request errors, so an earlier attempt may have gone through.
+		return bridgev2.WrapErrorInStatus(err).
+			WithMessage("rate limited by Facebook").
+			WithErrorReason(event.MessageStatusNetworkError).
+			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.Is(err, httpclient.ErrTokenInvalidated):
 		return bridgev2.WrapErrorInStatus(err).
@@ -92,17 +99,29 @@ func wrapMetaError(err error) error {
 			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(false).
 			WithSendNotice(true)
-	case errors.As(err, &lsErr), errors.As(err, &gqlErr), errors.Is(err, httpclient.ErrUnexpectedError),
-		errors.Is(err, whatsmeow.ErrServerReturnedError), errors.As(err, &iqErr):
-		return bridgev2.WrapErrorInStatus(err).
-			WithMessage("Facebook returned an error").
+	case errors.Is(err, whatsmeow.ErrServerReturnedError), errors.As(err, &iqErr):
+		return withFallbackMessage(bridgev2.WrapErrorInStatus(err), "Facebook returned an error").
 			WithIsCertain(true).
+			WithSendNotice(true)
+	case errors.As(err, &lsErr), errors.As(err, &gqlErr), errors.Is(err, httpclient.ErrUnexpectedError):
+		// httpclient retries after request errors, so an earlier attempt may have gone through.
+		return withFallbackMessage(bridgev2.WrapErrorInStatus(err), "Facebook returned an error").
+			WithIsCertain(false).
 			WithSendNotice(true)
 	default:
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("unexpected error from Facebook").
 			WithSendNotice(true)
 	}
+}
+
+// withFallbackMessage keeps the description the error carries for users (GraphQL errors have one) and
+// only sets msg when there isn't one.
+func withFallbackMessage(st bridgev2.MessageStatus, msg string) bridgev2.MessageStatus {
+	if st.Message != "" {
+		return st
+	}
+	return st.WithMessage(msg)
 }
 
 // wrapMetaRespError turns an error from a messagix request made during login or provisioning into an

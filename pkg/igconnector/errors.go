@@ -80,10 +80,11 @@ func wrapInstagramError(err error) error {
 			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.Is(err, httpclient.ErrRateLimited):
+		// httpclient retries after request errors, so an earlier attempt may have gone through.
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("rate limited by Instagram").
 			WithErrorReason(event.MessageStatusNetworkError).
-			WithIsCertain(true).
+			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.Is(err, httpclient.ErrTokenInvalidated):
 		return bridgev2.WrapErrorInStatus(err).
@@ -107,10 +108,12 @@ func wrapInstagramError(err error) error {
 			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.As(err, &lsErr), errors.As(err, &gqlErr), errors.Is(err, httpclient.ErrUnexpectedError):
-		return bridgev2.WrapErrorInStatus(err).
-			WithMessage("Instagram returned an error").
-			WithIsCertain(true).
-			WithSendNotice(true)
+		// httpclient retries after request errors, so an earlier attempt may have gone through.
+		st := bridgev2.WrapErrorInStatus(err)
+		if st.Message == "" {
+			st = st.WithMessage("Instagram returned an error")
+		}
+		return st.WithIsCertain(false).WithSendNotice(true)
 	default:
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("unexpected error from Instagram").
