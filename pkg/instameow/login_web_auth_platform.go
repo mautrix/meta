@@ -407,7 +407,9 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 	}
 	op, values := instagramAPSubmit, map[string]any{}
 	if s.approving {
-		if input["back"] != "true" || !s.tryAnotherWay {
+		if input == nil {
+			return s.step(""), nil
+		} else if input["back"] != "true" || !s.tryAnotherWay {
 			return c.waitForInstagramAuthPlatformApproval(ctx)
 		}
 		op = instagramAPAnother
