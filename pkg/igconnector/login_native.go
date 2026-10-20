@@ -433,7 +433,7 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 	} else if errors.Is(err, instameow.ErrInstagramAuthPlatformApprovalExpired) {
 		return nil, loginerrors.AFADStopped
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
-		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusBadGateway}
+		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusInternalServerError}
 	} else if err != nil {
 		return nil, errInstagramWebCheckpointUnsupported
 	} else if step != nil {
