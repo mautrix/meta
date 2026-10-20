@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"time"
 
@@ -100,6 +101,10 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			Error:      MetaTransientDisconnect,
 		}
 		m.UserLogin.BridgeState.Send(m.metaState)
+		if errors.Is(evt.Err, messagix.ErrMissingInitialCursor) && m.canReconnect() {
+			log.Warn().Msg("Messages page had no db 1 cursor, doing full reconnect")
+			go m.FullReconnect()
+		}
 	case *messagix.ReconnectedEvent:
 		if !m.firstE2EEConnectDone {
 			m.firstE2EEConnectDone = true
