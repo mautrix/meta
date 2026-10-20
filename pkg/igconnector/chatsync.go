@@ -54,6 +54,13 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		return
 	}
 	resyncSince := ic.resyncChatsSince.Swap(nil)
+	if resyncSince != nil && ic.LoginMeta.ThreadBackfillCursor != "" {
+		ic.LoginMeta.ThreadBackfillCursor = ""
+		err := ic.UserLogin.Save(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to clear chat backfill cursor after resnapshot")
+		}
+	}
 	go func() {
 		defer done()
 
@@ -151,7 +158,9 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 				}
 			}
 		}
-		if since.IsZero() {
+		if ctx.Err() != nil {
+			return false
+		} else if since.IsZero() {
 			ic.LoginMeta.ThreadBackfillCursor = cursor
 			if err := ic.UserLogin.Save(ctx); err != nil {
 				log.Err(err).Msg("Failed to save chat backfill cursor")
