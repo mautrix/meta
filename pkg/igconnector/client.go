@@ -200,27 +200,28 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGChallengeRequired,
-			UserAction: status.UserActionRestart,
+			UserAction: status.UserActionOpenNative,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGAccountSuspended,
+			UserAction: status.UserActionOpenNative,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      FBCheckpointRequired,
-			UserAction: status.UserActionRestart,
+			UserAction: status.UserActionOpenNative,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrConsentRequired) {
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGConsentRequired,
-			UserAction: status.UserActionRestart,
+			UserAction: status.UserActionOpenNative,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	}
@@ -312,7 +313,8 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 			ic.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
-				Message:    lsErr.Error(),
+				Message:    "Instagram returned an error while connecting",
+				Info:       map[string]any{"go_error": lsErr.Error()},
 			})
 			if stateEvt == status.StateTransientDisconnect {
 				ic.connectWithRetry(retryCtx, ctx, attempts+1)

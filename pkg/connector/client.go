@@ -295,7 +295,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBChallengeRequired,
-				UserAction: status.UserActionRestart,
+				UserAction: status.UserActionOpenNative,
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
@@ -303,20 +303,21 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBAccountSuspended,
+				UserAction: status.UserActionOpenNative,
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBCheckpointRequired,
-				UserAction: status.UserActionRestart,
+				UserAction: status.UserActionOpenNative,
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
-				UserAction: status.UserActionRestart,
+				UserAction: status.UserActionOpenNative,
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
@@ -329,7 +330,8 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
-				Message:    lsErr.Error(),
+				Message:    "Facebook returned an error while connecting",
+				Info:       map[string]any{"go_error": lsErr.Error()},
 			})
 			if stateEvt == status.StateTransientDisconnect {
 				m.connectWithRetry(retryCtx, ctx, attempts+1)
