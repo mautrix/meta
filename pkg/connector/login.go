@@ -417,7 +417,7 @@ func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, 
 		return m.finishHistory(ctx)
 	}
 	if err := m.SavedClient.MessengerLite.CancelLoginStep(ctx); err != nil {
-		return nil, err
+		return nil, wrapMetaRespError(err)
 	}
 	return m.proceed(ctx, nil)
 }
