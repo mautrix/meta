@@ -120,6 +120,8 @@ var (
 	_ status.BridgeStateFiller               = (*MetaClient)(nil)
 )
 
+var getProxyClient = &http.Client{Timeout: 30 * time.Second}
+
 type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
 }
@@ -142,7 +144,7 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 		return "", fmt.Errorf("failed to prepare request: %w", err)
 	}
 	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := getProxyClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
