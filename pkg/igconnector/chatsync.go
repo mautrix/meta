@@ -153,9 +153,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 			}
 			if err := processThread(edge.Node.AsIGDirectThread); err != nil {
 				log.Err(err).Str("thread_igid", edge.Node.AsIGDirectThread.ID).Msg("Failed to process thread")
-				if ctx.Err() != nil {
-					return false
-				}
+				return false
 			}
 		}
 		if ctx.Err() != nil {
