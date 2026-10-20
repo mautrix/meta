@@ -473,7 +473,7 @@ func (c *HTTPClient) MakeRequest(
 	payload []byte,
 	contentType types.ContentType,
 ) (*http.Response, []byte, error) {
-	return c.makeRequest(ctx, c.HTTP, url, method, headers, payload, contentType, func(e *zerolog.Event) *zerolog.Event {
+	return c.makeRequest(ctx, c.GetHTTPClient, url, method, headers, payload, contentType, func(e *zerolog.Event) *zerolog.Event {
 		return e
 	})
 }
@@ -485,7 +485,7 @@ func isClientHTTP(resp *http.Response, err error) bool {
 
 func (c *HTTPClient) makeRequest(
 	ctx context.Context,
-	httpClient *http.Client,
+	getClient func() *http.Client,
 	url string,
 	method string,
 	headers http.Header,
@@ -497,7 +497,7 @@ func (c *HTTPClient) makeRequest(
 	for {
 		attempts++
 		start := time.Now()
-		resp, respDat, err := c.makeRequestOnce(ctx, httpClient, url, method, headers, payload, contentType)
+		resp, respDat, err := c.makeRequestOnce(ctx, getClient(), url, method, headers, payload, contentType)
 		dur := time.Since(start)
 		if err == nil {
 			logContext(c.log.Debug()).

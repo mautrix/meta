@@ -91,7 +91,7 @@ func (c *HTTPClient) SendMercuryUploadRequest(ctx context.Context, threadID int6
 		h.Set("sec-fetch-mode", "cors")
 		h.Set("sec-fetch-site", "same-origin") // header is required
 
-		_, respBody, err := c.makeRequest(ctx, c.uploadClient(), url, http.MethodPost, h, payload, types.NONE, func(e *zerolog.Event) *zerolog.Event {
+		_, respBody, err := c.makeRequest(ctx, c.uploadClient, url, http.MethodPost, h, payload, types.NONE, func(e *zerolog.Event) *zerolog.Event {
 			return e
 		})
 		if err != nil {
