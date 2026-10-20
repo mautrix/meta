@@ -29,6 +29,11 @@ type SyncManager struct {
 	keyStore   map[int64]*socket.KeyStoreData
 	syncParams *types.LSPlatformMessengerSyncParams
 	streams    *exsync.Map[int64, *dgw.PersistentStream]
+
+	threadRangeLock       sync.Mutex
+	threadRangeGen        map[int64]uint64
+	threadRangeChanged    chan struct{}
+	initialThreadFetchGen map[int64]uint64
 }
 
 func (c *Client) newSyncManager() *SyncManager {
@@ -64,6 +69,10 @@ func (c *Client) newSyncManager() *SyncManager {
 		},
 		syncParams: &types.LSPlatformMessengerSyncParams{},
 		streams:    exsync.NewMap[int64, *dgw.PersistentStream](),
+
+		threadRangeGen:        make(map[int64]uint64),
+		threadRangeChanged:    make(chan struct{}),
+		initialThreadFetchGen: make(map[int64]uint64),
 	}
 }
 
@@ -354,10 +363,14 @@ func (c *Client) GetCursor(db int64) string {
 func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThreadsRange) error {
 	var err error
 	for _, syncGroupData := range ranges {
+		syncGroup := syncGroupData.SyncGroup
 		if !syncGroupData.HasMoreBefore {
+			if keyStore, ok := sm.keyStore[syncGroup]; ok && syncGroupData.ParentThreadKey == 0 {
+				keyStore.HasMoreBefore = false
+				sm.markThreadRangeUpdated(syncGroup)
+			}
 			continue
 		}
-		syncGroup := syncGroupData.SyncGroup
 		keyStore, ok := sm.keyStore[syncGroup]
 		if !ok {
 			err = fmt.Errorf("could not find keyStore by database ID %d", syncGroup)
@@ -376,8 +389,54 @@ func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThrea
 			Any("key_store", keyStore).
 			Any("database_id", syncGroup).
 			Msg("Updated thread ranges")
+		sm.markThreadRangeUpdated(syncGroup)
 	}
 	return err
+}
+
+func (sm *SyncManager) markThreadRangeUpdated(syncGroup int64) {
+	sm.threadRangeLock.Lock()
+	sm.threadRangeGen[syncGroup]++
+	close(sm.threadRangeChanged)
+	sm.threadRangeChanged = make(chan struct{})
+	sm.threadRangeLock.Unlock()
+}
+
+func (sm *SyncManager) markInitialThreadFetch(syncGroups ...int64) {
+	sm.threadRangeLock.Lock()
+	for _, syncGroup := range syncGroups {
+		sm.initialThreadFetchGen[syncGroup] = sm.threadRangeGen[syncGroup]
+	}
+	sm.threadRangeLock.Unlock()
+}
+
+func (c *Client) WaitForInitialThreadRange(ctx context.Context, syncGroup int64) error {
+	c.syncManager.threadRangeLock.Lock()
+	gen := c.syncManager.initialThreadFetchGen[syncGroup]
+	c.syncManager.threadRangeLock.Unlock()
+	return c.WaitForThreadRange(ctx, syncGroup, gen)
+}
+
+func (c *Client) ThreadRangeGeneration(syncGroup int64) uint64 {
+	c.syncManager.threadRangeLock.Lock()
+	defer c.syncManager.threadRangeLock.Unlock()
+	return c.syncManager.threadRangeGen[syncGroup]
+}
+
+func (c *Client) WaitForThreadRange(ctx context.Context, syncGroup int64, generation uint64) error {
+	for {
+		c.syncManager.threadRangeLock.Lock()
+		gen, changed := c.syncManager.threadRangeGen[syncGroup], c.syncManager.threadRangeChanged
+		c.syncManager.threadRangeLock.Unlock()
+		if gen > generation {
+			return nil
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (sm *SyncManager) getSyncGroupKeyStore(db int64) *socket.KeyStoreData {

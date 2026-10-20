@@ -134,6 +134,7 @@ func (c *Client) sendInitialThreadFetch(ctx context.Context) error {
 	}
 
 	c.Logger.Trace().Any("data", string(payload)).Msg("Sync groups tasks")
+	c.syncManager.markInitialThreadFetch(1, 95)
 	_, err = c.makeLSRequest(ctx, payload, 3)
 	if err != nil {
 		return fmt.Errorf("failed to send sync tasks: %w", err)
