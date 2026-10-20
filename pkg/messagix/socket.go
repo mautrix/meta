@@ -46,6 +46,7 @@ type SocketLSRequestPayload struct {
 }
 
 var ErrFatalSocketSyncError = errors.New("failed to ensure db 1 is synced")
+var ErrMissingInitialCursor = errors.New("messages page didn't include a db 1 cursor")
 
 func (c *Client) onSocketConnect(ctx context.Context, _ func(error)) error {
 	c.canSendMessages.Set()
@@ -60,6 +61,11 @@ func (c *Client) onSocketConnect(ctx context.Context, _ func(error)) error {
 
 	err := c.syncManager.ensureSyncedSocket(ctx, minimalFBSync)
 	if err != nil {
+		// Without a cursor from the messages page, Meta never answers the db 1 sync,
+		// so retrying the socket can't succeed until the page is loaded again.
+		if !reconnect && c.syncManager.GetCursor(1) == "" {
+			err = fmt.Errorf("%w: %w", ErrMissingInitialCursor, err)
+		}
 		return fmt.Errorf("%w: %w", ErrFatalSocketSyncError, err)
 	}
 
