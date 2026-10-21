@@ -526,6 +526,9 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 			if err := c.switchInstagramAccountManagerWebAccount(ctx, selectedAccount.Username); err != nil {
 				return nil, err
 			} else if err := c.loadIndex(ctx); err != nil {
+				if _, ok := InstagramWebRedirectChallengeURL(err); ok {
+					err = httpclient.ErrChallengeRequired
+				}
 				return nil, fmt.Errorf("failed to load the selected Instagram web session: %w", err)
 			}
 			if c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
