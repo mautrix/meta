@@ -143,5 +143,5 @@ func wrapInstagramRespError(err error) error {
 	default:
 		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Request to Instagram failed"))
 	}
-	return fmt.Errorf("%w: %w", mapped, err)
+	return fmt.Errorf("%w: %w", mapped.WithInternalError(err), err)
 }
