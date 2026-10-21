@@ -155,9 +155,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 					break
 				}
 				log.Err(err).Msg("Failed to send message to Meta, retrying")
-				if retries < 4 {
-					maybeSent = true
-				}
+				maybeSent = true
 			}
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
