@@ -504,7 +504,11 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 	input map[string]string,
 ) (*bridgev2.LoginStep, error) {
 	step, err := m.client.DoInstagramWebAccountManagerSteps(ctx, input)
-	if errors.Is(err, httpclient.ErrConsentRequired) {
+	if challengeURL, ok := instameow.InstagramWebRedirectChallengeURL(err); ok {
+		return m.instagramWebChallengeStep(challengeURL), nil
+	} else if errors.Is(err, httpclient.ErrChallengeRequired) || errors.Is(err, httpclient.ErrCheckpointRequired) {
+		return nil, errInstagramWebCheckpointUnsupported
+	} else if errors.Is(err, httpclient.ErrConsentRequired) {
 		return nil, loginerrors.Consent
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
 		return nil, loginerrors.RateLimited
