@@ -19,12 +19,17 @@ package msgconv
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
+	_ "image/jpeg"
 	"image/png"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +45,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/proto/waMediaTransport"
 	"go.mau.fi/whatsmeow/proto/waMsgApplication"
+	"go.mau.fi/whatsmeow/util/hkdfutil"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -86,7 +92,7 @@ func (mc *MessageConverter) ToWhatsApp(
 			MessageText: mc.TextToWhatsApp(ctx, portal, content),
 		}
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile, event.MessageType(event.EventSticker.Type):
-		reuploaded, fileName, err := mc.reuploadMediaToWhatsApp(ctx, evt, content)
+		reuploaded, fileName, sidecar, err := mc.reuploadMediaToWhatsApp(ctx, evt, content)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -96,7 +102,7 @@ func (mc *MessageConverter) ToWhatsApp(
 		} else {
 			caption = &waCommon.MessageText{}
 		}
-		waContent.Content, err = mc.wrapWhatsAppMedia(evt, content, reuploaded, caption, fileName)
+		waContent.Content, err = mc.wrapWhatsAppMedia(evt, content, reuploaded, sidecar, caption, fileName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -235,7 +241,7 @@ func reencodeNRGBA(ctx context.Context, data []byte) []byte {
 	return buf.Bytes()
 }
 
-func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, error) {
+func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, []byte, error) {
 	mimeType := content.Info.MimeType
 	fileName := content.FileName
 	if fileName == "" {
@@ -243,7 +249,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	}
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+		return nil, "", nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
 	if mimeType == "" {
 		mimeType = http.DetectContentType(data)
@@ -251,7 +257,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	if content.MSC3245Voice != nil && mimeType != "audio/mp4" && ffmpeg.Supported() {
 		data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mimeType)
 		if err != nil {
-			return nil, "", fmt.Errorf("%w voice message to m4a: %w", bridgev2.ErrMediaConvertFailed, err)
+			return nil, "", nil, fmt.Errorf("%w voice message to m4a: %w", bridgev2.ErrMediaConvertFailed, err)
 		}
 		mimeType = "audio/mp4"
 		fileName += ".m4a"
@@ -279,13 +285,47 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	}
 	mediaType := msgToMediaType(content.MsgType)
 	client := ctx.Value(mediadl.ContextKeyWAClient).(*whatsmeow.Client)
-	uploaded, err := client.Upload(ctx, data, mediaType)
+	isVideo := content.MsgType == event.MsgVideo && mimeType != "image/gif"
+	var uploaded whatsmeow.UploadResponse
+	var sidecar []byte
+	if isVideo {
+		uploaded, sidecar, err = uploadWithStreamingSidecar(ctx, client, data, mediaType)
+	} else {
+		uploaded, err = client.Upload(ctx, data, mediaType)
+	}
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+		return nil, "", nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
 	w, h := clampTo400(content.Info.Width, content.Info.Height)
 	if w == 0 && content.MsgType == event.MsgImage {
 		w, h = 400, 400
+	}
+	thumbnail := &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
+		ThumbnailWidth:  proto.Uint32(uint32(w)),
+		ThumbnailHeight: proto.Uint32(uint32(h)),
+	}
+	fileLength := proto.Uint64(uint64(len(data)))
+	if isVideo {
+		fileLength = nil
+		thumbData, thumbW, thumbH, err := mc.getVideoThumbnail(ctx, content, data, mimeType)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get video thumbnail")
+		} else if thumbUploaded, err := client.Upload(ctx, thumbData, whatsmeow.MediaImage); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload video thumbnail")
+		} else {
+			thumbnail = &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
+				DownloadableThumbnail: &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail_DownloadableThumbnail{
+					FileSHA256:        thumbUploaded.FileSHA256,
+					FileEncSHA256:     thumbUploaded.FileEncSHA256,
+					DirectPath:        &thumbUploaded.DirectPath,
+					MediaKey:          thumbUploaded.MediaKey,
+					MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
+					ObjectID:          &thumbUploaded.ObjectID,
+				},
+				ThumbnailWidth:  proto.Uint32(uint32(thumbW)),
+				ThumbnailHeight: proto.Uint32(uint32(thumbH)),
+			}
+		}
 	}
 	mediaTransport := &waMediaTransport.WAMediaTransport{
 		Integral: &waMediaTransport.WAMediaTransport_Integral{
@@ -296,25 +336,80 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 			MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
 		},
 		Ancillary: &waMediaTransport.WAMediaTransport_Ancillary{
-			FileLength: proto.Uint64(uint64(len(data))),
+			FileLength: fileLength,
 			Mimetype:   &mimeType,
 			// This field is extremely required for some reason.
 			// Messenger iOS & Android will refuse to display the media if it's not present.
 			// iOS also requires that width and height are non-empty.
-			Thumbnail: &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
-				ThumbnailWidth:  proto.Uint32(uint32(w)),
-				ThumbnailHeight: proto.Uint32(uint32(h)),
-			},
-			ObjectID: &uploaded.ObjectID,
+			Thumbnail: thumbnail,
+			ObjectID:  &uploaded.ObjectID,
 		},
 	}
-	return mediaTransport, fileName, nil
+	return mediaTransport, fileName, sidecar, nil
+}
+
+func uploadWithStreamingSidecar(ctx context.Context, client *whatsmeow.Client, data []byte, mediaType whatsmeow.MediaType) (whatsmeow.UploadResponse, []byte, error) {
+	tempFile, err := os.CreateTemp("", "mautrix-meta-upload-*")
+	if err != nil {
+		return whatsmeow.UploadResponse{}, nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer func() {
+		_ = tempFile.Close()
+		_ = os.Remove(tempFile.Name())
+	}()
+	uploaded, err := client.UploadReader(ctx, bytes.NewReader(data), tempFile, mediaType)
+	if err != nil {
+		return uploaded, nil, err
+	}
+	_, err = tempFile.Seek(0, io.SeekStart)
+	if err != nil {
+		return uploaded, nil, fmt.Errorf("failed to seek temp file: %w", err)
+	}
+	encrypted, err := io.ReadAll(tempFile)
+	if err != nil {
+		return uploaded, nil, fmt.Errorf("failed to read temp file: %w", err)
+	}
+	expandedKey := hkdfutil.SHA256(uploaded.MediaKey, nil, []byte(mediaType), 112)
+	iv, macKey := expandedKey[:16], expandedKey[48:80]
+	signed := append(bytes.Clone(iv), encrypted...)
+	const chunkSize = 64 * 1024
+	sidecar := make([]byte, 0, (len(signed)+chunkSize-1)/chunkSize*10)
+	for offset := 0; offset < len(signed); offset += chunkSize {
+		mac := hmac.New(sha256.New, macKey)
+		mac.Write(signed[offset:min(offset+chunkSize+16, len(signed))])
+		sidecar = append(sidecar, mac.Sum(nil)[:10]...)
+	}
+	return uploaded, sidecar, nil
+}
+
+func (mc *MessageConverter) getVideoThumbnail(ctx context.Context, content *event.MessageEventContent, data []byte, mimeType string) ([]byte, int, int, error) {
+	if content.Info.ThumbnailURL != "" || content.Info.ThumbnailFile != nil {
+		thumbData, err := mc.Bridge.Bot.DownloadMedia(ctx, content.Info.ThumbnailURL, content.Info.ThumbnailFile)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to download video thumbnail, falling back to generating one")
+		} else if cfg, format, err := image.DecodeConfig(bytes.NewReader(thumbData)); err == nil && format == "jpeg" {
+			return thumbData, cfg.Width, cfg.Height, nil
+		}
+	}
+	if !ffmpeg.Supported() {
+		return nil, 0, 0, fmt.Errorf("no jpeg thumbnail in event and ffmpeg is not available")
+	}
+	thumbData, err := ffmpeg.ConvertBytes(ctx, data, ".jpg", []string{}, []string{"-frames:v", "1", "-vf", "scale='if(gt(iw,ih),min(960,iw),-2)':'if(gt(iw,ih),-2,min(960,ih))'"}, mimeType)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to extract first frame: %w", err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(thumbData))
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to decode generated thumbnail: %w", err)
+	}
+	return thumbData, cfg.Width, cfg.Height, nil
 }
 
 func (mc *MessageConverter) wrapWhatsAppMedia(
 	evt *event.Event,
 	content *event.MessageEventContent,
 	reuploaded *waMediaTransport.WAMediaTransport,
+	sidecar []byte,
 	caption *waCommon.MessageText,
 	fileName string,
 ) (output waConsumerApplication.ConsumerApplication_Content_Content, err error) {
@@ -351,11 +446,7 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 		}
 		var seconds *uint32
 		if content.Info.Duration != 0 {
-			seconds = proto.Uint32(uint32(content.Info.Duration / 1000))
-		}
-		var gifPlayback *bool
-		if content.Info.MauGIF {
-			gifPlayback = proto.Bool(true)
+			seconds = proto.Uint32(uint32((content.Info.Duration + 999) / 1000))
 		}
 		err = videoMsg.Set(&waMediaTransport.VideoTransport{
 			Integral: &waMediaTransport.VideoTransport_Integral{
@@ -365,7 +456,10 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 				Height:      proto.Uint32(uint32(content.Info.Height)),
 				Width:       proto.Uint32(uint32(content.Info.Width)),
 				Seconds:     seconds,
-				GifPlayback: gifPlayback,
+				Caption:     caption,
+				GifPlayback: proto.Bool(content.Info.MauGIF),
+				Sidecar:     sidecar,
+				IsHd:        proto.Bool(false),
 			},
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_VideoMessage{VideoMessage: videoMsg}
