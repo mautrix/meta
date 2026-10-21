@@ -27,7 +27,6 @@ import (
 	"image/draw"
 	_ "image/jpeg"
 	"image/png"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -361,25 +360,40 @@ func uploadWithStreamingSidecar(ctx context.Context, client *whatsmeow.Client, d
 	if err != nil {
 		return uploaded, nil, err
 	}
-	_, err = tempFile.Seek(0, io.SeekStart)
+	sidecar, err := makeStreamingSidecar(tempFile, uploaded.MediaKey, mediaType)
 	if err != nil {
-		return uploaded, nil, fmt.Errorf("failed to seek temp file: %w", err)
-	}
-	encrypted, err := io.ReadAll(tempFile)
-	if err != nil {
-		return uploaded, nil, fmt.Errorf("failed to read temp file: %w", err)
-	}
-	expandedKey := hkdfutil.SHA256(uploaded.MediaKey, nil, []byte(mediaType), 112)
-	iv, macKey := expandedKey[:16], expandedKey[48:80]
-	signed := append(bytes.Clone(iv), encrypted...)
-	const chunkSize = 64 * 1024
-	sidecar := make([]byte, 0, (len(signed)+chunkSize-1)/chunkSize*10)
-	for offset := 0; offset < len(signed); offset += chunkSize {
-		mac := hmac.New(sha256.New, macKey)
-		mac.Write(signed[offset:min(offset+chunkSize+16, len(signed))])
-		sidecar = append(sidecar, mac.Sum(nil)[:10]...)
+		return uploaded, nil, err
 	}
 	return uploaded, sidecar, nil
+}
+
+func makeStreamingSidecar(encrypted *os.File, mediaKey []byte, mediaType whatsmeow.MediaType) ([]byte, error) {
+	stat, err := encrypted.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat encrypted file: %w", err)
+	}
+	expandedKey := hkdfutil.SHA256(mediaKey, nil, []byte(mediaType), 112)
+	iv, macKey := expandedKey[:16], expandedKey[48:80]
+	const chunkSize = 64 * 1024
+	totalSize := int64(len(iv)) + stat.Size()
+	sidecar := make([]byte, 0, (totalSize+chunkSize-1)/chunkSize*10)
+	buf := make([]byte, chunkSize+16)
+	mac := hmac.New(sha256.New, macKey)
+	for offset := int64(0); offset < totalSize; offset += chunkSize {
+		window := buf[:min(chunkSize+16, totalSize-offset)]
+		n := 0
+		if offset < int64(len(iv)) {
+			n = copy(window, iv[offset:])
+		}
+		_, err = encrypted.ReadAt(window[n:], offset+int64(n)-int64(len(iv)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read encrypted file: %w", err)
+		}
+		mac.Reset()
+		mac.Write(window)
+		sidecar = append(sidecar, mac.Sum(nil)[:10]...)
+	}
+	return sidecar, nil
 }
 
 func (mc *MessageConverter) getVideoThumbnail(ctx context.Context, content *event.MessageEventContent, data []byte, mimeType string) ([]byte, int, int, error) {
