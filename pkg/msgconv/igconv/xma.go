@@ -286,7 +286,7 @@ func (mc *MessageConverter) fetchXMAStory(
 	}
 	var targetItem *responses.ReelItem
 	for _, item := range reel.Items {
-		if item.Pk == mediaID {
+		if item.Pk.String() == mediaID {
 			targetItem = item
 			break
 		}
