@@ -12,7 +12,7 @@ type ReelInfoResponse struct {
 }
 
 type ReelInfo struct {
-	ID                          json.Number   `json:"id,omitempty"`
+	ID                          any           `json:"id,omitempty"`
 	StrongID                    string        `json:"strong_id__,omitempty"`
 	LatestReelMedia             int           `json:"latest_reel_media,omitempty"`
 	ExpiringAt                  int           `json:"expiring_at,omitempty"`
