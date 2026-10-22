@@ -89,7 +89,7 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, wrapMetaRespError(err)
 	} else if len(resp.LSIssueNewError) > 0 {
 		zerolog.Ctx(ctx).Warn().Any("data", resp).Msg("Server rejected group creation")
 		issueErr := resp.LSIssueNewError[0]
@@ -218,7 +218,7 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 	resp, err := m.Client.ExecuteTasks(ctx, task)
 	log.Trace().Any("response_data", resp).Err(err).Msg("Resolve identifier primary response")
 	if err != nil {
-		return nil, fmt.Errorf("failed to search for user: %w", err)
+		return nil, wrapMetaRespError(fmt.Errorf("failed to search for user: %w", err))
 	}
 
 	users := make([]*bridgev2.ResolveIdentifierResponse, 0)

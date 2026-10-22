@@ -410,7 +410,7 @@ func (ic *IGConnector) refreshXMAMedia(
 		}
 		// Find the item matching the media ID
 		for _, item := range reel.Items {
-			if item.Pk == info.StoryMediaID {
+			if item.Pk.String() == info.StoryMediaID {
 				return extractBestURL(&item.Items)
 			}
 		}

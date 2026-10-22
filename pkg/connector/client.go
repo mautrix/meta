@@ -53,6 +53,7 @@ type MetaClient struct {
 	pushRegistrationLock sync.Mutex
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
 	permanentErrored     atomic.Bool
+	resetReconnecting    atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -120,6 +121,8 @@ var (
 	_ status.BridgeStateFiller               = (*MetaClient)(nil)
 )
 
+var getProxyClient = &http.Client{Timeout: 30 * time.Second}
+
 type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
 }
@@ -142,7 +145,7 @@ func (m *MetaConnector) getProxy(reason string) (string, error) {
 		return "", fmt.Errorf("failed to prepare request: %w", err)
 	}
 	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := getProxyClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
@@ -303,6 +306,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBAccountSuspended,
+				UserAction: status.UserActionRestart,
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
@@ -329,7 +333,8 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
-				Message:    lsErr.Error(),
+				Message:    "Facebook returned an error while connecting",
+				Info:       map[string]any{"go_error": lsErr.Error()},
 			})
 			if stateEvt == status.StateTransientDisconnect {
 				m.connectWithRetry(retryCtx, ctx, attempts+1)
@@ -651,6 +656,16 @@ func (m *MetaClient) canReconnectError24() bool {
 	}
 	m.lastError24Reconnect = time.Now()
 	return true
+}
+
+func (m *MetaClient) reconnectAfterNetworkReset() {
+	if !m.resetReconnecting.CompareAndSwap(false, true) {
+		return
+	}
+	defer m.resetReconnecting.Store(false)
+	m.UserLogin.BridgeState.StopUnknownErrorReconnect()
+	m.Disconnect()
+	m.Connect(m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx))
 }
 
 func (m *MetaClient) FullReconnect() {

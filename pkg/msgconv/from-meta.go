@@ -257,6 +257,10 @@ func (mc *MessageConverter) ToMatrix(
 	}
 
 	for i, part := range cm.Parts {
+		if part.DBMetadata == nil {
+			part.DBMetadata = &metaid.MessageMetadata{}
+		}
+		part.DBMetadata.(*metaid.MessageMetadata).FBThreadKey = msg.ThreadKey
 		// If part ID is already assigned, use the one that is given, as some code paths
 		// above generate message fragments with specific part IDs so that media can refer
 		// to those part IDs. Otherwise, assign a sequential integer. It is okay to my
@@ -273,10 +277,10 @@ func (mc *MessageConverter) ToMatrix(
 				threadURL = fmt.Sprintf("https://www.instagram.com/direct/t/%s/", portal.ID)
 				protocolName = "Instagram"
 			} else if client.GetPlatform().IsViaFacebook() {
-				threadURL = fmt.Sprintf("https://www.facebook.com/messages/t/%s/", portal.ID)
+				threadURL = fmt.Sprintf("https://www.facebook.com/messages/t/%d/", msg.ThreadKey)
 				protocolName = "Facebook"
 			} else if client.GetPlatform().IsViaMessenger() {
-				threadURL = fmt.Sprintf("https://www.messenger.com/t/%s/", portal.ID)
+				threadURL = fmt.Sprintf("https://www.messenger.com/t/%d/", msg.ThreadKey)
 				protocolName = "Messenger"
 			}
 			if threadURL != "" {
