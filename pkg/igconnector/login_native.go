@@ -513,6 +513,8 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 		return nil, loginerrors.AccountSuspended
 	} else if errors.Is(err, instameow.ErrInstagramAccountManagerTwoFactorRequired) {
 		return m.start(ctx, "That profile uses two-factor authentication. Log in with its own username and password to continue.")
+	} else if errors.Is(err, instameow.ErrInstagramAccountManagerSwitchFailed) {
+		return m.start(ctx, "Instagram didn't let Beeper switch to that profile. Log in with its own username and password to continue.")
 	} else if err != nil {
 		return nil, wrapInstagramRespError(fmt.Errorf("failed to select Instagram web Account Manager profile: %w", err))
 	} else if step != nil {
