@@ -46,6 +46,7 @@ const instagramWebTwoFactorSendCodeDocID = "27297512486584094"
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
 var ErrInstagramWebLoginRejected = errors.New("instagram web sign-in was rejected")
+var ErrInstagramWebRegistrationOffered = errors.New("instagram offered to register a new account instead of signing in")
 var ErrInstagramWebAccountPendingDeletion = errors.New("instagram account is pending deletion")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
