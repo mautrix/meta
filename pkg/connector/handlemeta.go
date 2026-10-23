@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/coder/websocket"
@@ -414,6 +415,12 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSUpdateThreadMuteSetting, m.handleUpdateMuteSetting, &innerQueue)
 	collectPortalEvents(params, tbl.LSMoveThreadToE2EECutoverFolder, m.handleMoveThreadToE2EE, &innerQueue)
 	upsert, insert := tbl.WrapMessages()
+	insert = slices.DeleteFunc(insert, m.handlePendingPoll)
+	for _, data := range tbl.WrapPollData() {
+		if evt := m.wrapPollSnapshot(data); evt != nil {
+			innerQueue = append(innerQueue, evt)
+		}
+	}
 	collectPortalEvents(params, maps.Values(upsert), m.handleUpsertMessages, &innerQueue)
 	collectPortalEvents(params, tbl.LSUpdateExistingMessageRange, m.handleUpdateExistingMessageRange, &innerQueue)
 

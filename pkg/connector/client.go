@@ -79,6 +79,11 @@ type MetaClient struct {
 	waState   status.BridgeState
 
 	waLastPresence waTypes.Presence
+
+	pollSendLock sync.Mutex
+	pendingPoll  atomic.Pointer[pendingPollSend]
+
+	pollQueries sync.Map
 }
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
