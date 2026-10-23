@@ -543,7 +543,11 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 
 func withoutWebChallengeHandoff(err error) error {
 	if _, ok := InstagramWebRedirectChallengeURL(err); ok {
-		return fmt.Errorf("%w: %s", httpclient.ErrChallengeRequired, err.Error())
+		kind := httpclient.ErrChallengeRequired
+		if errors.Is(err, httpclient.ErrConsentRequired) {
+			kind = httpclient.ErrConsentRequired
+		}
+		return fmt.Errorf("%w: %s", kind, err.Error())
 	}
 	return err
 }
