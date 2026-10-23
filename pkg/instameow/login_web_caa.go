@@ -308,7 +308,7 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 	// dispatch. recaptcha_needed can accompany an ordinary AuthPlatform redirect;
 	// only is_ig_login_recaptcha selects its interactive CAPTCHA dialog.
 	if data.Get("reg_nta_context").Type != gjson.Null {
-		return nil, ErrInstagramWebCheckpointUnsupported
+		return nil, ErrInstagramWebRegistrationOffered
 	} else if data.Get("recaptcha_needed").Bool() {
 		if challenge := instagramWebChallengeFromRedirect(data); challenge != nil {
 			return challenge, nil
