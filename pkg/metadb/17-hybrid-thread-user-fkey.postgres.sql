@@ -1,4 +1,4 @@
--- v15 (compatible with v11+): Keep hybrid thread mappings when a login is deleted and added again
+-- v17 (compatible with v11+): Keep hybrid thread mappings when a login is deleted and added again
 ALTER TABLE meta_hybrid_thread ADD COLUMN user_mxid TEXT;
 UPDATE meta_hybrid_thread SET user_mxid = (
     SELECT user_mxid FROM user_login

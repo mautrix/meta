@@ -19,6 +19,7 @@ import (
 )
 
 type MessageMetadata struct {
+	FBThreadKey   int64 `json:"fb_thread_key,omitempty"`
 	EditTimestamp int64 `json:"edit_timestamp,omitempty"`
 	// Default direct media meta. Used for blob media, whatsapp media and old XMA media
 	DirectMediaMeta json.RawMessage `json:"direct_media_meta,omitempty"`
@@ -27,6 +28,13 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+}
+
+func (m *MessageMetadata) GetFBThreadKey(portalID networkid.PortalID) int64 {
+	if m.FBThreadKey != 0 {
+		return m.FBThreadKey
+	}
+	return ParseFBPortalID(portalID)
 }
 
 type XMAFetchMeta struct {
@@ -53,7 +61,8 @@ type UserLoginMetadata struct {
 	HistoryDevice          *securehistory.Device         `json:"history_device,omitempty"`
 
 	// Thread backfill state
-	BackfillCompleted bool `json:"backfill_completed,omitempty"`
+	BackfillCompleted     bool `json:"backfill_completed,omitempty"`
+	E2EEBackfillCompleted bool `json:"e2ee_backfill_completed,omitempty"`
 }
 
 func (m *UserLoginMetadata) CopyFrom(other any) {

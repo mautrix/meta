@@ -1,4 +1,4 @@
--- v15 (compatible with v11+): Keep hybrid thread mappings when a login is deleted and added again
+-- v17 (compatible with v11+): Keep hybrid thread mappings when a login is deleted and added again
 CREATE TABLE meta_hybrid_thread_new (
     bridge_id       TEXT    NOT NULL,
     login_id        TEXT    NOT NULL,

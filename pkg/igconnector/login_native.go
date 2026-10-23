@@ -259,7 +259,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 			} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 				return nil, loginerrors.AccountSuspended
 			}
-			return nil, fmt.Errorf("failed to complete Instagram web two-factor login: %w", err)
+			return nil, wrapInstagramRespError(fmt.Errorf("failed to complete Instagram web two-factor login: %w", err))
 		}
 		m.webTwoFactor = nil
 		m.webSessionReady = true
@@ -332,7 +332,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 		} else if isMissingInstagramWebTwoFactorCSRF(err) {
 			return m.start(ctx, "Instagram did not return the security state needed to continue. Please try again.")
 		}
-		return nil, fmt.Errorf("failed to create Instagram web session: %w", err)
+		return nil, wrapInstagramRespError(fmt.Errorf("failed to create Instagram web session: %w", err))
 	}
 	if challenge != nil {
 		m.webTwoFactor = challenge
@@ -351,7 +351,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, error) {
 	if m.caaIdentifier != "" {
 		if err := m.client.CancelInstagramCAALoginStep(ctx); err != nil {
-			return nil, err
+			return nil, wrapInstagramRespError(err)
 		}
 		return m.continueCAAFallback(ctx, nil)
 	}
@@ -433,7 +433,7 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 	} else if errors.Is(err, instameow.ErrInstagramAuthPlatformApprovalExpired) {
 		return nil, loginerrors.AFADStopped
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
-		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusBadGateway}
+		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusInternalServerError}
 	} else if err != nil {
 		return nil, errInstagramWebCheckpointUnsupported
 	} else if step != nil {
@@ -472,9 +472,10 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 			return nil, errInstagramCAAUnsupportedStep
 		}
 		var responseError bridgev2.RespError
-		if errors.As(err, &responseError) ||
-			errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if errors.As(err, &responseError) {
 			return nil, err
+		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, wrapInstagramRespError(err)
 		}
 		zerolog.Ctx(ctx).Err(err).Msg("Unexpected error during Instagram CAA login flow")
 		return nil, errCAAFlowFailed
@@ -513,7 +514,7 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 	} else if errors.Is(err, instameow.ErrInstagramAccountManagerTwoFactorRequired) {
 		return m.start(ctx, "That profile uses two-factor authentication. Log in with its own username and password to continue.")
 	} else if err != nil {
-		return nil, fmt.Errorf("failed to select Instagram web Account Manager profile: %w", err)
+		return nil, wrapInstagramRespError(fmt.Errorf("failed to select Instagram web Account Manager profile: %w", err))
 	} else if step != nil {
 		return step, nil
 	}

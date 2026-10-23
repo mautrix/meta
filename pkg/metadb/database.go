@@ -181,6 +181,28 @@ func (db *MetaDB) GetHybridThreadInfoByJID(ctx context.Context, loginID networki
 	return
 }
 
+func (db *MetaDB) PutThreadCutover(ctx context.Context, loginID networkid.UserLoginID, threadJID, openThreadKey int64, showOpenMessageHistory bool) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_thread_cutover (bridge_id, login_id, thread_jid, open_thread_key, show_open_message_history)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (bridge_id, login_id, thread_jid) DO UPDATE SET
+			open_thread_key = excluded.open_thread_key,
+			show_open_message_history = excluded.show_open_message_history
+	`, db.BridgeID, loginID, threadJID, openThreadKey, showOpenMessageHistory)
+	return err
+}
+
+func (db *MetaDB) GetOpenThreadKey(ctx context.Context, loginID networkid.UserLoginID, threadJID int64) (openThreadKey int64, err error) {
+	err = db.QueryRow(ctx, `
+		SELECT open_thread_key FROM meta_thread_cutover
+		WHERE bridge_id = $1 AND login_id = $2 AND thread_jid = $3
+	`, db.BridgeID, loginID, threadJID).Scan(&openThreadKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return
+}
+
 func (db *MetaDB) GetIGSeqID(ctx context.Context, loginID networkid.UserLoginID) (int64, time.Time, error) {
 	var seqID, ts int64
 	err := db.QueryRow(ctx, "SELECT seq_id, timestamp FROM meta_instagram_seq_id WHERE bridge_id = $1 AND login_id = $2", db.BridgeID, loginID).Scan(&seqID, &ts)

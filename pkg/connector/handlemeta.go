@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"time"
 
@@ -48,6 +49,7 @@ const (
 func init() {
 	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
 		WADisconnected:            "Disconnected from encrypted chat server. Trying to reconnect.",
+		WAConnectError:            "Failed to connect to encrypted chat server",
 		MetaTransientDisconnect:   "Disconnected from server, trying to reconnect",
 		DGWConnectionUnauthorized: "Logged out, please relogin to continue",
 		MetaCookieRemoved:         "Logged out, please relogin to continue",
@@ -59,6 +61,7 @@ func init() {
 		FBConsentRequired:         "Consent required, please check the Facebook website to continue",
 		FBCheckpointRequired:      "Checkpoint required, please check the Facebook website to continue",
 		MetaConnectError:          "Unknown connection error",
+		MetaPermanentError:        "Unknown permanent connection error",
 		MetaProxyUpdateFail:       "Failed to update proxy",
 		IGNotSupported:            "This bridge no longer supports Instagram",
 	})
@@ -100,6 +103,12 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			Error:      MetaTransientDisconnect,
 		}
 		m.UserLogin.BridgeState.Send(m.metaState)
+		if errors.Is(evt.Err, messagix.ErrFatalSocketSyncError) && m.canReconnect() {
+			// Retrying the socket reuses the sync state from the last page load, so it
+			// keeps failing the same way until the page is loaded again.
+			log.Debug().Msg("Doing full reconnect after failing to sync database 1")
+			go m.FullReconnect()
+		}
 	case *messagix.ReconnectedEvent:
 		if !m.firstE2EEConnectDone {
 			m.firstE2EEConnectDone = true
@@ -116,13 +125,13 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      DGWConnectionUnauthorized,
-				Message:    evt.Err.Error(),
+				Info:       map[string]any{"go_error": evt.Err.Error()},
 			}
 		} else {
 			m.metaState = status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaPermanentError,
-				Message:    evt.Err.Error(),
+				Info:       map[string]any{"go_error": evt.Err.Error()},
 			}
 		}
 		m.UserLogin.BridgeState.Send(m.metaState)
@@ -252,6 +261,11 @@ func (m *MetaClient) syncGhost(ctx context.Context, info types.UserInfo) {
 }
 
 func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQueue []bridgev2.RemoteEvent) {
+	for _, cutover := range tbl.LSCreateOpenToE2EEThreadLink {
+		if err := m.storeThreadCutover(ctx, cutover); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to persist thread cutover mapping")
+		}
+	}
 	threadExists := make(map[int64]*table.LSVerifyThreadExists, len(tbl.LSVerifyThreadExists))
 	threadResyncs := make(map[int64]*FBChatResync, len(tbl.LSDeleteThenInsertThread))
 	folderResyncs := make(map[int64]*FBFolderResync, len(tbl.LSUpsertFolder))
