@@ -105,12 +105,15 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 
 		ul := m.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 		if ul == nil || !ul.Client.IsLoggedIn() {
-			return nil, fmt.Errorf("login %s not found for download", mediaInfo.UserID)
+			return nil, fmt.Errorf("%w: login %s not found for download", bridgev2.ErrNotLoggedIn, mediaInfo.UserID)
 		}
-		client := ul.Client.(*MetaClient)
+		e2eeClient := ul.Client.(*MetaClient).E2EEClient
+		if e2eeClient == nil {
+			return nil, fmt.Errorf("%w: e2ee client of %s not connected", bridgev2.ErrNotLoggedIn, mediaInfo.UserID)
+		}
 		return &mediaproxy.GetMediaResponseFile{
 			Callback: func(f *os.File) (*mediaproxy.FileMeta, error) {
-				return &mediaproxy.FileMeta{}, client.E2EEClient.DownloadToFile(ctx, info, f)
+				return &mediaproxy.FileMeta{}, e2eeClient.DownloadToFile(ctx, info, f)
 			},
 		}, nil
 	default:
@@ -148,8 +151,7 @@ func (m *MetaConnector) refreshBlobMedia(
 ) (string, error) {
 	log := zerolog.Ctx(ctx)
 
-	// Parse thread key from portal ID
-	threadKey := metaid.ParseFBPortalID(msg.Room.ID)
+	threadKey := msg.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Room.ID)
 	if threadKey == 0 {
 		return "", fmt.Errorf("invalid thread key")
 	}

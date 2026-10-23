@@ -13,11 +13,13 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
+	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
 type MessageMetadata struct {
+	FBThreadKey   int64 `json:"fb_thread_key,omitempty"`
 	EditTimestamp int64 `json:"edit_timestamp,omitempty"`
 	// Default direct media meta. Used for blob media, whatsapp media and old XMA media
 	DirectMediaMeta json.RawMessage `json:"direct_media_meta,omitempty"`
@@ -41,6 +43,13 @@ type PollVote struct {
 	TimestampMS int64   `json:"timestamp_ms"`
 }
 
+func (m *MessageMetadata) GetFBThreadKey(portalID networkid.PortalID) int64 {
+	if m.FBThreadKey != 0 {
+		return m.FBThreadKey
+	}
+	return ParseFBPortalID(portalID)
+}
+
 type XMAFetchMeta struct {
 	TargetURL string `json:"target_url,omitempty"`
 	TargetID  int64  `json:"target_id,omitempty"`
@@ -62,9 +71,19 @@ type UserLoginMetadata struct {
 	NativeSession          *types.NativeSession          `json:"native_session,omitempty"`
 	NativePushKeys         *pushcrypto.NativePushKeys    `json:"native_push_keys,omitempty"`
 	InstagramNativeSession *types.InstagramNativeSession `json:"instagram_native_session,omitempty"`
+	HistoryDevice          *securehistory.Device         `json:"history_device,omitempty"`
 
 	// Thread backfill state
-	BackfillCompleted bool `json:"backfill_completed,omitempty"`
+	BackfillCompleted     bool `json:"backfill_completed,omitempty"`
+	E2EEBackfillCompleted bool `json:"e2ee_backfill_completed,omitempty"`
+}
+
+func (m *UserLoginMetadata) CopyFrom(other any) {
+	updated := *other.(*UserLoginMetadata)
+	if m.Platform.IsMessenger() && updated.Platform.IsMessenger() && m.HistoryDevice != nil {
+		updated.HistoryDevice = m.HistoryDevice
+	}
+	*m = updated
 }
 
 func (m *UserLoginMetadata) GeneratePushKeys() {

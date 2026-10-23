@@ -36,6 +36,8 @@ disable_view_once: false
 marketplace_space: true
 # Log raw Bloks payloads and login responses even at debug level, with any user identifiers or credentials redacted.
 log_redacted_login_responses: false
+# Should the bridge prompt for the encrypted backup PIN on login?
+e2ee_backfill: false
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:

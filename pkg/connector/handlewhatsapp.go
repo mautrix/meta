@@ -82,6 +82,14 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		m.e2eeConnectWaiter.Set()
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.waState)
+		if m.waLastPresence == waTypes.PresenceAvailable {
+			go func() {
+				err := m.updateWAPresence(m.Main.Bridge.BackgroundCtx, waTypes.PresenceAvailable)
+				if err != nil {
+					log.Warn().Err(err).Msg("Failed to restore presence after connecting")
+				}
+			}()
+		}
 	case *events.Disconnected:
 		log.Debug().Msg("Disconnected from WhatsApp socket")
 		m.e2eeConnectWaiter.Clear()

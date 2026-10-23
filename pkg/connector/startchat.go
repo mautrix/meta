@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmaps"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -88,7 +89,7 @@ func (m *MetaClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCrea
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, wrapMetaRespError(err)
 	} else if len(resp.LSIssueNewError) > 0 {
 		zerolog.Ctx(ctx).Warn().Any("data", resp).Msg("Server rejected group creation")
 		issueErr := resp.LSIssueNewError[0]
@@ -217,14 +218,19 @@ func (m *MetaClient) SearchUsers(ctx context.Context, search string) ([]*bridgev
 	resp, err := m.Client.ExecuteTasks(ctx, task)
 	log.Trace().Any("response_data", resp).Err(err).Msg("Resolve identifier primary response")
 	if err != nil {
-		return nil, fmt.Errorf("failed to search for user: %w", err)
+		return nil, wrapMetaRespError(fmt.Errorf("failed to search for user: %w", err))
 	}
 
 	users := make([]*bridgev2.ResolveIdentifierResponse, 0)
+	seen := make(exmaps.Set[networkid.UserID])
 
 	for _, result := range resp.LSInsertSearchResult {
-		if result.ThreadType.IsOneToOne() && result.CanViewerMessage && result.GetFBID() != 0 {
+		canMessage := result.CanViewerMessage || (result.OtherUserId != 0 && result.BlockedByViewerStatus == 0)
+		if result.ThreadType.IsOneToOne() && canMessage && result.GetFBID() != 0 {
 			userID := metaid.MakeUserID(result.GetFBID())
+			if !seen.Add(userID) {
+				continue
+			}
 			ghost, _ := m.Main.Bridge.GetGhostByID(ctx, userID)
 			users = append(users, &bridgev2.ResolveIdentifierResponse{
 				UserID:   userID,

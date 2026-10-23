@@ -106,7 +106,7 @@ func (m *MetaClient) wrapWAGroupInfo(chatInfo *types.GroupInfo) *bridgev2.ChatIn
 		Members:      ml,
 		Type:         ptr.Ptr(database.RoomTypeDefault),
 		Disappear:    &disappear,
-		CanBackfill:  false,
+		CanBackfill:  m.canBackfillEncrypted(),
 		ExtraUpdates: updateServerAndThreadType(chatInfo.JID, table.ENCRYPTED_OVER_WA_GROUP),
 	}
 }
@@ -165,7 +165,7 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 	return &bridgev2.ChatInfo{
 		Members:     members,
 		Type:        &roomType,
-		CanBackfill: !threadType.IsWhatsApp(),
+		CanBackfill: !threadType.IsWhatsApp() || m.canBackfillEncrypted(),
 		ParentID:    parentIDPtr,
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
@@ -225,7 +225,7 @@ func (m *MetaClient) makeWADirectChatInfo(ctx context.Context, recipient types.J
 		Members:      members,
 		Type:         ptr.Ptr(database.RoomTypeDM),
 		ExtraUpdates: updateServerAndThreadType(recipient, table.ENCRYPTED_OVER_WA_ONE_TO_ONE),
-		CanBackfill:  false,
+		CanBackfill:  m.canBackfillEncrypted(),
 	}
 	fbThreadKey, messageRequest, err := m.Main.DB.GetHybridThreadInfoByJID(ctx, m.UserLogin.ID, int64(recipient.UserInt()))
 	if err != nil {

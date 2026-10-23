@@ -280,10 +280,17 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	allowCreate := true
 	switch evt := d.Data.(type) {
 	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
-		*slidetypes.ParticipantLeaveEvent:
+		*slidetypes.ParticipantLeaveEvent, *slidetypes.MarkReadEvent, *slidetypes.MarkUnreadEvent,
+		*slidetypes.ReadReceiptEvent:
 		allowCreate = false
 	case *slidetypes.PinThreadEvent:
 		allowCreate = evt.IsPinned
+	case *slidetypes.UpdateThreadFolderEvent:
+		log = log.With().
+			Str("folder", evt.Folder).
+			Str("ig_inbox_folder", evt.IGInboxFolder).
+			Logger()
+		ctx = log.WithContext(ctx)
 	case *slidetypes.NewMessageEvent:
 		// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
 		// so extract it from the message for finding the portal.
@@ -592,6 +599,9 @@ func (ic *IGClient) handleThreadImage(portalKey networkid.PortalKey, evt *slidet
 }
 
 func (ic *IGClient) handleGroupJoin(portalKey networkid.PortalKey, evt *slidetypes.ParticipantJoinEvent) bridgev2.EventHandlingResult {
+	if evt.Thread.AsIGDirectThread == nil {
+		return bridgev2.EventHandlingResultIgnored
+	}
 	members := &bridgev2.ChatMemberList{
 		MemberMap: make(bridgev2.ChatMemberMap, len(evt.Thread.AsIGDirectThread.Users)),
 	}
@@ -609,9 +619,11 @@ func (ic *IGClient) handleGroupJoin(portalKey networkid.PortalKey, evt *slidetyp
 }
 
 func (ic *IGClient) handleGroupLeave(portalKey networkid.PortalKey, evt *slidetypes.ParticipantLeaveEvent) bridgev2.EventHandlingResult {
-	return ic.handleMessageChatInfoChange(portalKey, evt.Message, &bridgev2.ChatInfo{
-		Name: &evt.Thread.AsIGDirectThread.ThreadTitle,
-	}, bridgev2.ChatMember{
+	var info bridgev2.ChatInfo
+	if evt.Thread.AsIGDirectThread != nil {
+		info.Name = &evt.Thread.AsIGDirectThread.ThreadTitle
+	}
+	return ic.handleMessageChatInfoChange(portalKey, evt.Message, &info, bridgev2.ChatMember{
 		EventSender: ic.makeEventSender(evt.LeftParticipantFBID),
 		Membership:  event.MembershipLeave,
 	})

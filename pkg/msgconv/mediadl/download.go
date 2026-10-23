@@ -59,7 +59,7 @@ func SetHTTP(settings exhttp.ClientSettings) {
 }
 
 var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
-	WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+	WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 
 var ErrForbidden = errors.New("http forbidden")
 var ErrNoContentLength = errors.New("server didn't return media size")

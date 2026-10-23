@@ -134,6 +134,7 @@ func (c *Client) sendInitialThreadFetch(ctx context.Context) error {
 	}
 
 	c.Logger.Trace().Any("data", string(payload)).Msg("Sync groups tasks")
+	c.syncManager.markInitialThreadFetch(1, 95)
 	_, err = c.makeLSRequest(ctx, payload, 3)
 	if err != nil {
 		return fmt.Errorf("failed to send sync tasks: %w", err)
@@ -156,6 +157,7 @@ func (c *Client) handleFrame(ctx context.Context, frame []byte) error {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to parse table")
 	} else {
 		c.HandleEvent(ctx, tbl)
+		c.syncManager.handleLiveSyncResets(ctx, tbl)
 	}
 	return nil
 }

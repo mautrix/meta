@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"go.mau.fi/util/exsync"
+
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
@@ -26,6 +28,12 @@ type SyncManager struct {
 	// for thread/message fetching
 	keyStore   map[int64]*socket.KeyStoreData
 	syncParams *types.LSPlatformMessengerSyncParams
+	streams    *exsync.Map[int64, *dgw.PersistentStream]
+
+	threadRangeLock       sync.Mutex
+	threadRangeGen        map[int64]uint64
+	threadRangeChanged    chan struct{}
+	initialThreadFetchGen map[int64]uint64
 }
 
 func (c *Client) newSyncManager() *SyncManager {
@@ -60,6 +68,11 @@ func (c *Client) newSyncManager() *SyncManager {
 			95: {MinThreadKey: 0, ParentThreadKey: -1, MinLastActivityTimestampMs: 9999999999999, HasMoreBefore: false},
 		},
 		syncParams: &types.LSPlatformMessengerSyncParams{},
+		streams:    exsync.NewMap[int64, *dgw.PersistentStream](),
+
+		threadRangeGen:        make(map[int64]uint64),
+		threadRangeChanged:    make(chan struct{}),
+		initialThreadFetchGen: make(map[int64]uint64),
 	}
 }
 
@@ -153,6 +166,7 @@ func (sm *SyncManager) recursivelySyncSocketData(
 		if err != nil {
 			return fmt.Errorf("failed to establish stream: %w", err)
 		}
+		sm.streams.Set(databaseID, stream)
 	} else {
 		err = stream.SendData(ctx, req)
 		if err != nil {
@@ -220,8 +234,34 @@ func (sm *SyncManager) recursivelySyncSocketData(
 	return sm.recursivelySyncSocketData(ctx, databaseID, db, stream)
 }
 
+func (sm *SyncManager) handleLiveSyncResets(ctx context.Context, tbl *table.LSTable) {
+	for _, block := range tbl.GetLSExecuteFirstBlockForSyncTransactionV4() {
+		if block.SyncStatus != table.SyncStatusResync || !shouldRecurseDatabase[block.DatabaseID] {
+			continue
+		}
+		sm.client.Logger.Debug().
+			Int64("database_id", block.DatabaseID).
+			Msg("Got sync reset on live connection, resyncing database")
+		stream, _ := sm.streams.Get(block.DatabaseID)
+		db := &socket.QueryMetadata{
+			LastAppliedCursor: &block.NextCursor,
+			SendSyncParams:    block.SendSyncParams,
+			SyncChannel:       socket.SyncChannel(block.SyncChannel),
+		}
+		go func() {
+			err := sm.recursivelySyncSocketData(ctx, block.DatabaseID, db, stream)
+			if err != nil {
+				sm.client.Logger.Err(err).
+					Int64("database_id", block.DatabaseID).
+					Msg("Failed to resync database after live sync reset")
+			}
+		}()
+	}
+}
+
 func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table.LSTable, error) {
 	var tableData *table.LSTable
+	var cutoverLinks []*table.LSCreateOpenToE2EEThreadLink
 	for _, db := range dbs {
 		database, ok := sm.store[db]
 		if !ok {
@@ -245,6 +285,8 @@ func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table
 
 		if db == 1 {
 			tableData = lsTable
+		} else if db == 95 {
+			cutoverLinks = append(cutoverLinks, lsTable.LSCreateOpenToE2EEThreadLink...)
 		}
 		err = sm.updateSyncGroupCursors(lsTable)
 		if err != nil {
@@ -252,6 +294,9 @@ func (sm *SyncManager) SyncDataGraphQL(ctx context.Context, dbs []int64) (*table
 		}
 	}
 
+	if tableData != nil {
+		tableData.LSCreateOpenToE2EEThreadLink = append(tableData.LSCreateOpenToE2EEThreadLink, cutoverLinks...)
+	}
 	return tableData, nil
 }
 
@@ -324,10 +369,14 @@ func (c *Client) GetCursor(db int64) string {
 func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThreadsRange) error {
 	var err error
 	for _, syncGroupData := range ranges {
+		syncGroup := syncGroupData.SyncGroup
 		if !syncGroupData.HasMoreBefore {
+			if keyStore, ok := sm.keyStore[syncGroup]; ok && syncGroupData.ParentThreadKey == 0 {
+				keyStore.HasMoreBefore = false
+				sm.markThreadRangeUpdated(syncGroup)
+			}
 			continue
 		}
-		syncGroup := syncGroupData.SyncGroup
 		keyStore, ok := sm.keyStore[syncGroup]
 		if !ok {
 			err = fmt.Errorf("could not find keyStore by database ID %d", syncGroup)
@@ -346,8 +395,54 @@ func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThrea
 			Any("key_store", keyStore).
 			Any("database_id", syncGroup).
 			Msg("Updated thread ranges")
+		sm.markThreadRangeUpdated(syncGroup)
 	}
 	return err
+}
+
+func (sm *SyncManager) markThreadRangeUpdated(syncGroup int64) {
+	sm.threadRangeLock.Lock()
+	sm.threadRangeGen[syncGroup]++
+	close(sm.threadRangeChanged)
+	sm.threadRangeChanged = make(chan struct{})
+	sm.threadRangeLock.Unlock()
+}
+
+func (sm *SyncManager) markInitialThreadFetch(syncGroups ...int64) {
+	sm.threadRangeLock.Lock()
+	for _, syncGroup := range syncGroups {
+		sm.initialThreadFetchGen[syncGroup] = sm.threadRangeGen[syncGroup]
+	}
+	sm.threadRangeLock.Unlock()
+}
+
+func (c *Client) WaitForInitialThreadRange(ctx context.Context, syncGroup int64) error {
+	c.syncManager.threadRangeLock.Lock()
+	gen := c.syncManager.initialThreadFetchGen[syncGroup]
+	c.syncManager.threadRangeLock.Unlock()
+	return c.WaitForThreadRange(ctx, syncGroup, gen)
+}
+
+func (c *Client) ThreadRangeGeneration(syncGroup int64) uint64 {
+	c.syncManager.threadRangeLock.Lock()
+	defer c.syncManager.threadRangeLock.Unlock()
+	return c.syncManager.threadRangeGen[syncGroup]
+}
+
+func (c *Client) WaitForThreadRange(ctx context.Context, syncGroup int64, generation uint64) error {
+	for {
+		c.syncManager.threadRangeLock.Lock()
+		gen, changed := c.syncManager.threadRangeGen[syncGroup], c.syncManager.threadRangeChanged
+		c.syncManager.threadRangeLock.Unlock()
+		if gen > generation {
+			return nil
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (sm *SyncManager) getSyncGroupKeyStore(db int64) *socket.KeyStoreData {

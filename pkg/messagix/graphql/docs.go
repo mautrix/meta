@@ -5,6 +5,7 @@ type GraphQLDoc struct {
 	ClientDocID  string
 	CallerClass  string
 	FriendlyName string
+	NoRetry      bool
 
 	Jsessw string
 }
@@ -13,6 +14,37 @@ const IGDSlideDeltaProcessorQuery = "27931342966497053"
 const IGDTypingIndicatorClientSubscription = "27563068933278040"
 
 var GraphQLDocs = map[string]GraphQLDoc{
+	"EBAddDeviceGraphQLEBFetchVirtualDeviceInfoQuery": {
+		DocID:        "27078903168382564",
+		FriendlyName: "EBAddDeviceGraphQLEBFetchVirtualDeviceInfoQuery",
+	},
+	"EBAddDeviceMutation": {
+		DocID:        "26934669346130743",
+		FriendlyName: "EBAddDeviceMutation",
+		NoRetry:      true,
+	},
+	"EBMessageRangeQueryForThreadsQuery": {
+		DocID:        "28543107645309813",
+		FriendlyName: "EBMessageRangeQueryForThreadsQuery",
+	},
+	"useMWEncryptedBackupsFetchBackupIdsV2Query": {
+		DocID:        "25220416984279164",
+		FriendlyName: "useMWEncryptedBackupsFetchBackupIdsV2Query",
+	},
+	"VestaServerGraphQLLoginProviderInitQuery": {
+		DocID:        "28587565877599806",
+		FriendlyName: "VestaServerGraphQLLoginProviderInitQuery",
+	},
+	"VestaServerGraphQLLoginProviderBeginLoginMutation": {
+		DocID:        "28781838094734033",
+		FriendlyName: "VestaServerGraphQLLoginProviderBeginLoginMutation",
+		NoRetry:      true,
+	},
+	"VestaServerGraphQLLoginProviderFinishLoginMutation": {
+		DocID:        "28557176640587196",
+		FriendlyName: "VestaServerGraphQLLoginProviderFinishLoginMutation",
+		NoRetry:      true,
+	},
 	"LSPlatformGraphQLLightspeedRequestQuery": {
 		DocID:        "9697184873702141",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestQuery",
