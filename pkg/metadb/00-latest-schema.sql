@@ -1,4 +1,4 @@
--- v0 -> v16 (compatible with v11+): Latest schema
+-- v0 -> v17 (compatible with v11+): Latest schema
 CREATE TABLE meta_thread (
     parent_key BIGINT NOT NULL,
     thread_key BIGINT NOT NULL,
@@ -80,14 +80,15 @@ CREATE TABLE meta_instagram_reaction (
 CREATE TABLE meta_hybrid_thread (
     bridge_id     TEXT   NOT NULL,
     login_id      TEXT   NOT NULL,
+    user_mxid     TEXT,
     fb_thread_key BIGINT NOT NULL,
     thread_jid    BIGINT NOT NULL,
     thread_type   BIGINT NOT NULL,
     message_request BOOLEAN NOT NULL DEFAULT false,
 
     PRIMARY KEY (bridge_id, login_id, fb_thread_key),
-    CONSTRAINT meta_hybrid_thread_user_login_fkey FOREIGN KEY (bridge_id, login_id)
-        REFERENCES user_login (bridge_id, id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT meta_hybrid_thread_user_fkey FOREIGN KEY (bridge_id, user_mxid)
+        REFERENCES "user" (bridge_id, mxid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE meta_instagram_login_device (
