@@ -63,6 +63,9 @@ type IGClient struct {
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
+
+	viewOnceFallbackPending atomic.Bool
+	viewOnceFallbackLock    sync.Mutex
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
