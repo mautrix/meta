@@ -185,7 +185,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		batchCount++
 	}
 	maxBatches := ic.Main.Config.ThreadBackfill.BatchCount
-	for hasMore && (!since.IsZero() || maxBatches < 0 || batchCount < maxBatches) {
+	for hasMore && cursor != "" && (!since.IsZero() || maxBatches < 0 || batchCount < maxBatches) {
 		select {
 		case <-time.After(ic.Main.Config.ThreadBackfill.BatchDelay):
 		case <-ctx.Done():
