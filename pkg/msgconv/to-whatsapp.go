@@ -27,6 +27,7 @@ import (
 	"image/draw"
 	_ "image/jpeg"
 	"image/png"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -356,7 +357,7 @@ func uploadWithStreamingSidecar(ctx context.Context, client *whatsmeow.Client, d
 		_ = tempFile.Close()
 		_ = os.Remove(tempFile.Name())
 	}()
-	uploaded, err := client.UploadReader(ctx, bytes.NewReader(data), tempFile, mediaType)
+	uploaded, err := client.UploadReader(ctx, bytes.NewReader(data), struct{ io.ReadWriteSeeker }{tempFile}, mediaType)
 	if err != nil {
 		return uploaded, nil, err
 	}
