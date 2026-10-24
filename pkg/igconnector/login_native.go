@@ -116,6 +116,7 @@ type MetaNativeLogin struct {
 	webTwoFactor           *instameow.InstagramWebTwoFactorChallenge
 	webSessionReady        bool
 	pendingWebChallengeURL string
+	pendingNativeSession   *types.InstagramNativeSession
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
@@ -150,6 +151,7 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
+	m.pendingNativeSession = nil
 	if m.User == nil || m.Main == nil {
 		return nil, errors.New("instagram login is not initialized")
 	}
@@ -195,6 +197,7 @@ func (m *MetaNativeLogin) Cancel() {
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
+	m.pendingNativeSession = nil
 	m.transport = nil
 }
 
@@ -401,9 +404,10 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.pendingWebChallengeURL != "" {
-		step, err := submitInstagramCookies(ctx, m.Main, m.User, input)
+		step, err := submitInstagramCookies(ctx, m.Main, m.User, input, m.pendingNativeSession)
 		if err == nil {
 			m.pendingWebChallengeURL = ""
+			m.pendingNativeSession = nil
 		}
 		return step, err
 	}
@@ -555,6 +559,7 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 	}
 	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, nativeSession, m.nativeLogin, restoreTransport)
 	if challengeURL, ok := instameow.InstagramWebRedirectChallengeURL(err); ok {
+		m.pendingNativeSession = nativeSession
 		return m.instagramWebChallengeStep(challengeURL), nil
 	}
 	var requestErr *url.Error
