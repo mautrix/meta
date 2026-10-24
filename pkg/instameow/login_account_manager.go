@@ -524,9 +524,9 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 		}
 		if i != 0 {
 			if err := c.switchInstagramAccountManagerWebAccount(ctx, selectedAccount.Username); err != nil {
-				return nil, err
+				return nil, withoutWebChallengeHandoff(err)
 			} else if err := c.loadIndex(ctx); err != nil {
-				return nil, fmt.Errorf("failed to load the selected Instagram web session: %w", err)
+				return nil, fmt.Errorf("failed to load the selected Instagram web session: %w", withoutWebChallengeHandoff(err))
 			}
 			if c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
 				c.cookies.Set(cookies.IGCookieCSRFToken, state.CSRFToken)
@@ -539,6 +539,17 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 		return nil, nil
 	}
 	return nil, errors.New("invalid Instagram web Account Manager profile selection")
+}
+
+func withoutWebChallengeHandoff(err error) error {
+	if _, ok := InstagramWebRedirectChallengeURL(err); ok {
+		kind := httpclient.ErrChallengeRequired
+		if errors.Is(err, httpclient.ErrConsentRequired) {
+			kind = httpclient.ErrConsentRequired
+		}
+		return fmt.Errorf("%w: %s", kind, err.Error())
+	}
+	return err
 }
 
 func instagramAccountManagerSelectionStep(
