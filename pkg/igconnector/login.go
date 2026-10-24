@@ -151,9 +151,9 @@ func loginWithCookies(
 		if errors.Is(err, httpclient.ErrRateLimited) {
 			return nil, loginerrors.RateLimited
 		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
-			return nil, loginerrors.Challenge
+			return nil, fmt.Errorf("%w: %w", loginerrors.Challenge, err)
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
-			return nil, loginerrors.Checkpoint
+			return nil, fmt.Errorf("%w: %w", loginerrors.Checkpoint, err)
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			return nil, loginerrors.Consent
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {

@@ -554,6 +554,9 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		nativeSession = m.client.GetInstagramNativeSession()
 	}
 	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, nativeSession, m.nativeLogin, restoreTransport)
+	if challengeURL, ok := instameow.InstagramWebRedirectChallengeURL(err); ok {
+		return m.instagramWebChallengeStep(challengeURL), nil
+	}
 	var requestErr *url.Error
 	if ctx.Err() == nil && isClientHTTPError(err) && errors.As(err, &requestErr) &&
 		requestErr.Op == "Get" && requestErr.URL == client.GetEndpoint("messages") {
