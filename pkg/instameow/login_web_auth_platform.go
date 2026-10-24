@@ -84,7 +84,8 @@ func InstagramWebChallengeURL(err error) (string, bool) {
 }
 
 func InstagramWebRedirectChallengeURL(err error) (string, bool) {
-	if !errors.Is(err, httpclient.ErrChallengeRequired) && !errors.Is(err, httpclient.ErrCheckpointRequired) {
+	if !errors.Is(err, httpclient.ErrChallengeRequired) && !errors.Is(err, httpclient.ErrCheckpointRequired) &&
+		!errors.Is(err, httpclient.ErrConsentRequired) {
 		return "", false
 	}
 	redirectURL := httpclient.GetErrorRedirectURL(err)
