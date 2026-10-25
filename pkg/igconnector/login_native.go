@@ -421,7 +421,9 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 	} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 		m.clearCAAFallback()
 		m.webTwoFactor = nil
-		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+		loginStep := m.instagramWebChallengeStep("https://www.instagram.com/accounts/login/")
+		loginStep.Instructions = "Instagram couldn't sign you in here. Sign in on Instagram's page instead, then your login will continue here."
+		return loginStep, nil
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 		return nil, errInstagramWebCheckpointCAPTCHA
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
