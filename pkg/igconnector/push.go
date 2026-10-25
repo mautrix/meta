@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -337,36 +338,62 @@ func (ic *IGClient) sendWebPushStaleState() {
 	})
 }
 
-func (ic *IGClient) checkWebPushStale(ctx context.Context, portalKey networkid.PortalKey, msg *slidetypes.Message) {
-	if msg == nil || !ic.usesWebPush() || ic.webPushStaleReported.Load() ||
+func (ic *IGClient) checkWebPushStale(portalKey networkid.PortalKey, msg *slidetypes.Message) {
+	if msg == nil || !ic.usesWebPush() ||
 		time.Since(msg.TimestampMS.Time) < webPushMissedMessage ||
 		msg.SenderFBID == metaid.ParseUserLoginID(ic.UserLogin.ID) ||
-		ic.mutedThreads.Has(portalKey.ID) {
+		!ic.webPushStaleReported.CompareAndSwap(false, true) {
 		return
 	}
-	log := zerolog.Ctx(ctx)
-	portal, err := ic.Main.Bridge.GetExistingPortalByKey(ctx, portalKey)
-	if err != nil {
-		log.Err(err).Msg("Failed to get portal to check web push state")
-		return
-	} else if portal == nil || portal.MessageRequest {
-		return
-	}
+	go ic.confirmWebPushStale(portalKey, msg.TimestampMS.Time)
+}
+
+func (ic *IGClient) confirmWebPushStale(portalKey networkid.PortalKey, messageTS time.Time) {
+	log := ic.UserLogin.Log.With().Str("action", "check web push").Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	receivedBefore := time.Now().Add(-webPushStaleAfter)
 	lastReceived, _, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
 	if err != nil {
 		log.Err(err).Msg("Failed to get web push state")
 		return
-	} else if lastReceived.IsZero() || time.Since(lastReceived) < webPushStaleAfter {
+	} else if lastReceived.IsZero() || lastReceived.After(receivedBefore) {
 		return
 	}
-	if err = ic.Main.DB.SetIGWebPushStale(ctx, ic.UserLogin.ID); err != nil {
+	cli := ic.Client
+	if cli == nil {
+		return
+	}
+	resp, err := cli.GetMailbox(ctx)
+	if err != nil {
+		log.Err(err).Msg("Failed to fetch inbox to check web push state")
+		return
+	}
+	var thread *slidetypes.ThreadInfo
+	if mailbox := resp.GetMailbox(); mailbox != nil {
+		for _, edge := range mailbox.ThreadsByFolder.Edges {
+			info := edge.Node.AsIGDirectThread
+			if info != nil && ic.makePortalKey(info.ThreadKey, info.IsGroup).ID == portalKey.ID {
+				thread = info
+				break
+			}
+		}
+	}
+	if thread == nil || ptr.Val(thread.IsMuted) || thread.SystemFolder == "PENDING" || thread.SystemFolder == "SPAM" {
+		log.Debug().
+			Bool("found", thread != nil).
+			Msg("Late message is in a chat that doesn't get pushes, not marking web push as stale")
+		return
+	}
+	changed, err := ic.Main.DB.SetIGWebPushStale(ctx, ic.UserLogin.ID, receivedBefore)
+	if err != nil {
 		log.Err(err).Msg("Failed to save web push stale state")
 		return
+	} else if !changed {
+		return
 	}
-	ic.webPushStaleReported.Store(true)
 	log.Warn().
 		Time("last_web_push", lastReceived).
-		Time("message_ts", msg.TimestampMS.Time).
+		Time("message_ts", messageTS).
 		Msg("Caught up a message that never got a web push, asking for relogin")
 	ic.sendWebPushStaleState()
 }

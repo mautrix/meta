@@ -259,11 +259,16 @@ func (db *MetaDB) GetIGWebPush(ctx context.Context, loginID networkid.UserLoginI
 	return time.UnixMilli(ts), stale, nil
 }
 
-func (db *MetaDB) SetIGWebPushStale(ctx context.Context, loginID networkid.UserLoginID) error {
-	_, err := db.Exec(ctx, `
-		UPDATE meta_instagram_web_push SET stale = true WHERE bridge_id = $1 AND login_id = $2
-	`, db.BridgeID, loginID)
-	return err
+func (db *MetaDB) SetIGWebPushStale(ctx context.Context, loginID networkid.UserLoginID, receivedBefore time.Time) (bool, error) {
+	res, err := db.Exec(ctx, `
+		UPDATE meta_instagram_web_push SET stale = true
+		WHERE bridge_id = $1 AND login_id = $2 AND last_received < $3 AND NOT stale
+	`, db.BridgeID, loginID, receivedBefore.UnixMilli())
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected > 0, err
 }
 
 func (db *MetaDB) DeleteIGWebPush(ctx context.Context, loginID networkid.UserLoginID) error {
