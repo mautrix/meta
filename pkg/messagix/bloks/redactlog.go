@@ -60,15 +60,19 @@ func makeBloksScriptLiteralPolicy() redact.Policy {
 func redactBloksScript(script string) string {
 	return bloksScriptToken.ReplaceAllStringFunc(script, func(token string) string {
 		var literal string
+		policy := bloksScriptLiteralPolicy
 		switch first := token[0]; {
 		case first == '"':
 			literal = unquoteBloksString(token)
+			if trimmed := strings.TrimSpace(literal); (strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[")) && json.Valid([]byte(trimmed)) {
+				policy = bloksRedactPolicy
+			}
 		case first == '-' || first == '.' || (first >= '0' && first <= '9'):
 			literal = token
 		default:
 			return token
 		}
-		masked := bloksScriptLiteralPolicy.String(literal)
+		masked := policy.String(literal)
 		if masked == literal {
 			return token
 		}
