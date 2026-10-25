@@ -113,20 +113,29 @@ func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.Fe
 		appendMessages(resp.ThreadInfo.AsIGDirectThread.Messages)
 	}
 	var markRead bool
+	var readUpTo time.Time
 	for _, rr := range thread.SlideReadReceipts {
 		if metaid.MakeUserLoginID(rr.ParticipantFBID) == ic.UserLogin.ID {
-			markRead = !rr.WatermarkTimestampMS.Before(thread.LastActivityTimestampMS.Time)
+			readUpTo = rr.WatermarkTimestampMS.Time
+			markRead = !readUpTo.Before(thread.LastActivityTimestampMS.Time)
 			break
 		}
 	}
 	if thread.MarkedAsUnread {
 		markRead = false
 	}
-	return &bridgev2.FetchMessagesResponse{
+	resp := &bridgev2.FetchMessagesResponse{
 		Messages: ic.wrapBackfillMessages(ctx, params.Portal, messages),
 		Forward:  true,
 		MarkRead: markRead,
-	}, ctx.Err()
+	}
+	if !markRead && !thread.MarkedAsUnread && !readUpTo.IsZero() {
+		portalKey := params.Portal.PortalKey
+		resp.CompleteCallback = func() {
+			go ic.dispatchRead(portalKey, ic.selfEventSender(), readUpTo)
+		}
+	}
+	return resp, ctx.Err()
 }
 
 const BackfillCursorPrefix = "ig:"
