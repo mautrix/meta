@@ -419,6 +419,7 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 		m.webTwoFactor = nil
 		return m.instagramWebChallengeStep(challengeURL), nil
 	} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
+		m.User.Log.Info().Err(err).Msg("Instagram rejected web login after AuthPlatform, handing login to client webview")
 		m.clearCAAFallback()
 		m.webTwoFactor = nil
 		loginStep := m.instagramWebChallengeStep("https://www.instagram.com/accounts/login/")
