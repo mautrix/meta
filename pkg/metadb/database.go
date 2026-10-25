@@ -224,6 +224,55 @@ func (db *MetaDB) PutIGSeqID(ctx context.Context, loginID networkid.UserLoginID,
 	return err
 }
 
+func (db *MetaDB) InitIGWebPush(ctx context.Context, loginID networkid.UserLoginID, ts time.Time, reset bool) error {
+	conflict := "DO NOTHING"
+	if reset {
+		conflict = "DO UPDATE SET last_received = excluded.last_received, stale = false"
+	}
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_instagram_web_push (bridge_id, login_id, last_received, stale)
+		VALUES ($1, $2, $3, false)
+		ON CONFLICT (bridge_id, login_id) `+conflict, db.BridgeID, loginID, ts.UnixMilli())
+	return err
+}
+
+func (db *MetaDB) PutIGWebPushReceived(ctx context.Context, loginID networkid.UserLoginID, ts time.Time) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_instagram_web_push (bridge_id, login_id, last_received, stale)
+		VALUES ($1, $2, $3, false)
+		ON CONFLICT (bridge_id, login_id) DO UPDATE SET last_received = excluded.last_received, stale = false
+		WHERE meta_instagram_web_push.last_received < excluded.last_received
+	`, db.BridgeID, loginID, ts.UnixMilli())
+	return err
+}
+
+func (db *MetaDB) GetIGWebPush(ctx context.Context, loginID networkid.UserLoginID) (lastReceived time.Time, stale bool, err error) {
+	var ts int64
+	err = db.QueryRow(ctx, `
+		SELECT last_received, stale FROM meta_instagram_web_push WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID).Scan(&ts, &stale)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	} else if err != nil {
+		return
+	}
+	return time.UnixMilli(ts), stale, nil
+}
+
+func (db *MetaDB) SetIGWebPushStale(ctx context.Context, loginID networkid.UserLoginID) error {
+	_, err := db.Exec(ctx, `
+		UPDATE meta_instagram_web_push SET stale = true WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID)
+	return err
+}
+
+func (db *MetaDB) DeleteIGWebPush(ctx context.Context, loginID networkid.UserLoginID) error {
+	_, err := db.Exec(ctx, `
+		DELETE FROM meta_instagram_web_push WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID)
+	return err
+}
+
 func (db *MetaDB) PutReconnectionState(ctx context.Context, loginID networkid.UserLoginID, state json.RawMessage) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO meta_reconnection_state (bridge_id, login_id, state)

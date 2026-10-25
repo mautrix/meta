@@ -96,8 +96,13 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
 		ic.permanentErrored.Store(false)
-		ic.webPushStaleReported.Store(false)
-		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		stale := ic.isWebPushStale(ctx)
+		ic.webPushStaleReported.Store(stale)
+		if stale {
+			ic.sendWebPushStaleState()
+		} else {
+			ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		}
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
@@ -187,10 +192,18 @@ func (ic *IGClient) wrapChatResync(thread *slidetypes.ThreadInfo, useBundle bool
 	if useBundle {
 		bundle = thread
 	}
+	portalKey := ic.makePortalKey(thread.ThreadKey, thread.IsGroup)
+	if thread.IsMuted != nil {
+		if *thread.IsMuted {
+			ic.mutedThreads.Add(portalKey.ID)
+		} else {
+			ic.mutedThreads.Remove(portalKey.ID)
+		}
+	}
 	return &simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatResync,
-			PortalKey:    ic.makePortalKey(thread.ThreadKey, thread.IsGroup),
+			PortalKey:    portalKey,
 			CreatePortal: true,
 			LogContext: func(c zerolog.Context) zerolog.Context {
 				return c.Str("resync_source", source)
@@ -321,7 +334,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	var res bridgev2.EventHandlingResult
 	switch evt := d.Data.(type) {
 	case *slidetypes.NewMessageEvent:
-		ic.checkWebPushStale(ctx, evt.Message)
+		ic.checkWebPushStale(ctx, portalKey, evt.Message)
 		res = ic.handleMessage(portalKey, evt.Message)
 	case *slidetypes.AdminMessageEvent:
 		res = ic.handleMessage(portalKey, evt.Message)
@@ -661,6 +674,9 @@ func (ic *IGClient) handleMuteThread(portalKey networkid.PortalKey, isMuted bool
 	mutedUntil := event.MutedForever
 	if !isMuted {
 		mutedUntil = bridgev2.Unmuted
+		ic.mutedThreads.Remove(portalKey.ID)
+	} else {
+		ic.mutedThreads.Add(portalKey.ID)
 	}
 	return ic.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
 		EventMeta: simplevent.EventMeta{
