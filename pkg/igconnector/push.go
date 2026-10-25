@@ -26,9 +26,12 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
+	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -80,8 +83,14 @@ func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType brid
 	if cli == nil {
 		return instameow.ErrClientIsNil
 	}
-	err := cli.RegisterPushNotifications(ctx, token, keys)
-	return err
+	if err := cli.RegisterPushNotifications(ctx, token, keys); err != nil {
+		return err
+	}
+	if meta.LastWebPush.IsZero() {
+		meta.LastWebPush = jsontime.UM(time.Now())
+		return ic.UserLogin.Save(ctx)
+	}
+	return nil
 }
 
 func (ic *IGClient) registerNativePush(ctx context.Context, token string) error {
@@ -244,6 +253,7 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
+		ic.markWebPushReceived(ctx)
 		if strings.HasPrefix(data.MessageID, "mid.") {
 			parsedMsgID, err = methods.ParseMessageIDFull(data.MessageID)
 		} else if strings.HasPrefix(data.Params["mid"], "mid.") {
@@ -294,4 +304,40 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 		ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
 	}
 	return ctx.Err()
+}
+
+const (
+	webPushStaleAfter    = 72 * time.Hour
+	webPushMissedMessage = time.Hour
+)
+
+func (ic *IGClient) markWebPushReceived(ctx context.Context) {
+	if time.Since(ic.LoginMeta.LastWebPush.Time) < time.Hour {
+		return
+	}
+	ic.LoginMeta.LastWebPush = jsontime.UM(time.Now())
+	if err := ic.UserLogin.Save(ctx); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save last web push timestamp")
+	}
+}
+
+func (ic *IGClient) checkWebPushStale(ctx context.Context, msg *slidetypes.Message) {
+	meta := ic.LoginMeta
+	if msg == nil || meta.PushKeys == nil || meta.LastWebPush.IsZero() ||
+		(meta.InstagramNativeSession != nil && meta.InstagramNativeSession.Authorization != "") ||
+		time.Since(meta.LastWebPush.Time) < webPushStaleAfter ||
+		time.Since(msg.TimestampMS.Time) < webPushMissedMessage ||
+		msg.SenderFBID == metaid.ParseUserLoginID(ic.UserLogin.ID) ||
+		!ic.webPushStaleReported.CompareAndSwap(false, true) {
+		return
+	}
+	zerolog.Ctx(ctx).Warn().
+		Time("last_web_push", meta.LastWebPush.Time).
+		Time("message_ts", msg.TimestampMS.Time).
+		Msg("Caught up a message that never got a web push, asking for relogin")
+	ic.UserLogin.BridgeState.Send(status.BridgeState{
+		StateEvent: status.StateBadCredentials,
+		Error:      IGWebPushStale,
+		UserAction: status.UserActionRelogin,
+	})
 }

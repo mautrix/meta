@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -53,6 +54,7 @@ type UserLoginMetadata struct {
 	Cookies                *cookies.Cookies              `json:"cookies"`
 	WADeviceID             uint16                        `json:"wa_device_id,omitempty"`
 	PushKeys               *pushcrypto.PushKeys          `json:"push_keys,omitempty"`
+	LastWebPush            jsontime.UnixMilli            `json:"last_web_push,omitzero"`
 	LoginUA                string                        `json:"login_ua,omitempty"`
 	IGID                   string                        `json:"igid,omitempty"`
 	NativeSession          *types.NativeSession          `json:"native_session,omitempty"`

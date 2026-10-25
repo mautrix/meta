@@ -62,6 +62,7 @@ type IGClient struct {
 	resetReconnecting     atomic.Bool
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
+	webPushStaleReported  atomic.Bool
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 }
 
