@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -346,20 +347,33 @@ func (ic *IGClient) checkWebPushStale(portalKey networkid.PortalKey, msg *slidet
 		return
 	}
 	ic.webPushCandidates.Add(portalKey.ID)
-	if ic.webPushChecking.CompareAndSwap(false, true) {
-		go ic.confirmWebPushStale()
+	ic.startWebPushCheck()
+}
+
+func (ic *IGClient) startWebPushCheck() {
+	if ic.webPushCandidates.Size() > 0 && ic.webPushChecking.CompareAndSwap(false, true) {
+		go func() {
+			ic.confirmWebPushStale()
+			ic.webPushChecking.Store(false)
+			if !ic.webPushStaleReported.Load() {
+				ic.startWebPushCheck()
+			}
+		}()
 	}
 }
 
 func (ic *IGClient) confirmWebPushStale() {
-	defer ic.webPushChecking.Store(false)
-	defer ic.webPushCandidates.Clear()
 	log := ic.UserLogin.Log.With().Str("action", "check web push").Logger()
 	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
 	select {
 	case <-time.After(webPushCheckDelay):
 	case <-ctx.Done():
+		ic.webPushCandidates.Clear()
 		return
+	}
+	candidates := exsync.NewSetWithItems(ic.webPushCandidates.AsList())
+	for id := range candidates.Iter() {
+		ic.webPushCandidates.Remove(id)
 	}
 	receivedBefore := time.Now().Add(-webPushStaleAfter)
 	lastReceived, _, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
@@ -382,7 +396,7 @@ func (ic *IGClient) confirmWebPushStale() {
 	if mailbox := resp.GetMailbox(); mailbox != nil {
 		for _, edge := range mailbox.ThreadsByFolder.Edges {
 			info := edge.Node.AsIGDirectThread
-			if info == nil || !ic.webPushCandidates.Has(ic.makePortalKey(info.ThreadKey, info.IsGroup).ID) ||
+			if info == nil || !candidates.Has(ic.makePortalKey(info.ThreadKey, info.IsGroup).ID) ||
 				ptr.Val(info.IsMuted) || info.SystemFolder == "PENDING" || info.SystemFolder == "SPAM" {
 				continue
 			}
@@ -392,7 +406,7 @@ func (ic *IGClient) confirmWebPushStale() {
 	}
 	if missed == nil {
 		log.Debug().
-			Int("candidates", ic.webPushCandidates.Size()).
+			Int("candidates", candidates.Size()).
 			Msg("Late messages are only in chats that don't get pushes, not marking web push as stale")
 		return
 	}
