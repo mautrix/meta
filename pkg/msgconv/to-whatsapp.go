@@ -25,7 +25,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	_ "image/jpeg"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
@@ -402,12 +402,21 @@ func (mc *MessageConverter) getVideoThumbnail(ctx context.Context, content *even
 		thumbData, err := mc.Bridge.Bot.DownloadMedia(ctx, content.Info.ThumbnailURL, content.Info.ThumbnailFile)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to download video thumbnail, falling back to generating one")
-		} else if cfg, format, err := image.DecodeConfig(bytes.NewReader(thumbData)); err == nil && format == "jpeg" {
-			return thumbData, cfg.Width, cfg.Height, nil
+		} else if img, format, err := image.Decode(bytes.NewReader(thumbData)); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode video thumbnail, falling back to generating one")
+		} else if format == "jpeg" {
+			return thumbData, img.Bounds().Dx(), img.Bounds().Dy(), nil
+		} else {
+			var buf bytes.Buffer
+			err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("failed to re-encode video thumbnail: %w", err)
+			}
+			return buf.Bytes(), img.Bounds().Dx(), img.Bounds().Dy(), nil
 		}
 	}
 	if !ffmpeg.Supported() {
-		return nil, 0, 0, fmt.Errorf("no jpeg thumbnail in event and ffmpeg is not available")
+		return nil, 0, 0, fmt.Errorf("no thumbnail in event and ffmpeg is not available")
 	}
 	thumbData, err := ffmpeg.ConvertBytes(ctx, data, ".jpg", []string{}, []string{"-frames:v", "1", "-vf", "scale='if(gt(iw,ih),min(960,iw),-2)':'if(gt(iw,ih),-2,min(960,ih))'"}, mimeType)
 	if err != nil {
