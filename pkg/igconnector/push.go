@@ -312,6 +312,7 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 const (
 	webPushStaleAfter    = 72 * time.Hour
 	webPushMissedMessage = time.Hour
+	webPushCheckDelay    = 15 * time.Second
 )
 
 func (ic *IGClient) usesWebPush() bool {
@@ -339,18 +340,27 @@ func (ic *IGClient) sendWebPushStaleState() {
 }
 
 func (ic *IGClient) checkWebPushStale(portalKey networkid.PortalKey, msg *slidetypes.Message) {
-	if msg == nil || !ic.usesWebPush() ||
+	if msg == nil || !ic.usesWebPush() || ic.webPushStaleReported.Load() ||
 		time.Since(msg.TimestampMS.Time) < webPushMissedMessage ||
-		msg.SenderFBID == metaid.ParseUserLoginID(ic.UserLogin.ID) ||
-		!ic.webPushStaleReported.CompareAndSwap(false, true) {
+		msg.SenderFBID == metaid.ParseUserLoginID(ic.UserLogin.ID) {
 		return
 	}
-	go ic.confirmWebPushStale(portalKey, msg.TimestampMS.Time)
+	ic.webPushCandidates.Add(portalKey.ID)
+	if ic.webPushChecking.CompareAndSwap(false, true) {
+		go ic.confirmWebPushStale()
+	}
 }
 
-func (ic *IGClient) confirmWebPushStale(portalKey networkid.PortalKey, messageTS time.Time) {
+func (ic *IGClient) confirmWebPushStale() {
+	defer ic.webPushChecking.Store(false)
+	defer ic.webPushCandidates.Clear()
 	log := ic.UserLogin.Log.With().Str("action", "check web push").Logger()
 	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	select {
+	case <-time.After(webPushCheckDelay):
+	case <-ctx.Done():
+		return
+	}
 	receivedBefore := time.Now().Add(-webPushStaleAfter)
 	lastReceived, _, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
 	if err != nil {
@@ -368,20 +378,22 @@ func (ic *IGClient) confirmWebPushStale(portalKey networkid.PortalKey, messageTS
 		log.Err(err).Msg("Failed to fetch inbox to check web push state")
 		return
 	}
-	var thread *slidetypes.ThreadInfo
+	var missed *slidetypes.ThreadInfo
 	if mailbox := resp.GetMailbox(); mailbox != nil {
 		for _, edge := range mailbox.ThreadsByFolder.Edges {
 			info := edge.Node.AsIGDirectThread
-			if info != nil && ic.makePortalKey(info.ThreadKey, info.IsGroup).ID == portalKey.ID {
-				thread = info
-				break
+			if info == nil || !ic.webPushCandidates.Has(ic.makePortalKey(info.ThreadKey, info.IsGroup).ID) ||
+				ptr.Val(info.IsMuted) || info.SystemFolder == "PENDING" || info.SystemFolder == "SPAM" {
+				continue
 			}
+			missed = info
+			break
 		}
 	}
-	if thread == nil || ptr.Val(thread.IsMuted) || thread.SystemFolder == "PENDING" || thread.SystemFolder == "SPAM" {
+	if missed == nil {
 		log.Debug().
-			Bool("found", thread != nil).
-			Msg("Late message is in a chat that doesn't get pushes, not marking web push as stale")
+			Int("candidates", ic.webPushCandidates.Size()).
+			Msg("Late messages are only in chats that don't get pushes, not marking web push as stale")
 		return
 	}
 	changed, err := ic.Main.DB.SetIGWebPushStale(ctx, ic.UserLogin.ID, receivedBefore)
@@ -391,9 +403,10 @@ func (ic *IGClient) confirmWebPushStale(portalKey networkid.PortalKey, messageTS
 	} else if !changed {
 		return
 	}
+	ic.webPushStaleReported.Store(true)
 	log.Warn().
 		Time("last_web_push", lastReceived).
-		Time("message_ts", messageTS).
+		Str("thread_id", missed.ThreadFBID).
 		Msg("Caught up a message that never got a web push, asking for relogin")
 	ic.sendWebPushStaleState()
 }

@@ -63,6 +63,8 @@ type IGClient struct {
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
 	webPushStaleReported  atomic.Bool
+	webPushChecking       atomic.Bool
+	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 }
 
@@ -78,6 +80,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		caughtUp:  exsync.NewEvent(),
 
 		pendingGroupCreations: exsync.NewSet[string](),
+		webPushCandidates:     exsync.NewSet[networkid.PortalID](),
 	}
 	c.mailboxProcessed.Store(true)
 	login.Client = c
