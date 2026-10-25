@@ -24,7 +24,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 )
 
-const instagramCAAWebLoginDocID = "27972648395719857"
+const instagramCAAWebLoginDocID = "28077768681846394"
 const instagramCAAWebLoginOperation = "useCDSWebLoginMutation"
 const instagramCAAWebLoginRoute = "comet.igweb.PolarisCAAIGLoginHomepageRoute"
 
