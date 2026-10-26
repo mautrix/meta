@@ -116,6 +116,7 @@ type MetaNativeLogin struct {
 	webTwoFactor           *instameow.InstagramWebTwoFactorChallenge
 	webSessionReady        bool
 	pendingWebChallengeURL string
+	webLoginRejections     int
 	pendingNativeSession   *types.InstagramNativeSession
 }
 
@@ -309,6 +310,11 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return nil, errInstagramWebCheckpointCAPTCHA
 		} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 			m.clearCAAFallback()
+			m.webLoginRejections++
+			if m.webLoginRejections > 1 {
+				m.User.Log.Info().Err(err).Msg("Instagram rejected web login again, handing login to client webview")
+				return m.instagramWebLoginStep(), nil
+			}
 			return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
 		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
 			m.clearCAAFallback()
@@ -404,6 +410,12 @@ func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) *bridge
 	}
 }
 
+func (m *MetaNativeLogin) instagramWebLoginStep() *bridgev2.LoginStep {
+	loginStep := m.instagramWebChallengeStep("https://www.instagram.com/accounts/login/")
+	loginStep.Instructions = "Instagram couldn't sign you in here. Sign in on Instagram's page instead, then your login will continue here."
+	return loginStep
+}
+
 func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	if m.caaIdentifier != "" {
 		return m.continueCAAFallback(ctx, input)
@@ -428,9 +440,10 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 		m.webTwoFactor = nil
 		return m.instagramWebChallengeStep(challengeURL), nil
 	} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
+		m.User.Log.Info().Err(err).Msg("Instagram rejected web login after AuthPlatform, handing login to client webview")
 		m.clearCAAFallback()
 		m.webTwoFactor = nil
-		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+		return m.instagramWebLoginStep(), nil
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 		return nil, errInstagramWebCheckpointCAPTCHA
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
