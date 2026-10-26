@@ -1,6 +1,7 @@
 package messagix
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -354,7 +355,7 @@ func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, acces
 			AppID:          useragent.MessengerLiteAndroidAppID,
 			DeviceID:       m.deviceID,
 			FamilyDeviceID: m.familyDeviceID,
-			MachineID:      resp.MachineID,
+			MachineID:      cmp.Or(resp.MachineID, m.machineID),
 		})
 	}
 	return newCookies, nil
@@ -411,6 +412,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		if loginRespPayload.AccessToken == "" {
 			return nil, nil, loginerrors.MissingCookies.AppendMessage(". Meta returned incomplete credentials after login. If you don't have MFA enabled, please turn it on for your Facebook account. Otherwise, it may help to try again, log in from the official app/website first, or change the MFA settings for your Facebook account")
 		}
+		m.machineID = cmp.Or(loginRespPayload.MachineID, m.machineID)
 		m.client.Logger.Debug().
 			Str("credential_type", loginRespPayload.CredentialType).
 			Msg("Exchanging login access token for session cookies")
