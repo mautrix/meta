@@ -62,11 +62,7 @@ func jsonKeyPaths(prefix string, value any, paths []string) []string {
 	if !ok {
 		return paths
 	}
-	keys := make([]string, 0, len(obj))
-	for key := range obj {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
+	keys := slices.Sorted(maps.Keys(obj))
 	for _, key := range keys {
 		path := prefix + key
 		paths = append(paths, path)
