@@ -1082,6 +1082,7 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
+	c.logLoginRequestShape(rq.FbAPIReqFriendlyName, form, headers)
 	// A lost response must not replay a password, verification code or CAPTCHA.
 	endpoint := c.GetEndpoint("graphql")
 	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
