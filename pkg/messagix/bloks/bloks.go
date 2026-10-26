@@ -11,8 +11,8 @@ import (
 // Messenger iOS 571.0.0.18.106 of 2026-07-22
 const BloksVersionIOS = "e74cbfe42b6152a793f3ee3d81eeba4c48b5c4477b54d05ab8d8bce991f1319d"
 
-// Messenger Android 569.0.0.44.91 of 2026-07-22
-const BloksVersionAndroid = "194a25b5ca64b7e2cc9a1b57a306ae5b1536d14d53e54f273f19a639c21cb197"
+// Messenger Android 584.1.0.61.98
+const BloksVersionAndroid = "d74221353bbda70cea538a0a70883f4024469172593df5e77725adc162af5e6f"
 
 // Instagram Android 446.0.0.49.77
 const BloksVersionInstagramAndroid = "935a519904e9017324cdedb64a283a3c2c1a3d5b0bbc698b451f5aef72cc11df"
