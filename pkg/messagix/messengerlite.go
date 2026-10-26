@@ -354,6 +354,7 @@ func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, acces
 			AppID:          useragent.MessengerLiteAndroidAppID,
 			DeviceID:       m.deviceID,
 			FamilyDeviceID: m.familyDeviceID,
+			MachineID:      resp.MachineID,
 		})
 	}
 	return newCookies, nil
@@ -440,6 +441,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 			AppID:          useragent.MessengerLiteAndroidAppID,
 			DeviceID:       m.deviceID,
 			FamilyDeviceID: m.familyDeviceID,
+			MachineID:      loginRespPayload.MachineID,
 		})
 	}
 	return nil, newCookies, nil
