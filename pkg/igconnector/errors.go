@@ -96,7 +96,7 @@ func wrapInstagramError(err error) error {
 			WithSendNotice(true)
 	case errors.Is(err, types.ErrContentUnavailable):
 		return bridgev2.WrapErrorInStatus(err).
-			WithMessage("rejected by Instagram, check the Instagram app or website for a notice on your account").
+			WithMessage("rejected by Instagram, if this keeps happening, check the Instagram app or website for a notice on your account").
 			WithIsCertain(true).
 			WithSendNotice(true)
 	case errors.Is(err, instameow.ErrThreadNotFound):
