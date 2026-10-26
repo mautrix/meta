@@ -304,6 +304,8 @@ func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridge
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	meta, err := ic.ensureIGID(ctx, receipt.Portal)
 	if err != nil {
 		return err
