@@ -286,6 +286,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	case *slidetypes.PinThreadEvent:
 		allowCreate = evt.IsPinned
 	case *slidetypes.UpdateThreadFolderEvent:
+		allowCreate = evt.Folder != "OTHER"
 		log = log.With().
 			Str("folder", evt.Folder).
 			Str("ig_inbox_folder", evt.IGInboxFolder).
@@ -529,7 +530,7 @@ func (ic *IGClient) handleThreadFolder(portalKey networkid.PortalKey, folder str
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatInfoChange,
 			PortalKey:    portalKey,
-			CreatePortal: !isRequest,
+			CreatePortal: !isRequest && folder != "OTHER",
 		},
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo: &bridgev2.ChatInfo{MessageRequest: &isRequest},
