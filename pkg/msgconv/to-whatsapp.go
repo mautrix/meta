@@ -380,7 +380,7 @@ func makeStreamingSidecar(encrypted *os.File, mediaKey []byte, mediaType whatsme
 	sidecar := make([]byte, 0, (totalSize+chunkSize-1)/chunkSize*10)
 	buf := make([]byte, chunkSize+16)
 	mac := hmac.New(sha256.New, macKey)
-	for offset := int64(0); offset < totalSize; offset += chunkSize {
+	for offset := int64(0); offset < stat.Size(); offset += chunkSize {
 		window := buf[:min(chunkSize+16, totalSize-offset)]
 		n := 0
 		if offset < int64(len(iv)) {
