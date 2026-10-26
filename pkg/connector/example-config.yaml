@@ -38,6 +38,8 @@ marketplace_space: true
 log_redacted_login_responses: false
 # Should the bridge prompt for the encrypted backup PIN on login?
 e2ee_backfill: false
+# Should native Messenger push skip registering on the encrypted connection (Graph registration only)?
+disable_e2ee_native_push: false
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:
