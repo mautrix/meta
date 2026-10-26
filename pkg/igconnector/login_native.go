@@ -116,6 +116,8 @@ type MetaNativeLogin struct {
 	webTwoFactor           *instameow.InstagramWebTwoFactorChallenge
 	webSessionReady        bool
 	pendingWebChallengeURL string
+	webLoginRejections     int
+	pendingNativeSession   *types.InstagramNativeSession
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
@@ -130,6 +132,7 @@ var errCAAClientHTTPFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_CLIENT
 var errMissingAuth = bridgev2.RespError{ErrCode: "FI.MAU.IG_MISSING_AUTH", Err: "Native auth token missing after login. Please try again.", StatusCode: http.StatusBadRequest}
 var errUnexpectedCheckpoint = bridgev2.RespError{ErrCode: "FI.MAU.IG_CAA_FALLBACK_DISABLED", Err: "Instagram returned an unexpected verification step.", StatusCode: http.StatusBadRequest}
 var errInstagramWebCheckpointUnsupported = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_WEB_CHECKPOINT", Err: "Instagram returned a verification step this bridge cannot safely complete. Finish it in Instagram, then start a new login.", StatusCode: http.StatusBadRequest}
+var errInstagramRiskyContactPoint = bridgev2.RespError{ErrCode: "FI.MAU.META_RISKY_CONTACT_POINT", Err: "Instagram wants you to add a new email address to your account. Do that in the Instagram app or on instagram.com, then start a new login.", StatusCode: http.StatusBadRequest}
 var errInstagramWebCheckpointCAPTCHA = bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_CAPTCHA", Err: "Instagram requires an interactive CAPTCHA check. This login flow cannot display that check yet.", StatusCode: http.StatusBadRequest}
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -150,6 +153,7 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
+	m.pendingNativeSession = nil
 	if m.User == nil || m.Main == nil {
 		return nil, errors.New("instagram login is not initialized")
 	}
@@ -195,6 +199,7 @@ func (m *MetaNativeLogin) Cancel() {
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
+	m.pendingNativeSession = nil
 	m.transport = nil
 }
 
@@ -306,14 +311,24 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return nil, errInstagramWebCheckpointCAPTCHA
 		} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 			m.clearCAAFallback()
+			m.webLoginRejections++
+			if m.webLoginRejections > 1 {
+				m.User.Log.Info().Err(err).Msg("Instagram rejected web login again, handing login to client webview")
+				return m.instagramWebLoginStep(), nil
+			}
 			return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
 		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
 			m.clearCAAFallback()
 			return instagramCredentialsStep(
 				"Instagram didn't accept that username or password. Check your credentials and try again.",
 			), nil
+		} else if errors.Is(err, instameow.ErrInstagramWebRegistrationOffered) {
+			m.clearCAAFallback()
+			return instagramCredentialsStep(
+				"Instagram offered to create a new account for those details instead of signing in. Check that you're using the username or email of your Instagram account.",
+			), nil
 		} else if errors.Is(err, httpclient.ErrRateLimited) {
-			return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting login attempts. Wait a while before starting a new login.")
+			return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting login attempts from this network. Wait a while or try a different network before starting a new login.")
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			return nil, loginerrors.AccountSuspended
 		} else if errors.Is(err, instameow.ErrInstagramWebAccountPendingDeletion) {
@@ -337,7 +352,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	if challenge != nil {
 		m.webTwoFactor = challenge
 		if challenge.ChallengeURL != "" {
-			return m.instagramWebChallengeStep(challenge.ChallengeURL), nil
+			return m.instagramWebChallengeStep(challenge.ChallengeURL)
 		}
 		if challenge.AuthPlatform {
 			return m.continueWebAuthPlatform(ctx, nil)
@@ -370,11 +385,18 @@ func (m *MetaNativeLogin) continueWebAuthPlatform(ctx context.Context, input map
 	return m.handleWebAuthPlatformResult(ctx, step, err)
 }
 
-// instagramWebChallengeStep hands a verification the bridge cannot drive itself to
+func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) (*bridgev2.LoginStep, error) {
+	if parsed, err := url.Parse(challengeURL); err == nil && strings.Trim(parsed.Path, "/") == "accounts/update_risky_contactpoint" {
+		return nil, errInstagramRiskyContactPoint
+	}
+	return m.instagramWebviewStep(challengeURL), nil
+}
+
+// instagramWebviewStep hands a verification the bridge cannot drive itself to
 // a client webview. The client loads the trusted instagram.com challenge URL,
 // carries the session forward, and submits the resulting cookies once it lands on
 // a logged-in URL.
-func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) *bridgev2.LoginStep {
+func (m *MetaNativeLogin) instagramWebviewStep(challengeURL string) *bridgev2.LoginStep {
 	m.pendingWebChallengeURL = challengeURL
 	if m.Main.Config.LogRedactedLoginResponses {
 		// The URL carries verification tokens, so it is logged only under the
@@ -396,14 +418,21 @@ func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) *bridge
 	}
 }
 
+func (m *MetaNativeLogin) instagramWebLoginStep() *bridgev2.LoginStep {
+	loginStep := m.instagramWebviewStep("https://www.instagram.com/accounts/login/")
+	loginStep.Instructions = "Instagram couldn't sign you in here. Sign in on Instagram's page instead, then your login will continue here."
+	return loginStep
+}
+
 func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	if m.caaIdentifier != "" {
 		return m.continueCAAFallback(ctx, input)
 	}
 	if m.pendingWebChallengeURL != "" {
-		step, err := submitInstagramCookies(ctx, m.Main, m.User, input)
+		step, err := submitInstagramCookies(ctx, m.Main, m.User, input, m.pendingNativeSession)
 		if err == nil {
 			m.pendingWebChallengeURL = ""
+			m.pendingNativeSession = nil
 		}
 		return step, err
 	}
@@ -417,10 +446,16 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step *bridgev2.LoginStep, err error) (*bridgev2.LoginStep, error) {
 	if challengeURL, ok := instameow.InstagramWebChallengeURL(err); ok {
 		m.webTwoFactor = nil
-		return m.instagramWebChallengeStep(challengeURL), nil
+		return m.instagramWebChallengeStep(challengeURL)
 	} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 		m.clearCAAFallback()
 		m.webTwoFactor = nil
+		m.webLoginRejections++
+		if m.webLoginRejections > 1 {
+			m.User.Log.Info().Err(err).Msg("Instagram rejected web login after AuthPlatform again, handing login to client webview")
+			return m.instagramWebLoginStep(), nil
+		}
+		m.User.Log.Info().Err(err).Msg("Instagram rejected web login after AuthPlatform, asking for credentials again")
 		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 		return nil, errInstagramWebCheckpointCAPTCHA
@@ -506,7 +541,7 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 ) (*bridgev2.LoginStep, error) {
 	step, err := m.client.DoInstagramWebAccountManagerSteps(ctx, input)
 	if challengeURL, ok := instameow.InstagramWebRedirectChallengeURL(err); ok {
-		return m.instagramWebChallengeStep(challengeURL), nil
+		return m.instagramWebChallengeStep(challengeURL)
 	} else if errors.Is(err, httpclient.ErrChallengeRequired) || errors.Is(err, httpclient.ErrCheckpointRequired) {
 		return nil, errInstagramWebCheckpointUnsupported
 	} else if errors.Is(err, httpclient.ErrConsentRequired) {
@@ -517,6 +552,8 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 		return nil, loginerrors.AccountSuspended
 	} else if errors.Is(err, instameow.ErrInstagramAccountManagerTwoFactorRequired) {
 		return m.start(ctx, "That profile uses two-factor authentication. Log in with its own username and password to continue.")
+	} else if errors.Is(err, instameow.ErrInstagramAccountManagerSwitchFailed) {
+		return m.start(ctx, "Instagram didn't let Beeper switch to that profile. Log in with its own username and password to continue.")
 	} else if err != nil {
 		return nil, wrapInstagramRespError(fmt.Errorf("failed to select Instagram web Account Manager profile: %w", err))
 	} else if step != nil {
@@ -554,6 +591,10 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		nativeSession = m.client.GetInstagramNativeSession()
 	}
 	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, nativeSession, m.nativeLogin, restoreTransport)
+	if challengeURL, ok := instameow.InstagramWebRedirectChallengeURL(err); ok {
+		m.pendingNativeSession = nativeSession
+		return m.instagramWebChallengeStep(challengeURL)
+	}
 	var requestErr *url.Error
 	if ctx.Err() == nil && isClientHTTPError(err) && errors.As(err, &requestErr) &&
 		requestErr.Op == "Get" && requestErr.URL == client.GetEndpoint("messages") {
