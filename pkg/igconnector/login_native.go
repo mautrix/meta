@@ -312,6 +312,11 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return instagramCredentialsStep(
 				"Instagram didn't accept that username or password. Check your credentials and try again.",
 			), nil
+		} else if errors.Is(err, instameow.ErrInstagramWebRegistrationOffered) {
+			m.clearCAAFallback()
+			return instagramCredentialsStep(
+				"Instagram offered to create a new account for those details instead of signing in. Check that you're using the username or email of your Instagram account.",
+			), nil
 		} else if errors.Is(err, httpclient.ErrRateLimited) {
 			return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting login attempts. Wait a while before starting a new login.")
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
@@ -520,6 +525,8 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 		return nil, loginerrors.AccountSuspended
 	} else if errors.Is(err, instameow.ErrInstagramAccountManagerTwoFactorRequired) {
 		return m.start(ctx, "That profile uses two-factor authentication. Log in with its own username and password to continue.")
+	} else if errors.Is(err, instameow.ErrInstagramAccountManagerSwitchFailed) {
+		return m.start(ctx, "Instagram didn't let Beeper switch to that profile. Log in with its own username and password to continue.")
 	} else if err != nil {
 		return nil, wrapInstagramRespError(fmt.Errorf("failed to select Instagram web Account Manager profile: %w", err))
 	} else if step != nil {
