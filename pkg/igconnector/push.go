@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exsync"
+	"go.mau.fi/util/exslices"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -371,10 +371,7 @@ func (ic *IGClient) confirmWebPushStale() {
 		ic.webPushCandidates.Clear()
 		return
 	}
-	candidates := exsync.NewSetWithItems(ic.webPushCandidates.AsList())
-	for id := range candidates.Iter() {
-		ic.webPushCandidates.Remove(id)
-	}
+	candidates := ic.webPushCandidates.ReplaceAll(nil)
 	receivedBefore := time.Now().Add(-webPushStaleAfter)
 	lastReceived, _, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
 	if err != nil {
@@ -387,6 +384,10 @@ func (ic *IGClient) confirmWebPushStale() {
 	if cli == nil {
 		return
 	}
+	log.Debug().
+		Time("last_web_push", lastReceived).
+		Strs("candidate_chats", exslices.CastToString[string](candidates.AsList())).
+		Msg("Fetching inbox to check if late chats should have gotten web push")
 	resp, err := cli.GetMailbox(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to fetch inbox to check web push state")
