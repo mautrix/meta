@@ -125,6 +125,15 @@ func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, u
 	return client, nil
 }
 
+type redirectedLoginError struct {
+	bridgev2.RespError
+	cause error
+}
+
+func (e redirectedLoginError) Unwrap() []error {
+	return []error{e.RespError, e.cause}
+}
+
 func loginWithCookies(
 	ctx context.Context,
 	log zerolog.Logger,
@@ -151,9 +160,9 @@ func loginWithCookies(
 		if errors.Is(err, httpclient.ErrRateLimited) {
 			return nil, loginerrors.RateLimited
 		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
-			return nil, loginerrors.Challenge
+			return nil, redirectedLoginError{loginerrors.Challenge, err}
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
-			return nil, loginerrors.Checkpoint
+			return nil, redirectedLoginError{loginerrors.Checkpoint, err}
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			return nil, loginerrors.Consent
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
@@ -237,7 +246,7 @@ func loginWithCookies(
 	}, nil
 }
 
-func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string, nativeSession *types.InstagramNativeSession) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
@@ -255,9 +264,9 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, user, conn, c, nil, false, nil)
+	return loginWithCookies(ctx, log, client, user, conn, c, nativeSession, false, nil)
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	return submitInstagramCookies(ctx, m.Main, m.User, strCookies)
+	return submitInstagramCookies(ctx, m.Main, m.User, strCookies, nil)
 }
