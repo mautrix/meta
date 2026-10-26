@@ -54,6 +54,7 @@ func (gqe *GraphQLError) HumanError() string {
 
 var ErrPleaseLogIn = &ErrorResponse{ErrorCode: 1357001}
 var ErrPleaseReloadPage = &ErrorResponse{ErrorCode: 1357004}
+var ErrContentUnavailable = &ErrorResponse{ErrorCode: 1357031}
 
 func (er *ErrorResponse) Is(other error) bool {
 	var otherLS *ErrorResponse

@@ -94,6 +94,11 @@ func wrapInstagramError(err error) error {
 			WithMessage("Instagram requires you to check your account on the website or app").
 			WithIsCertain(true).
 			WithSendNotice(true)
+	case errors.Is(err, types.ErrContentUnavailable):
+		return bridgev2.WrapErrorInStatus(err).
+			WithMessage("rejected by Instagram, check the Instagram app or website for a notice on your account").
+			WithIsCertain(true).
+			WithSendNotice(true)
 	case errors.Is(err, instameow.ErrThreadNotFound):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("chat not found on Instagram").
