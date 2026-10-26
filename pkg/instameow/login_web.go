@@ -1097,6 +1097,8 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 		return nil, err
 	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
 		return nil, ErrInstagramWebCheckpointRequestFailed
+	} else if gjson.GetBytes(bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix), "errors.#(code==1675004)").Exists() {
+		return nil, httpclient.ErrRateLimited
 	}
 	return body, nil
 }
