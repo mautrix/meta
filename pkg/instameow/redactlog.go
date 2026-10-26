@@ -2,6 +2,7 @@ package instameow
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
