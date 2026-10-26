@@ -57,12 +57,13 @@ var errInstagramWebTwoFactorSMSNotSent = errors.New("instagram could not send a 
 var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
 
 type InstagramWebTwoFactorChallenge struct {
-	AuthPlatform bool
-	TOTP         bool
-	SMS          bool
-	WhatsApp     bool
-	Email        bool
-	ChallengeURL string
+	AuthPlatform  bool
+	TOTP          bool
+	SMS           bool
+	SMSOrWhatsApp bool
+	WhatsApp      bool
+	Email         bool
+	ChallengeURL  string
 }
 
 type instagramWebTwoFactorInfo struct {
@@ -71,6 +72,7 @@ type instagramWebTwoFactorInfo struct {
 	TOTP              bool   `json:"totp_two_factor_on"`
 	SMS               bool   `json:"sms_two_factor_on"`
 	WhatsApp          bool   `json:"whatsapp_two_factor_on"`
+	SOWA              bool   `json:"is_in_sowa_experience"`
 	EncryptedContext  string `json:"encrypted_context"`
 	MaskedPhoneNumber string `json:"obfuscated_phone_number_2"`
 }
@@ -444,9 +446,10 @@ func (c *Client) captureInstagramWebTwoFactor(
 		}
 	}
 	return &InstagramWebTwoFactorChallenge{
-		TOTP:     info.TOTP,
-		SMS:      info.SMS,
-		WhatsApp: info.WhatsApp,
+		TOTP:          info.TOTP,
+		SMS:           info.SMS,
+		SMSOrWhatsApp: info.SMS && info.SOWA,
+		WhatsApp:      info.WhatsApp,
 	}, nil
 }
 

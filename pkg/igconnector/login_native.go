@@ -641,8 +641,12 @@ func instagramWebTwoFactorStep(
 			instructions = "Enter the verification code from your authenticator app."
 		case challenge != nil && challenge.Email:
 			instructions = "Enter the verification code Instagram sent to your email."
-		case challenge != nil && (challenge.SMS || challenge.WhatsApp):
-			instructions = "Enter the verification code Instagram sent to you."
+		case challenge != nil && challenge.SMSOrWhatsApp:
+			instructions = "Enter the verification code Instagram sent to your phone by WhatsApp or SMS."
+		case challenge != nil && challenge.SMS:
+			instructions = "Enter the verification code Instagram sent to your phone by SMS."
+		case challenge != nil && challenge.WhatsApp:
+			instructions = "Enter the verification code Instagram sent to your WhatsApp."
 		default:
 			instructions = "Enter your Instagram verification code."
 		}
