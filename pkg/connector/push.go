@@ -46,22 +46,7 @@ var pushCfg = &bridgev2.PushConfig{
 }
 
 var nativePushCfg = &bridgev2.PushConfig{
-	FCM: &bridgev2.FCMPushConfig{
-		SenderID: "622912139302",
-		LegacyIID: json.RawMessage(`{
-			"package_name": "com.facebook.orca",
-			"certificate_sha1": "8a3c4b262d721acd49a4bf97d5213199c86fa2b9",
-			"firebase_app_id": "1:622912139302:android:8b8ede1cb1662c82",
-			"app_version_code": 343812233,
-			"app_version_name": "569.0.0.44.91",
-			"target_sdk_version": 36,
-			"os_version": 36,
-			"gms_version": 263436035,
-			"client_version": "fiid-12451000",
-			"device": "panther",
-			"build_id": "BP2A.250805.005"
-		}`),
-	},
+	FCM: &bridgev2.FCMPushConfig{SenderID: "622912139302"},
 }
 
 func (m *MetaClient) GetPushConfigs() *bridgev2.PushConfig {
