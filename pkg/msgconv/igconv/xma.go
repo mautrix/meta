@@ -79,8 +79,8 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 
 	targetURL, err := url.Parse(xma.TargetURL)
 	if err == nil && targetURL.Host == "l.facebook.com" {
-		if realURL := targetURL.Query().Get("u"); realURL != "" {
-			targetURL, err = url.Parse(realURL)
+		if realURL, err := url.Parse(targetURL.Query().Get("u")); err == nil && realURL.String() != "" {
+			targetURL = realURL
 		}
 	}
 	if err != nil {
