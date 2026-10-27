@@ -144,7 +144,11 @@ func wrapInstagramRespError(err error) error {
 	case errors.Is(err, instameow.ErrThreadNotFound):
 		mapped = bridgev2.RespError(mautrix.MNotFound.WithMessage("Chat not found on Instagram"))
 	case errors.As(err, &lsErr), errors.As(err, &gqlErr), errors.Is(err, httpclient.ErrUnexpectedError):
-		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Instagram returned an error"))
+		msg := "Instagram returned an error"
+		if he, ok := errors.AsType[bridgev2.HumanError](err); ok && he.HumanError() != "" {
+			msg = he.HumanError()
+		}
+		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage(msg))
 	default:
 		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Request to Instagram failed"))
 	}
