@@ -1082,6 +1082,7 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
+	c.logLoginRequestShape(rq.FbAPIReqFriendlyName, form, headers)
 	// A lost response must not replay a password, verification code or CAPTCHA.
 	endpoint := c.GetEndpoint("graphql")
 	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
@@ -1096,6 +1097,8 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 		return nil, err
 	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
 		return nil, ErrInstagramWebCheckpointRequestFailed
+	} else if gjson.GetBytes(bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix), "errors.#(code==1675004)").Exists() {
+		return nil, httpclient.ErrRateLimited
 	}
 	return body, nil
 }

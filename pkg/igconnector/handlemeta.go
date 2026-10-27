@@ -55,6 +55,7 @@ const (
 	FBCheckpointRequired      status.BridgeStateErrorCode = "fb-checkpoint-required"
 	MetaProxyUpdateFail       status.BridgeStateErrorCode = "meta-proxy-update-fail"
 	MetaNotInstagram          status.BridgeStateErrorCode = "meta-not-instagram-account"
+	IGWebPushStale            status.BridgeStateErrorCode = "ig-web-push-stale"
 )
 
 func init() {
@@ -74,6 +75,7 @@ func init() {
 		MetaConnectError:          "Unknown connection error",
 		MetaProxyUpdateFail:       "Failed to update proxy",
 		MetaNotInstagram:          "Non-Instagram login present on Instagram-only bridge",
+		IGWebPushStale:            "Instagram stopped sending notifications, please relogin to restore them",
 	})
 }
 
@@ -94,7 +96,13 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
 		ic.permanentErrored.Store(false)
-		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		stale := ic.isWebPushStale(ctx)
+		ic.webPushStaleReported.Store(stale)
+		if stale {
+			ic.sendWebPushStaleState()
+		} else {
+			ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		}
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
@@ -318,6 +326,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	var res bridgev2.EventHandlingResult
 	switch evt := d.Data.(type) {
 	case *slidetypes.NewMessageEvent:
+		ic.checkWebPushStale(portalKey, evt.Message)
 		res = ic.handleMessage(portalKey, evt.Message)
 	case *slidetypes.AdminMessageEvent:
 		res = ic.handleMessage(portalKey, evt.Message)

@@ -478,9 +478,12 @@ func (c *HTTPClient) MakeRequest(
 	})
 }
 
+func IsClientHTTPError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "error from client: ")
+}
+
 func isClientHTTP(resp *http.Response, err error) bool {
-	return (err != nil && strings.Contains(err.Error(), "error from client: ")) ||
-		(resp != nil && resp.Proto == "MauClientHTTP/1.0")
+	return IsClientHTTPError(err) || (resp != nil && resp.Proto == "MauClientHTTP/1.0")
 }
 
 func (c *HTTPClient) makeRequest(
