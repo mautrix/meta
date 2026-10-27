@@ -334,7 +334,11 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 			ObjectID:  &uploaded.ObjectID,
 		},
 	}
-	return mediaTransport, fileName, uploaded.StreamingSidecar, nil
+	var sidecar []byte
+	if isVideo {
+		sidecar = uploaded.StreamingSidecar
+	}
+	return mediaTransport, fileName, sidecar, nil
 }
 
 func (mc *MessageConverter) getVideoThumbnail(ctx context.Context, content *event.MessageEventContent, data []byte, mimeType string) ([]byte, int, int, error) {
