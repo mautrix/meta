@@ -165,13 +165,21 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 		spec.Extensions = exts
 
 		tlsConfig := c.GetTLSClientConfig()
-		uconn := utls.UClient(plainConn, &utls.Config{
+		utlsConfig := &utls.Config{
 			ServerName:         hostname,
 			NextProtos:         []string{"http/1.1"},
 			RootCAs:            tlsConfig.RootCAs,
 			InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
 			KeyLogWriter:       tlsConfig.KeyLogWriter,
-		}, utls.HelloCustom)
+			// Keep any certificate checks the client's TLS config adds, such as a blocklist.
+			VerifyPeerCertificate: tlsConfig.VerifyPeerCertificate,
+		}
+		if verify := tlsConfig.VerifyConnection; verify != nil {
+			utlsConfig.VerifyConnection = func(cs utls.ConnectionState) error {
+				return verify(*toTLSConnectionState(cs))
+			}
+		}
+		uconn := utls.UClient(plainConn, utlsConfig, utls.HelloCustom)
 		if err := uconn.ApplyPreset(&spec); err != nil {
 			return nil, nil, fmt.Errorf("failed to apply Chrome uTLS spec: %w", err)
 		}
@@ -179,18 +187,21 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 			return nil, nil, err
 		}
 
-		cs := uconn.ConnectionState()
-		return uconn, &tls.ConnectionState{
-			Version:            cs.Version,
-			HandshakeComplete:  cs.HandshakeComplete,
-			DidResume:          cs.DidResume,
-			CipherSuite:        cs.CipherSuite,
-			NegotiatedProtocol: cs.NegotiatedProtocol,
-			ServerName:         cs.ServerName,
-			PeerCertificates:   cs.PeerCertificates,
-			VerifiedChains:     cs.VerifiedChains,
-		}, nil
+		return uconn, toTLSConnectionState(uconn.ConnectionState()), nil
 	})
+}
+
+func toTLSConnectionState(cs utls.ConnectionState) *tls.ConnectionState {
+	return &tls.ConnectionState{
+		Version:            cs.Version,
+		HandshakeComplete:  cs.HandshakeComplete,
+		DidResume:          cs.DidResume,
+		CipherSuite:        cs.CipherSuite,
+		NegotiatedProtocol: cs.NegotiatedProtocol,
+		ServerName:         cs.ServerName,
+		PeerCertificates:   cs.PeerCertificates,
+		VerifiedChains:     cs.VerifiedChains,
+	}
 }
 
 func (c *HTTPClient) newReqClient() *req.Client {
