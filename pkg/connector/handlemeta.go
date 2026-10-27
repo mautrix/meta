@@ -82,6 +82,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		log.Debug().Msg("Initial connect to Meta socket completed")
 		m.permanentErrored.Store(false)
 		m.connectWaiter.Set()
+		m.retryPendingPolls(ctx)
 		m.firstE2EEConnectDone = true
 		go m.tryConnectE2EE(false)
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
@@ -117,6 +118,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		}
 		log.Debug().Msg("Reconnected to Meta socket")
 		m.connectWaiter.Set()
+		m.retryPendingPolls(ctx)
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		m.UserLogin.BridgeState.Send(m.metaState)
 	case *messagix.PermanentErrorEvent:

@@ -64,7 +64,7 @@ func (mc *MessageConverter) convertPoll(ctx context.Context, portal *bridgev2.Po
 	switch msg.PollEventType {
 	case table.PollEventCreate:
 		if msg.PollQuestion == "" || len(msg.PollOptions) == 0 {
-			return nil, fmt.Errorf("poll %d has no question or options", msg.PollID)
+			return nil, fmt.Errorf("%w: poll %d has no question or options", bridgev2.ErrIgnoringRemoteEvent, msg.PollID)
 		}
 		return mc.ConvertPollStart(&metaid.MessageMetadata{
 			PollID:        msg.PollID,
@@ -98,7 +98,7 @@ func (mc *MessageConverter) convertPollVote(ctx context.Context, portal *bridgev
 	}
 	meta := target.Metadata.(*metaid.MessageMetadata)
 	if !meta.PollFetched {
-		return nil, fmt.Errorf("poll selections have not been fetched")
+		return nil, fmt.Errorf("%w: poll selections have not been fetched", bridgev2.ErrIgnoringRemoteEvent)
 	}
 	previous := meta.PollVotes[msg.SenderId]
 	if previous.TimestampMS > msg.TimestampMs {
@@ -106,7 +106,7 @@ func (mc *MessageConverter) convertPollVote(ctx context.Context, portal *bridgev
 	}
 	selection, err := ApplyPollVote(msg, previous.OptionIDs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", bridgev2.ErrIgnoringRemoteEvent, err)
 	}
 	updated := *meta
 	updated.PollVotes = maps.Clone(meta.PollVotes)

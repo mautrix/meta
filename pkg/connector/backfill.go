@@ -220,7 +220,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					Int64("bundled_min_ts", upsert.Range.MinTimestampMs).
 					Int64("anchor_ts", anchorTS).
 					Msg("Forward backfill has all messages already")
-				return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
+				return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
 			}
 		}
 		var oldestMessageID string
@@ -323,7 +323,10 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 			return nil, fmt.Errorf("history cursor did not move backwards")
 		}
 	}
-	response := m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
+	response, err := m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
+	if err != nil {
+		return nil, err
+	}
 	if cursor != nil {
 		cursor.Timestamp = upsert.Range.MinTimestampMs
 		cursor.MessageID = upsert.Range.MinMessageId
@@ -336,7 +339,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 	return response, nil
 }
 
-func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Portal, upsert *table.UpsertMessages, anchor *database.Message, forward bool) *bridgev2.FetchMessagesResponse {
+func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Portal, upsert *table.UpsertMessages, anchor *database.Message, forward bool) (*bridgev2.FetchMessagesResponse, error) {
 	// The messages are probably already sorted in reverse order (newest to oldest). We want to sort them again to be safe,
 	// but reverse first to make the sorting algorithm's job easier if it's already sorted.
 	slices.Reverse(upsert.Messages)
@@ -369,6 +372,7 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		}
 	}
 	wrappedMessages := make([]*bridgev2.BackfillMessage, 0, len(upsert.Messages))
+	var deferredPollVotes []*table.WrappedMessage
 	for _, msg := range upsert.Messages {
 		m.handleSubthread(ctx, msg)
 		log := zerolog.Ctx(ctx).With().Str("message_id", msg.MessageId).Logger()
@@ -387,15 +391,14 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 				Int64("timestamp_ms", msg.TimestampMs).
 				Msg("Message ID timestamp mismatch in backfill")
 		}
-		if msg.PollEventType == table.PollEventVote &&
-			(&FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m}).fetchPollForVote(ctx, portal) {
-			continue
-		}
 		msgID := metaid.MakeFBMessageID(msg.MessageId)
 		converted, err := m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, m.UserLogin, intent, msgID, msg)
 		if err != nil {
 			if !errors.Is(err, bridgev2.ErrIgnoringRemoteEvent) {
-				log.Err(err).Msg("Failed to convert backfill message")
+				return nil, fmt.Errorf("failed to convert backfill message %s: %w", msg.MessageId, err)
+			}
+			if msg.PollEventType == table.PollEventVote {
+				deferredPollVotes = append(deferredPollVotes, msg)
 			}
 			continue
 		}
@@ -429,7 +432,11 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 						m.UserLogin.QueueRemoteEvent(&FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m})
 					}
 				}
+				for _, msg := range deferredPollVotes {
+					evt := &FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m}
+					evt.fetchPollForVote(context.WithoutCancel(ctx), portal)
+				}
 			}()
 		},
-	}
+	}, nil
 }

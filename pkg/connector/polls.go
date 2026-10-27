@@ -61,6 +61,14 @@ func makePollEdit(portal networkid.PortalKey, parent *database.Message, edit *br
 	}}
 }
 
+func (m *MetaClient) retryPendingPolls(ctx context.Context) {
+	m.pollQueries.Range(func(key, value any) bool {
+		query := value.(*pollQuery)
+		m.requestPoll(ctx, query.portal, key.(int64), query.target)
+		return true
+	})
+}
+
 func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey, pollID int64, target networkid.MessageID) {
 	query := &pollQuery{portal: portal, target: target, done: make(chan struct{})}
 	previous, loaded := m.pollQueries.LoadOrStore(pollID, query)
@@ -70,27 +78,43 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 	if !query.running.CompareAndSwap(false, true) {
 		return
 	}
-	client := m.Client
 	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer cancel()
+		ctx = context.WithoutCancel(ctx)
 		defer query.running.Store(false)
-		if client == nil {
-			return
-		}
-		_, err := client.ExecuteTasks(ctx, &socket.PollPointQueryTask{
-			ThreadKey: metaid.ParseFBPortalID(portal.ID),
-			PollID:    pollID,
-			SyncGroup: 1,
-		})
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Int64("poll_id", pollID).Msg("Failed to fetch poll details")
-			return
-		}
-		select {
-		case <-query.done:
-		case <-ctx.Done():
-			zerolog.Ctx(ctx).Warn().Int64("poll_id", pollID).Msg("Timed out fetching poll details")
+		for attempt := range 3 {
+			select {
+			case <-query.done:
+				return
+			default:
+			}
+			if attempt > 0 {
+				select {
+				case <-query.done:
+					return
+				case <-time.After(time.Second << (attempt - 1)):
+				}
+			}
+			client := m.Client
+			if client == nil {
+				return
+			}
+			requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			_, err := client.ExecuteTasks(requestCtx, &socket.PollPointQueryTask{
+				ThreadKey: metaid.ParseFBPortalID(portal.ID),
+				PollID:    pollID,
+				SyncGroup: 1,
+			})
+			if err == nil {
+				select {
+				case <-query.done:
+					cancel()
+					return
+				case <-requestCtx.Done():
+					err = requestCtx.Err()
+				}
+			}
+			cancel()
+			zerolog.Ctx(ctx).Err(err).Int64("poll_id", pollID).Int("attempt", attempt+1).Msg("Failed to fetch poll details")
 		}
 	}()
 }
