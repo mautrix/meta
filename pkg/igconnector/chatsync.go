@@ -19,6 +19,7 @@ package igconnector
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -26,6 +27,11 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+)
+
+var (
+	chatBackfillSlotsOnce sync.Once
+	chatBackfillSlots     chan struct{}
 )
 
 func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slidetypes.Mailbox) {
@@ -107,6 +113,22 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 	}()
 }
 
+func (ic *IGConnector) waitForChatBackfillSlot(ctx context.Context) (func(), error) {
+	limit := ic.Config.ThreadBackfill.MaxConcurrent
+	if limit <= 0 {
+		return func() {}, nil
+	}
+	chatBackfillSlotsOnce.Do(func() {
+		chatBackfillSlots = make(chan struct{}, limit)
+	})
+	select {
+	case chatBackfillSlots <- struct{}{}:
+		return func() { <-chatBackfillSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since time.Time) {
 	viewerFBID := metaid.ParseUserLoginID(ic.UserLogin.ID)
 	if viewerFBID == 0 {
@@ -126,6 +148,14 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 
 	log := zerolog.Ctx(ctx).With().Str("action", "chat backfill").Logger()
 	ctx = log.WithContext(ctx)
+
+	if since.IsZero() {
+		release, err := ic.Main.waitForChatBackfillSlot(ctx)
+		if err != nil {
+			return
+		}
+		defer release()
+	}
 
 	processThread := func(thread *slidetypes.ThreadInfo) error {
 		err := ic.saveThreadMappings(ctx, thread)
