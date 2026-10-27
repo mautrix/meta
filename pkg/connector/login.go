@@ -430,6 +430,8 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
 			err = loginerrors.Checkpoint
+		} else if httpclient.IsClientHTTPError(err) {
+			err = loginerrors.ClientHTTPFailed.WithInternalError(err)
 		}
 		return nil, err
 	}

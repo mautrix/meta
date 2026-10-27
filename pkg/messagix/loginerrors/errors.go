@@ -27,6 +27,7 @@ var (
 	AccountSuspended = bridgev2.RespError{ErrCode: "FI.MAU.META_ACCOUNT_SUSPENDED", Err: "Instagram reports that this account is suspended. Open Instagram to review or appeal the suspension before retrying", StatusCode: http.StatusForbidden}
 	HistoryPINLimit  = bridgev2.RespError{ErrCode: "FI.MAU.META_HISTORY_PIN_EXHAUSTED", Err: "PIN entered incorrectly too many times. Open Messenger on a device where your chats are available to reset your PIN, then try restoring history again", StatusCode: http.StatusBadRequest}
 	InboxLoadFailed  = bridgev2.RespError{ErrCode: "FI.MAU.META_INBOX_LOAD_FAILED", Err: "Meta returned an error while loading your messages after login. Please try again later, or log in from the official app/website first", StatusCode: http.StatusInternalServerError}
+	ClientHTTPFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CLIENT_HTTP_FAILED", Err: "The request did not complete on this device. Check your internet connection, VPN or content filter and try again", StatusCode: http.StatusBadRequest}
 )
 
 func WithMessage(respError bridgev2.RespError, message string) bridgev2.RespError {
