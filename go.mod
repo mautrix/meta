@@ -2,7 +2,7 @@ module go.mau.fi/mautrix-meta
 
 go 1.26.0
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 tool go.mau.fi/util/cmd/maubuild
 
@@ -13,27 +13,27 @@ require (
 	github.com/bytemare/opaque v0.0.0-20210310201842-16a10d180656
 	github.com/bytemare/voprf v0.0.0-20210221170502-f0af88d24d16
 	github.com/coder/websocket v1.8.15
-	github.com/gabriel-vasile/mimetype v1.4.15
+	github.com/gabriel-vasile/mimetype v1.4.16
 	github.com/google/flatbuffers v25.12.19+incompatible
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gtank/ristretto255 v0.2.0
 	github.com/imroc/req/v3 v3.56.0
-	github.com/quic-go/quic-go v0.61.0
+	github.com/quic-go/quic-go v0.64.1
 	github.com/refraction-networking/utls v1.8.2
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.20.0
 	github.com/zyedidia/clipboard v1.0.4
 	go.mau.fi/libsignal v0.2.2
 	go.mau.fi/util v0.11.1-0.20261026174803-9e6b9c87cfbc
-	go.mau.fi/whatsmeow v0.0.0-20261014094007-f16f9ca30d6a
+	go.mau.fi/whatsmeow v0.0.0-20261027104441-1eec1136a50b
 	golang.org/x/crypto v0.58.0
 	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.61.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.32.1-0.20261026145030-920bc073ba8d
+	maunium.net/go/mautrix v0.32.1-0.20261027121747-b5763ae4f269
 )
 
 require (
@@ -46,7 +46,6 @@ require (
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/icholy/digest v1.2.0 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
