@@ -19,17 +19,13 @@ package msgconv
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -45,7 +41,6 @@ import (
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/proto/waMediaTransport"
 	"go.mau.fi/whatsmeow/proto/waMsgApplication"
-	"go.mau.fi/whatsmeow/util/hkdfutil"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -286,13 +281,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	mediaType := msgToMediaType(content.MsgType)
 	client := ctx.Value(mediadl.ContextKeyWAClient).(*whatsmeow.Client)
 	isVideo := content.MsgType == event.MsgVideo && mimeType != "image/gif"
-	var uploaded whatsmeow.UploadResponse
-	var sidecar []byte
-	if isVideo {
-		uploaded, sidecar, err = uploadWithStreamingSidecar(ctx, client, data, mediaType)
-	} else {
-		uploaded, err = client.Upload(ctx, data, mediaType)
-	}
+	uploaded, err := client.Upload(ctx, data, mediaType)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
@@ -345,56 +334,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 			ObjectID:  &uploaded.ObjectID,
 		},
 	}
-	return mediaTransport, fileName, sidecar, nil
-}
-
-func uploadWithStreamingSidecar(ctx context.Context, client *whatsmeow.Client, data []byte, mediaType whatsmeow.MediaType) (whatsmeow.UploadResponse, []byte, error) {
-	tempFile, err := os.CreateTemp("", "mautrix-meta-upload-*")
-	if err != nil {
-		return whatsmeow.UploadResponse{}, nil, fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer func() {
-		_ = tempFile.Close()
-		_ = os.Remove(tempFile.Name())
-	}()
-	uploaded, err := client.UploadReader(ctx, bytes.NewReader(data), struct{ io.ReadWriteSeeker }{tempFile}, mediaType)
-	if err != nil {
-		return uploaded, nil, err
-	}
-	sidecar, err := makeStreamingSidecar(tempFile, uploaded.MediaKey, mediaType)
-	if err != nil {
-		return uploaded, nil, err
-	}
-	return uploaded, sidecar, nil
-}
-
-func makeStreamingSidecar(encrypted *os.File, mediaKey []byte, mediaType whatsmeow.MediaType) ([]byte, error) {
-	stat, err := encrypted.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat encrypted file: %w", err)
-	}
-	expandedKey := hkdfutil.SHA256(mediaKey, nil, []byte(mediaType), 112)
-	iv, macKey := expandedKey[:16], expandedKey[48:80]
-	const chunkSize = 64 * 1024
-	totalSize := int64(len(iv)) + stat.Size()
-	sidecar := make([]byte, 0, (totalSize+chunkSize-1)/chunkSize*10)
-	buf := make([]byte, chunkSize+16)
-	mac := hmac.New(sha256.New, macKey)
-	for offset := int64(0); offset < stat.Size(); offset += chunkSize {
-		window := buf[:min(chunkSize+16, totalSize-offset)]
-		n := 0
-		if offset < int64(len(iv)) {
-			n = copy(window, iv[offset:])
-		}
-		_, err = encrypted.ReadAt(window[n:], offset+int64(n)-int64(len(iv)))
-		if err != nil {
-			return nil, fmt.Errorf("failed to read encrypted file: %w", err)
-		}
-		mac.Reset()
-		mac.Write(window)
-		sidecar = append(sidecar, mac.Sum(nil)[:10]...)
-	}
-	return sidecar, nil
+	return mediaTransport, fileName, uploaded.StreamingSidecar, nil
 }
 
 func (mc *MessageConverter) getVideoThumbnail(ctx context.Context, content *event.MessageEventContent, data []byte, mimeType string) ([]byte, int, int, error) {
