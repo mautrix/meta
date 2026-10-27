@@ -136,10 +136,11 @@ func (mc *MessageConverter) ConvertPollResponse(
 		}
 	}
 	return &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{{
-		ID:      partID,
-		Type:    event.EventUnstablePollResponse,
-		Content: &event.MessageEventContent{RelatesTo: &event.RelatesTo{Type: event.RelReference, EventID: target.MXID}},
-		Extra:   map[string]any{"org.matrix.msc3381.poll.response": event.PollResponse{Answers: answers}},
+		ID:         partID,
+		Type:       event.EventUnstablePollResponse,
+		Content:    &event.MessageEventContent{RelatesTo: &event.RelatesTo{Type: event.RelReference, EventID: target.MXID}},
+		Extra:      map[string]any{"org.matrix.msc3381.poll.response": event.PollResponse{Answers: answers}},
+		DBMetadata: &metaid.MessageMetadata{PollResponse: true},
 	}}}
 }
 

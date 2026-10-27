@@ -200,11 +200,14 @@ func (m *MetaClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.Mat
 	}
 	m.pollSendLock.Lock()
 	defer m.pollSendLock.Unlock()
+	meta := msg.VoteTo.Metadata.(*metaid.MessageMetadata)
+	if meta.PollID != 0 && !meta.PollFetched {
+		m.requestPoll(ctx, msg.Portal.PortalKey, meta.PollID, msg.VoteTo.ID)
+	}
 	task, err := m.Main.MsgConv.PollVoteToMeta(msg)
 	if err != nil {
 		return nil, err
 	}
-	meta := msg.VoteTo.Metadata.(*metaid.MessageMetadata)
 	actorID := metaid.ParseUserLoginID(m.UserLogin.ID)
 	previous := meta.PollVotes[actorID].OptionIDs
 	if slices.Equal(previous, task.SelectedOptions) {
@@ -219,7 +222,7 @@ func (m *MetaClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.Mat
 	if err != nil {
 		return nil, err
 	}
-	response := pollMessageResponse(result, &metaid.MessageMetadata{})
+	response := pollMessageResponse(result, &metaid.MessageMetadata{PollResponse: true})
 	response.PostSave = func(ctx context.Context, _ *database.Message) {
 		updated := *meta
 		updated.PollVotes = maps.Clone(meta.PollVotes)
