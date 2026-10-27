@@ -64,9 +64,23 @@ func makePollEdit(portal networkid.PortalKey, parent *database.Message, edit *br
 func (m *MetaClient) retryPendingPolls(ctx context.Context) {
 	m.pollQueries.Range(func(key, value any) bool {
 		query := value.(*pollQuery)
+		parent, err := m.Main.Bridge.DB.Message.GetPartByID(ctx, query.portal.Receiver, query.target, "")
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Int64("poll_id", key.(int64)).Msg("Failed to find poll for retry")
+			return true
+		} else if parent == nil {
+			m.removePollQuery(key.(int64), query)
+			return true
+		}
 		m.requestPoll(ctx, query.portal, key.(int64), query.target)
 		return true
 	})
+}
+
+func (m *MetaClient) removePollQuery(pollID int64, query *pollQuery) {
+	if m.pollQueries.CompareAndDelete(pollID, query) {
+		close(query.done)
+	}
 }
 
 func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey, pollID int64, target networkid.MessageID) {
@@ -151,7 +165,10 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 			PostHandleFunc: func(ctx context.Context, portal *bridgev2.Portal) {
 				parts, err := m.Main.Bridge.DB.Message.GetAllPartsByID(ctx, portal.Receiver, query.target)
 				parent := pollRoot(parts)
-				if err != nil || parent == nil || !parent.Metadata.(*metaid.MessageMetadata).PollFetched {
+				if err == nil && parent == nil {
+					m.removePollQuery(data.PollID, query)
+					return
+				} else if err != nil || !parent.Metadata.(*metaid.MessageMetadata).PollFetched {
 					zerolog.Ctx(ctx).Err(err).Int64("poll_id", data.PollID).Msg("Poll details were not saved")
 					return
 				}
@@ -163,12 +180,7 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 						return
 					}
 				}
-				m.pollQueries.CompareAndDelete(data.PollID, query)
-				select {
-				case <-query.done:
-				default:
-					close(query.done)
-				}
+				m.removePollQuery(data.PollID, query)
 			},
 		},
 		ID:   query.target,
