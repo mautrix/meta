@@ -95,6 +95,7 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 	go func() {
 		ctx = context.WithoutCancel(ctx)
 		defer query.running.Store(false)
+		var answered bool
 		for attempt := range 3 {
 			select {
 			case <-query.done:
@@ -118,7 +119,8 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 				PollID:    pollID,
 				SyncGroup: 1,
 			})
-			if err == nil {
+			answered = err == nil
+			if answered {
 				select {
 				case <-query.done:
 					cancel()
@@ -129,6 +131,9 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 			}
 			cancel()
 			zerolog.Ctx(ctx).Err(err).Int64("poll_id", pollID).Int("attempt", attempt+1).Msg("Failed to fetch poll details")
+		}
+		if answered {
+			m.removePollQuery(pollID, query)
 		}
 	}()
 }
