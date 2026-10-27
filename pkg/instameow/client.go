@@ -81,6 +81,9 @@ type Client struct {
 
 	seqID   int64
 	seqIDTS time.Time
+
+	failedDeltaSeqID int64
+	failedDeltaCount int
 }
 
 type EventHandler func(context.Context, slidetypes.ClientEvent) error

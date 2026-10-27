@@ -40,6 +40,13 @@ import (
 
 var MaxConnectionRetryInterval = 60 * time.Second
 
+// MaxDeltaAttempts is how many times the same delta may fail before it's skipped.
+// The server replays from the last saved sequence ID after a reconnect,
+// so a delta that can never be handled would otherwise block the stream forever.
+var MaxDeltaAttempts = 5
+
+var errDeltaHandlingFailed = errors.New("failed to handle delta")
+
 func (c *Client) makeNewSocket() {
 	old := c.socket.Swap(dgw.NewSocket(c.getSocketOptions()))
 	if old != nil {
@@ -110,7 +117,7 @@ func (c *Client) Connect(ctx context.Context) {
 			return
 		}
 		c.socketRetries++
-		if !wasConnected {
+		if !wasConnected || errors.Is(err, errDeltaHandlingFailed) {
 			sequentialFailures++
 			sock.Log.Warn().Err(err).
 				Int("connection_num", c.socketRetries).
@@ -307,8 +314,8 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 		for _, deltas := range deltaWrappers {
 			for _, delta := range deltas.Data.SlideDeltaProcessor {
 				err = c.eventHandler(ctx, delta)
-				if err != nil {
-					return fmt.Errorf("failed to handle delta: %w", err)
+				if err != nil && !c.shouldSkipFailedDelta(ctx, delta, err) {
+					return fmt.Errorf("%w: %w", errDeltaHandlingFailed, err)
 				}
 				if c.seqID < delta.UQSeqID {
 					c.seqID = delta.UQSeqID
@@ -335,6 +342,26 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 	default:
 		return fmt.Errorf("unrecognized operation type: %T", rawOp.Operation)
 	}
+}
+
+func (c *Client) shouldSkipFailedDelta(ctx context.Context, delta *slidetypes.Delta, err error) bool {
+	if ctx.Err() != nil || delta.UQSeqID == 0 {
+		return false
+	}
+	if c.failedDeltaSeqID != delta.UQSeqID {
+		c.failedDeltaSeqID = delta.UQSeqID
+		c.failedDeltaCount = 0
+	}
+	c.failedDeltaCount++
+	if c.failedDeltaCount < MaxDeltaAttempts {
+		return false
+	}
+	c.log.Err(err).
+		Int64("uq_seq_id", delta.UQSeqID).
+		Str("delta_type", delta.TypeName).
+		Int("attempts", c.failedDeltaCount).
+		Msg("Skipping delta that failed repeatedly")
+	return true
 }
 
 func (c *Client) Disconnect() {
