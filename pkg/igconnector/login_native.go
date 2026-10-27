@@ -241,7 +241,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		}
 		err := m.client.CompleteInstagramWebSessionTwoFactor(ctx, verificationCode)
 		if err != nil {
-			if isClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
+			if httpclient.IsClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 				m.User.Log.Warn().Err(err).Msg("Instagram web two-factor request failed on the client")
 				return instagramWebTwoFactorStep(
 					m.webTwoFactor,
@@ -302,7 +302,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 		challenge, err = m.client.ContinueInstagramWebSessionAfterCookieConsent(ctx, identifier, password)
 	}
 	if err != nil {
-		if isClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
+		if httpclient.IsClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 			m.User.Log.Warn().Err(err).Msg("Instagram web login request failed on the client")
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
 		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
@@ -497,7 +497,7 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 			return nil, loginerrors.RateLimited
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			return nil, loginerrors.AccountSuspended
-		} else if isClientHTTPError(err) {
+		} else if httpclient.IsClientHTTPError(err) {
 			m.User.Log.Warn().Msg("Instagram CAA login request failed on the client")
 			if !m.webSessionReady {
 				return m.start(ctx, "The request did not complete on this device. Please try again.")
@@ -596,7 +596,7 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		return m.instagramWebChallengeStep(challengeURL)
 	}
 	var requestErr *url.Error
-	if ctx.Err() == nil && isClientHTTPError(err) && errors.As(err, &requestErr) &&
+	if ctx.Err() == nil && httpclient.IsClientHTTPError(err) && errors.As(err, &requestErr) &&
 		requestErr.Op == "Get" && requestErr.URL == client.GetEndpoint("messages") {
 		m.transport = loginTransport
 		return &bridgev2.LoginStep{
@@ -610,10 +610,6 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		}, nil
 	}
 	return step, err
-}
-
-func isClientHTTPError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "error from client: ")
 }
 
 func isMissingInstagramWebTwoFactorCSRF(err error) bool {
