@@ -362,7 +362,7 @@ func (mc *MessageConverter) getVideoThumbnail(ctx context.Context, content *even
 	if !ffmpeg.Supported() {
 		return nil, 0, 0, fmt.Errorf("no thumbnail in event and ffmpeg is not available")
 	}
-	thumbData, err := ffmpeg.ConvertBytes(ctx, data, ".jpg", []string{}, []string{"-frames:v", "1", "-vf", "scale='if(gt(iw,ih),min(960,iw),-2)':'if(gt(iw,ih),-2,min(960,ih))'"}, mimeType)
+	thumbData, err := ffmpeg.ConvertBytes(ctx, data, ".jpg", []string{}, []string{"-frames:v", "1", "-vf", "scale='if(gt(iw,ih),min(960,iw),-2)':'if(gt(iw,ih),-2,min(960,ih))'", "-update", "1", "-f", "image2"}, mimeType)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to extract first frame: %w", err)
 	}
