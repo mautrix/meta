@@ -880,6 +880,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			}
 			zerolog.Ctx(ctx).Debug().
 				Str("state", string(b.State)).
+				Str("dialog_title", dialog.Title).
+				Str("dialog_message", dialog.Message).
 				Int("button_count", len(dialog.Buttons)).
 				Msg("Displaying native Bloks dialog")
 			b.DialogPreviousState = b.State

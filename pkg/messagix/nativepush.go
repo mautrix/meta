@@ -99,6 +99,11 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 	headers.Set("X-FB-Friendly-Name", "registerPush")
 	headers.Set("X-ZERO-STATE", "unknown")
 	headers.Set("X-FB-Family-Device-Id", session.FamilyDeviceID.String())
+	headers.Set("X-Zero-F-Device-Id", deviceID)
+	headers.Set("App-Scope-Id-Header", deviceID)
+	if session.MachineID != "" {
+		headers.Set("X-FB-Integrity-Machine-Id", session.MachineID)
+	}
 	_, response, err := fb.client.http.MakeRequest(ctx, "https://b-graph.facebook.com/me/register_push_tokens", http.MethodPost, headers, []byte(form.Encode()), types.FORM)
 	if err != nil {
 		return fmt.Errorf("failed to register native push: %w", err)

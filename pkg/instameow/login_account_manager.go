@@ -80,6 +80,7 @@ type instagramAccountManagerWebLoginResponse struct {
 }
 
 var ErrInstagramAccountManagerTwoFactorRequired = errors.New("instagram Account Manager profile requires two-factor authentication")
+var ErrInstagramAccountManagerSwitchFailed = errors.New("instagram Account Manager did not switch to the selected web profile")
 
 type instagramWebAccountManagerResponse struct {
 	IGAccounts []struct {
@@ -428,7 +429,7 @@ func (c *Client) switchInstagramAccountManagerWebAccount(
 	if result.FailureMessage == "ig_sso_two_factor_required" {
 		return ErrInstagramAccountManagerTwoFactorRequired
 	} else if !result.Authenticated {
-		return fmt.Errorf("instagram Account Manager did not authenticate the selected web profile: %q", result.FailureMessage)
+		return fmt.Errorf("%w: not authenticated: %q", ErrInstagramAccountManagerSwitchFailed, result.FailureMessage)
 	}
 	return nil
 }
@@ -524,21 +525,32 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 		}
 		if i != 0 {
 			if err := c.switchInstagramAccountManagerWebAccount(ctx, selectedAccount.Username); err != nil {
-				return nil, err
+				return nil, withoutWebChallengeHandoff(err)
 			} else if err := c.loadIndex(ctx); err != nil {
-				return nil, fmt.Errorf("failed to load the selected Instagram web session: %w", err)
+				return nil, fmt.Errorf("failed to load the selected Instagram web session: %w", withoutWebChallengeHandoff(err))
 			}
 			if c.cookies.Get(cookies.IGCookieCSRFToken) == "" {
 				c.cookies.Set(cookies.IGCookieCSRFToken, state.CSRFToken)
 			}
 			if !strings.EqualFold(c.configs.BrowserConfigTable.PolarisViewer.GetUsername(), selectedAccount.Username) {
-				return nil, errors.New("instagram Account Manager web login returned the wrong profile")
+				return nil, fmt.Errorf("%w: web login returned the wrong profile", ErrInstagramAccountManagerSwitchFailed)
 			}
 		}
 		state.Complete = true
 		return nil, nil
 	}
 	return nil, errors.New("invalid Instagram web Account Manager profile selection")
+}
+
+func withoutWebChallengeHandoff(err error) error {
+	if _, ok := InstagramWebRedirectChallengeURL(err); ok {
+		kind := httpclient.ErrChallengeRequired
+		if errors.Is(err, httpclient.ErrConsentRequired) {
+			kind = httpclient.ErrConsentRequired
+		}
+		return fmt.Errorf("%w: %s", kind, err.Error())
+	}
+	return err
 }
 
 func instagramAccountManagerSelectionStep(

@@ -19,6 +19,7 @@ package igconnector
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -26,6 +27,11 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+)
+
+var (
+	chatBackfillSlotsOnce sync.Once
+	chatBackfillSlots     chan struct{}
 )
 
 func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slidetypes.Mailbox) {
@@ -54,6 +60,13 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		return
 	}
 	resyncSince := ic.resyncChatsSince.Swap(nil)
+	if resyncSince != nil && ic.LoginMeta.ThreadBackfillCursor != "" {
+		ic.LoginMeta.ThreadBackfillCursor = ""
+		err := ic.UserLogin.Save(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to clear chat backfill cursor after resnapshot")
+		}
+	}
 	go func() {
 		defer done()
 
@@ -79,7 +92,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 				if err != nil {
 					zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after mailbox processing")
 				}
-			} else if ic.Main.Config.ThreadBackfill.Enabled() {
+			} else if ic.Main.Config.ThreadBackfill.Enabled() && ic.LoginMeta.ThreadBackfillCursor == "" {
 				backfilling = true
 				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, time.Time{})
 			}
@@ -98,6 +111,22 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save reconnection state after mailbox processing")
 		}
 	}()
+}
+
+func (ic *IGConnector) waitForChatBackfillSlot(ctx context.Context) (func(), error) {
+	limit := ic.Config.ThreadBackfill.MaxConcurrent
+	if limit <= 0 {
+		return func() {}, nil
+	}
+	chatBackfillSlotsOnce.Do(func() {
+		chatBackfillSlots = make(chan struct{}, limit)
+	})
+	select {
+	case chatBackfillSlots <- struct{}{}:
+		return func() { <-chatBackfillSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since time.Time) {
@@ -119,6 +148,14 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 
 	log := zerolog.Ctx(ctx).With().Str("action", "chat backfill").Logger()
 	ctx = log.WithContext(ctx)
+
+	if since.IsZero() {
+		release, err := ic.Main.waitForChatBackfillSlot(ctx)
+		if err != nil {
+			return
+		}
+		defer release()
+	}
 
 	processThread := func(thread *slidetypes.ThreadInfo) error {
 		err := ic.saveThreadMappings(ctx, thread)
@@ -149,6 +186,14 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 				return false
 			}
 		}
+		if ctx.Err() != nil {
+			return false
+		} else if since.IsZero() {
+			ic.LoginMeta.ThreadBackfillCursor = cursor
+			if err := ic.UserLogin.Save(ctx); err != nil {
+				log.Err(err).Msg("Failed to save chat backfill cursor")
+			}
+		}
 		return true
 	}
 
@@ -170,7 +215,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		batchCount++
 	}
 	maxBatches := ic.Main.Config.ThreadBackfill.BatchCount
-	for hasMore && (!since.IsZero() || maxBatches < 0 || batchCount < maxBatches) {
+	for hasMore && cursor != "" && (!since.IsZero() || maxBatches < 0 || batchCount < maxBatches) {
 		select {
 		case <-time.After(ic.Main.Config.ThreadBackfill.BatchDelay):
 		case <-ctx.Done():
@@ -195,6 +240,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 	}
 	log.Info().Int("total_batch_count", batchCount).Msg("Completed chat backfill successfully")
 	ic.LoginMeta.BackfillCompleted = true
+	ic.LoginMeta.ThreadBackfillCursor = ""
 	err := ic.UserLogin.Save(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to save user login after chat backfill")

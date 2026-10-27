@@ -141,7 +141,11 @@ func wrapMetaRespError(err error) error {
 	case isMetaAccountError(err):
 		mapped = bridgev2.RespError(mautrix.MForbidden.WithMessage("Facebook requires you to check your account on the website or app"))
 	case errors.As(err, &lsErr), errors.As(err, &gqlErr), errors.Is(err, httpclient.ErrUnexpectedError):
-		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Facebook returned an error"))
+		msg := "Facebook returned an error"
+		if he, ok := errors.AsType[bridgev2.HumanError](err); ok && he.HumanError() != "" {
+			msg = he.HumanError()
+		}
+		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage(msg))
 	default:
 		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Request to Facebook failed"))
 	}
