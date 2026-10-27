@@ -75,6 +75,13 @@ func (er *ErrorResponse) WrapGQLErrors() error {
 	})...)
 }
 
+func (er *ErrorResponse) HumanError() string {
+	if er.ErrorDescription != "" {
+		return er.ErrorDescription
+	}
+	return er.ErrorSummary
+}
+
 func (er *ErrorResponse) Error() string {
 	return fmt.Sprintf("%d: %s", er.ErrorCode, er.ErrorDescription)
 }
