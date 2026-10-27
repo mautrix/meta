@@ -54,6 +54,7 @@ func (gqe *GraphQLError) HumanError() string {
 
 var ErrPleaseLogIn = &ErrorResponse{ErrorCode: 1357001}
 var ErrPleaseReloadPage = &ErrorResponse{ErrorCode: 1357004}
+var ErrContentUnavailable = &ErrorResponse{ErrorCode: 1357031}
 
 func (er *ErrorResponse) Is(other error) bool {
 	var otherLS *ErrorResponse
@@ -73,6 +74,13 @@ func (er *ErrorResponse) WrapGQLErrors() error {
 	return errors.Join(exslices.CastFunc(er.Errors, func(from *GraphQLError) error {
 		return from
 	})...)
+}
+
+func (er *ErrorResponse) HumanError() string {
+	if er.ErrorDescription != "" {
+		return er.ErrorDescription
+	}
+	return er.ErrorSummary
 }
 
 func (er *ErrorResponse) Error() string {

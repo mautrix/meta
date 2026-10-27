@@ -62,6 +62,9 @@ type IGClient struct {
 	resetReconnecting     atomic.Bool
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
+	webPushStaleReported  atomic.Bool
+	webPushChecking       atomic.Bool
+	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 }
 
@@ -77,6 +80,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		caughtUp:  exsync.NewEvent(),
 
 		pendingGroupCreations: exsync.NewSet[string](),
+		webPushCandidates:     exsync.NewSet[networkid.PortalID](),
 	}
 	c.mailboxProcessed.Store(true)
 	login.Client = c
@@ -87,6 +91,8 @@ var (
 	_ bridgev2.NetworkAPI                    = (*IGClient)(nil)
 	_ bridgev2.CredentialExportingNetworkAPI = (*IGClient)(nil)
 )
+
+var getProxyClient = &http.Client{Timeout: 30 * time.Second}
 
 type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
@@ -110,7 +116,7 @@ func (ic *IGConnector) getProxy(reason string) (string, error) {
 		return "", fmt.Errorf("failed to prepare request: %w", err)
 	}
 	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := getProxyClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
@@ -208,6 +214,7 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGAccountSuspended,
+			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
@@ -313,7 +320,8 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 			ic.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
-				Message:    lsErr.Error(),
+				Message:    "Instagram returned an error while connecting",
+				Info:       map[string]any{"go_error": lsErr.Error()},
 			})
 			if stateEvt == status.StateTransientDisconnect {
 				ic.connectWithRetry(retryCtx, ctx, attempts+1)

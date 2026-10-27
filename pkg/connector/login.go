@@ -417,7 +417,7 @@ func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, 
 		return m.finishHistory(ctx)
 	}
 	if err := m.SavedClient.MessengerLite.CancelLoginStep(ctx); err != nil {
-		return nil, err
+		return nil, wrapMetaRespError(err)
 	}
 	return m.proceed(ctx, nil)
 }
@@ -430,6 +430,8 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
 			err = loginerrors.Checkpoint
+		} else if httpclient.IsClientHTTPError(err) {
+			err = loginerrors.ClientHTTPFailed.WithInternalError(err)
 		}
 		return nil, err
 	}

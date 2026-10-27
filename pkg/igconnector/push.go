@@ -26,9 +26,14 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exslices"
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
+	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -65,7 +70,8 @@ func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType brid
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
 	meta := ic.UserLogin.Metadata.(*metaid.UserLoginMetadata)
-	if meta.PushKeys == nil {
+	newKeys := meta.PushKeys == nil
+	if newKeys {
 		meta.GeneratePushKeys()
 		err := ic.UserLogin.Save(ctx)
 		if err != nil {
@@ -80,8 +86,10 @@ func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType brid
 	if cli == nil {
 		return instameow.ErrClientIsNil
 	}
-	err := cli.RegisterPushNotifications(ctx, token, keys)
-	return err
+	if err := cli.RegisterPushNotifications(ctx, token, keys); err != nil {
+		return err
+	}
+	return ic.Main.DB.InitIGWebPush(ctx, ic.UserLogin.ID, time.Now(), newKeys)
 }
 
 func (ic *IGClient) registerNativePush(ctx context.Context, token string) error {
@@ -102,6 +110,9 @@ func (ic *IGClient) registerNativePush(ctx context.Context, token string) error 
 	}
 	if err := client.RegisterNativePushNotifications(ctx, token, ic.LoginMeta.NativePushKeys); err != nil {
 		return err
+	}
+	if err := ic.Main.DB.DeleteIGWebPush(ctx, ic.UserLogin.ID); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to clear web push state after native push registration")
 	}
 	session := client.GetInstagramNativeSession()
 	if ic.LoginMeta.InstagramNativeSession == nil || *session != *ic.LoginMeta.InstagramNativeSession {
@@ -244,6 +255,9 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
+		if err = ic.Main.DB.PutIGWebPushReceived(ctx, ic.UserLogin.ID, time.Now()); err != nil {
+			log.Err(err).Msg("Failed to save web push receive time")
+		}
 		if strings.HasPrefix(data.MessageID, "mid.") {
 			parsedMsgID, err = methods.ParseMessageIDFull(data.MessageID)
 		} else if strings.HasPrefix(data.Params["mid"], "mid.") {
@@ -294,4 +308,120 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 		ic.ensurePushMessageReceived(ctx, data, parsedMsgID)
 	}
 	return ctx.Err()
+}
+
+const (
+	webPushStaleAfter    = 72 * time.Hour
+	webPushMissedMessage = time.Hour
+	webPushCheckDelay    = 15 * time.Second
+)
+
+func (ic *IGClient) usesWebPush() bool {
+	session := ic.LoginMeta.InstagramNativeSession
+	return ic.LoginMeta.PushKeys != nil && (session == nil || session.Authorization == "")
+}
+
+func (ic *IGClient) isWebPushStale(ctx context.Context) bool {
+	if !ic.usesWebPush() {
+		return false
+	}
+	_, stale, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get web push state")
+	}
+	return stale
+}
+
+func (ic *IGClient) sendWebPushStaleState() {
+	ic.UserLogin.BridgeState.Send(status.BridgeState{
+		StateEvent: status.StateBadCredentials,
+		Error:      IGWebPushStale,
+		UserAction: status.UserActionRelogin,
+	})
+}
+
+func (ic *IGClient) checkWebPushStale(portalKey networkid.PortalKey, msg *slidetypes.Message) {
+	if msg == nil || !ic.usesWebPush() || ic.webPushStaleReported.Load() ||
+		time.Since(msg.TimestampMS.Time) < webPushMissedMessage ||
+		msg.SenderFBID == metaid.ParseUserLoginID(ic.UserLogin.ID) {
+		return
+	}
+	ic.webPushCandidates.Add(portalKey.ID)
+	ic.startWebPushCheck()
+}
+
+func (ic *IGClient) startWebPushCheck() {
+	if ic.webPushCandidates.Size() > 0 && ic.webPushChecking.CompareAndSwap(false, true) {
+		go func() {
+			ic.confirmWebPushStale()
+			ic.webPushChecking.Store(false)
+			if !ic.webPushStaleReported.Load() {
+				ic.startWebPushCheck()
+			}
+		}()
+	}
+}
+
+func (ic *IGClient) confirmWebPushStale() {
+	log := ic.UserLogin.Log.With().Str("action", "check web push").Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	select {
+	case <-time.After(webPushCheckDelay):
+	case <-ctx.Done():
+		ic.webPushCandidates.Clear()
+		return
+	}
+	candidates := ic.webPushCandidates.ReplaceAll(nil)
+	receivedBefore := time.Now().Add(-webPushStaleAfter)
+	lastReceived, _, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
+	if err != nil {
+		log.Err(err).Msg("Failed to get web push state")
+		return
+	} else if lastReceived.IsZero() || lastReceived.After(receivedBefore) {
+		return
+	}
+	cli := ic.Client
+	if cli == nil {
+		return
+	}
+	log.Debug().
+		Time("last_web_push", lastReceived).
+		Strs("candidate_chats", exslices.CastToString[string](candidates.AsList())).
+		Msg("Fetching inbox to check if late chats should have gotten web push")
+	resp, err := cli.GetMailbox(ctx)
+	if err != nil {
+		log.Err(err).Msg("Failed to fetch inbox to check web push state")
+		return
+	}
+	var missed *slidetypes.ThreadInfo
+	if mailbox := resp.GetMailbox(); mailbox != nil {
+		for _, edge := range mailbox.ThreadsByFolder.Edges {
+			info := edge.Node.AsIGDirectThread
+			if info == nil || !candidates.Has(ic.makePortalKey(info.ThreadKey, info.IsGroup).ID) ||
+				ptr.Val(info.IsMuted) || info.SystemFolder == "PENDING" || info.SystemFolder == "SPAM" {
+				continue
+			}
+			missed = info
+			break
+		}
+	}
+	if missed == nil {
+		log.Debug().
+			Int("candidates", candidates.Size()).
+			Msg("Late messages are only in chats that don't get pushes, not marking web push as stale")
+		return
+	}
+	changed, err := ic.Main.DB.SetIGWebPushStale(ctx, ic.UserLogin.ID, receivedBefore)
+	if err != nil {
+		log.Err(err).Msg("Failed to save web push stale state")
+		return
+	} else if !changed {
+		return
+	}
+	ic.webPushStaleReported.Store(true)
+	log.Warn().
+		Time("last_web_push", lastReceived).
+		Str("thread_id", missed.ThreadFBID).
+		Msg("Caught up a message that never got a web push, asking for relogin")
+	ic.sendWebPushStaleState()
 }

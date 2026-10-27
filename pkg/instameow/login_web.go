@@ -46,6 +46,7 @@ const instagramWebTwoFactorSendCodeDocID = "27297512486584094"
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
 var ErrInstagramWebLoginRejected = errors.New("instagram web sign-in was rejected")
+var ErrInstagramWebRegistrationOffered = errors.New("instagram offered to register a new account instead of signing in")
 var ErrInstagramWebAccountPendingDeletion = errors.New("instagram account is pending deletion")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
@@ -1081,6 +1082,7 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
+	c.logLoginRequestShape(rq.FbAPIReqFriendlyName, form, headers)
 	// A lost response must not replay a password, verification code or CAPTCHA.
 	endpoint := c.GetEndpoint("graphql")
 	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
@@ -1095,6 +1097,8 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 		return nil, err
 	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
 		return nil, ErrInstagramWebCheckpointRequestFailed
+	} else if gjson.GetBytes(bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix), "errors.#(code==1675004)").Exists() {
+		return nil, httpclient.ErrRateLimited
 	}
 	return body, nil
 }

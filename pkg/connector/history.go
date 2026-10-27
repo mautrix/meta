@@ -190,6 +190,9 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 	if (params.Forward || params.AnchorMessage == nil) && len(response.Messages) > 0 {
 		readState, _ := m.historyReadStates.Get(metaid.ParseFBPortalID(params.Portal.ID))
 		response.MarkRead = readState.lastActivity > 0 && readState.readWatermark >= max(readState.lastActivity, newestTimestamp)
+		if !response.MarkRead && readState.readWatermark > 0 {
+			response.ReadUpTo = time.UnixMilli(readState.readWatermark)
+		}
 	}
 	return response, nil
 }
