@@ -139,14 +139,15 @@ func (db *MetaDB) GetThreadByMessage(ctx context.Context, messageID string) (thr
 	return
 }
 
-func (db *MetaDB) PutHybridThreadMapping(ctx context.Context, loginID networkid.UserLoginID, fbThreadKey, threadJID, threadType int64) error {
+func (db *MetaDB) PutHybridThreadMapping(ctx context.Context, userID id.UserID, loginID networkid.UserLoginID, fbThreadKey, threadJID, threadType int64) error {
 	_, err := db.Exec(ctx, `
-		INSERT INTO meta_hybrid_thread (bridge_id, login_id, fb_thread_key, thread_jid, thread_type)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO meta_hybrid_thread (bridge_id, login_id, user_mxid, fb_thread_key, thread_jid, thread_type)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (bridge_id, login_id, fb_thread_key) DO UPDATE SET
+			user_mxid = excluded.user_mxid,
 			thread_jid = excluded.thread_jid,
 			thread_type = CASE WHEN excluded.thread_type = 0 THEN meta_hybrid_thread.thread_type ELSE excluded.thread_type END
-	`, db.BridgeID, loginID, fbThreadKey, threadJID, threadType)
+	`, db.BridgeID, loginID, userID, fbThreadKey, threadJID, threadType)
 	return err
 }
 
