@@ -78,6 +78,11 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	}
 
 	targetURL, err := url.Parse(xma.TargetURL)
+	if err == nil && targetURL.Host == "l.facebook.com" {
+		if realURL, err := url.Parse(targetURL.Query().Get("u")); err == nil && realURL.String() != "" {
+			targetURL = realURL
+		}
+	}
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
 	} else if targetURL.String() != "" {
