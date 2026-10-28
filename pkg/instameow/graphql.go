@@ -182,6 +182,23 @@ func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req 
 	if err != nil {
 		err = fmt.Errorf("failed to unmarshal %T: %w", resp, err)
 		return
+	}
+	if wrappedResp.AsError() != nil {
+		zerolog.Ctx(ctx).Warn().
+			Str("graphql_method", name).
+			Int("error_code", wrappedResp.ErrorCode).
+			Str("error_summary", wrappedResp.ErrorSummary).
+			Str("redirect_path", wrappedResp.RedirectPath()).
+			Any("graphql_errors", wrappedResp.Errors).
+			Msg("GraphQL request returned an error")
+	}
+	if allowReload && wrappedResp.ErrorCode == types.ErrContentUnavailable.ErrorCode {
+		zerolog.Ctx(ctx).Debug().Msg("Got content unavailable error, reloading index to check for account notices")
+		_, reloadErr := c.ReloadIndex(context.WithoutCancel(ctx))
+		if reloadErr != nil {
+			zerolog.Ctx(ctx).Err(reloadErr).Msg("Failed to reload index after content unavailable error")
+			c.checkResponseError(reloadErr)
+		}
 	} else if allowReload && wrappedResp.ErrorCode == types.ErrPleaseReloadPage.ErrorCode {
 		zerolog.Ctx(ctx).Warn().Err(wrappedResp.AsError()).
 			Msg("Got please reload page error, reloading index and retrying")

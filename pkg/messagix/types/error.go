@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"go.mau.fi/util/exslices"
@@ -83,6 +84,18 @@ func (er *ErrorResponse) HumanError() string {
 	return er.ErrorSummary
 }
 
+func (er *ErrorResponse) RedirectPath() string {
+	if er.RedirectTo == "" {
+		return ""
+	} else if parsed, err := url.Parse(er.RedirectTo); err == nil {
+		return parsed.Path
+	}
+	return "(unparseable)"
+}
+
 func (er *ErrorResponse) Error() string {
+	if redirectPath := er.RedirectPath(); redirectPath != "" {
+		return fmt.Sprintf("%d: %s (redirect to %s)", er.ErrorCode, er.ErrorDescription, redirectPath)
+	}
 	return fmt.Sprintf("%d: %s", er.ErrorCode, er.ErrorDescription)
 }
