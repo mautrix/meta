@@ -54,7 +54,7 @@ type MetaClient struct {
 	pushRegistrationLock sync.Mutex
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
 	permanentErrored     atomic.Bool
-	resetReconnecting    atomic.Bool
+	reconnecting         atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -197,6 +197,10 @@ func (m *MetaClient) Connect(ctx context.Context) {
 		return
 	}
 	defer m.connectLock.Unlock()
+	m.connect(ctx)
+}
+
+func (m *MetaClient) connect(ctx context.Context) {
 	m.historyReadStates.Clear()
 	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
 		// Ensure both states start at CONNECTING now
@@ -660,28 +664,36 @@ func (m *MetaClient) canReconnectError24() bool {
 }
 
 func (m *MetaClient) reconnectAfterNetworkReset() {
-	if !m.resetReconnecting.CompareAndSwap(false, true) {
+	if !m.reconnecting.CompareAndSwap(false, true) {
 		return
 	}
-	defer m.resetReconnecting.Store(false)
+	defer m.reconnecting.Store(false)
 	m.UserLogin.BridgeState.StopUnknownErrorReconnect()
 	m.Disconnect()
 	m.Connect(m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx))
 }
 
 func (m *MetaClient) FullReconnect() {
-	if m.LoginMeta.Cookies == nil {
+	if m.LoginMeta.Cookies == nil || m.Client == nil {
+		return
+	} else if !m.reconnecting.CompareAndSwap(false, true) {
+		m.UserLogin.Log.Debug().Msg("Not doing full reconnect as another reconnect is in progress")
 		return
 	}
+	defer m.reconnecting.Store(false)
 	ctx := m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx)
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)
+	m.metaState = status.BridgeState{}
+	m.waState = status.BridgeState{}
 	err := m.Main.DB.DeleteReconnectionState(ctx, m.UserLogin.ID)
 	if err != nil {
 		m.UserLogin.Log.Err(err).Msg("Failed to delete cached reconnection state for full reconnect")
 	}
-	m.Connect(ctx)
+	m.connectLock.Lock()
+	defer m.connectLock.Unlock()
+	m.connect(ctx)
 	m.lastFullReconnect = time.Now()
 }
 

@@ -122,6 +122,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
 			log.Debug().Err(err).Msg("Doing full reconnect and retrying upload")
 			m.FullReconnect()
+			if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+				return nil, ErrNotConnected
+			}
 			tasks, err = m.Main.MsgConv.ToMeta(
 				ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
 			)
