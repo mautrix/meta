@@ -40,6 +40,24 @@ import (
 
 var MaxConnectionRetryInterval = 60 * time.Second
 
+// MaxDeltaAttempts is how many times the same delta may fail before it's skipped.
+// The server replays from the last saved sequence ID after a reconnect,
+// so a delta that can never be handled would otherwise block the stream forever.
+var MaxDeltaAttempts = 5
+
+type deltaHandlingError struct {
+	attempts int
+	err      error
+}
+
+func (e *deltaHandlingError) Error() string {
+	return fmt.Sprintf("failed to handle delta: %v", e.err)
+}
+
+func (e *deltaHandlingError) Unwrap() error {
+	return e.err
+}
+
 func (c *Client) makeNewSocket() {
 	old := c.socket.Swap(dgw.NewSocket(c.getSocketOptions()))
 	if old != nil {
@@ -110,7 +128,21 @@ func (c *Client) Connect(ctx context.Context) {
 			return
 		}
 		c.socketRetries++
-		if !wasConnected {
+		var deltaErr *deltaHandlingError
+		if errors.As(err, &deltaErr) {
+			sequentialFailures = 0
+			sock.Log.Warn().Err(err).
+				Int("connection_num", c.socketRetries).
+				Int("delta_attempts", deltaErr.attempts).
+				Msg("Delta handling failed, reconnecting after backoff")
+			select {
+			case <-ctx.Done():
+				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
+				return
+			case <-time.After(min(time.Duration(1<<deltaErr.attempts)*time.Second, MaxConnectionRetryInterval)):
+				continue
+			}
+		} else if !wasConnected {
 			sequentialFailures++
 			sock.Log.Warn().Err(err).
 				Int("connection_num", c.socketRetries).
@@ -308,7 +340,10 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 			for _, delta := range deltas.Data.SlideDeltaProcessor {
 				err = c.eventHandler(ctx, delta)
 				if err != nil {
-					return fmt.Errorf("failed to handle delta: %w", err)
+					attempts, skip := c.trackFailedDelta(ctx, delta, err)
+					if !skip {
+						return &deltaHandlingError{attempts: attempts, err: err}
+					}
 				}
 				if c.seqID < delta.UQSeqID {
 					c.seqID = delta.UQSeqID
@@ -335,6 +370,26 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 	default:
 		return fmt.Errorf("unrecognized operation type: %T", rawOp.Operation)
 	}
+}
+
+func (c *Client) trackFailedDelta(ctx context.Context, delta *slidetypes.Delta, err error) (attempts int, skip bool) {
+	if ctx.Err() != nil || delta.UQSeqID == 0 {
+		return 1, false
+	}
+	if c.failedDeltaSeqID != delta.UQSeqID {
+		c.failedDeltaSeqID = delta.UQSeqID
+		c.failedDeltaCount = 0
+	}
+	c.failedDeltaCount++
+	if c.failedDeltaCount < MaxDeltaAttempts {
+		return c.failedDeltaCount, false
+	}
+	c.log.Err(err).
+		Int64("uq_seq_id", delta.UQSeqID).
+		Str("delta_type", delta.TypeName).
+		Int("attempts", c.failedDeltaCount).
+		Msg("Skipping delta that failed repeatedly")
+	return c.failedDeltaCount, true
 }
 
 func (c *Client) Disconnect() {
