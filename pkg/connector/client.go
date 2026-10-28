@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"runtime/debug"
@@ -72,9 +73,11 @@ type MetaClient struct {
 	lastStateSave     time.Time
 	lastStateSaveLock sync.Mutex
 
-	E2EEClient      *whatsmeow.Client
-	WADevice        *store.Device
-	e2eeConnectLock sync.Mutex
+	E2EEClient            *whatsmeow.Client
+	WADevice              *store.Device
+	e2eeConnectLock       sync.Mutex
+	stopE2EEReconnect     atomic.Pointer[context.CancelFunc]
+	e2eeReconnectAttempts atomic.Int32
 
 	metaState status.BridgeState
 	waState   status.BridgeState
@@ -464,6 +467,7 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 				},
 			}
 			m.sendBridgeState(m.waState)
+			m.scheduleE2EEReconnect()
 		}
 	}()
 	err := m.connectE2EE()
@@ -483,7 +487,44 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 		} else {
 			m.UserLogin.Log.Err(err).Msg("Failed to connect to e2ee")
 		}
+		m.scheduleE2EEReconnect()
 	}
+}
+
+func (m *MetaClient) scheduleE2EEReconnect() {
+	attempts := m.e2eeReconnectAttempts.Add(1)
+	backoff := min(time.Duration(1<<min(attempts, 10))*time.Second, messagix.MaxConnectBackoff)
+	backoff = backoff/2 + rand.N(backoff/2)
+	ctx, cancel := context.WithCancel(context.Background())
+	if oldCancel := m.stopE2EEReconnect.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	m.UserLogin.Log.Debug().Stringer("reconnect_in", backoff).Msg("Scheduling e2ee reconnect")
+	go func() {
+		defer cancel()
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return
+		}
+		if m.stopE2EEReconnect.CompareAndSwap(&cancel, nil) && m.Client != nil && m.waState.StateEvent == status.StateUnknownError {
+			m.reconnectE2EE()
+		}
+	}()
+}
+
+func (m *MetaClient) reconnectE2EE() {
+	m.UserLogin.Log.Debug().Msg("Reconnecting e2ee client after error")
+	m.e2eeConnectWaiter.Clear()
+	m.e2eeConnectLock.Lock()
+	if cli := m.E2EEClient; cli != nil {
+		cli.Disconnect()
+		m.E2EEClient = nil
+	}
+	// The store may have deleted the device, so load it again by ID
+	m.WADevice = nil
+	m.e2eeConnectLock.Unlock()
+	m.tryConnectE2EE(false)
 }
 
 func (m *MetaClient) connectE2EE() error {
@@ -624,6 +665,10 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 	if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 		(*stopPeriodicReconnect)()
 	}
+	if stopE2EEReconnect := m.stopE2EEReconnect.Swap(nil); stopE2EEReconnect != nil {
+		(*stopE2EEReconnect)()
+	}
+	m.e2eeReconnectAttempts.Store(0)
 	return
 }
 
@@ -705,12 +750,27 @@ func (m *MetaClient) resetWADevice() {
 func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeState {
 	// The Meta bridge internally has two states - one for connection to meta and one for whatsapp;
 	// as such we need to merge the two states when sending updates and pick the "worst case".
-	copyFrom := m.pickWorstCaseBridgeState(state)
+	// A whatsapp failure only affects encrypted chats, so it's reported on top of a connected meta state
+	// instead of making the whole login look broken.
+	waState := m.waState
+	waFailed := waState.StateEvent == status.StateUnknownError
+	if waFailed {
+		waState.StateEvent = status.StateConnected
+		if state.StateEvent == status.StateUnknownError && state.Error == waState.Error {
+			state.StateEvent = status.StateConnected
+		}
+	}
+	copyFrom := m.pickWorstCaseBridgeState(state, &waState)
 	if copyFrom != nil {
 		state.StateEvent = copyFrom.StateEvent
 		state.Error = copyFrom.Error
 		state.Message = copyFrom.Message
 		state.Info = maps.Clone(copyFrom.Info)
+	}
+	if waFailed && state.StateEvent == status.StateConnected {
+		state.Error = waState.Error
+		state.Message = waState.Message
+		state.Info = waState.Info
 	}
 
 	if state.Info == nil {
@@ -728,8 +788,8 @@ func (m *MetaClient) sendBridgeState(state status.BridgeState) {
 	m.UserLogin.BridgeState.Send(state)
 }
 
-func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState) *status.BridgeState {
-	if state.StateEvent == m.waState.StateEvent && state.StateEvent == m.metaState.StateEvent {
+func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState, waState *status.BridgeState) *status.BridgeState {
+	if state.StateEvent == waState.StateEvent && state.StateEvent == m.metaState.StateEvent {
 		// If both states are the same as the input, we can use as-is
 		return nil
 	}
@@ -744,8 +804,8 @@ func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState) *status.
 	} {
 		if state.StateEvent == status {
 			return nil
-		} else if m.waState.StateEvent == status {
-			return &m.waState
+		} else if waState.StateEvent == status {
+			return waState
 		} else if m.metaState.StateEvent == status {
 			return &m.metaState
 		}
