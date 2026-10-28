@@ -98,11 +98,13 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 	case *messagix.TransientDisconnectEvent:
 		log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
 		m.connectWaiter.Clear()
-		m.metaState = status.BridgeState{
-			StateEvent: status.StateTransientDisconnect,
-			Error:      MetaTransientDisconnect,
+		if m.metaState.StateEvent != status.StateBadCredentials {
+			m.metaState = status.BridgeState{
+				StateEvent: status.StateTransientDisconnect,
+				Error:      MetaTransientDisconnect,
+			}
+			m.sendBridgeState(m.metaState)
 		}
-		m.sendBridgeState(m.metaState)
 		if errors.Is(evt.Err, messagix.ErrFatalSocketSyncError) && m.canReconnect() {
 			// Retrying the socket reuses the sync state from the last page load, so it
 			// keeps failing the same way until the page is loaded again.
@@ -116,8 +118,10 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		}
 		log.Debug().Msg("Reconnected to Meta socket")
 		m.connectWaiter.Set()
-		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
-		m.sendBridgeState(m.metaState)
+		if m.metaState.StateEvent != status.StateBadCredentials {
+			m.metaState = status.BridgeState{StateEvent: status.StateConnected}
+			m.sendBridgeState(m.metaState)
+		}
 	case *messagix.PermanentErrorEvent:
 		// TODO do full reconnect in some cases?
 		m.permanentErrored.Store(true)

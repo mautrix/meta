@@ -135,11 +135,12 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			}
 			return nil, wrapMetaError(err)
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
-			m.UserLogin.BridgeState.Send(status.BridgeState{
+			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
 				UserAction: status.UserActionRestart,
-			})
+			}
+			m.sendBridgeState(m.metaState)
 			return nil, wrapMetaError(err)
 		} else if err != nil {
 			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))

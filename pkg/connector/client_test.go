@@ -13,6 +13,7 @@ func TestFillBridgeState(t *testing.T) {
 	connected := status.BridgeState{StateEvent: status.StateConnected}
 	transient := status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: MetaTransientDisconnect}
 	waFailed := status.BridgeState{StateEvent: status.StateUnknownError, Error: WAConnectError}
+	consent := status.BridgeState{StateEvent: status.StateBadCredentials, Error: FBConsentRequired, UserAction: status.UserActionRestart}
 	metaFailed := status.BridgeState{StateEvent: status.StateUnknownError, Error: MetaConnectError}
 
 	for name, tc := range map[string]struct {
@@ -49,6 +50,12 @@ func TestFillBridgeState(t *testing.T) {
 			wa:       connected,
 			expected: connected,
 		},
+		"WhatsAppConnectedKeepsStoredBadCredentials": {
+			input:    connected,
+			meta:     consent,
+			wa:       connected,
+			expected: consent,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := &MetaClient{
@@ -57,8 +64,10 @@ func TestFillBridgeState(t *testing.T) {
 				waState:   tc.wa,
 			}
 			out := m.FillBridgeState(tc.input)
-			if out.StateEvent != tc.expected.StateEvent || out.Error != tc.expected.Error {
-				t.Errorf("expected %s/%s, got %s/%s", tc.expected.StateEvent, tc.expected.Error, out.StateEvent, out.Error)
+			if out.StateEvent != tc.expected.StateEvent || out.Error != tc.expected.Error || out.UserAction != tc.expected.UserAction {
+				t.Errorf("expected %s/%s/%s, got %s/%s/%s",
+					tc.expected.StateEvent, tc.expected.Error, tc.expected.UserAction,
+					out.StateEvent, out.Error, out.UserAction)
 			}
 		})
 	}

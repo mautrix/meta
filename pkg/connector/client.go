@@ -765,12 +765,13 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.StateEvent = copyFrom.StateEvent
 		state.Error = copyFrom.Error
 		state.Message = copyFrom.Message
+		state.UserAction = copyFrom.UserAction
 		state.Info = maps.Clone(copyFrom.Info)
 	}
 	if waFailed && state.StateEvent == status.StateConnected {
 		state.Error = waState.Error
 		state.Message = waState.Message
-		state.Info = waState.Info
+		state.Info = maps.Clone(waState.Info)
 	}
 
 	if state.Info == nil {
