@@ -73,6 +73,9 @@ type Client struct {
 	loadIndexLock sync.Mutex
 	lastReload    time.Time
 
+	noticeCheckLock sync.Mutex
+	lastNoticeCheck time.Time
+
 	enableTyping bool
 
 	logRedactedLoginResponses bool

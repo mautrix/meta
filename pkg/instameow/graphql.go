@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -167,6 +168,22 @@ func (c *Client) SetUserBlocked(ctx context.Context, userID string, blocked bool
 
 type noResp = json.RawMessage
 
+func (c *Client) checkAccountNotice(ctx context.Context) {
+	c.noticeCheckLock.Lock()
+	if time.Since(c.lastNoticeCheck) < 15*time.Minute {
+		c.noticeCheckLock.Unlock()
+		return
+	}
+	c.lastNoticeCheck = time.Now()
+	c.noticeCheckLock.Unlock()
+	zerolog.Ctx(ctx).Debug().Msg("Got content unavailable error, reloading index to check for account notices")
+	_, err := c.ReloadIndex(context.WithoutCancel(ctx))
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to reload index after content unavailable error")
+		c.checkResponseError(err)
+	}
+}
+
 func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req any, allowReload bool) (resp T, err error) {
 	if c == nil {
 		err = ErrClientIsNil
@@ -193,12 +210,7 @@ func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req 
 			Msg("GraphQL request returned an error")
 	}
 	if allowReload && wrappedResp.ErrorCode == types.ErrContentUnavailable.ErrorCode {
-		zerolog.Ctx(ctx).Debug().Msg("Got content unavailable error, reloading index to check for account notices")
-		_, reloadErr := c.ReloadIndex(context.WithoutCancel(ctx))
-		if reloadErr != nil {
-			zerolog.Ctx(ctx).Err(reloadErr).Msg("Failed to reload index after content unavailable error")
-			c.checkResponseError(reloadErr)
-		}
+		c.checkAccountNotice(ctx)
 	} else if allowReload && wrappedResp.ErrorCode == types.ErrPleaseReloadPage.ErrorCode {
 		zerolog.Ctx(ctx).Warn().Err(wrappedResp.AsError()).
 			Msg("Got please reload page error, reloading index and retrying")
