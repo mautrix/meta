@@ -441,6 +441,8 @@ func (ic *IGClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.Ma
 func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
 	if msg.Type.IsSelf && msg.OrigSender != nil {
 		return nil, nil
+	} else if msg.Type != bridgev2.Invite && msg.Type != bridgev2.Kick && msg.Type != bridgev2.Leave {
+		return nil, nil
 	}
 	if msg.Portal.RoomType == database.RoomTypeDM {
 		return nil, errors.New("cannot change members for DM")
