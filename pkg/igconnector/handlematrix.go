@@ -439,11 +439,8 @@ func (ic *IGClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.Ma
 }
 
 func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
-	if msg.Type.IsSelf && msg.OrigSender != nil {
+	if (msg.Type.IsSelf && msg.OrigSender != nil) || msg.Portal.RoomType == database.RoomTypeDM {
 		return nil, nil
-	}
-	if msg.Portal.RoomType == database.RoomTypeDM {
-		return nil, errors.New("cannot change members for DM")
 	}
 
 	// Note: technically this should use the IGID, but only groups can have member changes

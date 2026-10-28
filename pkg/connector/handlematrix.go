@@ -792,8 +792,8 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 }
 
 func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
-	if msg.Portal.RoomType == database.RoomTypeDM {
-		return nil, errors.New("cannot change members for DM")
+	if (msg.Type.IsSelf && msg.OrigSender != nil) || msg.Portal.RoomType == database.RoomTypeDM {
+		return nil, nil
 	}
 
 	var targetID int64
