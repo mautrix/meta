@@ -135,7 +135,6 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			stateEvt = status.StateUnknownError
 			errCode = DGWMainStreamClosed
 			retErr = fmt.Errorf("main stream closed too many times; stop reconnects")
-			ic.permanentErrored.Store(true)
 			ic.cancelPeriodicReconnect()
 		}
 		ic.UserLogin.BridgeState.Send(status.BridgeState{

@@ -124,8 +124,8 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		}
 	case *messagix.PermanentErrorEvent:
 		// TODO do full reconnect in some cases?
-		m.permanentErrored.Store(true)
 		if websocket.CloseStatus(evt.Err) == dgw.CloseStatusUnauthorized {
+			m.permanentErrored.Store(true)
 			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      DGWConnectionUnauthorized,

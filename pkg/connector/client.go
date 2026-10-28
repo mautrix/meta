@@ -223,6 +223,7 @@ const MaxConnectRetries = 10
 
 func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts int) {
 	if m.LoginMeta.Platform == types.Instagram {
+		m.permanentErrored.Store(true)
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGNotSupported,
@@ -303,6 +304,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			}
 		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
 			// Note: this is probably exclusive to instagram
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBChallengeRequired,
@@ -311,6 +313,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			})
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			// Note: this is probably exclusive to instagram
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBAccountSuspended,
@@ -318,6 +321,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBCheckpointRequired,
@@ -325,6 +329,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
@@ -335,6 +340,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {
 				stateEvt = status.StateBadCredentials
+				m.permanentErrored.Store(true)
 			} else if attempts < MaxConnectRetries {
 				stateEvt = status.StateTransientDisconnect
 			}
@@ -673,7 +679,7 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 }
 
 func (m *MetaClient) IsLoggedIn() bool {
-	return m.Client.IsAuthenticatedAndLoaded() && !m.permanentErrored.Load()
+	return m.LoginMeta.Cookies != nil && !m.permanentErrored.Load()
 }
 
 func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
