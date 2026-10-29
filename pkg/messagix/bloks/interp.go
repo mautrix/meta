@@ -1729,6 +1729,26 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s", msg)
+	case "bk.action.callback.Apply":
+		if len(call.Args) < 1 {
+			return nil, fmt.Errorf("callback.Apply needs a callback")
+		}
+		callback, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		if callback.Value() == nil {
+			return BloksNothing, nil
+		}
+		if _, ok := callback.Value().(*BloksLambda); !ok {
+			return nil, fmt.Errorf("callback.Apply expected a callback, got %T", callback.Value())
+		}
+		return i.Evaluate(ctx, &BloksScriptNode{
+			Content: &BloksScriptFuncall{
+				Function: "bk.action.core.Apply",
+				Args:     append([]BloksScriptNode{{Content: callback}}, call.Args[1:]...),
+			},
+		})
 	case "bk.action.callback.MakeWithScopeOnly":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.session_store.Get":

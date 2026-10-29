@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"maps"
 	"regexp"
 	"strings"
 	"time"
@@ -416,7 +417,17 @@ func (b *Browser) codeNotSentMessage() string {
 	return "That code was not sent to " + b.profile.serviceName + "; please try again"
 }
 
-func collectPendingVariableIDs(node *BloksScriptNode, ids map[BloksVariableID]struct{}) {
+type scriptInventory struct {
+	variables map[BloksVariableID]struct{}
+}
+
+func newScriptInventory() *scriptInventory {
+	return &scriptInventory{
+		variables: map[BloksVariableID]struct{}{},
+	}
+}
+
+func (inv *scriptInventory) add(node *BloksScriptNode, interp *Interpreter, visited map[BloksScriptID]struct{}) {
 	if node == nil {
 		return
 	}
@@ -425,35 +436,58 @@ func collectPendingVariableIDs(node *BloksScriptNode, ids map[BloksVariableID]st
 		return
 	}
 	switch call.Function {
-	case "bk.action.bloks.GetVariable2", "bk.action.bloks.GetVariableWithScope":
-		if len(call.Args) > 0 {
-			literal, ok := call.Args[0].Content.(*BloksScriptLiteral)
-			if ok {
-				name, ok := literal.Value().(string)
-				if ok && strings.Contains(strings.ToLower(name), "pending") {
-					ids[BloksVariableID(name)] = struct{}{}
+	case "bk.action.bloks.GetVariable2", "bk.action.bloks.GetVariableWithScope",
+		"bk.action.bloks.WriteLocalState", "bk.action.bloks.WriteGlobalConsistencyStore":
+		if name, ok := literalStringArg(call, 0); ok {
+			inv.variables[BloksVariableID(name)] = struct{}{}
+		}
+	case "bk.action.bloks.GetScript":
+		if name, ok := literalStringArg(call, 0); ok && interp != nil {
+			id := BloksScriptID(name)
+			if _, seen := visited[id]; !seen {
+				visited[id] = struct{}{}
+				if script := interp.Scripts[id]; script != nil {
+					inv.add(script.Body, interp, visited)
 				}
 			}
 		}
 	}
 	for idx := range call.Args {
-		collectPendingVariableIDs(&call.Args[idx], ids)
+		inv.add(&call.Args[idx], interp, visited)
 	}
+}
+
+func literalStringArg(call *BloksScriptFuncall, idx int) (string, bool) {
+	if len(call.Args) <= idx {
+		return "", false
+	}
+	literal, ok := call.Args[idx].Content.(*BloksScriptLiteral)
+	if !ok {
+		return "", false
+	}
+	value, ok := literal.Value().(string)
+	return value, ok
+}
+
+func buttonScriptInventory(button *BloksTreeComponent, interp *Interpreter) *scriptInventory {
+	inv := newScriptInventory()
+	for _, name := range []BloksAttributeID{"on_click", "on_touch_down", "on_touch_up"} {
+		if script := button.GetScript(name); script != nil {
+			inv.add(&script.AST, interp, map[BloksScriptID]struct{}{})
+		}
+	}
+	return inv
 }
 
 func resetPendingCodeSubmissionFlags(button *BloksTreeComponent, interp *Interpreter) int {
 	if button == nil || interp == nil {
 		return 0
 	}
-	ids := map[BloksVariableID]struct{}{}
-	for _, name := range []BloksAttributeID{"on_click", "on_touch_down", "on_touch_up"} {
-		script := button.GetScript(name)
-		if script != nil {
-			collectPendingVariableIDs(&script.AST, ids)
-		}
-	}
 	reset := 0
-	for id := range ids {
+	for id := range buttonScriptInventory(button, interp).variables {
+		if !strings.Contains(strings.ToLower(string(id)), "pending") {
+			continue
+		}
 		if _, ok := interp.LocalVars[id]; ok {
 			interp.LocalVars[id] = BloksLiteralOf(false)
 			reset++
@@ -464,6 +498,31 @@ func resetPendingCodeSubmissionFlags(button *BloksTreeComponent, interp *Interpr
 		}
 	}
 	return reset
+}
+
+func clearTrueFlags(interp *Interpreter, names map[BloksVariableID]struct{}) int {
+	cleared := 0
+	for _, vars := range []map[BloksVariableID]*BloksScriptLiteral{interp.LocalVars, interp.GlobalVars} {
+		for id, value := range vars {
+			if names != nil {
+				if _, ok := names[id]; !ok {
+					continue
+				}
+			}
+			if value == nil {
+				continue
+			}
+			if flag, ok := value.Value().(bool); ok && flag {
+				vars[id] = BloksLiteralOf(false)
+				cleared++
+			}
+		}
+	}
+	return cleared
+}
+
+func copyVariables(vars map[BloksVariableID]*BloksScriptLiteral) map[BloksVariableID]*BloksScriptLiteral {
+	return maps.Clone(vars)
 }
 
 var genericDeviceNetworkInfo = map[string]any{
@@ -1569,6 +1628,11 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		actionRPCCountBefore := b.ActionRPCCount
 		err = continueButton.TapButton(ctx, b.CurrentPage.Interpreter)
+		if err == nil {
+			err = b.profile.retryStalledCodeSubmission(
+				ctx, b, input, continueButton, otpCode, codeState, actionRPCCountBefore, log,
+			)
+		}
 		if err != nil {
 			log.Debug().Err(err).Msg("Got error from OTP code submission")
 			if resetErr := b.passwordResetRequiredError(); resetErr != nil {
