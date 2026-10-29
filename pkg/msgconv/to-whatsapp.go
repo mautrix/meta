@@ -240,7 +240,7 @@ func reencodeNRGBA(ctx context.Context, data []byte) []byte {
 func trimPNGTrailer(ctx context.Context, data []byte) []byte {
 	for pos := 8; pos+12 <= len(data); {
 		end := pos + 12 + int(binary.BigEndian.Uint32(data[pos:]))
-		if end > len(data) || end < pos {
+		if end > len(data) || end <= pos {
 			break
 		} else if string(data[pos+4:pos+8]) == "IEND" {
 			if end < len(data) {
