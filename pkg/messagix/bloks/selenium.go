@@ -342,6 +342,8 @@ type Browser struct {
 	AFADCallback     func() error
 	MFACanGoBack     bool
 
+	AuthCodeEntryChosen bool
+
 	LoginData    string
 	DisplayedURL string
 
@@ -826,6 +828,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			b.CurrentPage = page
 			b.State = newState
 			b.PageTransitionCount += 1
+			b.AuthCodeEntryChosen = false
 			return nil
 		},
 		HandleLoginResponse: func(ctx context.Context, data string) error {
@@ -1474,9 +1477,24 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	case StateCodeEntryPage, StateAuthenticationCodePage:
 		codeState := b.State
+		if codeState == StateAuthenticationCodePage && b.profile.isInstagram {
+			var handled bool
+			step, handled, err = b.handleAuthenticationCodeOptions(ctx, userInput)
+			if err != nil {
+				return nil, err
+			} else if handled {
+				break
+			}
+		}
 		otpCode := userInput["otp_code"]
 		if otpCode == "" {
-			instructions := b.getCodeInstructions()
+			instructions := ""
+			if codeState == StateAuthenticationCodePage && b.profile.isInstagram {
+				instructions = authenticationCodeInstructions(b.CurrentPage)
+			}
+			if instructions == "" {
+				instructions = b.getCodeInstructions()
+			}
 			if instructions == "" {
 				instructions = b.profile.codeInstruction
 			}
@@ -1491,7 +1509,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				StepID:       b.stepID("otp_code"),
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
-					CanCancel: b.MFACanGoBack,
+					CanCancel: b.MFACanGoBack || (codeState == StateAuthenticationCodePage && b.AuthCodeEntryChosen),
 					Fields: []bridgev2.LoginInputDataField{
 						{
 							ID:   "otp_code",
@@ -2423,6 +2441,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 }
 
 func (b *Browser) CancelLoginStep(ctx context.Context) error {
+	if b.State == StateAuthenticationCodePage && b.AuthCodeEntryChosen {
+		b.AuthCodeEntryChosen = false
+		return nil
+	}
 	if !b.MFACanGoBack {
 		return fmt.Errorf("current login step cannot be cancelled")
 	}
@@ -2443,6 +2465,117 @@ func (b *Browser) CancelLoginStep(ctx context.Context) error {
 	}
 	b.MFACanGoBack = false
 	return nil
+}
+
+const (
+	authCodeActionFieldID  = "code_action"
+	authCodeActionEnter    = "Enter code"
+	authCodeActionResend   = "Get a new code"
+	authCodeActionAnother  = "Try another way"
+	authCodeResendFailed   = "Instagram didn't confirm that it sent a new code. Check for a message before requesting another"
+	authCodeResendAccepted = "Instagram is sending a new code"
+	authCodeAnotherFailed  = "Instagram didn't offer another way to confirm it's you"
+)
+
+func (b *Browser) handleAuthenticationCodeOptions(
+	ctx context.Context,
+	userInput map[string]string,
+) (step *bridgev2.LoginStep, handled bool, err error) {
+	if b.AuthCodeEntryChosen {
+		return nil, false, nil
+	}
+	findButton := func(label string) *BloksTreeComponent {
+		return b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", label)).FindContainingButton()
+	}
+	resend, another := findButton(authCodeActionResend), findButton(authCodeActionAnother)
+	if resend == nil && another == nil {
+		return nil, false, nil
+	}
+	log := zerolog.Ctx(ctx)
+	switch choice := userInput[authCodeActionFieldID]; {
+	case choice == "":
+		options := []string{authCodeActionEnter}
+		if resend != nil {
+			options = append(options, authCodeActionResend)
+		}
+		if another != nil {
+			options = append(options, authCodeActionAnother)
+		}
+		instructions := authenticationCodeInstructions(b.CurrentPage)
+		if instructions == "" {
+			instructions = b.profile.codeInstruction
+		}
+		if b.LastError != "" {
+			instructions = fmt.Sprintf("%s. %s", strings.TrimSuffix(b.LastError, "."), instructions)
+			b.LastError = ""
+		}
+		return &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeUserInput,
+			StepID:       b.stepID(authCodeActionFieldID),
+			Instructions: instructions,
+			UserInputParams: &bridgev2.LoginUserInputParams{
+				Fields: []bridgev2.LoginInputDataField{{
+					ID:           authCodeActionFieldID,
+					Name:         "Verification code",
+					Type:         bridgev2.LoginInputFieldTypeSelect,
+					DefaultValue: authCodeActionEnter,
+					Options:      options,
+				}},
+			},
+		}, true, nil
+	case choice == authCodeActionEnter:
+		delete(userInput, authCodeActionFieldID)
+		b.AuthCodeEntryChosen = true
+		return nil, false, nil
+	case choice == authCodeActionResend && resend != nil:
+		delete(userInput, authCodeActionFieldID)
+		actionRPCCountBefore := b.ActionRPCCount
+		tapErr := resend.TapButton(ctx, b.CurrentPage.Interpreter)
+		if b.State == StateDialog {
+			b.AuthCodeEntryChosen = true
+			return nil, true, nil
+		} else if b.State != StateAuthenticationCodePage {
+			return nil, true, nil
+		}
+		if tapErr != nil || b.ActionRPCCount == actionRPCCountBefore {
+			log.Warn().Err(tapErr).Msg("Instagram resend code request did not complete")
+			b.LastError = authCodeResendFailed
+		} else {
+			b.LastError = authCodeResendAccepted
+		}
+		b.AuthCodeEntryChosen = true
+		return nil, false, nil
+	case choice == authCodeActionAnother && another != nil:
+		delete(userInput, authCodeActionFieldID)
+		b.LastError = authCodeAnotherFailed
+		if err = another.TapButton(ctx, b.CurrentPage.Interpreter); err != nil {
+			return nil, true, fmt.Errorf("tapping try another way button: %w", err)
+		}
+		return nil, true, nil
+	default:
+		return nil, true, errors.New("invalid verification code option")
+	}
+}
+
+func authenticationCodeInstructions(page *BloksBundle) string {
+	if page == nil {
+		return ""
+	}
+	parts := []string{}
+	for _, comp := range page.FindDescendants(FilterByComponent("bk.data.TextSpan")) {
+		text := strings.TrimSpace(comp.GetAttribute("text"))
+		normalized := strings.ToLower(text)
+		switch normalized {
+		case "", "continue", strings.ToLower(authCodeActionEnter), strings.ToLower(authCodeActionResend), strings.ToLower(authCodeActionAnother):
+			continue
+		}
+		if strings.HasPrefix(normalized, "check your ") ||
+			strings.Contains(normalized, "code") ||
+			strings.Contains(normalized, " sent ") {
+			parts = appendUniqueString(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func authenticationConfirmationPageState(page *BloksBundle) BrowserState {
