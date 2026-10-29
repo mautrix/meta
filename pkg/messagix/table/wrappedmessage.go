@@ -67,6 +67,9 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 	}
 
 	for _, msg := range table.LSUpsertMessage {
+		if messageMap[msg.MessageId] != nil {
+			continue
+		}
 		wrapped := &WrappedMessage{LSInsertMessage: msg.ToInsert(), IsUpsert: true}
 		chatUpsert, ok := upsert[msg.ThreadKey]
 		if !ok {

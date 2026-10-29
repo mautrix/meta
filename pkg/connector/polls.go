@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
 	"sync/atomic"
@@ -27,6 +28,7 @@ type pollQuery struct {
 	done        chan struct{}
 	running     atomic.Bool
 	importVotes bool
+	requestedMS atomic.Int64
 }
 
 type pollEditEvent struct {
@@ -114,6 +116,7 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 				return
 			}
 			requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			query.requestedMS.Store(time.Now().UnixMilli())
 			_, err := client.ExecuteTasks(requestCtx, &socket.PollPointQueryTask{
 				ThreadKey: metaid.ParseFBPortalID(portal.ID),
 				PollID:    pollID,
@@ -149,10 +152,31 @@ func (evt *FBMessageEvent) fetchPollForVote(ctx context.Context, portal *bridgev
 	}
 	fetched := target.Metadata.(*metaid.MessageMetadata).PollFetched
 	_, pending := evt.m.pollQueries.Load(evt.PollID)
-	if !fetched || pending {
+	if !fetched || pending || len(evt.PollVotes)+len(evt.PollRemovals) == 0 {
 		evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, targetID)
 	}
 	return !fetched
+}
+
+func reconcilePollVotes(meta *metaid.MessageMetadata, data *table.PollData, requestedMS int64) map[int64]metaid.PollVote {
+	changed := make(map[int64]metaid.PollVote)
+	for actor, selection := range data.Votes {
+		if previous := meta.PollVotes[actor]; previous.TimestampMS <= requestedMS && !slices.Equal(previous.OptionIDs, selection) {
+			changed[actor] = metaid.PollVote{OptionIDs: slices.Clone(selection), TimestampMS: requestedMS}
+		}
+	}
+	for actor, previous := range meta.PollVotes {
+		if _, ok := data.Votes[actor]; !ok && len(previous.OptionIDs) > 0 && previous.TimestampMS <= requestedMS {
+			changed[actor] = metaid.PollVote{TimestampMS: requestedMS}
+		}
+	}
+	if len(changed) > 0 {
+		votes := make(map[int64]metaid.PollVote, len(meta.PollVotes)+len(changed))
+		maps.Copy(votes, meta.PollVotes)
+		maps.Copy(votes, changed)
+		meta.PollVotes = votes
+	}
+	return changed
 }
 
 func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent {
@@ -213,11 +237,22 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 				meta = edit.ModifiedParts[0].Part.Metadata.(*metaid.MessageMetadata)
 			}
 			expectedOptions = meta.PollAnswers
+			votes := meta.PollVotes
 			if !query.importVotes {
-				return result, nil
+				votes = reconcilePollVotes(meta, data, query.requestedMS.Load())
+				if len(votes) == 0 {
+					return result, nil
+				} else if edit == nil {
+					if err = m.Main.Bridge.DB.Message.Update(ctx, parent); err != nil {
+						return result, err
+					}
+				}
 			}
-			for actor, vote := range meta.PollVotes {
+			for actor, vote := range votes {
 				partID := networkid.PartID(pollVotePartPrefix + strconv.FormatInt(actor, 10))
+				if !query.importVotes {
+					partID += networkid.PartID(":" + strconv.FormatInt(vote.TimestampMS, 10))
+				}
 				expected = append(expected, partID)
 				result.SubEvents = append(result.SubEvents, &simplevent.Message[struct{}]{
 					EventMeta: simplevent.EventMeta{
