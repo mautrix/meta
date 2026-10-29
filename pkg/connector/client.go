@@ -78,6 +78,7 @@ type MetaClient struct {
 	e2eeConnectLock       sync.Mutex
 	stopE2EEReconnect     atomic.Pointer[context.CancelFunc]
 	e2eeReconnectAttempts atomic.Int32
+	e2eeLogoutRetried     atomic.Bool
 
 	metaState status.BridgeState
 	waState   status.BridgeState
@@ -675,6 +676,7 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 		(*stopE2EEReconnect)()
 	}
 	m.e2eeReconnectAttempts.Store(0)
+	m.e2eeLogoutRetried.Store(false)
 	return
 }
 

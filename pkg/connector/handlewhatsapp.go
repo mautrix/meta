@@ -123,6 +123,10 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
 				go m.FullReconnect()
+			} else if !m.e2eeLogoutRetried.Swap(true) {
+				// Each retry registers a new device, so only retry once per connection.
+				m.resetWADevice()
+				retryE2EE = true
 			}
 		case *events.ConnectFailure:
 			if e.Reason == events.ConnectFailureNotFound {
