@@ -538,6 +538,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 		Time("read_up_to", receipt.ReadUpTo).
 		Int("message_count", len(messages)).
 		Msg("Handling read receipt")
+	portalMeta := receipt.Portal.Metadata.(*metaid.PortalMetadata)
 	waMessagesToRead := make(map[waTypes.JID][]string)
 	fbMessagesToRead := make(map[int64]time.Time)
 	for _, msg := range messages {
@@ -548,6 +549,13 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 				fbMessagesToRead[threadKey] = msg.Timestamp
 			}
 		case metaid.ParsedWAMessageID:
+			readTS := msg.Timestamp
+			if readTS.Nanosecond() == 0 {
+				readTS = readTS.Add(999 * time.Millisecond)
+			}
+			if portalMeta.FBThreadKey != 0 && fbMessagesToRead[portalMeta.FBThreadKey].Before(readTS) {
+				fbMessagesToRead[portalMeta.FBThreadKey] = readTS
+			}
 			if msg.SenderID == networkid.UserID(m.UserLogin.ID) {
 				continue
 			}
@@ -564,6 +572,9 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 			continue
 		}
 		var syncGroup int64 = 1
+		if threadID == portalMeta.FBThreadKey {
+			syncGroup = 95
+		}
 		// TODO set sync group to 104 for community groups?
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.ThreadMarkReadTask{
 			ThreadId:            threadID,
@@ -577,7 +588,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 			log.Debug().Time("read_watermark", fbMessageToReadTS).Msg("Read receipt sent")
 		}
 	}
-	portalJID := receipt.Portal.Metadata.(*metaid.PortalMetadata).JID(receipt.Portal.ID)
+	portalJID := portalMeta.JID(receipt.Portal.ID)
 	if len(waMessagesToRead) > 0 && !portalJID.IsEmpty() {
 		for messageSender, ids := range waMessagesToRead {
 			err = m.E2EEClient.MarkRead(ctx, ids, receipt.Receipt.Timestamp, portalJID, messageSender)
