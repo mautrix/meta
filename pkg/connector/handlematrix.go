@@ -549,7 +549,11 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 				fbMessagesToRead[threadKey] = msg.Timestamp
 			}
 		case metaid.ParsedWAMessageID:
-			if readTS := msg.Timestamp.Add(999 * time.Millisecond); portalMeta.FBThreadKey != 0 && fbMessagesToRead[portalMeta.FBThreadKey].Before(readTS) {
+			readTS := msg.Timestamp
+			if readTS.Nanosecond() == 0 {
+				readTS = readTS.Add(999 * time.Millisecond)
+			}
+			if portalMeta.FBThreadKey != 0 && fbMessagesToRead[portalMeta.FBThreadKey].Before(readTS) {
 				fbMessagesToRead[portalMeta.FBThreadKey] = readTS
 			}
 			if msg.SenderID == networkid.UserID(m.UserLogin.ID) {
