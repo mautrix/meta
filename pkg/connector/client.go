@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"runtime/debug"
@@ -458,7 +459,7 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 					"go_error": fmt.Sprintf("panic: %v", v),
 				},
 			}
-			m.UserLogin.BridgeState.Send(m.waState)
+			m.sendBridgeState(m.waState)
 		}
 	}()
 	err := m.connectE2EE()
@@ -471,7 +472,7 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 					"go_error": err.Error(),
 				},
 			}
-			m.UserLogin.BridgeState.Send(m.waState)
+			m.sendBridgeState(m.waState)
 		}
 		if fromConnectFailure {
 			m.UserLogin.Log.Err(err).Msg("Failed to connect to e2ee after 415 error")
@@ -697,7 +698,7 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.StateEvent = copyFrom.StateEvent
 		state.Error = copyFrom.Error
 		state.Message = copyFrom.Message
-		state.Info = copyFrom.Info
+		state.Info = maps.Clone(copyFrom.Info)
 	}
 
 	if state.Info == nil {
@@ -708,6 +709,11 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.Info["login_user_agent"] = m.LoginMeta.LoginUA
 	}
 	return state
+}
+
+func (m *MetaClient) sendBridgeState(state status.BridgeState) {
+	state.Info = maps.Clone(state.Info)
+	m.UserLogin.BridgeState.Send(state)
 }
 
 func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState) *status.BridgeState {
