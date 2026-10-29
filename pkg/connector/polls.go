@@ -162,12 +162,12 @@ func reconcilePollVotes(meta *metaid.MessageMetadata, data *table.PollData, requ
 	changed := make(map[int64]metaid.PollVote)
 	for actor, selection := range data.Votes {
 		if previous := meta.PollVotes[actor]; previous.TimestampMS <= requestedMS && !slices.Equal(previous.OptionIDs, selection) {
-			changed[actor] = metaid.PollVote{OptionIDs: slices.Clone(selection), TimestampMS: requestedMS}
+			changed[actor] = metaid.PollVote{OptionIDs: slices.Clone(selection), TimestampMS: max(previous.TimestampMS, data.VoteTimestamps[actor])}
 		}
 	}
 	for actor, previous := range meta.PollVotes {
 		if _, ok := data.Votes[actor]; !ok && len(previous.OptionIDs) > 0 && previous.TimestampMS <= requestedMS {
-			changed[actor] = metaid.PollVote{TimestampMS: requestedMS}
+			changed[actor] = metaid.PollVote{TimestampMS: previous.TimestampMS}
 		}
 	}
 	if len(changed) > 0 {
@@ -238,8 +238,9 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 			}
 			expectedOptions = meta.PollAnswers
 			votes := meta.PollVotes
+			requestedMS := query.requestedMS.Load()
 			if !query.importVotes {
-				votes = reconcilePollVotes(meta, data, query.requestedMS.Load())
+				votes = reconcilePollVotes(meta, data, requestedMS)
 				if len(votes) == 0 {
 					return result, nil
 				} else if edit == nil {
@@ -251,7 +252,7 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 			for actor, vote := range votes {
 				partID := networkid.PartID(pollVotePartPrefix + strconv.FormatInt(actor, 10))
 				if !query.importVotes {
-					partID += networkid.PartID(":" + strconv.FormatInt(vote.TimestampMS, 10))
+					partID += networkid.PartID(":" + strconv.FormatInt(requestedMS, 10))
 				}
 				expected = append(expected, partID)
 				result.SubEvents = append(result.SubEvents, &simplevent.Message[struct{}]{
