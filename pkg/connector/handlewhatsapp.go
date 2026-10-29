@@ -80,7 +80,6 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		m.e2eeConnectWaiter.Set()
-		m.e2eeReconnectAttempts.Store(0)
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
 		m.sendBridgeState(m.waState)
 		if m.waLastPresence == waTypes.PresenceAvailable {
@@ -124,8 +123,6 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
 				go m.FullReconnect()
-			} else {
-				retryE2EE = true
 			}
 		case *events.ConnectFailure:
 			if e.Reason == events.ConnectFailureNotFound {
@@ -151,10 +148,6 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			} else {
 				retryE2EE = true
 			}
-		case *events.StreamReplaced:
-			// Another connection took over the device, reconnecting would just take it back
-		default:
-			retryE2EE = true
 		}
 
 		m.waState = status.BridgeState{
