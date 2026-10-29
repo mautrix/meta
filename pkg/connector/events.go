@@ -122,6 +122,7 @@ type FBMessageEvent struct {
 	portalKey         networkid.PortalKey
 	uncertainReceiver bool
 	m                 *MetaClient
+	pollTarget        *database.Message
 }
 
 var (
@@ -129,9 +130,16 @@ var (
 	_ bridgev2.RemoteEventWithUncertainPortalReceiver = (*FBMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithTimestamp               = (*FBMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithStreamOrder             = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteEdit                             = (*FBMessageEvent)(nil)
+	_ bridgev2.RemotePreHandler                       = (*FBMessageEvent)(nil)
+	_ bridgev2.RemotePostHandler                      = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithBundledParts            = (*FBMessageEvent)(nil)
 )
 
 func (evt *FBMessageEvent) GetType() bridgev2.RemoteEventType {
+	if evt.PollEventType == table.PollEventAddOption {
+		return bridgev2.RemoteEventEdit
+	}
 	return bridgev2.RemoteEventMessage
 }
 
@@ -148,11 +156,63 @@ func (evt *FBMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
 }
 
 func (evt *FBMessageEvent) GetSender() bridgev2.EventSender {
-	return evt.m.makeEventSender(evt.SenderId)
+	sender := evt.m.makeEventSender(evt.SenderId)
+	sender.ForceEditOrigSender = evt.PollEventType == table.PollEventAddOption
+	return sender
 }
 
 func (evt *FBMessageEvent) GetID() networkid.MessageID {
 	return metaid.MakeFBMessageID(evt.MessageId)
+}
+
+func (evt *FBMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Portal) {
+	if evt.PollEventType == table.PollEventAddOption {
+		targetID, err := evt.m.Main.DB.GetPollMessageID(ctx, portal.PortalKey, evt.PollID)
+		if err == nil && targetID != "" {
+			evt.pollTarget, err = evt.m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, portal.Receiver, targetID)
+		}
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to find poll for option update")
+		}
+	}
+}
+
+func (evt *FBMessageEvent) GetTargetMessage() networkid.MessageID {
+	if evt.pollTarget != nil {
+		return evt.pollTarget.ID
+	}
+	return ""
+}
+
+func (evt *FBMessageEvent) GetTargetDBMessage() []*database.Message {
+	if evt.pollTarget != nil {
+		return []*database.Message{evt.pollTarget}
+	}
+	return nil
+}
+
+func (evt *FBMessageEvent) PostHandle(ctx context.Context, portal *bridgev2.Portal) {
+	if evt.PollEventType != table.PollEventCreate || (evt.PollOptionsComplete && !evt.IsUpsert) {
+		return
+	}
+	message, err := evt.m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, portal.Receiver, evt.GetID())
+	if err == nil && message != nil {
+		_, pending := evt.m.pollQueries.Load(evt.PollID)
+		if !message.Metadata.(*metaid.MessageMetadata).PollFetched || pending {
+			evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, evt.GetID())
+		}
+	}
+}
+
+func (evt *FBMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
+	if len(evt.PollOptions) == 0 {
+		meta := existing[0].Metadata.(*metaid.MessageMetadata)
+		if evt.TimestampMs > meta.PollUpdatedMS {
+			evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, existing[0].ID)
+		}
+		return nil, bridgev2.ErrIgnoringRemoteEvent
+	}
+	return evt.m.Main.MsgConv.ConvertPollEdit(ctx, portal, evt.WrappedMessage, existing[0])
 }
 
 func (evt *FBMessageEvent) GetTimestamp() time.Time {
@@ -174,11 +234,14 @@ func (evt *FBMessageEvent) GetStreamOrder() int64 {
 }
 
 func (evt *FBMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
+	if evt.PollEventType == table.PollEventVote && evt.fetchPollForVote(ctx, portal) {
+		return nil, bridgev2.ErrIgnoringRemoteEvent
+	}
 	cli := evt.m.Client
 	if cli == nil {
 		return nil, messagix.ErrClientIsNil
 	}
-	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, cli, evt.m.UserLogin, intent, evt.GetID(), evt.WrappedMessage), nil
+	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, cli, evt.m.UserLogin, intent, evt.GetID(), evt.WrappedMessage)
 }
 
 type FBEditEvent struct {

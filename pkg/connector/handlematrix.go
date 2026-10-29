@@ -383,6 +383,9 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 }
 
 func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
+	if edit.EditTarget.Metadata.(*metaid.MessageMetadata).PollResponse {
+		return bridgev2.ErrEditsNotSupported
+	}
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
@@ -498,6 +501,9 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 }
 
 func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	if msg.TargetMessage.Metadata.(*metaid.MessageMetadata).PollResponse {
+		return bridgev2.ErrRedactionsNotSupported
+	}
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
