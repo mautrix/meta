@@ -81,7 +81,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		log.Debug().Msg("Connected to WhatsApp socket")
 		m.e2eeConnectWaiter.Set()
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
 		if m.waLastPresence == waTypes.PresenceAvailable {
 			go func() {
 				err := m.updateWAPresence(m.Main.Bridge.BackgroundCtx, waTypes.PresenceAvailable)
@@ -97,7 +97,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			StateEvent: status.StateTransientDisconnect,
 			Error:      WADisconnected,
 		}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
 	case *events.CATRefreshError:
 		if errors.Is(evt.Error, types.ErrPleaseReloadPage) && m.canReconnect() {
 			log.Err(evt.Error).Msg("Got CATRefreshError, reloading page")
@@ -109,7 +109,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Error:      WACATError,
 			Message:    evt.PermanentDisconnectDescription(),
 		}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
 		if m.canReconnect() {
 			go m.FullReconnect()
 		}
@@ -150,7 +150,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Error:      WAPermanentError,
 			Message:    evt.PermanentDisconnectDescription(),
 		}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
 	case *events.GroupInfo:
 		portalKey := m.makeWAPortalKey(evt.JID)
 		memberChanges := &bridgev2.ChatMemberList{
