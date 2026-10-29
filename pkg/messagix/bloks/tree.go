@@ -85,7 +85,7 @@ func (bb *BloksBundle) Unminify(m *Unminifier) {
 	}
 	for _, e := range p.Embedded {
 		pp := &e.Contents.Layout.Payload
-		pp.Variables = p.Variables
+		pp.Variables = append(pp.Variables, p.Variables...)
 		e.Contents.Unminify(m)
 	}
 	for _, t := range p.Templates {
