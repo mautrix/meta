@@ -207,6 +207,10 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 				Msg("Got XMA attachment in table without corresponding message")
 		}
 	}
+	insert = splitPollUpdates(insert)
+	for _, chatUpsert := range upsert {
+		chatUpsert.Messages = splitPollUpdates(chatUpsert.Messages)
+	}
 	for _, blob := range table.LSInsertStickerAttachment {
 		msg, ok := messageMap[blob.MessageId]
 		if ok {
@@ -219,6 +223,33 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 		}
 	}
 	return
+}
+
+func splitPollUpdates(msgs []*WrappedMessage) []*WrappedMessage {
+	for i := 0; i < len(msgs); i++ {
+		msg := msgs[i]
+		if msg.PollEventType != PollEventAddVotedOption && msg.PollEventType != PollEventMultipleUpdates {
+			continue
+		} else if len(msg.PollVotes)+len(msg.PollRemovals) == 0 {
+			msg.PollEventType = PollEventAddOption
+			continue
+		}
+		msg.PollEventType = PollEventVote
+		if len(msg.PollOptions) > 0 {
+			options := &WrappedMessage{
+				LSInsertMessage: msg.LSInsertMessage,
+				IsUpsert:        msg.IsUpsert,
+				PollID:          msg.PollID,
+				PollEventType:   PollEventAddOption,
+				PollQuestion:    msg.PollQuestion,
+				PollOptions:     msg.PollOptions,
+			}
+			msg.PollOptions = nil
+			msgs = slices.Insert(msgs, i, options)
+			i++
+		}
+	}
+	return msgs
 }
 
 type WrappedMessage struct {

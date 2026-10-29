@@ -3,9 +3,11 @@ package table
 type PollEventType int64
 
 const (
-	PollEventCreate    PollEventType = 1
-	PollEventAddOption PollEventType = 3
-	PollEventVote      PollEventType = 4
+	PollEventCreate          PollEventType = 1
+	PollEventAddVotedOption  PollEventType = 2
+	PollEventAddOption       PollEventType = 3
+	PollEventVote            PollEventType = 4
+	PollEventMultipleUpdates PollEventType = 5
 )
 
 type DisplayedContentTypes int64
