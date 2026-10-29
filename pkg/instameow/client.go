@@ -73,6 +73,9 @@ type Client struct {
 	loadIndexLock sync.Mutex
 	lastReload    time.Time
 
+	noticeCheckLock sync.Mutex
+	lastNoticeCheck time.Time
+
 	enableTyping bool
 
 	logRedactedLoginResponses bool
@@ -150,12 +153,17 @@ func (c *Client) SetEventHandler(handler func(context.Context, slidetypes.Client
 }
 
 func (c *Client) loadIndex(ctx context.Context) error {
+	prevConfigs := c.configs
 	c.configs = httpclient.NewConfigs(c)
 	c.http.SetConfigs(c.configs)
 	moduleLoader := httpclient.NewModuleParser(c, c.http, c.configs)
 	moduleLoader.LS = nil
 	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
 	if err != nil {
+		if prevConfigs != nil {
+			c.configs = prevConfigs
+			c.http.SetConfigs(prevConfigs)
+		}
 		return fmt.Errorf("failed to load inbox: %w", err)
 	}
 	c.configs.Setup(c.IsAuthenticated())
@@ -333,7 +341,7 @@ func (c *Client) DumpState() (json.RawMessage, error) {
 func (c *Client) checkResponseError(err error) {
 	if errors.Is(err, httpclient.ErrChallengeRequired) ||
 		errors.Is(err, httpclient.ErrCheckpointRequired) ||
-		errors.Is(err, httpclient.ErrCheckpointRequired) ||
+		errors.Is(err, httpclient.ErrAccountSuspended) ||
 		errors.Is(err, httpclient.ErrConsentRequired) ||
 		errors.Is(err, httpclient.ErrTokenInvalidated) {
 		_ = c.eventHandler(context.TODO(), &slidetypes.AuthError{Error: err})

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -167,6 +168,26 @@ func (c *Client) SetUserBlocked(ctx context.Context, userID string, blocked bool
 
 type noResp = json.RawMessage
 
+func (c *Client) checkAccountNotice(ctx context.Context) {
+	c.noticeCheckLock.Lock()
+	if time.Since(c.lastNoticeCheck) < 8*time.Hour {
+		c.noticeCheckLock.Unlock()
+		return
+	}
+	c.lastNoticeCheck = time.Now()
+	c.noticeCheckLock.Unlock()
+	zerolog.Ctx(ctx).Debug().Msg("Got content unavailable error, reloading index to check for account notices")
+	didReload, err := c.ReloadIndex(context.WithoutCancel(ctx))
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to reload index after content unavailable error")
+		c.checkResponseError(err)
+	} else if !didReload {
+		c.noticeCheckLock.Lock()
+		c.lastNoticeCheck = time.Time{}
+		c.noticeCheckLock.Unlock()
+	}
+}
+
 func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req any, allowReload bool) (resp T, err error) {
 	if c == nil {
 		err = ErrClientIsNil
@@ -182,6 +203,18 @@ func makeGraphQLRequest[T any](ctx context.Context, c *Client, name string, req 
 	if err != nil {
 		err = fmt.Errorf("failed to unmarshal %T: %w", resp, err)
 		return
+	}
+	if wrappedResp.AsError() != nil {
+		zerolog.Ctx(ctx).Warn().
+			Str("graphql_method", name).
+			Int("error_code", wrappedResp.ErrorCode).
+			Str("error_summary", wrappedResp.ErrorSummary).
+			Str("redirect_path", wrappedResp.RedirectPath()).
+			Any("graphql_errors", wrappedResp.Errors).
+			Msg("GraphQL request returned an error")
+	}
+	if allowReload && wrappedResp.ErrorCode == types.ErrContentUnavailable.ErrorCode {
+		c.checkAccountNotice(ctx)
 	} else if allowReload && wrappedResp.ErrorCode == types.ErrPleaseReloadPage.ErrorCode {
 		zerolog.Ctx(ctx).Warn().Err(wrappedResp.AsError()).
 			Msg("Got please reload page error, reloading index and retrying")
