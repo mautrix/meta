@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow/proto/waArmadilloBackupMessage"
@@ -292,7 +293,7 @@ func (p *ArchiveProtobuf) decrypt(device *Device, threadID string) (*DecryptedPr
 	return &DecryptedProtobuf{Message: message, TimestampMS: p.TimestampMS}, supplementalKey, nil
 }
 
-func (r *MessageRange) Decrypt(device *Device, threadID string, selfUserID int64, isGroup bool) ([]*DecryptedMessage, error) {
+func (r *MessageRange) Decrypt(ctx context.Context, device *Device, threadID string, selfUserID int64, isGroup bool) []*DecryptedMessage {
 	keys := make(map[string]*MinosKeyEntry, len(r.MinosKeys))
 	for _, key := range r.MinosKeys {
 		if key != nil {
@@ -364,16 +365,17 @@ func (r *MessageRange) Decrypt(device *Device, threadID string, selfUserID int64
 	}
 	messages := make([]*DecryptedMessage, 0, len(r.Messages))
 	for _, archived := range r.Messages {
-		if archived != nil && archived.Protobufs != nil && slices.Contains(archived.Protobufs.Tags, "EB_VISIBILITY_METADATA") {
+		if archived == nil || (archived.Protobufs != nil && slices.Contains(archived.Protobufs.Tags, "EB_VISIBILITY_METADATA")) {
 			continue
 		}
 		message, err := archived.decrypt(device, threadID, decryptMinos)
 		if err != nil {
-			return nil, err
+			zerolog.Ctx(ctx).Warn().Err(err).Str("message_id", archived.ID).Msg("Failed to decrypt Messenger archive message")
+			continue
 		}
 		messages = append(messages, message)
 	}
-	return messages, nil
+	return messages
 }
 
 func (m *ArchiveMessage) decrypt(device *Device, threadID string, decryptMinos func(*MinosProtobuf, string) (*DecryptedProtobuf, error)) (*DecryptedMessage, error) {
