@@ -170,7 +170,7 @@ type noResp = json.RawMessage
 
 func (c *Client) checkAccountNotice(ctx context.Context) {
 	c.noticeCheckLock.Lock()
-	if time.Since(c.lastNoticeCheck) < 15*time.Minute {
+	if time.Since(c.lastNoticeCheck) < 8*time.Hour {
 		c.noticeCheckLock.Unlock()
 		return
 	}
