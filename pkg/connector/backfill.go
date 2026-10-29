@@ -350,14 +350,22 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		}
 		return key
 	})
-	upsert.Messages = slices.CompactFunc(upsert.Messages, func(a, b *table.WrappedMessage) bool {
-		if a.MessageId == b.MessageId {
+	type messageKey struct {
+		id   string
+		poll table.PollEventType
+	}
+	seen := make(map[messageKey]*table.WrappedMessage, len(upsert.Messages))
+	upsert.Messages = slices.DeleteFunc(upsert.Messages, func(b *table.WrappedMessage) bool {
+		key := messageKey{b.MessageId, b.PollEventType}
+		a, ok := seen[key]
+		if ok {
 			zerolog.Ctx(ctx).Debug().
 				Str("message_id", a.MessageId).
 				Bool("attachment_counts_match", len(a.XMAAttachments) == len(b.XMAAttachments) && len(a.BlobAttachments) == len(b.BlobAttachments) && len(a.Stickers) == len(b.Stickers)).
 				Msg("Backfill batch contained duplicate message")
 			return true
 		}
+		seen[key] = b
 		return false
 	})
 	if anchor != nil {
