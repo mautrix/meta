@@ -149,7 +149,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 	log := zerolog.Ctx(ctx).With().Str("action", "chat backfill").Logger()
 	ctx = log.WithContext(ctx)
 
-	if since.IsZero() {
+	if since.IsZero() && !ic.newLogin {
 		release, err := ic.Main.waitForChatBackfillSlot(ctx)
 		if err != nil {
 			return
