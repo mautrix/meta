@@ -215,6 +215,7 @@ func loginWithCookies(
 	}
 
 	igClient := ul.Client.(*IGClient)
+	igClient.newLogin = true
 	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
 	client.SetLogger(ul.Log.With().Str("component", "instameow").Logger())
 	client.SetEventHandler(igClient.handleIGEvent)

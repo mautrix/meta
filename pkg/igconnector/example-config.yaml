@@ -38,5 +38,6 @@ thread_backfill:
   batch_count: 0
   # Delay between fetching each batch of threads (to avoid rate limiting)
   batch_delay: 2s
-  # Maximum number of logins running the full thread backfill at once in this process (0 for no limit)
+  # Maximum number of logins running the full thread backfill at once in this process (0 for no limit).
+  # New logins start right away without waiting for the limit.
   max_concurrent: 0
