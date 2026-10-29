@@ -22,7 +22,7 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 			cookies.IGCookieCSRFToken: "web-csrf",
 			cookies.IGCookieDeviceID:  "web-device",
 		})
-		loginCookies.IGWWWClaim = "web-claim"
+		loginCookies.SetWWWClaim("web-claim")
 		client := NewClient(ClientParams{
 			Cookies:           loginCookies,
 			Log:               zerolog.Nop(),
@@ -63,7 +63,7 @@ func TestMobileLoginDevicePersistsAcrossClients(t *testing.T) {
 		t.Fatal("new app installation unexpectedly sent a machine ID before the server issued one")
 	}
 	if firstClient.GetCookies().Get(cookies.IGCookieCSRFToken) != "" ||
-		firstClient.GetCookies().Get(cookies.IGCookieDeviceID) != "" || firstClient.GetCookies().IGWWWClaim != "" {
+		firstClient.GetCookies().Get(cookies.IGCookieDeviceID) != "" || firstClient.GetCookies().GetWWWClaim() != "" {
 		t.Fatal("mobile login retained state from the preceding web session")
 	}
 	if persisted == nil || persisted.MachineID != "stable-machine-id" {
