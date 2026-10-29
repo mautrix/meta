@@ -122,7 +122,7 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 		if refreshErr != nil {
 			log.Warn().Err(refreshErr).Msg("Failed to refresh media URL")
 			// Return the original error if refresh failed
-			return nil, err
+			return nil, mediadl.WrapDirectMediaError(err)
 		}
 
 		log.Debug().Str("refreshed_url", refreshedURL).Msg("Successfully refreshed media URL")
@@ -130,7 +130,7 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, mediadl.WrapDirectMediaError(err)
 	}
 
 	return &mediaproxy.GetMediaResponseData{

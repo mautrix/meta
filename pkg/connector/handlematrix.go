@@ -49,10 +49,18 @@ func (m *MetaConnector) GenerateTransactionID(userID id.UserID, roomID id.RoomID
 	return networkid.RawTransactionID(strconv.FormatInt(methods.GenerateEpochID(), 10))
 }
 
-var (
-	ErrServerRejectedMessage = bridgev2.WrapErrorInStatus(errors.New("server rejected message")).WithErrorAsMessage().WithSendNotice(true)
-	ErrNotConnected          = bridgev2.WrapErrorInStatus(errors.New("not connected")).WithErrorAsMessage().WithSendNotice(true)
-)
+var ErrServerRejectedMessage = bridgev2.WrapErrorInStatus(errors.New("server rejected message")).
+	WithMessage("rejected by Facebook, if this keeps happening, check the Facebook website or app for a notice on your account").
+	WithStatus(event.MessageStatusFail).
+	WithErrorReason(event.MessageStatusNetworkError).
+	WithIsCertain(true).
+	WithSendNotice(true)
+
+var ErrMessageNotConfirmed = bridgev2.WrapErrorInStatus(errors.New("server didn't confirm message")).
+	WithMessage("Facebook didn't confirm that the message was sent").
+	WithSendNotice(true)
+
+var ErrNotConnected = bridgev2.WrapErrorInStatus(errors.New("not connected")).WithErrorAsMessage().WithSendNotice(true)
 
 const ConnectWaitTimeout = 1 * time.Minute
 
@@ -185,16 +193,16 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				}
 				for _, failed := range resp.LSHandleFailedTask {
 					log.Warn().Str("message", failed.Message).Msg("Sending message failed (task)")
-					return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
+					return nil, fmt.Errorf("%w: %s", ErrMessageNotConfirmed, failed.Message)
 				}
-				return nil, fmt.Errorf("%w: message send response didn't include message ID", ErrServerRejectedMessage)
+				return nil, fmt.Errorf("%w: message send response didn't include message ID", ErrMessageNotConfirmed)
 			}
 		}
 		var parsedTSTime time.Time
 		parsedTS, err := methods.ParseMessageID(msgID)
 		if err != nil {
 			log.Warn().Err(err).Str("message_id", msgID).Msg("Failed to parse message ID")
-			return nil, fmt.Errorf("%w: failed to parse message ID: %v", ErrServerRejectedMessage, err)
+			return nil, fmt.Errorf("%w: failed to parse message ID: %v", ErrMessageNotConfirmed, err)
 		} else {
 			parsedTSTime = time.UnixMilli(parsedTS)
 			if parsedTSTime.Before(time.Now().Add(-1 * time.Hour)) {

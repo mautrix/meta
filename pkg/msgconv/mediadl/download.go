@@ -63,7 +63,34 @@ var ErrTooLargeFile = bridgev2.WrapErrorInStatus(errors.New("too large file")).
 
 var ErrForbidden = errors.New("http forbidden")
 var ErrNoContentLength = errors.New("server didn't return media size")
-var ErrUnexpectedStatusCode = errors.New("unexpected status code")
+
+type HTTPStatusError struct {
+	StatusCode int
+}
+
+func (e HTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected status code %d", e.StatusCode)
+}
+
+// WrapDirectMediaError turns a failed download into an HTTP error for the media proxy, which answers 404
+// to any other error. Transport errors are passed through, since the proxy answers 502 for those itself.
+func WrapDirectMediaError(err error) error {
+	var mapped mautrix.RespError
+	statusErr, _ := errors.AsType[HTTPStatusError](err)
+	switch {
+	case errors.Is(err, ErrForbidden), statusErr.StatusCode == http.StatusUnauthorized:
+		mapped = mautrix.MForbidden.WithMessage("Access to the media was denied")
+	case statusErr.StatusCode == http.StatusNotFound, statusErr.StatusCode == http.StatusGone:
+		mapped = mautrix.MNotFound.WithMessage("Media no longer exists")
+	case statusErr.StatusCode == http.StatusTooManyRequests:
+		mapped = mautrix.MLimitExceeded.WithMessage("Rate limited while downloading media").WithCanRetry(true)
+	case statusErr.StatusCode != 0:
+		mapped = mautrix.MUnknown.WithMessage("Failed to download media").WithStatus(http.StatusBadGateway).WithCanRetry(true)
+	default:
+		return err
+	}
+	return fmt.Errorf("%w: %w", mapped, err)
+}
 
 func addDownloadHeaders(hdr http.Header, mime string) {
 	hdr.Set("Accept", "*/*")
@@ -127,7 +154,7 @@ func downloadMedia(ctx context.Context, mime, url string, maxSize int64, byteRan
 		if resp.StatusCode == 403 {
 			return 0, nil, ErrForbidden
 		}
-		return 0, nil, mautrix.MUnknown.WithStatus(resp.StatusCode).WithCanRetry(true)
+		return 0, nil, HTTPStatusError{StatusCode: resp.StatusCode}
 	} else if resp.ContentLength > maxSize {
 		_ = resp.Body.Close()
 		return resp.ContentLength, nil, fmt.Errorf("%w (%.2f MiB)", ErrTooLargeFile, float64(resp.ContentLength)/1024/1024)
@@ -200,7 +227,7 @@ func downloadChunkedVideo(ctx context.Context, mime, url string, maxSize int64) 
 			Msg("HEAD request failed, falling back to normal download")
 		return downloadMedia(ctx, mime, url, maxSize, "", false)
 	} else if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("%w %d for HEAD request", ErrUnexpectedStatusCode, resp.StatusCode)
+		return 0, nil, fmt.Errorf("%w for HEAD request", HTTPStatusError{StatusCode: resp.StatusCode})
 	} else if resp.ContentLength <= 0 {
 		return 0, nil, ErrNoContentLength
 	} else if resp.ContentLength > maxSize {
