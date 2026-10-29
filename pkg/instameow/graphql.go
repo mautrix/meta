@@ -177,10 +177,14 @@ func (c *Client) checkAccountNotice(ctx context.Context) {
 	c.lastNoticeCheck = time.Now()
 	c.noticeCheckLock.Unlock()
 	zerolog.Ctx(ctx).Debug().Msg("Got content unavailable error, reloading index to check for account notices")
-	_, err := c.ReloadIndex(context.WithoutCancel(ctx))
+	didReload, err := c.ReloadIndex(context.WithoutCancel(ctx))
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to reload index after content unavailable error")
 		c.checkResponseError(err)
+	} else if !didReload {
+		c.noticeCheckLock.Lock()
+		c.lastNoticeCheck = time.Time{}
+		c.noticeCheckLock.Unlock()
 	}
 }
 
