@@ -80,6 +80,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		m.e2eeConnectWaiter.Set()
+		m.e2eeLogoutRetried.Store(false)
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
 		m.sendBridgeState(m.waState)
 		if m.waLastPresence == waTypes.PresenceAvailable {
