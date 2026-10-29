@@ -299,16 +299,16 @@ func (c *Client) UploadSentMessage(ctx context.Context, msg *MinosSentMessage) e
 	if err != nil {
 		return err
 	} else if resp == nil || resp.Labyrinth == nil || !resp.Labyrinth.Success {
-		return errors.New("Messenger history upload was not accepted")
+		return errors.New("history upload was not accepted")
 	}
 	mekID := base64.StdEncoding.EncodeToString(mek.ID)
 	for _, result := range resp.Labyrinth.MEKRegistrationResults {
 		if result.MEKID == mekID {
 			if !result.Success {
-				return fmt.Errorf("Messenger history key registration failed: %v", result.ErrorCode)
+				return fmt.Errorf("history key registration failed: %v", result.ErrorCode)
 			}
 			return nil
 		}
 	}
-	return errors.New("Messenger history upload response is missing the key registration result")
+	return errors.New("history upload response is missing the key registration result")
 }
