@@ -736,8 +736,9 @@ func (m *MetaClient) FullReconnect() {
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)
-	m.metaState = status.BridgeState{}
-	m.waState = status.BridgeState{}
+	m.metaState = status.BridgeState{StateEvent: status.StateConnecting}
+	m.waState = status.BridgeState{StateEvent: status.StateConnecting}
+	m.sendBridgeState(m.metaState)
 	err := m.Main.DB.DeleteReconnectionState(ctx, m.UserLogin.ID)
 	if err != nil {
 		m.UserLogin.Log.Err(err).Msg("Failed to delete cached reconnection state for full reconnect")
