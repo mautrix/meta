@@ -88,7 +88,14 @@ func (m *MetaConnector) ResetNetworkConnections() {
 			go client.reconnectAfterNetworkReset()
 		} else {
 			client.Client.ForceReconnect()
-			client.E2EEClient.ResetConnection()
+			if client.waState.StateEvent == status.StateUnknownError {
+				if stop := client.stopE2EEReconnect.Swap(nil); stop != nil {
+					(*stop)()
+				}
+				go client.reconnectE2EE()
+			} else {
+				client.E2EEClient.ResetConnection()
+			}
 		}
 	}
 }

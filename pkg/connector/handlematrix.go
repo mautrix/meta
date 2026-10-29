@@ -122,6 +122,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
 			log.Debug().Err(err).Msg("Doing full reconnect and retrying upload")
 			m.FullReconnect()
+			if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+				return nil, ErrNotConnected
+			}
 			tasks, err = m.Main.MsgConv.ToMeta(
 				ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
 			)
@@ -132,11 +135,13 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			}
 			return nil, wrapMetaError(err)
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
-			m.UserLogin.BridgeState.Send(status.BridgeState{
+			m.permanentErrored.Store(true)
+			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
 				UserAction: status.UserActionRestart,
-			})
+			}
+			m.sendBridgeState(m.metaState)
 			return nil, wrapMetaError(err)
 		} else if err != nil {
 			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))

@@ -80,6 +80,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		m.e2eeConnectWaiter.Set()
+		m.e2eeLogoutRetried.Store(false)
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
 		m.sendBridgeState(m.waState)
 		if m.waLastPresence == waTypes.PresenceAvailable {
@@ -112,14 +113,21 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 		m.sendBridgeState(m.waState)
 		if m.canReconnect() {
 			go m.FullReconnect()
+		} else {
+			m.scheduleE2EEReconnect()
 		}
 	case events.PermanentDisconnect:
+		retryE2EE := false
 		switch e := evt.(type) {
 		case *events.LoggedOut:
 			if e.Reason == events.ConnectFailureLoggedOut && !e.OnConnect && m.canReconnect() {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
 				go m.FullReconnect()
+			} else if !m.e2eeLogoutRetried.Swap(true) {
+				// Each retry registers a new device, so only retry once per connection.
+				m.resetWADevice()
+				retryE2EE = true
 			}
 		case *events.ConnectFailure:
 			if e.Reason == events.ConnectFailureNotFound {
@@ -142,6 +150,8 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 				// WhatsApp 400 errors have been observed after outages, likely caused by the CAT being somehow wrong, do a full reconnect to get a new one
 				log.Debug().Msg("Doing full reconnect after WhatsApp 400 error")
 				go m.FullReconnect()
+			} else {
+				retryE2EE = true
 			}
 		}
 
@@ -151,6 +161,9 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Message:    evt.PermanentDisconnectDescription(),
 		}
 		m.sendBridgeState(m.waState)
+		if retryE2EE {
+			m.scheduleE2EEReconnect()
+		}
 	case *events.GroupInfo:
 		portalKey := m.makeWAPortalKey(evt.JID)
 		memberChanges := &bridgev2.ChatMemberList{

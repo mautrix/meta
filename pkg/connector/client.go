@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"runtime/debug"
@@ -54,7 +55,7 @@ type MetaClient struct {
 	pushRegistrationLock sync.Mutex
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
 	permanentErrored     atomic.Bool
-	resetReconnecting    atomic.Bool
+	reconnecting         atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -72,9 +73,12 @@ type MetaClient struct {
 	lastStateSave     time.Time
 	lastStateSaveLock sync.Mutex
 
-	E2EEClient      *whatsmeow.Client
-	WADevice        *store.Device
-	e2eeConnectLock sync.Mutex
+	E2EEClient            *whatsmeow.Client
+	WADevice              *store.Device
+	e2eeConnectLock       sync.Mutex
+	stopE2EEReconnect     atomic.Pointer[context.CancelFunc]
+	e2eeReconnectAttempts atomic.Int32
+	e2eeLogoutRetried     atomic.Bool
 
 	metaState status.BridgeState
 	waState   status.BridgeState
@@ -197,6 +201,10 @@ func (m *MetaClient) Connect(ctx context.Context) {
 		return
 	}
 	defer m.connectLock.Unlock()
+	m.connect(ctx)
+}
+
+func (m *MetaClient) connect(ctx context.Context) {
 	m.historyReadStates.Clear()
 	if m.metaState.StateEvent == "" && m.waState.StateEvent == "" {
 		// Ensure both states start at CONNECTING now
@@ -216,6 +224,7 @@ const MaxConnectRetries = 10
 
 func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts int) {
 	if m.LoginMeta.Platform == types.Instagram {
+		m.permanentErrored.Store(true)
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGNotSupported,
@@ -296,6 +305,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			}
 		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
 			// Note: this is probably exclusive to instagram
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBChallengeRequired,
@@ -304,6 +314,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			})
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			// Note: this is probably exclusive to instagram
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBAccountSuspended,
@@ -311,6 +322,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBCheckpointRequired,
@@ -318,6 +330,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 			})
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
+			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
@@ -328,6 +341,7 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {
 				stateEvt = status.StateBadCredentials
+				m.permanentErrored.Store(true)
 			} else if attempts < MaxConnectRetries {
 				stateEvt = status.StateTransientDisconnect
 			}
@@ -460,6 +474,7 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 				},
 			}
 			m.sendBridgeState(m.waState)
+			m.scheduleE2EEReconnect()
 		}
 	}()
 	err := m.connectE2EE()
@@ -479,7 +494,44 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 		} else {
 			m.UserLogin.Log.Err(err).Msg("Failed to connect to e2ee")
 		}
+		m.scheduleE2EEReconnect()
 	}
+}
+
+func (m *MetaClient) scheduleE2EEReconnect() {
+	attempts := m.e2eeReconnectAttempts.Add(1)
+	backoff := min(time.Duration(1<<min(attempts, 10))*time.Second, messagix.MaxConnectBackoff)
+	backoff = backoff/2 + rand.N(backoff/2)
+	ctx, cancel := context.WithCancel(context.Background())
+	if oldCancel := m.stopE2EEReconnect.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	m.UserLogin.Log.Debug().Stringer("reconnect_in", backoff).Msg("Scheduling e2ee reconnect")
+	go func() {
+		defer cancel()
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return
+		}
+		if m.stopE2EEReconnect.CompareAndSwap(&cancel, nil) && m.Client != nil && m.waState.StateEvent == status.StateUnknownError {
+			m.reconnectE2EE()
+		}
+	}()
+}
+
+func (m *MetaClient) reconnectE2EE() {
+	m.UserLogin.Log.Debug().Msg("Reconnecting e2ee client after error")
+	m.e2eeConnectWaiter.Clear()
+	m.e2eeConnectLock.Lock()
+	if cli := m.E2EEClient; cli != nil {
+		cli.Disconnect()
+		m.E2EEClient = nil
+	}
+	// The store may have deleted the device, so load it again by ID
+	m.WADevice = nil
+	m.e2eeConnectLock.Unlock()
+	m.tryConnectE2EE(false)
 }
 
 func (m *MetaClient) connectE2EE() error {
@@ -620,11 +672,16 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 	if stopPeriodicReconnect := m.stopPeriodicReconnect.Swap(nil); stopPeriodicReconnect != nil {
 		(*stopPeriodicReconnect)()
 	}
+	if stopE2EEReconnect := m.stopE2EEReconnect.Swap(nil); stopE2EEReconnect != nil {
+		(*stopE2EEReconnect)()
+	}
+	m.e2eeReconnectAttempts.Store(0)
+	m.e2eeLogoutRetried.Store(false)
 	return
 }
 
 func (m *MetaClient) IsLoggedIn() bool {
-	return m.Client.IsAuthenticatedAndLoaded() && !m.permanentErrored.Load()
+	return m.LoginMeta.Cookies != nil && !m.permanentErrored.Load()
 }
 
 func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
@@ -660,28 +717,37 @@ func (m *MetaClient) canReconnectError24() bool {
 }
 
 func (m *MetaClient) reconnectAfterNetworkReset() {
-	if !m.resetReconnecting.CompareAndSwap(false, true) {
+	if !m.reconnecting.CompareAndSwap(false, true) {
 		return
 	}
-	defer m.resetReconnecting.Store(false)
+	defer m.reconnecting.Store(false)
 	m.UserLogin.BridgeState.StopUnknownErrorReconnect()
 	m.Disconnect()
 	m.Connect(m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx))
 }
 
 func (m *MetaClient) FullReconnect() {
-	if m.LoginMeta.Cookies == nil {
+	if m.LoginMeta.Cookies == nil || m.Client == nil {
+		return
+	} else if !m.reconnecting.CompareAndSwap(false, true) {
+		m.UserLogin.Log.Debug().Msg("Not doing full reconnect as another reconnect is in progress")
 		return
 	}
+	defer m.reconnecting.Store(false)
 	ctx := m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx)
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
 	m.disconnect(false)
+	m.metaState = status.BridgeState{StateEvent: status.StateConnecting}
+	m.waState = status.BridgeState{StateEvent: status.StateConnecting}
+	m.sendBridgeState(m.metaState)
 	err := m.Main.DB.DeleteReconnectionState(ctx, m.UserLogin.ID)
 	if err != nil {
 		m.UserLogin.Log.Err(err).Msg("Failed to delete cached reconnection state for full reconnect")
 	}
-	m.Connect(ctx)
+	m.connectLock.Lock()
+	defer m.connectLock.Unlock()
+	m.connect(ctx)
 	m.lastFullReconnect = time.Now()
 }
 
@@ -693,12 +759,28 @@ func (m *MetaClient) resetWADevice() {
 func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeState {
 	// The Meta bridge internally has two states - one for connection to meta and one for whatsapp;
 	// as such we need to merge the two states when sending updates and pick the "worst case".
-	copyFrom := m.pickWorstCaseBridgeState(state)
+	// A whatsapp failure only affects encrypted chats, so it's reported on top of a connected meta state
+	// instead of making the whole login look broken.
+	waState := m.waState
+	waFailed := waState.StateEvent == status.StateUnknownError
+	if waFailed {
+		waState.StateEvent = status.StateConnected
+		if state.StateEvent == status.StateUnknownError && state.Error == waState.Error {
+			state.StateEvent = status.StateConnected
+		}
+	}
+	copyFrom := m.pickWorstCaseBridgeState(state, &waState)
 	if copyFrom != nil {
 		state.StateEvent = copyFrom.StateEvent
 		state.Error = copyFrom.Error
 		state.Message = copyFrom.Message
+		state.UserAction = copyFrom.UserAction
 		state.Info = maps.Clone(copyFrom.Info)
+	}
+	if waFailed && state.StateEvent == status.StateConnected {
+		state.Error = waState.Error
+		state.Message = waState.Message
+		state.Info = maps.Clone(waState.Info)
 	}
 
 	if state.Info == nil {
@@ -716,8 +798,8 @@ func (m *MetaClient) sendBridgeState(state status.BridgeState) {
 	m.UserLogin.BridgeState.Send(state)
 }
 
-func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState) *status.BridgeState {
-	if state.StateEvent == m.waState.StateEvent && state.StateEvent == m.metaState.StateEvent {
+func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState, waState *status.BridgeState) *status.BridgeState {
+	if state.StateEvent == waState.StateEvent && state.StateEvent == m.metaState.StateEvent {
 		// If both states are the same as the input, we can use as-is
 		return nil
 	}
@@ -732,8 +814,8 @@ func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState) *status.
 	} {
 		if state.StateEvent == status {
 			return nil
-		} else if m.waState.StateEvent == status {
-			return &m.waState
+		} else if waState.StateEvent == status {
+			return waState
 		} else if m.metaState.StateEvent == status {
 			return &m.metaState
 		}
