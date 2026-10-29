@@ -350,9 +350,18 @@ type Browser struct {
 	PendingDialog       *BloksDialog
 	DialogPreviousState BrowserState
 
+	PasswordResetRequested bool
+
 	LastError           string
 	PageTransitionCount uint64
 	ActionRPCCount      uint64
+}
+
+func (b *Browser) passwordResetRequiredError() error {
+	if !b.PasswordResetRequested || b.State == StateSuccess {
+		return nil
+	}
+	return loginerrors.PasswordResetRequired(b.profile.serviceName)
 }
 
 func (b *Browser) uninformativeLoginError(callsite string) bridgev2.RespError {
@@ -836,6 +845,17 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			log.Debug().Str("state", string(b.State)).Msg("Handling login response from Bloks")
 			b.LoginData = data
 			b.State = StateSuccess
+			return nil
+		},
+		ShowLoggedInResetPassword: func(ctx context.Context) error {
+			if !b.profile.isInstagram {
+				return nil
+			}
+			zerolog.Ctx(ctx).Debug().
+				Str("state", string(b.State)).
+				Bool("login_already_handled", b.State == StateSuccess).
+				Msg("Instagram requested the logged-in reset password screen")
+			b.PasswordResetRequested = true
 			return nil
 		},
 		StartTimer: func(name string, interval time.Duration, callback func() error) error {
@@ -1551,6 +1571,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		err = continueButton.TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			log.Debug().Err(err).Msg("Got error from OTP code submission")
+			if resetErr := b.passwordResetRequiredError(); resetErr != nil {
+				return nil, resetErr
+			}
 			if strings.Contains(err.Error(), "Please re-enter") {
 				// retry
 			} else if strings.Contains(err.Error(), "An unexpected error occurred") {
@@ -2392,6 +2415,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 	default:
 		return nil, fmt.Errorf("unexpected state %s", b.State)
+	}
+	if resetErr := b.passwordResetRequiredError(); resetErr != nil && step == nil {
+		log.Warn().Str("state", string(b.State)).Msg("Instagram requires a password reset before the login can finish")
+		return nil, resetErr
 	}
 	if b.State == prevState {
 		if step != nil {

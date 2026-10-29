@@ -44,6 +44,14 @@ func Uninformative(message, callsite string) bridgev2.RespError {
 	}
 }
 
+func PasswordResetRequired(service string) bridgev2.RespError {
+	return bridgev2.RespError{
+		ErrCode:    "FI.MAU.META_PASSWORD_RESET_REQUIRED",
+		Err:        service + " wants you to reset your password. Reset it in the " + service + " app or website, then try logging in again.",
+		StatusCode: http.StatusBadRequest,
+	}
+}
+
 func AccountRecovery(service string) bridgev2.RespError {
 	return bridgev2.RespError{
 		ErrCode:    "FI.MAU.META_ACCOUNT_RECOVERY_REQUIRED",
