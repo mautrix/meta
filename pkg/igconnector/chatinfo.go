@@ -42,6 +42,8 @@ func (ic *IGClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*
 	info, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(strconv.FormatInt(metaid.ParseFBPortalID(portal.ID), 10)))
 	if err != nil {
 		return nil, err
+	} else if info.ThreadInfo.AsIGDirectThread == nil {
+		return nil, fmt.Errorf("no thread info received")
 	}
 	return ic.wrapChatInfo(info.ThreadInfo.AsIGDirectThread), nil
 }
