@@ -50,6 +50,9 @@ type MetaClient struct {
 	tableLoopLock        sync.Mutex
 	backfillCollectors   map[int64]*BackfillCollector
 	historyReadStates    *exsync.Map[int64, historyReadState]
+	historyUploadLock    sync.Mutex
+	historyBackupID      string
+	historyBackupChecked bool
 	backfillLock         sync.Mutex
 	connectLock          sync.Mutex
 	pushRegistrationLock sync.Mutex

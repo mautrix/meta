@@ -14,6 +14,7 @@ import (
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
+	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -96,12 +97,16 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		messageID := strconv.FormatInt(otid, 10)
 		chatJID := portalMeta.JID(msg.Portal.ID)
 		senderJID := m.WADevice.ID
+		if waMeta == nil {
+			waMeta = &waMsgApplication.MessageApplication_Metadata{}
+		}
 		resp, err := m.E2EEClient.SendFBMessage(ctx, chatJID, waMsg, waMeta, whatsmeow.SendRequestExtra{
 			ID: messageID,
 		})
 		if err != nil {
 			return nil, wrapMetaError(err)
 		}
+		m.uploadSentMessageToHistory(ctx, chatJID, messageID, waMsg, waMeta)
 		return &bridgev2.MatrixMessageResponse{
 			DB: &database.Message{
 				ID:        metaid.MakeWAMessageID(chatJID, senderJID.ToNonAD(), messageID),

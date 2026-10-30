@@ -27,6 +27,15 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "28543107645309813",
 		FriendlyName: "EBMessageRangeQueryForThreadsQuery",
 	},
+	"EBMinosFetchContactKeysQuery": {
+		DocID:        "26531892553066563",
+		FriendlyName: "EBMinosFetchContactKeysQuery",
+	},
+	"EBMinosUploadMessagesMutation": {
+		DocID:        "39866297732983438",
+		FriendlyName: "EBMinosUploadMessagesMutation",
+		NoRetry:      true,
+	},
 	"useMWEncryptedBackupsFetchBackupIdsV2Query": {
 		DocID:        "25220416984279164",
 		FriendlyName: "useMWEncryptedBackupsFetchBackupIdsV2Query",
