@@ -19,6 +19,7 @@ package msgconv
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -236,6 +237,22 @@ func reencodeNRGBA(ctx context.Context, data []byte) []byte {
 	return buf.Bytes()
 }
 
+func trimPNGTrailer(ctx context.Context, data []byte) []byte {
+	for pos := 8; pos+12 <= len(data); {
+		end := pos + 12 + int(binary.BigEndian.Uint32(data[pos:]))
+		if end > len(data) || end <= pos {
+			break
+		} else if string(data[pos+4:pos+8]) == "IEND" {
+			if end < len(data) {
+				zerolog.Ctx(ctx).Debug().Int("trailer_size", len(data)-end).Msg("Removed trailing data after png IEND")
+			}
+			return data[:end]
+		}
+		pos = end
+	}
+	return data
+}
+
 func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, []byte, error) {
 	mimeType := content.Info.MimeType
 	fileName := content.FileName
@@ -258,6 +275,7 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 		fileName += ".m4a"
 	}
 	if content.MsgType == event.MsgImage && mimeType == "image/png" {
+		data = trimPNGTrailer(ctx, data)
 		cfg, err := png.DecodeConfig(bytes.NewReader(data))
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode png config")
