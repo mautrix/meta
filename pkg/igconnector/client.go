@@ -199,7 +199,6 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		} else if errors.Is(err, httpclient.ErrUserIDIsZero) {
 			state.Error = MetaUserIDIsZero
 		}
-		ic.Disconnect()
 		ic.LoginMeta.Cookies = nil
 		err = ic.UserLogin.Save(ctx)
 		if err != nil {
@@ -233,8 +232,16 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
+	} else if errors.Is(err, types.ErrContentUnavailable) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      IGAccountRestricted,
+			UserAction: status.UserActionRestart,
+			Info:       map[string]any{"open_url": "https://www.instagram.com/"},
+		}
 	}
 	if state != nil {
+		ic.Disconnect()
 		ic.permanentErrored.Store(true)
 	}
 	return

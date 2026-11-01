@@ -171,6 +171,11 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return nil, fmt.Errorf("unexpected converted request type %T", converted)
 	}
 	if err != nil {
+		if !ic.permanentErrored.Load() {
+			if state := ic.errorToBridgeState(ctx, err); state != nil {
+				ic.UserLogin.BridgeState.Send(*state)
+			}
+		}
 		return nil, wrapInstagramError(err)
 	}
 
