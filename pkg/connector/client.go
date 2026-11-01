@@ -494,6 +494,13 @@ func (m *MetaClient) tryConnectE2EE(fromConnectFailure bool) {
 		} else {
 			m.UserLogin.Log.Err(err).Msg("Failed to connect to e2ee")
 		}
+		if errors.Is(err, messagix.ErrICDCUnauthorized) {
+			if !m.permanentErrored.Load() && m.canReconnect() {
+				m.UserLogin.Log.Debug().Msg("Doing full reconnect after e2ee device registration was unauthorized")
+				go m.FullReconnect()
+			}
+			return
+		}
 		m.scheduleE2EEReconnect()
 	}
 }
