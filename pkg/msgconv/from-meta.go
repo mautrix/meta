@@ -518,21 +518,25 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
+	expiresAt := att.PlayableUrlExpirationTimestampMs
 	var width, height int64
 	if url == "" {
 		url = att.PreviewUrl
 		mime = att.PreviewUrlMimeType
 		width, height = att.PreviewWidth, att.PreviewHeight
+		expiresAt = att.PreviewUrlExpirationTimestampMs
 	}
 	// Slightly hacky hack to make reuploadAttachment add gif metadata if the shouldAutoplayVideo flag is set.
 	// No idea why Instagram has two different ways of flagging gifs.
 	if att.ShouldAutoplayVideo {
 		att.AttachmentType = table.AttachmentTypeAnimatedImage
 	}
-	// This is minimal conversion; fetchFullXMA will enhance with proper refresh metadata
 	converted, err := mc.reuploadAttachment(
 		ctx, att.AttachmentType, url, att.Filename, mime, int(att.Filesize), int(width), int(height), 0,
-		nil,
+		&mediadl.MediaRefreshMeta{
+			ExpiresAt:      jsontime.UMInt(expiresAt),
+			AttachmentFBID: att.AttachmentFbid,
+		},
 	)
 	if errors.Is(err, mediadl.ErrURLNotFound) && att.TitleText != "" {
 		return []*bridgev2.ConvertedMessagePart{{
