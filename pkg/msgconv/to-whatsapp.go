@@ -225,7 +225,7 @@ func trimPNGTrailer(ctx context.Context, data []byte) []byte {
 	for pos := 8; pos+12 <= len(data); {
 		length := int(binary.BigEndian.Uint32(data[pos : pos+4]))
 		end := pos + 12 + length
-		if end > len(data) || length < 0 {
+		if end > len(data) || end <= pos || length < 0 {
 			break
 		}
 		if string(data[pos+4:pos+8]) == "IEND" {
