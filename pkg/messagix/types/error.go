@@ -38,7 +38,7 @@ type GraphQLError struct {
 	QueryPath       any      `json:"query_path"`
 	FbtraceID       string   `json:"fbtrace_id"`
 	WWWRequestID    string   `json:"www_request_id"`
-	Path            []string `json:"path"`
+	Path            []any    `json:"path"`
 }
 
 func (gqe *GraphQLError) Error() string {
@@ -46,7 +46,7 @@ func (gqe *GraphQLError) Error() string {
 	if gqe.Summary != "" || gqe.Description != "" {
 		message = fmt.Sprintf("%s - %s", gqe.Summary, gqe.Description)
 	}
-	return fmt.Sprintf("graphql error at %s: %s", strings.Join(gqe.Path, "."), message)
+	return fmt.Sprintf("graphql error at %s: %s", strings.Join(exslices.CastFunc(gqe.Path, func(from any) string { return fmt.Sprint(from) }), "."), message)
 }
 
 func (gqe *GraphQLError) HumanError() string {
