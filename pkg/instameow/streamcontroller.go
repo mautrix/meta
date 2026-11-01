@@ -64,7 +64,7 @@ func (c *Client) connectStreamController(ctx context.Context) {
 			case <-ctx.Done():
 				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
 				return
-			case <-time.After(min(time.Duration(1<<sequentialFailures)*time.Second, MaxConnectionRetryInterval)):
+			case <-time.After(min(time.Duration(1<<min(sequentialFailures, 10))*time.Second, MaxConnectionRetryInterval)):
 				continue
 			}
 		} else {
