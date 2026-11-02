@@ -17,13 +17,17 @@ import (
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	waTypes "go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/util/keys"
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/securehistory"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
-const historyUploadTimeout = 2 * time.Minute
+const (
+	historyUploadTimeout         = 2 * time.Minute
+	historyBackupRecheckInterval = 1 * time.Hour
+)
 
 func marshalSentFBMessage(message armadillo.RealMessageApplicationSub, metadata *waMsgApplication.MessageApplication_Metadata) ([]byte, error) {
 	var subproto waMsgApplication.MessageApplication_SubProtocolPayload
@@ -56,23 +60,23 @@ func marshalSentFBMessage(message armadillo.RealMessageApplicationSub, metadata 
 	})
 }
 
-func (m *MetaClient) getHistoryBackupID(ctx context.Context) (string, error) {
+func (m *MetaClient) getHistoryBackupID(ctx context.Context, client *securehistory.Client) (string, error) {
 	m.historyUploadLock.Lock()
 	defer m.historyUploadLock.Unlock()
 	if device := m.historyDevice(); device != nil && device.BackupID != "" {
 		return device.BackupID, nil
-	} else if m.historyBackupChecked {
+	} else if m.historyBackupID != "" || time.Since(m.historyBackupCheckedAt) < historyBackupRecheckInterval {
 		return m.historyBackupID, nil
 	}
-	backup, err := m.Client.GetSecureHistoryClient().GetBackup(ctx)
+	backup, err := client.GetBackup(ctx)
 	if errors.Is(err, securehistory.ErrNoPINBackup) {
-		m.historyBackupChecked = true
+		m.historyBackupCheckedAt = time.Now()
 		return "", nil
 	} else if err != nil {
 		return "", err
 	}
 	m.historyBackupID = backup.ID
-	m.historyBackupChecked = true
+	m.historyBackupCheckedAt = time.Now()
 	return backup.ID, nil
 }
 
@@ -86,12 +90,18 @@ func (m *MetaClient) uploadSentMessageToHistory(
 	if !m.LoginMeta.Platform.IsMessenger() || chat.Server != waTypes.MessengerServer || metadata == nil || len(metadata.GetFrankingKey()) == 0 {
 		return
 	}
+	client, device := m.Client, m.WADevice
+	if client == nil || device == nil || device.IdentityKey == nil {
+		return
+	}
+	historyClient := client.GetSecureHistoryClient()
+	identity := device.IdentityKey
 	log := zerolog.Ctx(ctx).With().Str("action", "upload message to encrypted history").Logger()
 	ctx = log.WithContext(context.WithoutCancel(ctx))
 	go func() {
 		ctx, cancel := context.WithTimeout(ctx, historyUploadTimeout)
 		defer cancel()
-		err := m.doUploadSentMessageToHistory(ctx, chat, messageID, message, metadata)
+		err := m.doUploadSentMessageToHistory(ctx, historyClient, identity, chat, messageID, message, metadata)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to upload sent message to encrypted history")
 		} else {
@@ -102,12 +112,14 @@ func (m *MetaClient) uploadSentMessageToHistory(
 
 func (m *MetaClient) doUploadSentMessageToHistory(
 	ctx context.Context,
+	historyClient *securehistory.Client,
+	identity *keys.KeyPair,
 	chat waTypes.JID,
 	messageID string,
 	message armadillo.RealMessageApplicationSub,
 	metadata *waMsgApplication.MessageApplication_Metadata,
 ) error {
-	backupID, err := m.getHistoryBackupID(ctx)
+	backupID, err := m.getHistoryBackupID(ctx, historyClient)
 	if err != nil {
 		return fmt.Errorf("failed to get backup ID: %w", err)
 	} else if backupID == "" {
@@ -128,8 +140,7 @@ func (m *MetaClient) doUploadSentMessageToHistory(
 	}
 	franking := hmac.New(sha256.New, metadata.GetFrankingKey())
 	franking.Write(transportBytes)
-	identity := m.WADevice.IdentityKey
-	return m.Client.GetSecureHistoryClient().UploadSentMessage(ctx, &securehistory.MinosSentMessage{
+	return historyClient.UploadSentMessage(ctx, &securehistory.MinosSentMessage{
 		BackupID:       backupID,
 		SenderID:       metaid.ParseUserLoginID(m.UserLogin.ID),
 		OtherUserID:    otherUserID,
