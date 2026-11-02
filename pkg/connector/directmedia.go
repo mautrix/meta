@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -16,7 +17,6 @@ import (
 	"maunium.net/go/mautrix/mediaproxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
-	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
@@ -170,11 +170,23 @@ func (m *MetaConnector) refreshBlobMedia(
 		Int("part_index", info.PartIndex).
 		Msg("Refreshing blob media by re-fetching messages")
 
+	doneCh := make(chan struct{})
+	collector := &BackfillCollector{
+		MaxMessages: 1,
+		Done: sync.OnceFunc(func() {
+			close(doneCh)
+		}),
+	}
+	if !client.addBackfillCollector(threadKey, collector) {
+		return "", fmt.Errorf("backfill collector already exists for thread %d", threadKey)
+	}
+	defer client.removeBackfillCollector(threadKey, collector)
+
 	// Re-fetch messages around the target
-	resp, err := client.Client.ExecuteTasks(ctx, &socket.FetchMessagesTask{
+	_, err := client.Client.ExecuteTasks(ctx, &socket.FetchMessagesTask{
 		ThreadKey:            threadKey,
 		Direction:            0,
-		ReferenceTimestampMs: msg.Timestamp.UnixMilli(),
+		ReferenceTimestampMs: msg.Timestamp.UnixMilli() + 1,
 		ReferenceMessageId:   fbMsgID.ID,
 		SyncGroup:            1,
 		Cursor:               client.Client.GetCursor(1),
@@ -182,14 +194,14 @@ func (m *MetaConnector) refreshBlobMedia(
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch messages: %w", err)
 	}
-
-	// Collect all fetched messages
-	upsertMap, insertMsgs := resp.WrapMessages()
-	var allMessages []*table.WrappedMessage
-	for _, upsert := range upsertMap {
-		allMessages = append(allMessages, upsert.Messages...)
+	select {
+	case <-doneCh:
+	case <-time.After(BackfillForwardTimeout):
+		return "", fmt.Errorf("timed out waiting for re-fetched messages")
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	allMessages = append(allMessages, insertMsgs...)
+	allMessages := collector.UpsertMessages.Messages
 
 	var resultURL string
 	var updatedCount int
