@@ -102,9 +102,11 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		if err != nil {
 			return nil, wrapMetaError(err)
 		}
+		dbMessageID := metaid.MakeWAMessageID(chatJID, senderJID.ToNonAD(), messageID)
+		m.Main.AddMediaEditCache(msg.Portal, dbMessageID, &bridgev2.ConvertedMessagePart{Type: msg.Event.Type, Content: msg.Content})
 		return &bridgev2.MatrixMessageResponse{
 			DB: &database.Message{
-				ID:        metaid.MakeWAMessageID(chatJID, senderJID.ToNonAD(), messageID),
+				ID:        dbMessageID,
 				SenderID:  networkid.UserID(m.UserLogin.ID),
 				Timestamp: resp.Timestamp,
 			},
@@ -227,9 +229,11 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			}
 		}
 
+		dbMessageID := metaid.MakeFBMessageID(msgID)
+		m.Main.AddMediaEditCache(msg.Portal, dbMessageID, &bridgev2.ConvertedMessagePart{Type: msg.Event.Type, Content: msg.Content})
 		return &bridgev2.MatrixMessageResponse{
 			DB: &database.Message{
-				ID:        metaid.MakeFBMessageID(msgID),
+				ID:        dbMessageID,
 				SenderID:  networkid.UserID(m.UserLogin.ID),
 				Timestamp: parsedTSTime,
 			},

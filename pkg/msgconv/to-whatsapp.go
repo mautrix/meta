@@ -19,12 +19,10 @@ package msgconv
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"image"
-	"image/color"
-	"image/draw"
 	"image/jpeg"
-	"image/png"
 	"net/http"
 	"strconv"
 	"strings"
@@ -218,22 +216,32 @@ func clampTo400(w, h int) (int, int) {
 	return w, h
 }
 
-func reencodeNRGBA(ctx context.Context, data []byte) []byte {
-	img, err := png.Decode(bytes.NewReader(data))
-	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode png for re-encoding")
+const pngHeader = "\x89PNG\r\n\x1a\n"
+
+func trimPNGTrailer(ctx context.Context, data []byte) []byte {
+	if !bytes.HasPrefix(data, []byte(pngHeader)) {
 		return data
 	}
-	b := img.Bounds()
-	nrgba := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(nrgba, nrgba.Bounds(), img, b.Min, draw.Src)
-	var buf bytes.Buffer
-	if err = png.Encode(&buf, img); err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to re-encode png")
-		return data
+	for pos := 8; pos+12 <= len(data); {
+		length := int(binary.BigEndian.Uint32(data[pos : pos+4]))
+		end := pos + 12 + length
+		if end > len(data) || end <= pos || length < 0 {
+			break
+		}
+		if string(data[pos+4:pos+8]) == "IEND" {
+			if length != 0 {
+				break
+			}
+			if end < len(data) {
+				zerolog.Ctx(ctx).Debug().
+					Int("trailer_size", len(data)-end).
+					Msg("Removed trailing data after png IEND")
+			}
+			return data[:end]
+		}
+		pos = end
 	}
-	zerolog.Ctx(ctx).Debug().Msg("Re-encoded non-NRGBA png")
-	return buf.Bytes()
+	return data
 }
 
 func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, []byte, error) {
@@ -258,16 +266,8 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 		fileName += ".m4a"
 	}
 	if content.MsgType == event.MsgImage && mimeType == "image/png" {
-		cfg, err := png.DecodeConfig(bytes.NewReader(data))
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode png config")
-		} else if cfg.ColorModel != color.NRGBAModel {
-			// Messenger gets angry about certain color models in PNGs
-			data = reencodeNRGBA(ctx, data)
-		}
-		if content.Info.Width == 0 {
-			content.Info.Width, content.Info.Height = cfg.Width, cfg.Height
-		}
+		// Messenger Android gets angry about trailing data after the IEND chunk
+		data = trimPNGTrailer(ctx, data)
 	}
 	if content.MsgType == event.MsgImage && content.Info.Width == 0 {
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))

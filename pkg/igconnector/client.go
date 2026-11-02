@@ -67,6 +67,7 @@ type IGClient struct {
 	webPushChecking       atomic.Bool
 	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
+	accountStateRechecks  atomic.Int32
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -199,7 +200,6 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		} else if errors.Is(err, httpclient.ErrUserIDIsZero) {
 			state.Error = MetaUserIDIsZero
 		}
-		ic.Disconnect()
 		ic.LoginMeta.Cookies = nil
 		err = ic.UserLogin.Save(ctx)
 		if err != nil {
@@ -233,9 +233,20 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
+	} else if errors.Is(err, types.ErrContentUnavailable) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      IGAccountRestricted,
+			UserAction: status.UserActionRestart,
+			Info:       map[string]any{"open_url": "https://www.instagram.com/"},
+		}
 	}
-	if state != nil {
+	if state != nil && !ic.permanentErrored.Load() {
+		ic.Disconnect()
 		ic.permanentErrored.Store(true)
+		if state.UserAction == status.UserActionRestart {
+			ic.scheduleAccountStateRecheck()
+		}
 	}
 	return
 }
@@ -444,6 +455,30 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		select {
 		case <-time.After(interval):
 			ic.UserLogin.Log.Info().Msg("Doing periodic reconnect")
+			ic.FullReconnect(false, true)
+		case <-ctx.Done():
+		}
+	}()
+}
+
+const accountStateRecheckBaseDelay = 5 * time.Minute
+
+func (ic *IGClient) scheduleAccountStateRecheck() {
+	attempt := ic.accountStateRechecks.Add(1) - 1
+	delay := accountStateRecheckBaseDelay << min(attempt, 8)
+	if maxDelay := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second; maxDelay > 0 && delay > maxDelay {
+		delay = maxDelay
+	}
+	ctx, cancel := context.WithCancel(ic.Main.Bridge.BackgroundCtx)
+	if oldCancel := ic.stopPeriodicReconnect.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	ic.UserLogin.Log.Info().Stringer("delay", delay).Msg("Scheduled reconnect to check if the account state was resolved")
+	go func() {
+		defer cancel()
+		select {
+		case <-time.After(delay):
+			ic.UserLogin.Log.Info().Msg("Reconnecting to check if the account state was resolved")
 			ic.FullReconnect(false, true)
 		case <-ctx.Done():
 		}

@@ -18,7 +18,6 @@ package connector
 
 import (
 	"context"
-	"time"
 
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/jsontime"
@@ -157,7 +156,7 @@ var metaCaps = &event.RoomFeatures{
 	Reply:               event.CapLevelFullySupported,
 	Edit:                event.CapLevelFullySupported,
 	EditMaxCount:        5,
-	EditMaxAge:          ptr.Ptr(jsontime.S(15 * time.Minute)),
+	EditMaxAge:          ptr.Ptr(jsontime.S(EditMaxAge)),
 	Delete:              event.CapLevelFullySupported,
 	DeleteForMe:         false,
 	Reaction:            event.CapLevelFullySupported,

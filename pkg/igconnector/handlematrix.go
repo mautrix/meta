@@ -479,7 +479,7 @@ func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Ma
 	case bridgev2.Leave:
 		_, err = ic.Client.LeaveGroup(ctx, &slidetypes.LeaveThreadRequest{ThreadID: threadID})
 	default:
-		return &bridgev2.MatrixMembershipResult{}, fmt.Errorf("not implemented")
+		return nil, nil
 	}
 	if err != nil {
 		return nil, wrapInstagramError(err)

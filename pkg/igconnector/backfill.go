@@ -57,6 +57,10 @@ func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.Fe
 			Any("thread_response", resp.ThreadInfo.AsIGDirectThread).
 			Msg("Response for initial thread fetch")
 		thread = resp.ThreadInfo.AsIGDirectThread
+		if thread == nil {
+			zerolog.Ctx(ctx).Debug().Msg("No thread info received for forward backfill")
+			return &bridgev2.FetchMessagesResponse{}, nil
+		}
 		params.Portal.UpdateInfo(ctx, ic.wrapChatInfo(thread), ic.UserLogin, nil, time.Time{})
 	}
 	canBackwardsBackfill := params.AnchorMessage == nil && ic.Main.Bridge.Config.Backfill.Queue.AnyEnabled()
