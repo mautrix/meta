@@ -95,6 +95,9 @@ func (m *MetaClient) uploadSentMessageToHistory(
 		return
 	}
 	historyClient := client.GetSecureHistoryClient()
+	if historyClient.AppID == "" {
+		return
+	}
 	identity := device.IdentityKey
 	log := zerolog.Ctx(ctx).With().Str("action", "upload message to encrypted history").Logger()
 	ctx = log.WithContext(context.WithoutCancel(ctx))
