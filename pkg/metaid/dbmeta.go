@@ -28,6 +28,8 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+
+	DecryptionFailed bool `json:"decryption_failed,omitempty"`
 }
 
 func (m *MessageMetadata) GetFBThreadKey(portalID networkid.PortalID) int64 {

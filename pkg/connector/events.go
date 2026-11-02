@@ -295,6 +295,7 @@ type WAMessageEvent struct {
 
 var (
 	_ bridgev2.RemoteMessage              = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteMessageUpsert        = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEdit                 = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithTimestamp   = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReaction             = (*WAMessageEvent)(nil)
@@ -437,7 +438,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	case *waArmadilloApplication.Armadillo:
 		switch payload := typedMsg.GetPayload().GetPayload().(type) {
 		case *waArmadilloApplication.Armadillo_Payload_Content:
-			return bridgev2.RemoteEventMessage
+			return bridgev2.RemoteEventMessageUpsert
 		case *waArmadilloApplication.Armadillo_Payload_ApplicationData:
 			log.Warn().Msg("Unsupported armadillo application data message")
 		case *waArmadilloApplication.Armadillo_Payload_Signal:
@@ -458,7 +459,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 			return bridgev2.RemoteEventEdit
 		}
 	case *instamadilloAddMessage.AddMessagePayload:
-		return bridgev2.RemoteEventMessage
+		return bridgev2.RemoteEventMessageUpsert
 	case *instamadilloDeleteMessage.DeleteMessagePayload:
 		return bridgev2.RemoteEventMessageRemove
 	default:
@@ -510,6 +511,19 @@ func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.
 		evt.m.Main.AddMediaEditCache(portal, evt.GetID(), cm.Parts[0])
 	}
 	return cm, nil
+}
+
+func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (bridgev2.UpsertResult, error) {
+	if meta, ok := existing[0].Metadata.(*metaid.MessageMetadata); ok && meta.DecryptionFailed {
+		zerolog.Ctx(ctx).Debug().
+			Stringer("existing_mxid", existing[0].MXID).
+			Msg("Received decryptable version of previously undecryptable message")
+		return bridgev2.UpsertResult{SubEvents: []bridgev2.RemoteEvent{
+			&WANowDecryptableMessage{WAMessageEvent: evt, editParts: existing},
+		}}, nil
+	}
+	zerolog.Ctx(ctx).Debug().Stringer("existing_mxid", existing[0].MXID).Msg("Ignoring duplicate message")
+	return bridgev2.UpsertResult{}, nil
 }
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
@@ -762,4 +776,104 @@ func (f *FBFolderResync) GetSender() bridgev2.EventSender {
 
 func (f *FBFolderResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	return f.m.wrapFolderInfo(f.LSUpsertFolder), nil
+}
+
+type WANowDecryptableMessage struct {
+	*WAMessageEvent
+	editParts []*database.Message
+}
+
+var (
+	_ bridgev2.RemoteEdit                  = (*WANowDecryptableMessage)(nil)
+	_ bridgev2.RemoteEventWithBundledParts = (*WANowDecryptableMessage)(nil)
+)
+
+func (evt *WANowDecryptableMessage) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventEdit
+}
+
+func (evt *WANowDecryptableMessage) GetTargetMessage() networkid.MessageID {
+	return evt.GetID()
+}
+
+func (evt *WANowDecryptableMessage) GetTargetDBMessage() []*database.Message {
+	return evt.editParts
+}
+
+func (evt *WANowDecryptableMessage) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
+	converted, err := evt.ConvertMessage(ctx, portal, intent)
+	if err != nil {
+		return nil, err
+	}
+	edit := &bridgev2.ConvertedEdit{}
+	for i, part := range converted.Parts {
+		if i < len(existing) {
+			if meta, ok := existing[i].Metadata.(*metaid.MessageMetadata); ok {
+				meta.DecryptionFailed = false
+			}
+			edit.ModifiedParts = append(edit.ModifiedParts, part.ToEditPart(existing[i]))
+		} else {
+			if edit.AddedParts == nil {
+				edit.AddedParts = &bridgev2.ConvertedMessage{Disappear: converted.Disappear}
+			}
+			edit.AddedParts.Parts = append(edit.AddedParts.Parts, part)
+		}
+	}
+	return edit, nil
+}
+
+type WAUndecryptableMessage struct {
+	*events.UndecryptableMessage
+	m *MetaClient
+}
+
+var (
+	_ bridgev2.RemoteMessage              = (*WAUndecryptableMessage)(nil)
+	_ bridgev2.RemoteEventWithTimestamp   = (*WAUndecryptableMessage)(nil)
+	_ bridgev2.RemoteEventWithStreamOrder = (*WAUndecryptableMessage)(nil)
+)
+
+func (evt *WAUndecryptableMessage) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventMessage
+}
+
+func (evt *WAUndecryptableMessage) GetPortalKey() networkid.PortalKey {
+	return evt.m.makeWAPortalKey(evt.Info.Chat)
+}
+
+func (evt *WAUndecryptableMessage) AddLogContext(c zerolog.Context) zerolog.Context {
+	return c.Str("message_id", evt.Info.ID).Stringer("sender_id", evt.Info.Sender).Bool("undecryptable", true)
+}
+
+func (evt *WAUndecryptableMessage) GetSender() bridgev2.EventSender {
+	return evt.m.makeWAEventSender(evt.Info.Sender)
+}
+
+func (evt *WAUndecryptableMessage) GetID() networkid.MessageID {
+	return metaid.MakeWAMessageID(evt.Info.Chat, evt.Info.Sender, evt.Info.ID)
+}
+
+func (evt *WAUndecryptableMessage) GetTimestamp() time.Time {
+	return evt.Info.Timestamp
+}
+
+func (evt *WAUndecryptableMessage) GetStreamOrder() int64 {
+	return evt.Info.Timestamp.UnixMilli()
+}
+
+func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    "Decrypting message failed, waiting for sender to re-send...",
+			},
+			Extra: map[string]any{
+				"fi.mau.meta.undecryptable": true,
+			},
+			DBMetadata: &metaid.MessageMetadata{DecryptionFailed: true},
+		}},
+		Disappear: portal.Disappear,
+	}, nil
 }
