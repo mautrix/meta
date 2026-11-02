@@ -937,6 +937,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 		},
 		CancelTimer: func(name string) error {
 			switch name {
+			case "wa_retriever":
 			case "approve_from_another_device_polling_timer":
 				b.AFADInterval = 0
 				b.AFADCallback = nil
