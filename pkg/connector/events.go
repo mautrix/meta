@@ -192,15 +192,23 @@ func (evt *FBMessageEvent) GetTargetDBMessage() []*database.Message {
 }
 
 func (evt *FBMessageEvent) PostHandle(ctx context.Context, portal *bridgev2.Portal) {
-	if evt.PollEventType != table.PollEventCreate || (evt.PollOptionsComplete && !evt.IsUpsert) {
+	if evt.PollEventType != table.PollEventCreate {
 		return
 	}
-	message, err := evt.m.Main.Bridge.DB.Message.GetFirstPartByID(ctx, portal.Receiver, evt.GetID())
-	if err == nil && message != nil {
-		_, pending := evt.m.pollQueries.Load(evt.PollID)
-		if !message.Metadata.(*metaid.MessageMetadata).PollFetched || pending {
-			evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, evt.GetID())
-		}
+	message, err := evt.m.Main.Bridge.DB.Message.GetPartByID(ctx, portal.Receiver, evt.GetID(), "")
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to find saved poll")
+		return
+	} else if message == nil || message.Metadata.(*metaid.MessageMetadata).PollID != evt.PollID {
+		return
+	}
+	if err = evt.m.Main.DB.PutPollMessage(ctx, message.Room, evt.PollID, message.RowID); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save poll lookup")
+		return
+	}
+	_, pending := evt.m.pollQueries.Load(evt.PollID)
+	if !message.Metadata.(*metaid.MessageMetadata).PollFetched || pending {
+		evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, evt.GetID())
 	}
 }
 

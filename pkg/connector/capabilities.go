@@ -53,7 +53,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 18
+	return 1, 19
 }
 
 const MaxTextLength = 20000
@@ -69,7 +69,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2026_10_13"
+	base := "fi.mau.meta.capabilities.2026_11_02"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -173,7 +173,6 @@ var metaCapsWithThreads *event.RoomFeatures
 var metaCapsWithE2E *event.RoomFeatures
 var metaCapsWithE2EGroup *event.RoomFeatures
 var metaCapsGroup *event.RoomFeatures
-var metaCapsGroupWithPolls *event.RoomFeatures
 
 func init() {
 	metaCapsWithThreads = metaCaps.Clone()
@@ -205,13 +204,13 @@ func init() {
 		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},
 	}
 	metaCapsGroup.MemberActions = metaCapsWithE2EGroup.MemberActions.Clone()
-	metaCapsGroupWithPolls = metaCapsGroup.Clone()
-	metaCapsGroupWithPolls.ID += "+polls"
-	metaCapsGroupWithPolls.Poll = event.CapLevelPartialSupport
-	metaCapsGroupWithPolls.PollEnd = event.CapLevelUnsupported
-	metaCapsGroupWithPolls.PollHiddenVotes = event.CapLevelUnsupported
-	metaCapsGroupWithPolls.PollDuplicateOptions = event.CapLevelUnsupported
-	metaCapsGroupWithPolls.PollOptionMaxLength = 140
+	for _, caps := range []*event.RoomFeatures{metaCapsGroup, metaCapsWithThreads} {
+		caps.Poll = event.CapLevelPartialSupport
+		caps.PollEnd = event.CapLevelUnsupported
+		caps.PollHiddenVotes = event.CapLevelUnsupported
+		caps.PollDuplicateOptions = event.CapLevelUnsupported
+		caps.PollOptionMaxLength = 140
+	}
 
 	metaCaps.BlockUser = true
 }
@@ -227,9 +226,6 @@ func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Porta
 	}
 	if portal.RoomType == database.RoomTypeDM {
 		return metaCaps
-	}
-	if m.LoginMeta.Platform.IsMessenger() && portal.Metadata.(*metaid.PortalMetadata).ThreadType == table.GROUP_THREAD {
-		return metaCapsGroupWithPolls
 	}
 	return metaCapsGroup
 }

@@ -21,9 +21,6 @@ import (
 
 var _ bridgev2.PollHandlingNetworkAPI = (*MetaClient)(nil)
 
-var errPollUnsupportedChat = bridgev2.WrapErrorInStatus(bridgev2.ErrPollsNotSupported).
-	WithMessage("Polls are only supported in unencrypted Messenger groups")
-
 type pendingPollSend struct {
 	threadID   int64
 	pollID     int64
@@ -112,11 +109,9 @@ func (m *MetaClient) sendPollTask(ctx context.Context, pending *pendingPollSend,
 	return nil, err
 }
 
-func (m *MetaClient) checkPollConnection(ctx context.Context, portal *bridgev2.Portal) error {
+func (m *MetaClient) checkPollConnection() error {
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
-	} else if !m.GetCapabilities(ctx, portal).Poll.Partial() {
-		return errPollUnsupportedChat
 	} else if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
 		return ErrNotConnected
 	}
@@ -136,7 +131,7 @@ func pollMessageResponse(msg *table.WrappedMessage, metadata *metaid.MessageMeta
 }
 
 func (m *MetaClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
-	if err := m.checkPollConnection(ctx, msg.Portal); err != nil {
+	if err := m.checkPollConnection(); err != nil {
 		return nil, err
 	}
 	task, err := m.Main.MsgConv.PollStartToMeta(msg)
@@ -165,8 +160,11 @@ func (m *MetaClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.Ma
 		PollFetched:   true,
 		PollUpdatedMS: result.TimestampMs,
 	})
-	if msg.Content.PollStart.MaxSelections < len(result.PollOptions) {
-		response.PostSave = func(ctx context.Context, saved *database.Message) {
+	response.PostSave = func(ctx context.Context, saved *database.Message) {
+		if err := m.Main.DB.PutPollMessage(ctx, saved.Room, result.PollID, saved.RowID); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save poll lookup")
+		}
+		if msg.Content.PollStart.MaxSelections < len(result.PollOptions) {
 			go m.UserLogin.QueueRemoteEvent(&simplevent.Message[struct{}]{
 				EventMeta: simplevent.EventMeta{
 					Type:      bridgev2.RemoteEventMessageUpsert,
@@ -195,7 +193,7 @@ func (m *MetaClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.Ma
 }
 
 func (m *MetaClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.MatrixPollVote) (*bridgev2.MatrixMessageResponse, error) {
-	if err := m.checkPollConnection(ctx, msg.Portal); err != nil {
+	if err := m.checkPollConnection(); err != nil {
 		return nil, err
 	}
 	m.pollSendLock.Lock()

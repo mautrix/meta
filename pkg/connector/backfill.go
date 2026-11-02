@@ -348,10 +348,16 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		if key == 0 {
 			key = cmp.Compare(a.SecondarySortKey, b.SecondarySortKey)
 		}
+		if key == 0 {
+			key = cmp.Compare(a.MessageId, b.MessageId)
+		}
+		if key == 0 {
+			key = cmp.Compare(a.PollEventType, b.PollEventType)
+		}
 		return key
 	})
 	upsert.Messages = slices.CompactFunc(upsert.Messages, func(a, b *table.WrappedMessage) bool {
-		if a.MessageId == b.MessageId {
+		if a.MessageId == b.MessageId && a.PollEventType == b.PollEventType {
 			zerolog.Ctx(ctx).Debug().
 				Str("message_id", a.MessageId).
 				Bool("attachment_counts_match", len(a.XMAAttachments) == len(b.XMAAttachments) && len(a.BlobAttachments) == len(b.BlobAttachments) && len(a.Stickers) == len(b.Stickers)).
@@ -427,14 +433,18 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		MarkRead: upsert.MarkRead,
 		CompleteCallback: func() {
 			go func() {
+				ctx := context.WithoutCancel(ctx)
 				for _, msg := range upsert.Messages {
-					if msg.PollEventType == table.PollEventAddOption || msg.PollEventType == table.PollEventCreate {
-						m.UserLogin.QueueRemoteEvent(&FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m})
+					evt := &FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m}
+					if msg.PollEventType == table.PollEventCreate {
+						evt.PostHandle(ctx, portal)
+					} else if msg.PollEventType == table.PollEventAddOption {
+						m.UserLogin.QueueRemoteEvent(evt)
 					}
 				}
 				for _, msg := range deferredPollVotes {
 					evt := &FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m}
-					evt.fetchPollForVote(context.WithoutCancel(ctx), portal)
+					evt.fetchPollForVote(ctx, portal)
 				}
 			}()
 		},
