@@ -232,6 +232,22 @@ func (m *MetaConnector) refreshBlobMedia(
 			}
 		}
 
+		for _, att := range wrappedMsg.XMAAttachments {
+			if att.AttachmentFbid == "" {
+				continue
+			}
+			url := att.PlayableUrl
+			expiry := att.PlayableUrlExpirationTimestampMs
+			if url == "" {
+				url = att.PreviewUrl
+				expiry = att.PreviewUrlExpirationTimestampMs
+			}
+			if url != "" {
+				attachmentURLs[att.AttachmentFbid] = url
+				attachmentExpiry[att.AttachmentFbid] = time.UnixMilli(expiry)
+			}
+		}
+
 		if len(attachmentURLs) == 0 {
 			continue
 		}
