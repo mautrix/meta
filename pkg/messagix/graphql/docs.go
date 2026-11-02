@@ -34,7 +34,6 @@ var GraphQLDocs = map[string]GraphQLDoc{
 	"EBMinosUploadMessagesMutation": {
 		DocID:        "39866297732983438",
 		FriendlyName: "EBMinosUploadMessagesMutation",
-		NoRetry:      true,
 	},
 	"useMWEncryptedBackupsFetchBackupIdsV2Query": {
 		DocID:        "25220416984279164",
