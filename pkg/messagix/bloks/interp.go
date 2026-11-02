@@ -1667,9 +1667,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, nil
-	case "bk.action.timer.Cancel":
-		// Args are (timer context, name), the first of which we have no use for.
-		name, err := evalAs[string](ctx, i, &call.Args[1], "timer.cancel")
+	case "bk.action.timer.Cancel", "bk.action.timer.Stop":
+		name, err := evalAs[string](ctx, i, &call.Args[len(call.Args)-1], "timer.cancel")
 		if err != nil {
 			return nil, err
 		}

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -170,15 +171,13 @@ func (m *MetaClient) fetchEncryptedHistory(ctx context.Context, params bridgev2.
 		HasMore:  *page.Range.HasMoreBefore,
 		Forward:  params.Forward,
 	}
-	messages, err := page.Decrypt(device, chat.User, metaid.ParseUserLoginID(m.UserLogin.ID), chat.Server == types.GroupServer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt Messenger history: %w", err)
-	}
+	messages := page.Decrypt(ctx, device, chat.User, metaid.ParseUserLoginID(m.UserLogin.ID), chat.Server == types.GroupServer)
 	var newestTimestamp int64
 	for _, message := range messages {
 		converted, err := m.convertArchiveMessage(ctx, params.Portal, message)
 		if err != nil {
-			return nil, err
+			zerolog.Ctx(ctx).Warn().Err(err).Str("message_id", message.ID).Msg("Failed to convert Messenger archive message")
+			continue
 		} else if converted != nil {
 			response.Messages = append(response.Messages, converted)
 		}

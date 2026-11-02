@@ -8,19 +8,22 @@ config => {
 
   const overlay = document.createElement('div')
   overlay.style.cssText = 'position:fixed;inset:0;z-index:1999999999;background:white;' +
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+    'display:flex;flex-direction:column;align-items:center;' +
     'gap:20px;padding:16px;overflow:auto;color:#111;font:16px sans-serif'
   const title = document.createElement('strong')
+  title.style.cssText = 'flex:none;margin-top:auto'
   title.textContent = 'Complete Instagram verification'
   const notice = document.createElement('p')
+  notice.style.cssText = 'flex:none'
   notice.textContent = 'Solve the CAPTCHA below to continue your existing login.'
   const frame = document.createElement('iframe')
   frame.title = 'Instagram CAPTCHA'
-  frame.style.cssText = 'border:0;width:100%;max-width:520px;height:140px;background:white'
+  frame.style.cssText = 'flex:none;border:0;width:100%;max-width:520px;height:140px;background:white'
   frame.referrerPolicy = 'no-referrer'
   const retry = document.createElement('button')
   retry.textContent = 'Reload CAPTCHA'
   retry.type = 'button'
+  retry.style.cssText = 'flex:none;margin-bottom:auto'
   overlay.append(title, notice, frame, retry)
 
   let listener
