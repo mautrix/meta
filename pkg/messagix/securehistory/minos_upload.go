@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	minosBackupActionUpsert = 1
-	minosPayloadVersion     = 2
+	minosBackupActionUpsert                = 1
+	minosBackupActionDeleteWithPlaceholder = 4
+	minosPayloadVersion                    = 2
 )
 
 type minosContactKeys struct {
@@ -82,6 +83,7 @@ type MinosSentMessage struct {
 	SenderID       int64
 	OtherUserID    int64
 	MessageID      string
+	DeletedID      string
 	TimestampMS    int64
 	TransportBytes []byte
 	FrankingTag    []byte
@@ -90,10 +92,11 @@ type MinosSentMessage struct {
 }
 
 type minosIdentifiers struct {
-	ActThreadID string `json:"act_thread_id"`
-	BackupID    string `json:"backup_id"`
-	OTID        string `json:"otid"`
-	Timestamp   int64  `json:"timestamp"`
+	ActThreadID  string `json:"act_thread_id"`
+	BackupID     string `json:"backup_id"`
+	DeletionOTID string `json:"deletion_otid,omitempty"`
+	OTID         string `json:"otid"`
+	Timestamp    int64  `json:"timestamp"`
 }
 
 type minosTaskMetadata struct {
@@ -113,9 +116,10 @@ type minosUploadPayload struct {
 }
 
 type minosRawIdentifiers struct {
-	OTID       string `json:"otid"`
-	Timestamp  int64  `json:"timestamp"`
-	WAThreadID string `json:"wa_thread_id"`
+	DeletionOTID string `json:"deletion_otid,omitempty"`
+	OTID         string `json:"otid"`
+	Timestamp    int64  `json:"timestamp"`
+	WAThreadID   string `json:"wa_thread_id"`
 }
 
 type minosMEKEnvelopePayload struct {
@@ -136,6 +140,7 @@ type minosMEKRegistration struct {
 }
 
 type minosUploadSuccess struct {
+	DeletionOTID         string                `json:"deletion_offline_threading_id,omitempty"`
 	EncryptedProtobuf    []byte                `json:"encrypted_protobuf"`
 	IsEphemeral          bool                  `json:"is_ephemeral"`
 	KeyValueBackupAction int                   `json:"key_value_backup_action"`
@@ -222,6 +227,10 @@ func (c *Client) UploadSentMessage(ctx context.Context, msg *MinosSentMessage) e
 		return err
 	}
 	threadID := strconv.FormatInt(msg.OtherUserID, 10)
+	action := minosBackupActionUpsert
+	if msg.DeletedID != "" {
+		action = minosBackupActionDeleteWithPlaceholder
+	}
 	ciphertext, signature, err := EncryptMinosMessage(mek, msg.MessageID, minosDMThreadID(msg.SenderID, msg.OtherUserID), otid>>22, msg.IdentityPriv, msg.IdentityPub, plaintext)
 	if err != nil {
 		return err
@@ -246,8 +255,9 @@ func (c *Client) UploadSentMessage(ctx context.Context, msg *MinosSentMessage) e
 		return err
 	}
 	success, err := marshalJSONString(&minosUploadSuccess{
+		DeletionOTID:         msg.DeletedID,
 		EncryptedProtobuf:    ciphertext,
-		KeyValueBackupAction: minosBackupActionUpsert,
+		KeyValueBackupAction: action,
 		MEKRegistration: &minosMEKRegistration{
 			ActThreadID:          threadID,
 			Envelopes:            envelopes,
@@ -261,9 +271,10 @@ func (c *Client) UploadSentMessage(ctx context.Context, msg *MinosSentMessage) e
 		MessageEncryptionVer: minosMessageVersion,
 		MessageTags:          `{"message_tags":[]}`,
 		RawIdentifiers: minosRawIdentifiers{
-			OTID:       msg.MessageID,
-			Timestamp:  msg.TimestampMS,
-			WAThreadID: threadID,
+			DeletionOTID: msg.DeletedID,
+			OTID:         msg.MessageID,
+			Timestamp:    msg.TimestampMS,
+			WAThreadID:   threadID,
 		},
 		ValueSecretReference: valueSecretRef,
 	})
@@ -272,10 +283,11 @@ func (c *Client) UploadSentMessage(ctx context.Context, msg *MinosSentMessage) e
 	}
 	var payload minosUploadPayload
 	payload.Context.Identifiers = minosIdentifiers{
-		ActThreadID: threadID,
-		BackupID:    msg.BackupID,
-		OTID:        msg.MessageID,
-		Timestamp:   msg.TimestampMS,
+		ActThreadID:  threadID,
+		BackupID:     msg.BackupID,
+		DeletionOTID: msg.DeletedID,
+		OTID:         msg.MessageID,
+		Timestamp:    msg.TimestampMS,
 	}
 	payload.Context.TaskMetadata = minosTaskMetadata{
 		EnqueueTimestampMS:       msg.TimestampMS,

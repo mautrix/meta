@@ -106,7 +106,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		if err != nil {
 			return nil, wrapMetaError(err)
 		}
-		m.uploadSentMessageToHistory(ctx, chatJID, messageID, waMsg, waMeta)
+		m.uploadSentMessageToHistory(ctx, chatJID, messageID, "", waMsg, waMeta)
 		dbMessageID := metaid.MakeWAMessageID(chatJID, senderJID.ToNonAD(), messageID)
 		m.Main.AddMediaEditCache(msg.Portal, dbMessageID, &bridgev2.ConvertedMessagePart{Type: msg.Event.Type, Content: msg.Content})
 		return &bridgev2.MatrixMessageResponse{
@@ -528,11 +528,17 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 			Key: m.messageIDToWAKey(messageID),
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
-		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: waTypes.MessageID(msg.InputTransactionID),
+		revokeID := strconv.FormatInt(getOTID(msg.InputTransactionID), 10)
+		waMeta := &waMsgApplication.MessageApplication_Metadata{}
+		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, waMeta, whatsmeow.SendRequestExtra{
+			ID: revokeID,
 		})
 		log.Trace().Any("response", resp).Msg("WhatsApp delete response")
-		return wrapMetaError(err)
+		if err != nil {
+			return wrapMetaError(err)
+		}
+		m.uploadSentMessageToHistory(ctx, portalJID, revokeID, messageID.ID, consumerMsg, waMeta)
+		return nil
 	default:
 		return fmt.Errorf("invalid message ID")
 	}

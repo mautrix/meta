@@ -84,6 +84,7 @@ func (m *MetaClient) uploadSentMessageToHistory(
 	ctx context.Context,
 	chat waTypes.JID,
 	messageID string,
+	deletedID string,
 	message armadillo.RealMessageApplicationSub,
 	metadata *waMsgApplication.MessageApplication_Metadata,
 ) {
@@ -104,7 +105,7 @@ func (m *MetaClient) uploadSentMessageToHistory(
 	go func() {
 		ctx, cancel := context.WithTimeout(ctx, historyUploadTimeout)
 		defer cancel()
-		err := m.doUploadSentMessageToHistory(ctx, historyClient, identity, chat, messageID, message, metadata)
+		err := m.doUploadSentMessageToHistory(ctx, historyClient, identity, chat, messageID, deletedID, message, metadata)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to upload sent message to encrypted history")
 		} else {
@@ -119,6 +120,7 @@ func (m *MetaClient) doUploadSentMessageToHistory(
 	identity *keys.KeyPair,
 	chat waTypes.JID,
 	messageID string,
+	deletedID string,
 	message armadillo.RealMessageApplicationSub,
 	metadata *waMsgApplication.MessageApplication_Metadata,
 ) error {
@@ -148,6 +150,7 @@ func (m *MetaClient) doUploadSentMessageToHistory(
 		SenderID:       metaid.ParseUserLoginID(m.UserLogin.ID),
 		OtherUserID:    otherUserID,
 		MessageID:      messageID,
+		DeletedID:      deletedID,
 		TimestampMS:    otid >> 22,
 		TransportBytes: transportBytes,
 		FrankingTag:    franking.Sum(nil),
