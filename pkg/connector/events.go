@@ -419,7 +419,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 				}
 				return bridgev2.RemoteEventReaction
 			default:
-				return bridgev2.RemoteEventMessage
+				return bridgev2.RemoteEventMessageUpsert
 			}
 		case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
 			switch applicationContent := payload.ApplicationData.GetApplicationContent().(type) {
