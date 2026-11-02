@@ -98,6 +98,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
 		ic.permanentErrored.Store(false)
+		ic.accountStateRechecks.Store(0)
 		stale := ic.isWebPushStale(ctx)
 		ic.webPushStaleReported.Store(stale)
 		if stale {
