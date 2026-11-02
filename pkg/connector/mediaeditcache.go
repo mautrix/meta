@@ -108,6 +108,7 @@ func (m *MetaConnector) mergeEditedCaption(ctx context.Context, portal *bridgev2
 	mediaPart.Content = ptr.Clone(mediaPart.Content)
 	mediaPart.Content.RelatesTo = nil
 	mediaPart.Content.NewContent = nil
+	mediaPart.DBMetadata = nil
 	if mediaPart.Content.FileName != "" {
 		mediaPart.Content.Body = mediaPart.Content.FileName
 		mediaPart.Content.Format = ""
