@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"sync"
 
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -20,6 +21,9 @@ type MetaConnector struct {
 	MsgConv     *msgconv.MessageConverter
 	DeviceStore *sqlstore.Container
 	DB          *metadb.MetaDB
+
+	mediaEditCache     MediaEditCache
+	mediaEditCacheLock sync.RWMutex
 }
 
 var (
@@ -39,6 +43,7 @@ func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
 	m.DB = metadb.New(bridge.ID, bridge.DB.Database, m.Bridge.Log.With().Str("db_section", "meta").Logger())
 	m.MsgConv = msgconv.New(bridge, m.DB)
 	m.MsgConv.DisableViewOnce = m.Config.DisableViewOnce
+	m.mediaEditCache = make(MediaEditCache)
 }
 
 func (m *MetaConnector) Start(ctx context.Context) error {
@@ -51,6 +56,7 @@ func (m *MetaConnector) Start(ctx context.Context) error {
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "meta"}
 	}
+	go m.mediaEditCacheExpireLoop(m.Bridge.BackgroundCtx)
 	return nil
 }
 

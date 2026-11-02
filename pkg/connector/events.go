@@ -178,7 +178,11 @@ func (evt *FBMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.
 	if cli == nil {
 		return nil, messagix.ErrClientIsNil
 	}
-	return evt.m.Main.MsgConv.ToMatrix(ctx, portal, cli, evt.m.UserLogin, intent, evt.GetID(), evt.WrappedMessage), nil
+	cm := evt.m.Main.MsgConv.ToMatrix(ctx, portal, cli, evt.m.UserLogin, intent, evt.GetID(), evt.WrappedMessage)
+	if len(cm.Parts) == 1 {
+		evt.m.Main.AddMediaEditCache(portal, evt.GetID(), cm.Parts[0])
+	}
+	return cm, nil
 }
 
 type FBEditEvent struct {
@@ -217,15 +221,12 @@ func (evt *FBEditEvent) GetTargetMessage() networkid.MessageID {
 
 func (evt *FBEditEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
 	textPart := existing[0] // TODO: Figure out a better way to get the text part, esp. if there are attachments etc.
-
+	converted := evt.m.Main.mergeEditedCaption(ctx, portal, textPart, &bridgev2.ConvertedMessagePart{
+		Type:    event.EventMessage,
+		Content: evt.m.Main.MsgConv.MetaToMatrixText(ctx, evt.Text, nil),
+	})
 	return &bridgev2.ConvertedEdit{
-		ModifiedParts: []*bridgev2.ConvertedEditPart{
-			{
-				Part:    textPart,
-				Type:    event.EventMessage,
-				Content: evt.m.Main.MsgConv.MetaToMatrixText(ctx, evt.Text, nil),
-			},
-		},
+		ModifiedParts: []*bridgev2.ConvertedEditPart{converted.ToEditPart(textPart)},
 	}, nil
 }
 
@@ -504,7 +505,11 @@ func (evt *WAMessageEvent) GetStreamOrder() int64 {
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.m.Main.MsgConv.WhatsAppToMatrix(ctx, portal, evt.m.Client, evt.m.E2EEClient, evt.m.UserLogin, intent, evt.GetID(), evt.FBMessage), nil
+	cm := evt.m.Main.MsgConv.WhatsAppToMatrix(ctx, portal, evt.m.Client, evt.m.E2EEClient, evt.m.UserLogin, intent, evt.GetID(), evt.FBMessage)
+	if len(cm.Parts) == 1 {
+		evt.m.Main.AddMediaEditCache(portal, evt.GetID(), cm.Parts[0])
+	}
+	return cm, nil
 }
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
@@ -517,7 +522,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		if existing[0].Metadata.(*metaid.MessageMetadata).EditTimestamp >= editMsg.GetTimestampMS() {
 			return nil, fmt.Errorf("%w: duplicate edit", bridgev2.ErrIgnoringRemoteEvent)
 		}
-		converted := evt.m.Main.MsgConv.WhatsAppTextToMatrix(ctx, editMsg.GetMessage())
+		converted := evt.m.Main.mergeEditedCaption(ctx, portal, existing[0], evt.m.Main.MsgConv.WhatsAppTextToMatrix(ctx, editMsg.GetMessage()))
 		editPart := converted.ToEditPart(existing[0])
 		editPart.Part.Metadata.(*metaid.MessageMetadata).EditTimestamp = editMsg.GetTimestampMS()
 		return &bridgev2.ConvertedEdit{
