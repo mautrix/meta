@@ -208,7 +208,7 @@ func (evt *FBMessageEvent) PostHandle(ctx context.Context, portal *bridgev2.Port
 	}
 	_, pending := evt.m.pollQueries.Load(evt.PollID)
 	if !message.Metadata.(*metaid.MessageMetadata).PollFetched || pending {
-		evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, evt.GetID())
+		evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, evt.GetID(), 0)
 	}
 }
 
@@ -216,7 +216,7 @@ func (evt *FBMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	if len(evt.PollOptions) == 0 {
 		meta := existing[0].Metadata.(*metaid.MessageMetadata)
 		if evt.TimestampMs > meta.PollUpdatedMS {
-			evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, existing[0].ID)
+			evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, existing[0].ID, evt.TimestampMs)
 		}
 		return nil, bridgev2.ErrIgnoringRemoteEvent
 	}

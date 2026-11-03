@@ -29,6 +29,7 @@ type pollQuery struct {
 	running     atomic.Bool
 	importVotes bool
 	requestedMS atomic.Int64
+	updatedMS   atomic.Int64
 }
 
 type pollEditEvent struct {
@@ -74,7 +75,7 @@ func (m *MetaClient) retryPendingPolls(ctx context.Context) {
 			m.removePollQuery(key.(int64), query)
 			return true
 		}
-		m.requestPoll(ctx, query.portal, key.(int64), query.target)
+		m.requestPoll(ctx, query.portal, key.(int64), query.target, 0)
 		return true
 	})
 }
@@ -85,11 +86,14 @@ func (m *MetaClient) removePollQuery(pollID int64, query *pollQuery) {
 	}
 }
 
-func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey, pollID int64, target networkid.MessageID) {
+func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey, pollID int64, target networkid.MessageID, updatedMS int64) {
 	query := &pollQuery{portal: portal, target: target, done: make(chan struct{})}
 	previous, loaded := m.pollQueries.LoadOrStore(pollID, query)
 	if loaded {
 		query = previous.(*pollQuery)
+	}
+	if updatedMS > query.updatedMS.Load() {
+		query.updatedMS.Store(updatedMS)
 	}
 	if !query.running.CompareAndSwap(false, true) {
 		return
@@ -150,10 +154,12 @@ func (evt *FBMessageEvent) fetchPollForVote(ctx context.Context, portal *bridgev
 	if err != nil || target == nil {
 		return false
 	}
-	fetched := target.Metadata.(*metaid.MessageMetadata).PollFetched
+	meta := target.Metadata.(*metaid.MessageMetadata)
+	fetched := meta.PollFetched
 	_, pending := evt.m.pollQueries.Load(evt.PollID)
-	if !fetched || pending || len(evt.PollVotes)+len(evt.PollRemovals) == 0 {
-		evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, targetID)
+	missed := len(evt.PollVotes)+len(evt.PollRemovals) == 0 && meta.PollVotes[evt.SenderId].TimestampMS < evt.TimestampMs/1000*1000
+	if !fetched || pending || missed {
+		evt.m.requestPoll(ctx, portal.PortalKey, evt.PollID, targetID, 0)
 	}
 	return !fetched
 }
@@ -237,16 +243,21 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 				meta = edit.ModifiedParts[0].Part.Metadata.(*metaid.MessageMetadata)
 			}
 			expectedOptions = meta.PollAnswers
+			updated := query.updatedMS.Load() > meta.PollUpdatedMS
+			if updated {
+				meta.PollUpdatedMS = query.updatedMS.Load()
+			}
 			votes := meta.PollVotes
 			requestedMS := query.requestedMS.Load()
 			if !query.importVotes {
 				votes = reconcilePollVotes(meta, data, requestedMS)
-				if len(votes) == 0 {
-					return result, nil
-				} else if edit == nil {
+				if edit == nil && (updated || len(votes) > 0) {
 					if err = m.Main.Bridge.DB.Message.Update(ctx, parent); err != nil {
 						return result, err
 					}
+				}
+				if len(votes) == 0 {
+					return result, nil
 				}
 			}
 			for actor, vote := range votes {

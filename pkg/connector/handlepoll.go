@@ -175,7 +175,7 @@ func (m *MetaClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.Mat
 	defer m.pollSendLock.Unlock()
 	meta := msg.VoteTo.Metadata.(*metaid.MessageMetadata)
 	if meta.PollID != 0 && !meta.PollFetched {
-		m.requestPoll(ctx, msg.Portal.PortalKey, meta.PollID, msg.VoteTo.ID)
+		m.requestPoll(ctx, msg.Portal.PortalKey, meta.PollID, msg.VoteTo.ID, 0)
 	}
 	task, err := m.Main.MsgConv.PollVoteToMeta(msg)
 	if err != nil {
