@@ -30,6 +30,7 @@ type pollQuery struct {
 	importVotes bool
 	requestedMS atomic.Int64
 	updatedMS   atomic.Int64
+	coveredMS   atomic.Int64
 }
 
 type pollEditEvent struct {
@@ -121,6 +122,7 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 			}
 			requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			query.requestedMS.Store(time.Now().UnixMilli())
+			query.coveredMS.Store(query.updatedMS.Load())
 			_, err := client.ExecuteTasks(requestCtx, &socket.PollPointQueryTask{
 				ThreadKey: metaid.ParseFBPortalID(portal.ID),
 				PollID:    pollID,
@@ -139,7 +141,7 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 			cancel()
 			zerolog.Ctx(ctx).Err(err).Int64("poll_id", pollID).Int("attempt", attempt+1).Msg("Failed to fetch poll details")
 		}
-		if answered {
+		if answered && query.updatedMS.Load() <= query.coveredMS.Load() {
 			m.removePollQuery(pollID, query)
 		}
 	}()
@@ -215,6 +217,9 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 						return
 					}
 				}
+				if query.updatedMS.Load() > query.coveredMS.Load() {
+					return
+				}
 				m.removePollQuery(data.PollID, query)
 			},
 		},
@@ -243,9 +248,10 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 				meta = edit.ModifiedParts[0].Part.Metadata.(*metaid.MessageMetadata)
 			}
 			expectedOptions = meta.PollAnswers
-			updated := query.updatedMS.Load() > meta.PollUpdatedMS
+			covered := query.coveredMS.Load()
+			updated := covered > meta.PollUpdatedMS
 			if updated {
-				meta.PollUpdatedMS = query.updatedMS.Load()
+				meta.PollUpdatedMS = covered
 			}
 			votes := meta.PollVotes
 			requestedMS := query.requestedMS.Load()
