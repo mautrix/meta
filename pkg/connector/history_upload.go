@@ -88,7 +88,7 @@ func (m *MetaClient) uploadSentMessageToHistory(
 	message armadillo.RealMessageApplicationSub,
 	metadata *waMsgApplication.MessageApplication_Metadata,
 ) {
-	if !m.LoginMeta.Platform.IsMessenger() || chat.Server != waTypes.MessengerServer || metadata == nil || len(metadata.GetFrankingKey()) == 0 {
+	if !m.Main.Config.E2EEBackfill || !m.LoginMeta.Platform.IsMessenger() || chat.Server != waTypes.MessengerServer || metadata == nil || len(metadata.GetFrankingKey()) == 0 {
 		return
 	}
 	client, device := m.Client, m.WADevice
