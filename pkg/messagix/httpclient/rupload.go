@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"cmp"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
@@ -71,7 +72,7 @@ func (c *HTTPClient) SendRUploadRequest(ctx context.Context, session *types.Nati
 	h.Set("accept-language", "en-US")
 	h.Set("offset", "0")
 	h.Set("x-entity-length", strconv.Itoa(len(media.MediaData)))
-	h.Set("x-entity-name", url.QueryEscape(entityName))
+	h.Set("x-entity-name", url.QueryEscape(cmp.Or(media.Filename, entityName)))
 	h.Set("x-entity-type", media.MimeType)
 	h.Set("attempt_id", strconv.FormatUint(binary.BigEndian.Uint64(random.Bytes(8))>>1, 10))
 	switch namespace {
