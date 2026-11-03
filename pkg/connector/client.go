@@ -90,7 +90,7 @@ type MetaClient struct {
 	webPushStaleReported atomic.Bool
 	webPushChecking      atomic.Bool
 	webPushCandidates    *exsync.Set[networkid.PortalID]
-	webPushPushable      *exsync.Map[networkid.PortalID, bool]
+	webPushThreads       *exsync.Map[networkid.PortalID, webPushThread]
 
 	waLastPresence waTypes.Presence
 }
@@ -125,7 +125,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		e2eeConnectWaiter: exsync.NewEvent(),
 
 		webPushCandidates: exsync.NewSet[networkid.PortalID](),
-		webPushPushable:   exsync.NewMap[networkid.PortalID, bool](),
+		webPushThreads:    exsync.NewMap[networkid.PortalID, webPushThread](),
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
 	login.Client = c

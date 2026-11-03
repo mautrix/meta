@@ -730,10 +730,9 @@ func (m *MetaClient) handleSetThreadImage(tk handlerParams, evt *table.LSSetThre
 }
 
 func (m *MetaClient) handleUpdateMuteSetting(tk handlerParams, evt *table.LSUpdateThreadMuteSetting) bridgev2.RemoteEvent {
-	if evt.MuteExpireTimeMS != 0 {
-		m.webPushPushable.Set(tk.Portal.ID, false)
-	} else {
-		m.webPushPushable.Delete(tk.Portal.ID)
+	if thread, ok := m.webPushThreads.Get(tk.Portal.ID); ok {
+		thread.mutedUntil = evt.MuteExpireTimeMS
+		m.webPushThreads.Set(tk.Portal.ID, thread)
 	}
 	mutedUntil := time.UnixMilli(evt.MuteExpireTimeMS)
 	if evt.MuteExpireTimeMS < 0 {

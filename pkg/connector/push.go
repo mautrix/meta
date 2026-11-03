@@ -340,13 +340,18 @@ func (m *MetaClient) isWebPushStale(ctx context.Context) bool {
 	return stale
 }
 
+type webPushThread struct {
+	inbox      bool
+	mutedUntil int64
+}
+
+func (t webPushThread) pushable() bool {
+	return t.inbox && (t.mutedUntil == 0 || (t.mutedUntil > 0 && time.UnixMilli(t.mutedUntil).Before(time.Now())))
+}
+
 func (m *MetaClient) trackWebPushThread(portalID networkid.PortalID, folder string, muteExpireTimeMS int64) {
-	switch folder {
-	case folderInbox:
-		m.webPushPushable.Set(portalID, muteExpireTimeMS == 0 || (muteExpireTimeMS > 0 && time.UnixMilli(muteExpireTimeMS).Before(time.Now())))
-	case folderE2EECutover:
-	default:
-		m.webPushPushable.Set(portalID, false)
+	if folder != folderE2EECutover {
+		m.webPushThreads.Set(portalID, webPushThread{inbox: folder == folderInbox, mutedUntil: muteExpireTimeMS})
 	}
 }
 
@@ -390,7 +395,7 @@ func (m *MetaClient) confirmWebPushStale() {
 	}
 	var missed networkid.PortalID
 	for _, portalID := range candidates.AsList() {
-		if pushable, _ := m.webPushPushable.Get(portalID); pushable {
+		if thread, ok := m.webPushThreads.Get(portalID); ok && thread.pushable() {
 			missed = portalID
 			break
 		}
