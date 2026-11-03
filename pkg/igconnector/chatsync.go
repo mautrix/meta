@@ -26,6 +26,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -173,10 +174,14 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		return nil
 	}
 	hasMore := true
-	processThreads := func(threads slidetypes.Edged[slidetypes.Node[slidetypes.WrappedThreadInfo]]) bool {
+	processThreads := func(threads slidetypes.Edged[slidetypes.Node[slidetypes.WrappedThreadInfo]], skipEdges map[int]struct{}) bool {
 		cursor = threads.PageInfo.EndCursor
 		hasMore = threads.PageInfo.HasNextPage
-		for _, edge := range threads.Edges {
+		for i, edge := range threads.Edges {
+			if _, skip := skipEdges[i]; skip {
+				log.Warn().Int("edge_index", i).Msg("Skipping thread with errors in chat list page")
+				continue
+			}
 			if !since.IsZero() && edge.Node.AsIGDirectThread.LastActivityTimestampMS.Before(since) {
 				hasMore = false
 				return true
@@ -208,7 +213,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 			log.Warn().Msg("Initial inbox response didn't contain a mailbox")
 			return
 		}
-		if !processThreads(resp.Mailbox.ThreadsByFolder) {
+		if !processThreads(resp.Mailbox.ThreadsByFolder, nil) {
 			return
 		}
 	} else {
@@ -222,6 +227,13 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 			return
 		}
 		resp, err := ic.Client.PaginateMailbox(ctx, slidetypes.MakePaginateMailboxRequest(viewerFBID, cursor, "INBOX", nil))
+		var skipEdges map[int]struct{}
+		if err != nil && resp != nil && resp.Mailbox != nil {
+			skipEdges = erroredThreadEdges(err, len(resp.Mailbox.ThreadsByFolder.Edges))
+			if skipEdges != nil {
+				err = nil
+			}
+		}
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more chats")
 			return
@@ -229,7 +241,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 			log.Warn().Msg("Pagination response didn't contain a mailbox")
 			return
 		}
-		if !processThreads(resp.Mailbox.ThreadsByFolder) {
+		if !processThreads(resp.Mailbox.ThreadsByFolder, skipEdges) {
 			return
 		}
 		batchCount++
@@ -245,4 +257,27 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 	if err != nil {
 		log.Err(err).Msg("Failed to save user login after chat backfill")
 	}
+}
+
+func erroredThreadEdges(err error, edgeCount int) map[int]struct{} {
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return nil
+	}
+	edges := make(map[int]struct{})
+	for _, subErr := range joined.Unwrap() {
+		gqlErr, ok := subErr.(*types.GraphQLError)
+		if !ok || len(gqlErr.Path) < 4 || gqlErr.Path[1] != "threads_by_folder" || gqlErr.Path[2] != "edges" {
+			return nil
+		}
+		idx, ok := gqlErr.Path[3].(float64)
+		if !ok || idx < 0 || int(idx) >= edgeCount {
+			return nil
+		}
+		edges[int(idx)] = struct{}{}
+	}
+	if len(edges) == 0 {
+		return nil
+	}
+	return edges
 }
