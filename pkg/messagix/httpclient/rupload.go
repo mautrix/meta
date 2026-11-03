@@ -92,6 +92,15 @@ func (c *HTTPClient) SendRUploadRequest(ctx context.Context, session *types.Nati
 		return e.Str("rupload_namespace", namespace)
 	})
 	if err != nil {
+		var errResp struct {
+			DebugInfo struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"debug_info"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.DebugInfo.Message != "" {
+			return 0, fmt.Errorf("failed to send rupload request: %w (%s: %s)", err, errResp.DebugInfo.Type, errResp.DebugInfo.Message)
+		}
 		return 0, fmt.Errorf("failed to send rupload request: %w", err)
 	}
 	var resp struct {

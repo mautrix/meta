@@ -71,10 +71,10 @@ func ReuploadFileToMeta(
 			IsVoiceClip: isVoice,
 			DurationMS:  content.Info.Duration,
 		})
-		if err == nil {
-			return mediaID, nil
+		if err != nil {
+			return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 		}
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment with native session, falling back to mercury")
+		return mediaID, nil
 	}
 	resp, err := client.SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
 		Filename:     fileName,
