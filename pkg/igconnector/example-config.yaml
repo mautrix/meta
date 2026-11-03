@@ -31,6 +31,9 @@ disable_typing: false
 disable_view_once: false
 # Log raw Bloks payloads and login responses even at debug level, with any user identifiers or credentials redacted.
 log_redacted_login_responses: false
+# Should the bridge ask for a relogin when web push notifications stop arriving?
+# Only useful when the bridge relies on push to wake up, like inside mobile clients.
+relogin_on_stale_web_push: true
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:

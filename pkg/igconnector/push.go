@@ -318,7 +318,7 @@ const (
 
 func (ic *IGClient) usesWebPush() bool {
 	session := ic.LoginMeta.InstagramNativeSession
-	return ic.LoginMeta.PushKeys != nil && (session == nil || session.Authorization == "")
+	return ic.Main.Config.ReloginOnStaleWebPush && ic.LoginMeta.PushKeys != nil && (session == nil || session.Authorization == "")
 }
 
 func (ic *IGClient) isWebPushStale(ctx context.Context) bool {
