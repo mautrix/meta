@@ -141,6 +141,25 @@ func (m *MetaConnector) refreshMediaURL(
 	return "", fmt.Errorf("no refresh identifiers available")
 }
 
+func (m *MetaConnector) getAlreadyRefreshedURL(ctx context.Context, msg *database.Message, info *mediadl.DirectMediaMeta) string {
+	current, err := m.Bridge.DB.Message.GetPartByID(ctx, msg.Room.Receiver, msg.ID, msg.PartID)
+	if err != nil || current == nil {
+		return ""
+	}
+	meta, ok := current.Metadata.(*metaid.MessageMetadata)
+	if !ok || meta.DirectMediaMeta == nil {
+		return ""
+	}
+	var dmm mediadl.DirectMediaMeta
+	if json.Unmarshal(meta.DirectMediaMeta, &dmm) != nil ||
+		dmm.AttachmentFBID != info.AttachmentFBID ||
+		dmm.URL == info.URL ||
+		time.Now().After(dmm.ExpiresAt.Add(-5*time.Minute)) {
+		return ""
+	}
+	return dmm.URL
+}
+
 // refreshBlobMedia re-fetches messages to get fresh attachment URLs.
 // It updates all fetched messages in the database, not just the one we need.
 func (m *MetaConnector) refreshBlobMedia(
@@ -154,6 +173,12 @@ func (m *MetaConnector) refreshBlobMedia(
 	threadKey := msg.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Room.ID)
 	if threadKey == 0 {
 		return "", fmt.Errorf("invalid thread key")
+	}
+
+	client.mediaRefreshLock.Lock(threadKey)
+	defer client.mediaRefreshLock.Unlock(threadKey)
+	if freshURL := m.getAlreadyRefreshedURL(ctx, msg, info); freshURL != "" {
+		return freshURL, nil
 	}
 
 	// Parse message ID for the target message

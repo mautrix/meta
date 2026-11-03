@@ -54,6 +54,7 @@ type MetaClient struct {
 	historyBackupID        string
 	historyBackupCheckedAt time.Time
 	backfillLock           sync.Mutex
+	mediaRefreshLock       exsync.KeyedMutex[int64]
 	connectLock            sync.Mutex
 	pushRegistrationLock   sync.Mutex
 	stopConnectAttempt     atomic.Pointer[context.CancelFunc]
