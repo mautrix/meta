@@ -39,7 +39,7 @@ func ruploadNamespace(media *RUploadMedia) string {
 	case strings.HasPrefix(media.MimeType, "audio/"):
 		return "messenger_audio"
 	default:
-		return "messenger_file"
+		return "up"
 	}
 }
 
