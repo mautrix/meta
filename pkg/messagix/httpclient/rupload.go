@@ -39,7 +39,7 @@ func ruploadNamespace(media *RUploadMedia) string {
 	case strings.HasPrefix(media.MimeType, "audio/"):
 		return "messenger_audio"
 	default:
-		return "up"
+		return "messenger_file"
 	}
 }
 
@@ -80,6 +80,8 @@ func (c *HTTPClient) SendRUploadRequest(ctx context.Context, session *types.Nati
 		h.Set("image_type", "FILE_ATTACHMENT")
 	case "messenger_video":
 		h.Set("video_type", "FILE_ATTACHMENT")
+	case "messenger_file":
+		h.Set("file_type", "FILE_ATTACHMENT")
 	case "messenger_audio":
 		if media.IsVoiceClip {
 			h.Set("audio_type", "VOICE_MESSAGE")
