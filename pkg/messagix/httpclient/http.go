@@ -37,6 +37,7 @@ type HTTPClient struct {
 	HTTPSettings    exhttp.ClientSettings
 	ownedTransport  *req.Transport
 	uploadHTTP      *http.Client
+	lsSyncHTTP      *http.Client
 	websocketClient *http.Client
 	proxyAddr       string
 	GetNewProxy     func(reason string) (string, error)
@@ -103,6 +104,7 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	}
 	reqClient := c.newReqClient()
 	uploadReqClient := c.newReqClient()
+	lsSyncReqClient := c.newReqClient()
 	wsClient := req.C().ImpersonateChrome()
 	forceHTTP1ChromeFingerprint(wsClient)
 	if DisableTLSVerification {
@@ -114,12 +116,16 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	oldHTTP := c.HTTP
 	oldTransport := c.ownedTransport
 	oldUploadHTTP := c.uploadHTTP
+	oldLSSyncHTTP := c.lsSyncHTTP
 	c.websocketClient = req.WithTransportOverride(c.HTTPSettings.WithGlobalTimeout(WebsocketHandshakeTimeout), wsClient).Compile()
 	c.HTTP = req.WithTransportOverride(c.HTTPSettings, reqClient).Compile()
 	c.ownedTransport = reqClient.GetTransport()
 	uploadSettings := c.HTTPSettings.WithGlobalTimeout(MediaUploadTimeout).WithResponseHeaderTimeout(MediaUploadTimeout)
 	c.uploadHTTP = req.WithTransportOverride(uploadSettings, uploadReqClient).Compile()
 	c.uploadHTTP.CheckRedirect = c.checkHTTPRedirect
+	lsSyncSettings := c.HTTPSettings.WithGlobalTimeout(LightspeedSyncTimeout).WithResponseHeaderTimeout(LightspeedSyncHeaderTimeout)
+	c.lsSyncHTTP = req.WithTransportOverride(lsSyncSettings, lsSyncReqClient).Compile()
+	c.lsSyncHTTP.CheckRedirect = c.checkHTTPRedirect
 	c.HTTP.CheckRedirect = c.checkHTTPRedirect
 	if oldHTTP != nil && oldHTTP.Transport != oldTransport {
 		c.SetTransportOverride(oldHTTP.Transport)
@@ -129,6 +135,9 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	}
 	if oldUploadHTTP != nil {
 		oldUploadHTTP.CloseIdleConnections()
+	}
+	if oldLSSyncHTTP != nil {
+		oldLSSyncHTTP.CloseIdleConnections()
 	}
 
 	if DisableTLSVerification {
@@ -216,6 +225,13 @@ func (c *HTTPClient) uploadClient() *http.Client {
 	return c.uploadHTTP
 }
 
+func (c *HTTPClient) lsSyncClient() *http.Client {
+	if c.HTTP.Transport != c.ownedTransport {
+		return c.HTTP
+	}
+	return c.lsSyncHTTP
+}
+
 func (c *HTTPClient) SetProxy(proxyAddr string) error {
 	if c == nil {
 		return nil
@@ -252,6 +268,8 @@ func (c *HTTPClient) UpdateProxy(reason string) bool {
 var DisableTLSVerification = false
 var WebsocketHandshakeTimeout = 20 * time.Second
 var MediaUploadTimeout = 5 * time.Minute
+var LightspeedSyncHeaderTimeout = 60 * time.Second
+var LightspeedSyncTimeout = 90 * time.Second
 
 func (c *HTTPClient) GetWebsocketDialer() *websocket.DialOptions {
 	if c == nil {
