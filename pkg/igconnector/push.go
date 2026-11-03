@@ -89,7 +89,7 @@ func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType brid
 	if err := cli.RegisterPushNotifications(ctx, token, keys); err != nil {
 		return err
 	}
-	return ic.Main.DB.InitIGWebPush(ctx, ic.UserLogin.ID, time.Now(), newKeys)
+	return ic.Main.DB.InitWebPush(ctx, ic.UserLogin.ID, time.Now(), newKeys)
 }
 
 func (ic *IGClient) registerNativePush(ctx context.Context, token string) error {
@@ -111,7 +111,7 @@ func (ic *IGClient) registerNativePush(ctx context.Context, token string) error 
 	if err := client.RegisterNativePushNotifications(ctx, token, ic.LoginMeta.NativePushKeys); err != nil {
 		return err
 	}
-	if err := ic.Main.DB.DeleteIGWebPush(ctx, ic.UserLogin.ID); err != nil {
+	if err := ic.Main.DB.DeleteWebPush(ctx, ic.UserLogin.ID); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to clear web push state after native push registration")
 	}
 	session := client.GetInstagramNativeSession()
@@ -255,7 +255,7 @@ func (ic *IGClient) ConnectBackground(ctx context.Context, params *bridgev2.Conn
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
-		if err = ic.Main.DB.PutIGWebPushReceived(ctx, ic.UserLogin.ID, time.Now()); err != nil {
+		if err = ic.Main.DB.PutWebPushReceived(ctx, ic.UserLogin.ID, time.Now()); err != nil {
 			log.Err(err).Msg("Failed to save web push receive time")
 		}
 		if strings.HasPrefix(data.MessageID, "mid.") {
@@ -318,14 +318,14 @@ const (
 
 func (ic *IGClient) usesWebPush() bool {
 	session := ic.LoginMeta.InstagramNativeSession
-	return ic.LoginMeta.PushKeys != nil && (session == nil || session.Authorization == "")
+	return ic.Main.Config.ReloginOnStaleWebPush && ic.LoginMeta.PushKeys != nil && (session == nil || session.Authorization == "")
 }
 
 func (ic *IGClient) isWebPushStale(ctx context.Context) bool {
 	if !ic.usesWebPush() {
 		return false
 	}
-	_, stale, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
+	_, stale, err := ic.Main.DB.GetWebPush(ctx, ic.UserLogin.ID)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get web push state")
 	}
@@ -373,7 +373,7 @@ func (ic *IGClient) confirmWebPushStale() {
 	}
 	candidates := ic.webPushCandidates.ReplaceAll(nil)
 	receivedBefore := time.Now().Add(-webPushStaleAfter)
-	lastReceived, _, err := ic.Main.DB.GetIGWebPush(ctx, ic.UserLogin.ID)
+	lastReceived, _, err := ic.Main.DB.GetWebPush(ctx, ic.UserLogin.ID)
 	if err != nil {
 		log.Err(err).Msg("Failed to get web push state")
 		return
@@ -411,7 +411,7 @@ func (ic *IGClient) confirmWebPushStale() {
 			Msg("Late messages are only in chats that don't get pushes, not marking web push as stale")
 		return
 	}
-	changed, err := ic.Main.DB.SetIGWebPushStale(ctx, ic.UserLogin.ID, receivedBefore)
+	changed, err := ic.Main.DB.SetWebPushStale(ctx, ic.UserLogin.ID, receivedBefore)
 	if err != nil {
 		log.Err(err).Msg("Failed to save web push stale state")
 		return

@@ -224,7 +224,7 @@ func (db *MetaDB) PutIGSeqID(ctx context.Context, loginID networkid.UserLoginID,
 	return err
 }
 
-func (db *MetaDB) InitIGWebPush(ctx context.Context, loginID networkid.UserLoginID, ts time.Time, reset bool) error {
+func (db *MetaDB) InitWebPush(ctx context.Context, loginID networkid.UserLoginID, ts time.Time, reset bool) error {
 	conflict := "DO NOTHING"
 	if reset {
 		conflict = "DO UPDATE SET last_received = excluded.last_received, stale = false"
@@ -236,7 +236,7 @@ func (db *MetaDB) InitIGWebPush(ctx context.Context, loginID networkid.UserLogin
 	return err
 }
 
-func (db *MetaDB) PutIGWebPushReceived(ctx context.Context, loginID networkid.UserLoginID, ts time.Time) error {
+func (db *MetaDB) PutWebPushReceived(ctx context.Context, loginID networkid.UserLoginID, ts time.Time) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO meta_instagram_web_push (bridge_id, login_id, last_received, stale)
 		VALUES ($1, $2, $3, false)
@@ -246,7 +246,7 @@ func (db *MetaDB) PutIGWebPushReceived(ctx context.Context, loginID networkid.Us
 	return err
 }
 
-func (db *MetaDB) GetIGWebPush(ctx context.Context, loginID networkid.UserLoginID) (lastReceived time.Time, stale bool, err error) {
+func (db *MetaDB) GetWebPush(ctx context.Context, loginID networkid.UserLoginID) (lastReceived time.Time, stale bool, err error) {
 	var ts int64
 	err = db.QueryRow(ctx, `
 		SELECT last_received, stale FROM meta_instagram_web_push WHERE bridge_id = $1 AND login_id = $2
@@ -259,7 +259,7 @@ func (db *MetaDB) GetIGWebPush(ctx context.Context, loginID networkid.UserLoginI
 	return time.UnixMilli(ts), stale, nil
 }
 
-func (db *MetaDB) SetIGWebPushStale(ctx context.Context, loginID networkid.UserLoginID, receivedBefore time.Time) (bool, error) {
+func (db *MetaDB) SetWebPushStale(ctx context.Context, loginID networkid.UserLoginID, receivedBefore time.Time) (bool, error) {
 	res, err := db.Exec(ctx, `
 		UPDATE meta_instagram_web_push SET stale = true
 		WHERE bridge_id = $1 AND login_id = $2 AND last_received < $3 AND NOT stale
@@ -271,7 +271,7 @@ func (db *MetaDB) SetIGWebPushStale(ctx context.Context, loginID networkid.UserL
 	return affected > 0, err
 }
 
-func (db *MetaDB) DeleteIGWebPush(ctx context.Context, loginID networkid.UserLoginID) error {
+func (db *MetaDB) DeleteWebPush(ctx context.Context, loginID networkid.UserLoginID) error {
 	_, err := db.Exec(ctx, `
 		DELETE FROM meta_instagram_web_push WHERE bridge_id = $1 AND login_id = $2
 	`, db.BridgeID, loginID)

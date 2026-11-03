@@ -44,6 +44,7 @@ const (
 	FBCheckpointRequired      status.BridgeStateErrorCode = "fb-checkpoint-required"
 	MetaProxyUpdateFail       status.BridgeStateErrorCode = "meta-proxy-update-fail"
 	IGNotSupported            status.BridgeStateErrorCode = "meta-ig-not-supported"
+	FBWebPushStale            status.BridgeStateErrorCode = "fb-web-push-stale"
 )
 
 func init() {
@@ -64,6 +65,7 @@ func init() {
 		MetaPermanentError:        "Unknown permanent connection error",
 		MetaProxyUpdateFail:       "Failed to update proxy",
 		IGNotSupported:            "This bridge no longer supports Instagram",
+		FBWebPushStale:            "Messenger stopped sending notifications, please relogin to restore them",
 	})
 }
 
@@ -83,6 +85,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		m.connectWaiter.Set()
 		m.firstE2EEConnectDone = true
 		go m.tryConnectE2EE(false)
+		m.webPushStaleReported.Store(m.isWebPushStale(ctx))
 		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
 		m.sendBridgeState(m.metaState)
 		if tbl := m.initialTable.Swap(nil); tbl != nil {
@@ -342,6 +345,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	for _, thread := range tbl.LSDeleteThenInsertThread {
 		fbKey := thread.ThreadKey
 		thread.ThreadKey = params.MapWhatsAppThreadKey(thread.ThreadKey)
+		m.trackWebPushThread(metaid.MakeFBPortalID(thread.ThreadKey), thread.FolderName, thread.MuteExpireTimeMs)
 		if thread.ThreadType.IsWhatsApp() {
 			m.historyReadStates.Set(thread.ThreadKey, historyReadState{thread.LastReadWatermarkTimestampMs, thread.LastActivityTimestampMs})
 		}
@@ -726,6 +730,11 @@ func (m *MetaClient) handleSetThreadImage(tk handlerParams, evt *table.LSSetThre
 }
 
 func (m *MetaClient) handleUpdateMuteSetting(tk handlerParams, evt *table.LSUpdateThreadMuteSetting) bridgev2.RemoteEvent {
+	if evt.MuteExpireTimeMS != 0 {
+		m.webPushPushable.Set(tk.Portal.ID, false)
+	} else {
+		m.webPushPushable.Delete(tk.Portal.ID)
+	}
 	mutedUntil := time.UnixMilli(evt.MuteExpireTimeMS)
 	if evt.MuteExpireTimeMS < 0 {
 		mutedUntil = event.MutedForever
@@ -822,6 +831,7 @@ func (m *MetaClient) handleSubthread(ctx context.Context, msg *table.WrappedMess
 func (m *MetaClient) handleMessageInsert(tk handlerParams, msg *table.WrappedMessage) bridgev2.RemoteEvent {
 	m.handleSubthread(tk.ctx, msg)
 	msg.ThreadID = tk.ThreadMsgID
+	m.checkWebPushStale(tk.Portal.ID, time.UnixMilli(msg.TimestampMs), msg.SenderId == metaid.ParseUserLoginID(m.UserLogin.ID))
 	return &FBMessageEvent{
 		WrappedMessage:    msg,
 		portalKey:         tk.Portal,

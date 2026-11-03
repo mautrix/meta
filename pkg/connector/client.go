@@ -87,6 +87,11 @@ type MetaClient struct {
 	metaState status.BridgeState
 	waState   status.BridgeState
 
+	webPushStaleReported atomic.Bool
+	webPushChecking      atomic.Bool
+	webPushCandidates    *exsync.Set[networkid.PortalID]
+	webPushPushable      *exsync.Map[networkid.PortalID, bool]
+
 	waLastPresence waTypes.Presence
 }
 
@@ -118,6 +123,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 
 		connectWaiter:     exsync.NewEvent(),
 		e2eeConnectWaiter: exsync.NewEvent(),
+
+		webPushCandidates: exsync.NewSet[networkid.PortalID](),
+		webPushPushable:   exsync.NewMap[networkid.PortalID, bool](),
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
 	login.Client = c
@@ -792,6 +800,13 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.Error = waState.Error
 		state.Message = waState.Message
 		state.Info = maps.Clone(waState.Info)
+	}
+
+	if state.StateEvent == status.StateConnected && m.webPushStaleReported.Load() {
+		state.StateEvent = status.StateBadCredentials
+		state.Error = FBWebPushStale
+		state.Message = ""
+		state.UserAction = status.UserActionRelogin
 	}
 
 	if state.Info == nil {

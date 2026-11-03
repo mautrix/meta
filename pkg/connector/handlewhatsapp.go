@@ -32,6 +32,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Any("ig_transport", evt.IGTransport).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
+		m.checkWebPushStale(m.makeWAPortalKey(evt.Info.Chat).ID, evt.Info.Timestamp, evt.Info.IsFromMe)
 		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
 			return false
 		}

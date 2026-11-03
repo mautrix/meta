@@ -25,6 +25,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
@@ -68,7 +69,8 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
 	meta := m.UserLogin.Metadata.(*metaid.UserLoginMetadata)
-	if meta.PushKeys == nil {
+	newKeys := meta.PushKeys == nil
+	if newKeys {
 		meta.GeneratePushKeys()
 		err := m.UserLogin.Save(ctx)
 		if err != nil {
@@ -91,7 +93,10 @@ func (m *MetaClient) RegisterPushNotifications(ctx context.Context, pushType bri
 			err = cli.Facebook.RegisterPushNotifications(ctx, token, keys)
 		}
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return m.Main.DB.InitWebPush(ctx, m.UserLogin.ID, time.Now(), newKeys)
 }
 
 func (m *MetaClient) registerNativePush(ctx context.Context, token string) error {
@@ -127,6 +132,9 @@ func (m *MetaClient) registerNativePush(ctx context.Context, token string) error
 	}
 	if err := e2eeClient.RegisterForPushNotifications(ctx, &messagix.NativePushConfig{AppID: session.AppID, DeviceID: session.DeviceID}); err != nil {
 		return fmt.Errorf("failed to register encrypted native push: %w", err)
+	}
+	if err := m.Main.DB.DeleteWebPush(ctx, m.UserLogin.ID); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to clear web push state after native push registration")
 	}
 	return nil
 }
@@ -221,6 +229,9 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt web push")
 	} else if data != nil {
+		if err = m.Main.DB.PutWebPushReceived(ctx, m.UserLogin.ID, time.Now()); err != nil {
+			log.Err(err).Msg("Failed to save web push receive time")
+		}
 		parsedMsgID, err = methods.ParseMessageIDFull(data.MessageID)
 		if err != nil || parsedMsgID == nil {
 			log.Warn().
@@ -306,4 +317,101 @@ func (m *MetaClient) ConnectBackground(ctx context.Context, params *bridgev2.Con
 			}
 		}
 	}
+}
+
+const (
+	webPushStaleAfter    = 72 * time.Hour
+	webPushMissedMessage = time.Hour
+	webPushCheckDelay    = 15 * time.Second
+)
+
+func (m *MetaClient) usesWebPush() bool {
+	return m.Main.Config.ReloginOnStaleWebPush && m.LoginMeta.PushKeys != nil && m.GetPushConfigs() == pushCfg
+}
+
+func (m *MetaClient) isWebPushStale(ctx context.Context) bool {
+	if !m.usesWebPush() {
+		return false
+	}
+	_, stale, err := m.Main.DB.GetWebPush(ctx, m.UserLogin.ID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get web push state")
+	}
+	return stale
+}
+
+func (m *MetaClient) trackWebPushThread(portalID networkid.PortalID, folder string, muteExpireTimeMS int64) {
+	switch folder {
+	case folderInbox:
+		m.webPushPushable.Set(portalID, muteExpireTimeMS == 0 || (muteExpireTimeMS > 0 && time.UnixMilli(muteExpireTimeMS).Before(time.Now())))
+	case folderE2EECutover:
+	default:
+		m.webPushPushable.Set(portalID, false)
+	}
+}
+
+func (m *MetaClient) checkWebPushStale(portalID networkid.PortalID, ts time.Time, fromMe bool) {
+	if fromMe || !m.usesWebPush() || m.webPushStaleReported.Load() || time.Since(ts) < webPushMissedMessage {
+		return
+	}
+	m.webPushCandidates.Add(portalID)
+	m.startWebPushCheck()
+}
+
+func (m *MetaClient) startWebPushCheck() {
+	if m.webPushCandidates.Size() > 0 && m.webPushChecking.CompareAndSwap(false, true) {
+		go func() {
+			m.confirmWebPushStale()
+			m.webPushChecking.Store(false)
+			if !m.webPushStaleReported.Load() {
+				m.startWebPushCheck()
+			}
+		}()
+	}
+}
+
+func (m *MetaClient) confirmWebPushStale() {
+	log := m.UserLogin.Log.With().Str("action", "check web push").Logger()
+	ctx := log.WithContext(m.Main.Bridge.BackgroundCtx)
+	select {
+	case <-time.After(webPushCheckDelay):
+	case <-ctx.Done():
+		m.webPushCandidates.Clear()
+		return
+	}
+	candidates := m.webPushCandidates.ReplaceAll(nil)
+	receivedBefore := time.Now().Add(-webPushStaleAfter)
+	lastReceived, _, err := m.Main.DB.GetWebPush(ctx, m.UserLogin.ID)
+	if err != nil {
+		log.Err(err).Msg("Failed to get web push state")
+		return
+	} else if lastReceived.IsZero() || lastReceived.After(receivedBefore) {
+		return
+	}
+	var missed networkid.PortalID
+	for _, portalID := range candidates.AsList() {
+		if pushable, _ := m.webPushPushable.Get(portalID); pushable {
+			missed = portalID
+			break
+		}
+	}
+	if missed == "" {
+		log.Debug().
+			Int("candidates", candidates.Size()).
+			Msg("Late messages are only in chats that don't get pushes, not marking web push as stale")
+		return
+	}
+	changed, err := m.Main.DB.SetWebPushStale(ctx, m.UserLogin.ID, receivedBefore)
+	if err != nil {
+		log.Err(err).Msg("Failed to save web push stale state")
+		return
+	} else if !changed {
+		return
+	}
+	m.webPushStaleReported.Store(true)
+	log.Warn().
+		Time("last_web_push", lastReceived).
+		Str("portal_id", string(missed)).
+		Msg("Caught up a message that never got a web push, asking for relogin")
+	m.sendBridgeState(m.metaState)
 }

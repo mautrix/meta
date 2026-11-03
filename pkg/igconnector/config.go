@@ -49,6 +49,7 @@ type Config struct {
 	DisableTyping   bool `yaml:"disable_typing"`
 
 	LogRedactedLoginResponses bool `yaml:"log_redacted_login_responses"`
+	ReloginOnStaleWebPush     bool `yaml:"relogin_on_stale_web_push"`
 
 	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
 }
@@ -92,6 +93,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_typing")
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Bool, "log_redacted_login_responses")
+	helper.Copy(up.Bool, "relogin_on_stale_web_push")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
 	helper.Copy(up.Int, "thread_backfill", "max_concurrent")

@@ -38,6 +38,9 @@ marketplace_space: true
 log_redacted_login_responses: false
 # Should the bridge prompt for the encrypted backup PIN on login and upload sent messages to encrypted history?
 e2ee_backfill: false
+# Should the bridge ask for a relogin when web push notifications stop arriving?
+# Only useful when the bridge relies on push to wake up, like inside mobile clients.
+relogin_on_stale_web_push: false
 
 # Thread backfill settings for syncing older conversations
 thread_backfill:
