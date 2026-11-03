@@ -38,6 +38,7 @@ import (
 func ReuploadFileToMeta(
 	ctx context.Context,
 	client *httpclient.HTTPClient,
+	nativeSession *types.NativeSession,
 	portal *bridgev2.Portal,
 	content *event.MessageEventContent,
 ) (int64, error) {
@@ -61,6 +62,19 @@ func ReuploadFileToMeta(
 		for i, amp := range content.MSC1767Audio.Waveform {
 			waveformData.Amplitudes[i] = max(min(float64(amp)/256.0, 1.0), 0.0)
 		}
+	}
+	if client.GetPlatform().IsMessengerLite() && nativeSession != nil {
+		mediaID, err := client.SendRUploadRequest(ctx, nativeSession, &httpclient.RUploadMedia{
+			Filename:    fileName,
+			MimeType:    mime,
+			MediaData:   data,
+			IsVoiceClip: isVoice,
+			DurationMS:  content.Info.Duration,
+		})
+		if err == nil {
+			return mediaID, nil
+		}
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment with native session, falling back to mercury")
 	}
 	resp, err := client.SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
 		Filename:     fileName,
