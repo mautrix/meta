@@ -209,6 +209,7 @@ func init() {
 		caps.PollEnd = event.CapLevelUnsupported
 		caps.PollHiddenVotes = event.CapLevelUnsupported
 		caps.PollDuplicateOptions = event.CapLevelUnsupported
+		caps.PollMultipleChoiceOnly = true
 		caps.PollOptionMaxLength = 140
 	}
 

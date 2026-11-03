@@ -13,9 +13,3 @@ CREATE TABLE meta_poll (
         REFERENCES message (rowid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX meta_poll_message_idx ON meta_poll (message_rowid);
-
-INSERT INTO meta_poll (bridge_id, portal_id, poll_id, portal_receiver, message_rowid)
-SELECT bridge_id, room_id, CAST(metadata->>'poll_id' AS BIGINT), room_receiver, rowid
-FROM message
-WHERE part_id = '' AND COALESCE(CAST(metadata->>'poll_id' AS BIGINT), 0) <> 0
-ON CONFLICT (bridge_id, portal_id, poll_id, portal_receiver) DO NOTHING;

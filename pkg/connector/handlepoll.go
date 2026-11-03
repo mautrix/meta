@@ -11,7 +11,6 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/simplevent"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
@@ -163,30 +162,6 @@ func (m *MetaClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.Ma
 	response.PostSave = func(ctx context.Context, saved *database.Message) {
 		if err := m.Main.DB.PutPollMessage(ctx, saved.Room, result.PollID, saved.RowID); err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save poll lookup")
-		}
-		if msg.Content.PollStart.MaxSelections < len(result.PollOptions) {
-			go m.UserLogin.QueueRemoteEvent(&simplevent.Message[struct{}]{
-				EventMeta: simplevent.EventMeta{
-					Type:      bridgev2.RemoteEventMessageUpsert,
-					PortalKey: msg.Portal.PortalKey,
-				},
-				ID: saved.ID,
-				ConvertMessageFunc: func(context.Context, *bridgev2.Portal, bridgev2.MatrixAPI, struct{}) (*bridgev2.ConvertedMessage, error) {
-					return nil, bridgev2.ErrIgnoringRemoteEvent
-				},
-				HandleExistingFunc: func(
-					ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI,
-					existing []*database.Message, _ struct{},
-				) (bridgev2.UpsertResult, error) {
-					parent := pollRoot(existing)
-					if parent == nil {
-						return bridgev2.UpsertResult{}, nil
-					}
-					part := m.Main.MsgConv.ConvertPollStart(parent.Metadata.(*metaid.MessageMetadata)).Parts[0].ToEditPart(parent)
-					edit := &bridgev2.ConvertedEdit{ModifiedParts: []*bridgev2.ConvertedEditPart{part}}
-					return bridgev2.UpsertResult{SubEvents: []bridgev2.RemoteEvent{makePollEdit(portal.PortalKey, parent, edit)}}, nil
-				},
-			})
 		}
 	}
 	return response, nil
