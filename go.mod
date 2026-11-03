@@ -24,7 +24,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.20.0
 	github.com/zyedidia/clipboard v1.0.4
-	go.mau.fi/libsignal v0.2.2
+	go.mau.fi/libsignal v0.2.3-0.20261103023201-5ce3f7a54370
 	go.mau.fi/util v0.11.1-0.20261026174803-9e6b9c87cfbc
 	go.mau.fi/whatsmeow v0.0.0-20261027104441-1eec1136a50b
 	golang.org/x/crypto v0.58.0
