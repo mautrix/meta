@@ -403,8 +403,7 @@ func (evt *WAMessageEvent) GetRemovedEmojiID() networkid.EmojiID {
 }
 
 func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
-	// FIXME proper log
-	log := zerolog.Ctx(context.TODO())
+	log := &evt.m.UserLogin.Log
 	switch typedMsg := evt.Message.(type) {
 	case *waConsumerApplication.ConsumerApplication:
 		switch payload := typedMsg.GetPayload().GetPayload().(type) {

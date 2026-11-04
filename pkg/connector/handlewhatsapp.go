@@ -3,8 +3,10 @@ package connector
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
+	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -32,6 +34,11 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Any("ig_transport", evt.IGTransport).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
+		if armadillo, ok := evt.Message.(*waArmadilloApplication.Armadillo); ok && evt.Info.IsFromMe {
+			if metadataSync := armadillo.GetPayload().GetApplicationData().GetMetadataSync(); metadataSync != nil {
+				return m.handleWAMetadataSync(metadataSync)
+			}
+		}
 		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
 			return false
 		}
@@ -225,4 +232,35 @@ func (m *MetaClient) handleWAChatPresence(ctx context.Context, evt *events.ChatP
 		Timeout: timeout,
 		Type:    typingType,
 	})
+}
+
+func (m *MetaClient) handleWAMetadataSync(sync *waArmadilloApplication.Armadillo_ApplicationData_MetadataSyncNotification) bool {
+	log := m.UserLogin.Log
+	for _, action := range sync.GetActions() {
+		chatAction := action.GetChatAction()
+		if chatAction.GetChatDelete() == nil {
+			log.Debug().Type("action_type", action.GetActionType()).Msg("Ignoring unsupported metadata sync action")
+			continue
+		}
+		chatID := chatAction.GetChatID()
+		if !strings.ContainsRune(chatID, '@') {
+			chatID += "@" + waTypes.MessengerServer
+		}
+		chatJID, err := waTypes.ParseJID(chatID)
+		if err != nil {
+			log.Warn().Err(err).Str("chat_id", chatAction.GetChatID()).Msg("Failed to parse chat ID in metadata sync chat delete")
+			continue
+		}
+		log.Debug().Stringer("chat_jid", chatJID).Msg("Handling chat delete from metadata sync")
+		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.ChatDelete{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatDelete,
+				PortalKey: m.makeWAPortalKey(chatJID),
+			},
+			OnlyForMe: true,
+		}).Success {
+			return false
+		}
+	}
+	return true
 }
