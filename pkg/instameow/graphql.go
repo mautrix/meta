@@ -116,7 +116,8 @@ func (c *Client) PaginateMailbox(ctx context.Context, req *slidetypes.PaginateMa
 func (c *Client) GetThread(ctx context.Context, req *slidetypes.GetThreadInfoRequest) (*slidetypes.ThreadInfoResponse, error) {
 	resp, err := makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req, true)
 	if err != nil && resp != nil && resp.ThreadInfo.AsIGDirectThread != nil {
-		err = dropErroredMessageEdges(ctx, resp.ThreadInfo.AsIGDirectThread.SlideMessages, err)
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Thread info response contained errors, ignoring")
+		err = nil
 	}
 	return resp, err
 }
@@ -124,42 +125,10 @@ func (c *Client) GetThread(ctx context.Context, req *slidetypes.GetThreadInfoReq
 func (c *Client) PaginateMessages(ctx context.Context, req *slidetypes.PaginateMessagesRequest) (*slidetypes.PaginateMessagesResponse, error) {
 	resp, err := makeGraphQLRequest[*slidetypes.PaginateMessagesResponse](ctx, c, "IGDMessageListOffMsysQuery", req, true)
 	if err != nil && resp != nil && resp.ThreadInfo.AsIGDirectThread != nil {
-		err = dropErroredMessageEdges(ctx, resp.ThreadInfo.AsIGDirectThread.Messages, err)
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Message pagination response contained errors, ignoring")
+		err = nil
 	}
 	return resp, err
-}
-
-func dropErroredMessageEdges(ctx context.Context, messages *slidetypes.SlideMessages, err error) error {
-	joined, ok := err.(interface{ Unwrap() []error })
-	if !ok || messages == nil {
-		return err
-	}
-	errored := make(map[int]struct{})
-	for _, subErr := range joined.Unwrap() {
-		gqlErr, ok := subErr.(*types.GraphQLError)
-		if !ok || len(gqlErr.Path) < 5 || gqlErr.Path[1] != "as_ig_direct_thread" || gqlErr.Path[2] != "slide_messages" || gqlErr.Path[3] != "edges" {
-			return err
-		}
-		idx, ok := gqlErr.Path[4].(float64)
-		if !ok || idx < 0 || int(idx) >= len(messages.Edges) {
-			return err
-		}
-		errored[int(idx)] = struct{}{}
-	}
-	if len(errored) == 0 {
-		return err
-	}
-	edges := make([]slidetypes.Node[*slidetypes.Message], 0, len(messages.Edges)-len(errored))
-	for i, edge := range messages.Edges {
-		if _, skip := errored[i]; !skip {
-			edges = append(edges, edge)
-		}
-	}
-	messages.Edges = edges
-	zerolog.Ctx(ctx).Warn().
-		Int("skipped_count", len(errored)).
-		Msg("Skipping messages with errors in thread response")
-	return nil
 }
 
 func (c *Client) GetProfile(ctx context.Context, igid string) (*slidetypes.ProfilePageResponse, error) {
