@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -219,7 +220,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					Int64("bundled_min_ts", upsert.Range.MinTimestampMs).
 					Int64("anchor_ts", anchorTS).
 					Msg("Forward backfill has all messages already")
-				return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward), nil
+				return m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
 			}
 		}
 		var oldestMessageID string
@@ -322,7 +323,10 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 			return nil, fmt.Errorf("history cursor did not move backwards")
 		}
 	}
-	response := m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
+	response, err := m.wrapBackfillEvents(ctx, params.Portal, upsert, params.AnchorMessage, params.Forward)
+	if err != nil {
+		return nil, err
+	}
 	if cursor != nil {
 		cursor.Timestamp = upsert.Range.MinTimestampMs
 		cursor.MessageID = upsert.Range.MinMessageId
@@ -335,7 +339,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 	return response, nil
 }
 
-func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Portal, upsert *table.UpsertMessages, anchor *database.Message, forward bool) *bridgev2.FetchMessagesResponse {
+func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Portal, upsert *table.UpsertMessages, anchor *database.Message, forward bool) (*bridgev2.FetchMessagesResponse, error) {
 	// The messages are probably already sorted in reverse order (newest to oldest). We want to sort them again to be safe,
 	// but reverse first to make the sorting algorithm's job easier if it's already sorted.
 	slices.Reverse(upsert.Messages)
@@ -344,10 +348,16 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		if key == 0 {
 			key = cmp.Compare(a.SecondarySortKey, b.SecondarySortKey)
 		}
+		if key == 0 {
+			key = cmp.Compare(a.MessageId, b.MessageId)
+		}
+		if key == 0 {
+			key = cmp.Compare(a.PollEventType, b.PollEventType)
+		}
 		return key
 	})
 	upsert.Messages = slices.CompactFunc(upsert.Messages, func(a, b *table.WrappedMessage) bool {
-		if a.MessageId == b.MessageId {
+		if a.MessageId == b.MessageId && a.PollEventType == b.PollEventType {
 			zerolog.Ctx(ctx).Debug().
 				Str("message_id", a.MessageId).
 				Bool("attachment_counts_match", len(a.XMAAttachments) == len(b.XMAAttachments) && len(a.BlobAttachments) == len(b.BlobAttachments) && len(a.Stickers) == len(b.Stickers)).
@@ -368,6 +378,7 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		}
 	}
 	wrappedMessages := make([]*bridgev2.BackfillMessage, 0, len(upsert.Messages))
+	var deferredPollVotes []*table.WrappedMessage
 	for _, msg := range upsert.Messages {
 		m.handleSubthread(ctx, msg)
 		log := zerolog.Ctx(ctx).With().Str("message_id", msg.MessageId).Logger()
@@ -387,8 +398,18 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 				Msg("Message ID timestamp mismatch in backfill")
 		}
 		msgID := metaid.MakeFBMessageID(msg.MessageId)
+		converted, err := m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, m.UserLogin, intent, msgID, msg)
+		if err != nil {
+			if !errors.Is(err, bridgev2.ErrIgnoringRemoteEvent) {
+				return nil, fmt.Errorf("failed to convert backfill message %s: %w", msg.MessageId, err)
+			}
+			if msg.PollEventType == table.PollEventVote {
+				deferredPollVotes = append(deferredPollVotes, msg)
+			}
+			continue
+		}
 		wrapped := &bridgev2.BackfillMessage{
-			ConvertedMessage: m.Main.MsgConv.ToMatrix(ctx, portal, m.Client, m.UserLogin, intent, msgID, msg),
+			ConvertedMessage: converted,
 			Sender:           sender,
 			ID:               msgID,
 			Timestamp:        time.UnixMilli(msg.TimestampMs),
@@ -410,5 +431,22 @@ func (m *MetaClient) wrapBackfillEvents(ctx context.Context, portal *bridgev2.Po
 		Messages: wrappedMessages,
 		HasMore:  upsert.Range.HasMoreBefore,
 		MarkRead: upsert.MarkRead,
-	}
+		CompleteCallback: func() {
+			go func() {
+				ctx := context.WithoutCancel(ctx)
+				for _, msg := range upsert.Messages {
+					evt := &FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m}
+					if msg.PollEventType == table.PollEventCreate {
+						evt.PostHandle(ctx, portal)
+					} else if msg.PollEventType == table.PollEventAddOption {
+						m.UserLogin.QueueRemoteEvent(evt)
+					}
+				}
+				for _, msg := range deferredPollVotes {
+					evt := &FBMessageEvent{WrappedMessage: msg, portalKey: portal.PortalKey, m: m}
+					evt.fetchPollForVote(ctx, portal)
+				}
+			}()
+		},
+	}, nil
 }
