@@ -548,7 +548,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	if !receipt.ReadUpTo.After(receipt.LastRead) {
+	if receipt.Receipt.IsThread() || !receipt.ReadUpTo.After(receipt.LastRead) {
 		return nil
 	}
 	if receipt.LastRead.IsZero() {

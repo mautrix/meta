@@ -6,6 +6,7 @@ type GraphQLDoc struct {
 	CallerClass  string
 	FriendlyName string
 	NoRetry      bool
+	SlowQuery    bool
 
 	Jsessw string
 }
@@ -56,10 +57,12 @@ var GraphQLDocs = map[string]GraphQLDoc{
 	"LSPlatformGraphQLLightspeedRequestQuery": {
 		DocID:        "9697184873702141",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestQuery",
+		SlowQuery:    true,
 	},
 	"LSPlatformGraphQLLightspeedRequestForIGDQuery": {
 		DocID:        "6195354443842040",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestForIGDQuery",
+		SlowQuery:    true,
 	},
 	"MAWCatQuery": {
 		DocID:        "29559957360285299",
