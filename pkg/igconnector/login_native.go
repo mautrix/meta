@@ -316,7 +316,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 				m.User.Log.Info().Err(err).Msg("Instagram rejected web login again, handing login to client webview")
 				return m.instagramWebLoginStep(), nil
 			}
-			return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+			return instagramCredentialsStep("Instagram couldn't sign you in. Enter your password again; if it still fails, you'll continue on Instagram's own page."), nil
 		} else if errors.Is(err, instameow.ErrInstagramWebCredentialsRejected) {
 			m.clearCAAFallback()
 			return instagramCredentialsStep(
@@ -456,7 +456,7 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 			return m.instagramWebLoginStep(), nil
 		}
 		m.User.Log.Info().Err(err).Msg("Instagram rejected web login after AuthPlatform, asking for credentials again")
-		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+		return instagramCredentialsStep("Instagram couldn't sign you in. Enter your password again; if it still fails, you'll continue on Instagram's own page."), nil
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 		return nil, errInstagramWebCheckpointCAPTCHA
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
