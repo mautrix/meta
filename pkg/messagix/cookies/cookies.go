@@ -156,6 +156,22 @@ func (c *Cookies) GetAll() map[MetaCookieName]string {
 	return newMap
 }
 
+func (c *Cookies) GetNames() []string {
+	if c == nil {
+		return nil
+	}
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	names := make([]string, 0, len(c.values))
+	for key, val := range c.values {
+		if val != "" {
+			names = append(names, string(key))
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
 func (c *Cookies) Set(key MetaCookieName, value string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
