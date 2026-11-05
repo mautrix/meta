@@ -95,7 +95,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 		AppID:      c.configs.BrowserConfigTable.DGWWebConfig.AppID,
 		UserID:     c.configs.BrowserConfigTable.PolarisViewer.ID,
 		DeviceID:   c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
-		OnConnect: func(ctx context.Context, _ func(error)) error {
+		OnConnect: func(ctx context.Context, fatalError func(error)) error {
 			connect := &mqttbypass.ConnectRequest{
 				DeviceId:     c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 				Subscription: &mqttbypass.SubscribeRequest{Topics: []string{}},
@@ -130,6 +130,9 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 			stream, err := c.mqttBypassSocket.EstablishStream(ctx, dgw.StreamInit{
 				InitPayload:  payload,
 				FrameHandler: c.handleMQTTBypassFrame,
+				OnClose: func() {
+					fatalError(errors.New("mqttbypass stream closed"))
+				},
 			})
 			if err != nil {
 				c.log.Err(err).Msg("Failed to establish main stream")

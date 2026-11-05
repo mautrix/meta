@@ -109,7 +109,7 @@ func (mc *MessageConverter) ToMeta(
 		task.MentionData = mentions.ToData()
 		task.Text = text
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
-		attachmentID, err := mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), portal, content)
+		attachmentID, err := mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), client.MessengerLite.GetNativeSession(), portal, content)
 		if err != nil {
 			return nil, err
 		}
