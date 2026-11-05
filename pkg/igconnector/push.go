@@ -93,10 +93,12 @@ func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType brid
 }
 
 func (ic *IGClient) UnregisterPushNotifications(ctx context.Context) error {
+	ic.pushRegistrationLock.Lock()
+	defer ic.pushRegistrationLock.Unlock()
 	if err := ic.Main.DB.DeleteIGWebPush(ctx, ic.UserLogin.ID); err != nil {
 		return fmt.Errorf("failed to clear web push state: %w", err)
 	}
-	if ic.webPushStaleReported.Swap(false) {
+	if ic.webPushStaleReported.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGWebPushStale {
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	}
 	return nil
