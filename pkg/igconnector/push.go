@@ -41,6 +41,7 @@ import (
 
 var (
 	_ bridgev2.PushableNetworkAPI          = (*IGClient)(nil)
+	_ bridgev2.PushUnregisteringNetworkAPI = (*IGClient)(nil)
 	_ bridgev2.BackgroundSyncingNetworkAPI = (*IGClient)(nil)
 )
 
@@ -90,6 +91,18 @@ func (ic *IGClient) RegisterPushNotifications(ctx context.Context, pushType brid
 		return err
 	}
 	return ic.Main.DB.InitIGWebPush(ctx, ic.UserLogin.ID, time.Now(), newKeys)
+}
+
+func (ic *IGClient) UnregisterPushNotifications(ctx context.Context) error {
+	ic.pushRegistrationLock.Lock()
+	defer ic.pushRegistrationLock.Unlock()
+	if err := ic.Main.DB.DeleteIGWebPush(ctx, ic.UserLogin.ID); err != nil {
+		return fmt.Errorf("failed to clear web push state: %w", err)
+	}
+	if ic.webPushStaleReported.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGWebPushStale {
+		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+	}
+	return nil
 }
 
 func (ic *IGClient) registerNativePush(ctx context.Context, token string) error {
