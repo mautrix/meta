@@ -616,7 +616,8 @@ func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, er
 			evt := c.log.Debug().
 				Str("url", page).
 				Int("status_code", response.StatusCode).
-				Str("content_type", response.Header.Get("content-type"))
+				Str("content_type", response.Header.Get("content-type")).
+				Strs("cookie_names", c.parent.GetCookies().GetNames())
 			AddRedactedResponse(evt, responseBody).Msg("Page request failed")
 		}
 	}
