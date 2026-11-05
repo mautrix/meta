@@ -25,26 +25,8 @@ func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LS
 
 	c.updateSocketIDs()
 	c.syncManager.syncParams = &c.configs.BrowserConfigTable.LSPlatformMessengerSyncParams
-	if len(ls.LSExecuteFinallyBlockForSyncTransaction) == 0 {
-		c.Logger.Warn().Msg("Syncing initial data via graphql")
-		err := c.syncManager.UpdateDatabaseSyncParams(
-			[]*socket.QueryMetadata{
-				{DatabaseID: 1, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.MailBox},
-				{DatabaseID: 2, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
-				{DatabaseID: 95, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
-			},
-		)
-		if err != nil {
-			return ls, fmt.Errorf("failed to update sync params for databases: 1, 2, 95: %w", err)
-		}
-
-		ls, err = c.syncManager.SyncDataGraphQL(ctx, []int64{1, 2, 95})
-		if err != nil {
-			return ls, fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95: %w", err)
-		} else if ls == nil {
-			return ls, fmt.Errorf("sync data via graphql returned nil LSTable")
-		}
-	} else {
+	hasPageSync := len(ls.LSExecuteFinallyBlockForSyncTransaction) > 0
+	if hasPageSync {
 		if len(ls.LSUpsertSyncGroupThreadsRange) > 0 {
 			err := c.syncManager.updateThreadRanges(ls.LSUpsertSyncGroupThreadsRange)
 			if err != nil {
@@ -54,6 +36,25 @@ func (c *Client) setupConfigs(ctx context.Context, ls *table.LSTable) (*table.LS
 		err := c.syncManager.SyncTransactions(ls.GetLSExecuteFirstBlockForSyncTransactionV4())
 		if err != nil {
 			return ls, fmt.Errorf("failed to sync transactions from js module data with syncManager: %w", err)
+		}
+	}
+	if !hasPageSync || (c.GetPlatform().IsMessenger() && c.syncManager.GetCursor(1) == "") {
+		c.Logger.Warn().Bool("had_page_sync", hasPageSync).Msg("Syncing initial data via graphql")
+		dbs := []*socket.QueryMetadata{
+			{DatabaseID: 1, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.MailBox},
+			{DatabaseID: 2, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
+			{DatabaseID: 95, SendSyncParams: true, LastAppliedCursor: nil, SyncChannel: socket.Contact},
+		}
+		err := c.syncManager.UpdateDatabaseSyncParams(dbs)
+		if err != nil {
+			return ls, fmt.Errorf("failed to update sync params for databases: 1, 2, 95: %w", err)
+		}
+
+		ls, err = c.syncManager.SyncDataGraphQL(ctx, []int64{1, 2, 95})
+		if err != nil {
+			return ls, fmt.Errorf("failed to sync data via graphql for databases: 1, 2, 95: %w", err)
+		} else if ls == nil {
+			return ls, fmt.Errorf("sync data via graphql returned nil LSTable")
 		}
 	}
 	var ptks []int64
