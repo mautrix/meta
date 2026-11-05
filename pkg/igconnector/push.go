@@ -41,6 +41,7 @@ import (
 
 var (
 	_ bridgev2.PushableNetworkAPI          = (*IGClient)(nil)
+	_ bridgev2.PushUnregisteringNetworkAPI = (*IGClient)(nil)
 	_ bridgev2.BackgroundSyncingNetworkAPI = (*IGClient)(nil)
 )
 
