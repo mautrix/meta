@@ -18,21 +18,21 @@ import (
 
 var (
 	errPollHiddenVotes = bridgev2.WrapErrorInStatus(errors.New("hidden poll votes are not supported by Messenger")).
-				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 	errPollOptionCount = bridgev2.WrapErrorInStatus(errors.New("a Messenger poll needs at least two options")).
-				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 	errPollQuestion = bridgev2.WrapErrorInStatus(errors.New("poll questions must contain 1 to 140 characters")).
-			WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+			WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 	errPollOptionText = bridgev2.WrapErrorInStatus(errors.New("poll options must contain 1 to 140 characters")).
-				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 	errPollOptionID = bridgev2.WrapErrorInStatus(errors.New("poll option IDs must be nonempty and unique")).
-			WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+			WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 	errPollDuplicateOption = bridgev2.WrapErrorInStatus(errors.New("duplicate poll options are not supported by Messenger")).
-				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 	errPollNotLoaded = bridgev2.WrapErrorInStatus(errors.New("the poll is still loading; try again shortly")).
 				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true)
 	errPollUnknownOption = bridgev2.WrapErrorInStatus(errors.New("unknown poll option")).
-				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+				WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 )
 
 func (mc *MessageConverter) PollStartToMeta(msg *bridgev2.MatrixPollStart) (*socket.CreatePollTask, error) {

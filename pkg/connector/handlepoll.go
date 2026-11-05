@@ -64,7 +64,7 @@ func (m *MetaClient) handlePendingPoll(msg *table.WrappedMessage) bool {
 
 func (m *MetaClient) sendPollTask(ctx context.Context, pending *pendingPollSend, task socket.Task) (*table.WrappedMessage, error) {
 	if err := m.Client.WaitUntilCanSendMessages(ctx, 15*time.Second); err != nil {
-		return nil, err
+		return nil, wrapMetaError(err)
 	}
 	pending.result = make(chan *table.WrappedMessage, 1)
 	m.pendingPoll.Store(pending)
