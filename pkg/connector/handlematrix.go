@@ -545,6 +545,9 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 }
 
 func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) error {
+	if receipt.Receipt.ThreadID != "" && receipt.Receipt.ThreadID != event.ReadReceiptThreadMain {
+		return nil
+	}
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
