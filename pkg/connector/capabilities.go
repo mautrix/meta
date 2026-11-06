@@ -35,6 +35,7 @@ var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	AggressiveUpdateInfo: false,
 	ImplicitReadReceipts: true,
 	Provisioning: bridgev2.ProvisioningCapabilities{
+		ImagePackImport: true,
 		ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
 			CreateDM: true,
 			Search:   true,
@@ -53,7 +54,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 19
+	return 1, 20
 }
 
 const MaxTextLength = 20000

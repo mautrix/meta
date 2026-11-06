@@ -63,6 +63,13 @@ type MetaClient struct {
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
+	stickerLock          sync.Mutex
+	stickerTray          []messagix.StickerPack
+	stickerTrayErr       error
+	stickerTrayFetchedAt time.Time
+	stickerPacks         map[string]cachedStickerPack
+	stickerPackLock      exsync.KeyedMutex[string]
+
 	connectBackgroundEvt           chan connectBackgroundEvent
 	connectBackgroundWAOfflineSync *exsync.Event
 	connectBackgroundWAEventCount  atomic.Uint32

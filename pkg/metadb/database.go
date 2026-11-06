@@ -37,7 +37,8 @@ import (
 type MetaDB struct {
 	*dbutil.Database
 
-	BridgeID networkid.BridgeID
+	BridgeID        networkid.BridgeID
+	seenStickerLock exsync.KeyedMutex[networkid.UserLoginID]
 
 	igUserMap   *exsync.Map[string, int64]
 	igChatMap   *exsync.Map[keyWithLogin, int64]

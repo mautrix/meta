@@ -103,7 +103,7 @@ func parseReceiverFetchResponse(data []byte, result any) error {
 	return json.Unmarshal(envelope.Data, result)
 }
 
-func (c *Client) receiverFetchGraphQL(ctx context.Context, name string, variables, result any) error {
+func (c *Client) makeGraphQLRequest(ctx context.Context, name string, variables, result any) error {
 	_, data, err := c.http.MakeGraphQLRequest(ctx, name, variables)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func (c *Client) refreshReceiverFetchKey(ctx context.Context) error {
 		return nil
 	}
 	var data receiverFetchOHAIConfigs
-	if err := c.receiverFetchGraphQL(ctx, "OhaiWebClientMessengerConfigsQuery", struct{}{}, &data); err != nil {
+	if err := c.makeGraphQLRequest(ctx, "OhaiWebClientMessengerConfigsQuery", struct{}{}, &data); err != nil {
 		return err
 	}
 	for _, key := range data.Configurations.Configs {
@@ -148,7 +148,7 @@ func (c *Client) getReceiverFetchToken(ctx context.Context) (*receiverFetchToken
 		c.receiverFetch.tokens = c.receiverFetch.tokens[1:]
 	}
 	var data receiverFetchACSConfig
-	if err := c.receiverFetchGraphQL(ctx, "MessagingWebACSGraphQLServerProviderConfigQuery", map[string]string{"project_name": receiverFetchProjectName}, &data); err != nil {
+	if err := c.makeGraphQLRequest(ctx, "MessagingWebACSGraphQLServerProviderConfigQuery", map[string]string{"project_name": receiverFetchProjectName}, &data); err != nil {
 		return nil, err
 	}
 	config := data.Config
@@ -170,7 +170,7 @@ func (c *Client) getReceiverFetchToken(ctx context.Context) (*receiverFetchToken
 		issueElements[i] = map[string]string{"issue_data": blinded}
 	}
 	var issue receiverFetchACSIssue
-	if err := c.receiverFetchGraphQL(ctx, "MessagingWebACSGraphQLServerProviderTokenIssuanceQuery", map[string]any{
+	if err := c.makeGraphQLRequest(ctx, "MessagingWebACSGraphQLServerProviderTokenIssuanceQuery", map[string]any{
 		"projectName": receiverFetchProjectName,
 		"configId":    configID,
 		"message": map[string]any{
