@@ -10,6 +10,7 @@ import (
 
 type SeenSticker struct {
 	ID     int64
+	SeenAt time.Time
 	CDNURL string
 	MXC    id.ContentURIString
 	Body   string
@@ -26,11 +27,12 @@ func (db *MetaDB) PutSeenSticker(ctx context.Context, login networkid.UserLoginI
 			(bridge_id, login_id, sticker_id, seen_at, cdn_url, mxc, body, mime, width, height)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 			ON CONFLICT (bridge_id, login_id, sticker_id) DO UPDATE SET
-			seen_at=excluded.seen_at, cdn_url=excluded.cdn_url,
+			seen_at=CASE WHEN excluded.seen_at > meta_seen_sticker.seen_at THEN excluded.seen_at ELSE meta_seen_sticker.seen_at END,
+			cdn_url=excluded.cdn_url,
 			mxc=CASE WHEN meta_seen_sticker.mxc='' THEN excluded.mxc ELSE meta_seen_sticker.mxc END,
 			body=excluded.body, mime=CASE WHEN meta_seen_sticker.mxc='' THEN excluded.mime ELSE meta_seen_sticker.mime END,
 			width=excluded.width, height=excluded.height`,
-			db.BridgeID, login, s.ID, time.Now().UnixNano(), s.CDNURL, s.MXC, s.Body, s.MIME, s.Width, s.Height)
+			db.BridgeID, login, s.ID, s.SeenAt.UnixMilli(), s.CDNURL, s.MXC, s.Body, s.MIME, s.Width, s.Height)
 		if err != nil {
 			return err
 		}

@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/jsontime"
@@ -441,15 +442,21 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 	)
 	client, _ := ctx.Value(mediadl.ContextKeyFBClient).(*messagix.Client)
 	login, _ := ctx.Value(mediadl.ContextKeyUserLogin).(*bridgev2.UserLogin)
-	if stickerID > 0 && client.GetPlatform().IsMessenger() && login != nil {
-		var mxc id.ContentURIString
-		if err == nil && converted.Content.File == nil && !mc.DirectMedia && !mc.AsyncFiles {
-			mxc = converted.Content.URL
-		}
-		if err := mc.DB.PutSeenSticker(ctx, login.ID, metadb.SeenSticker{
-			ID: stickerID, CDNURL: url, MXC: mxc, Body: att.AccessibilitySummaryText, MIME: mime,
+	isFacebookSticker := stickerID > 0 && client.GetPlatform().IsMessenger()
+	if isFacebookSticker && login != nil {
+		seen := metadb.SeenSticker{
+			ID: stickerID, SeenAt: time.UnixMilli(att.TimestampMs), CDNURL: url, Body: att.AccessibilitySummaryText, MIME: mime,
 			Width: int(att.PreviewWidth), Height: int(att.PreviewHeight),
-		}); err != nil {
+		}
+		if att.TimestampMs == 0 {
+			seen.SeenAt = time.Now()
+		}
+		// Encrypted, direct, async or non-image media isn't reused, the import reuploads it from the CDN instead.
+		if err == nil && converted.Content.File == nil && !mc.DirectMedia && !mc.AsyncFiles &&
+			strings.HasPrefix(converted.Content.Info.MimeType, "image/") {
+			seen.MXC, seen.MIME = converted.Content.URL, converted.Content.Info.MimeType
+		}
+		if err := mc.DB.PutSeenSticker(ctx, login.ID, seen); err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to cache seen sticker")
 		}
 	}
@@ -457,7 +464,7 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")
 		return errorToNotice(err, "sticker")
 	}
-	if stickerID > 0 && client.GetPlatform().IsMessenger() {
+	if isFacebookSticker {
 		converted.Content.Info.BridgedSticker = &event.BridgedSticker{
 			Network: "facebook",
 			ID:      strconv.FormatInt(stickerID, 10),

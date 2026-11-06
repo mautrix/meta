@@ -76,14 +76,15 @@ func getOTID(inputTxnID networkid.RawTransactionID) int64 {
 	return methods.GenerateEpochID()
 }
 
-// Only stickers imported from a pack in this account's tray are sent natively, others are uploaded as images.
-func (m *MetaClient) getTrayStickerID(ctx context.Context, evt *event.Event, content *event.MessageEventContent) int64 {
-	if evt.Type != event.EventSticker || !m.LoginMeta.Platform.IsMessenger() || content.Info == nil ||
-		content.Info.BridgedSticker == nil || content.Info.BridgedSticker.Network != "facebook" {
+// Only non-relayed stickers from a pack in this account's tray are sent natively, others are uploaded as images.
+func (m *MetaClient) getTrayStickerID(ctx context.Context, msg *bridgev2.MatrixMessage) int64 {
+	info := msg.Content.Info
+	if msg.Event.Type != event.EventSticker || msg.OrigSender != nil || !m.LoginMeta.Platform.IsMessenger() ||
+		info == nil || info.BridgedSticker == nil || info.BridgedSticker.Network != "facebook" {
 		return 0
 	}
-	packID, ok := strings.CutPrefix(content.Info.BridgedSticker.PackURL, stickerPackURLPrefix)
-	stickerID, err := strconv.ParseInt(content.Info.BridgedSticker.ID, 10, 64)
+	packID, ok := strings.CutPrefix(info.BridgedSticker.PackURL, stickerPackURLPrefix)
+	stickerID, err := strconv.ParseInt(info.BridgedSticker.ID, 10, 64)
 	if !ok || packID == "" || err != nil || stickerID <= 0 {
 		return 0
 	}
@@ -148,7 +149,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			return nil, ErrNotConnected
 		}
 
-		stickerID := m.getTrayStickerID(ctx, msg.Event, msg.Content)
+		stickerID := m.getTrayStickerID(ctx, msg)
 		tasks, err := m.Main.MsgConv.ToMeta(
 			ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal, stickerID,
 		)

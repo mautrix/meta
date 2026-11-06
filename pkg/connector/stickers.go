@@ -87,7 +87,7 @@ func (m *MetaClient) ListImagePacks(ctx context.Context) ([]*event.ImagePackMeta
 	}
 	stickers, err := m.Main.DB.GetSeenStickers(ctx, m.UserLogin.ID)
 	if err != nil {
-		return nil, err
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get seen Facebook stickers")
 	}
 	packs, err := m.getStickerPacks(ctx)
 	if err != nil && len(stickers) == 0 {
@@ -129,7 +129,7 @@ func (m *MetaClient) DownloadImagePack(ctx context.Context, url string) (*bridge
 	return nil, mautrix.MNotFound.WithMessage("Sticker pack is not available on this account")
 }
 
-func (m *MetaClient) uploadPackSticker(ctx context.Context, url, name string) (id.ContentURIString, string, int, error) {
+func (m *MetaClient) uploadSticker(ctx context.Context, url, name string) (id.ContentURIString, string, int, error) {
 	_, reader, err := mediadl.DownloadMedia(ctx, "image/*", url, maxStickerSize)
 	if err != nil {
 		return "", "", 0, err
@@ -170,7 +170,7 @@ func (m *MetaClient) downloadStickerPack(ctx context.Context, pack messagix.Stic
 		Content:   &event.ImagePackEventContent{Metadata: metadata, Images: make(map[string]*event.ImagePackImage)},
 	}
 	for _, sticker := range stickers {
-		mxc, mimeType, size, err := m.uploadPackSticker(ctx, sticker.URL, sticker.ID)
+		mxc, mimeType, size, err := m.uploadSticker(ctx, sticker.URL, sticker.ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to import sticker %s: %w", sticker.ID, err)
 		}
@@ -203,34 +203,21 @@ func (m *MetaClient) downloadSeenStickerPack(ctx context.Context) (*bridgev2.Imp
 		Metadata: seenStickerPackMetadata(), Images: make(map[string]*event.ImagePackImage),
 	}}
 	for _, sticker := range stickers {
+		stickerID := strconv.FormatInt(sticker.ID, 10)
 		if sticker.MXC == "" {
-			size, reader, err := mediadl.DownloadMedia(ctx, sticker.MIME, sticker.CDNURL, maxStickerSize)
-			if err != nil {
-				if ctx.Err() != nil {
-					return nil, ctx.Err()
-				}
-				m.UserLogin.Log.Warn().Int64("sticker_id", sticker.ID).Msg("Skipping unavailable sticker media")
+			mxc, mimeType, _, err := m.uploadSticker(ctx, sticker.CDNURL, stickerID)
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			} else if err != nil {
+				m.UserLogin.Log.Warn().Err(err).Int64("sticker_id", sticker.ID).Msg("Skipping unavailable seen sticker")
 				continue
 			}
-			mxc, _, err := m.Main.Bridge.Bot.UploadMediaStream(ctx, "", size, false, func(dest io.Writer) (*bridgev2.FileStreamResult, error) {
-				_, err := io.Copy(dest, reader)
-				return &bridgev2.FileStreamResult{MimeType: sticker.MIME, FileName: strconv.FormatInt(sticker.ID, 10)}, err
-			})
-			reader.Close()
-			if err != nil {
-				if ctx.Err() != nil {
-					return nil, ctx.Err()
-				}
-				m.UserLogin.Log.Warn().Int64("sticker_id", sticker.ID).Msg("Skipping sticker upload failure")
-				continue
-			}
-			err = m.Main.DB.SetSeenStickerMXC(ctx, m.UserLogin.ID, sticker.ID, mxc, sticker.MIME)
+			err = m.Main.DB.SetSeenStickerMXC(ctx, m.UserLogin.ID, sticker.ID, mxc, mimeType)
 			if err != nil {
 				return nil, err
 			}
-			sticker.MXC = mxc
+			sticker.MXC, sticker.MIME = mxc, mimeType
 		}
-		stickerID := strconv.FormatInt(sticker.ID, 10)
 		width, height := stickerDisplaySize(sticker.Width, sticker.Height)
 		pack.Content.Images[stickerID] = &event.ImagePackImage{
 			URL: sticker.MXC, Body: sticker.Body,
@@ -238,6 +225,9 @@ func (m *MetaClient) downloadSeenStickerPack(ctx context.Context) (*bridgev2.Imp
 				Network: "facebook", ID: stickerID, PackURL: seenStickerPackURL,
 			}},
 		}
+	}
+	if len(pack.Content.Images) == 0 {
+		return nil, mautrix.MNotFound.WithMessage("No seen stickers are available")
 	}
 	return pack, nil
 }
