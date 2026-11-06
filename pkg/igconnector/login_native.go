@@ -246,7 +246,11 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		return m.selectWebTwoFactorWay(ctx, input[loginFieldWebTwoFactorWay])
 	}
 	if m.webTwoFactor != nil && m.webTwoFactorMethod == instameow.InstagramWebTwoFactorApproveFromAnotherDevice {
-		return m.handleWebAuthPlatformResult(ctx, nil, m.client.WaitForInstagramWebTwoFactorApproval(ctx))
+		err := m.client.WaitForInstagramWebTwoFactorApproval(ctx)
+		if errors.Is(err, instameow.ErrInstagramWebTwoFactorApprovalDenied) {
+			return m.start(ctx, "The login was denied on your other device. Sign in again to retry.")
+		}
+		return m.handleWebAuthPlatformResult(ctx, nil, err)
 	}
 	if m.webTwoFactor != nil {
 		verificationCode := strings.TrimSpace(input[loginFieldWebTwoFactorCode])
@@ -419,7 +423,7 @@ func (m *MetaNativeLogin) webTwoFactorWaysStep(ctx context.Context) (*bridgev2.L
 	if errors.Is(err, httpclient.ErrRateLimited) {
 		return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return nil, err
+		return nil, wrapInstagramRespError(err)
 	} else if err != nil {
 		m.User.Log.Warn().Err(err).Msg("Failed to fetch other Instagram web two-factor methods")
 		return m.webTwoFactorStep("Instagram didn't return other ways to sign in. Enter the verification code, or go back to try again."), nil
@@ -464,7 +468,7 @@ func (m *MetaNativeLogin) selectWebTwoFactorWay(ctx context.Context, way string)
 	if errors.Is(err, httpclient.ErrRateLimited) {
 		return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return nil, err
+		return nil, wrapInstagramRespError(err)
 	} else if err != nil {
 		m.User.Log.Warn().Err(err).Str("method", method).Msg("Failed to switch Instagram web two-factor method")
 		return m.webTwoFactorWaysPicker("Instagram couldn't switch to that method. Choose another way to confirm it's you."), nil

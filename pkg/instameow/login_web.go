@@ -65,7 +65,7 @@ var ErrInstagramWebCheckpointUnsupported = errors.New("instagram web checkpoint 
 var errInstagramWebTwoFactorSMSRejected = fmt.Errorf("%w: SMS code validation failed", ErrInstagramWebTwoFactorCodeRejected)
 var errInstagramWebTwoFactorSMSNotSent = errors.New("instagram could not send a replacement SMS code")
 var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
-var errInstagramWebTwoFactorApprovalDenied = fmt.Errorf("%w: login approval was denied", ErrInstagramWebLoginRejected)
+var ErrInstagramWebTwoFactorApprovalDenied = errors.New("instagram web login approval was denied")
 
 type InstagramWebTwoFactorChallenge struct {
 	AuthPlatform  bool
@@ -1110,7 +1110,7 @@ func (c *Client) WaitForInstagramWebTwoFactorApproval(ctx context.Context) error
 		case "ALLOWED":
 			return c.finishInstagramWebTwoFactor()
 		case "DENIED":
-			return errInstagramWebTwoFactorApprovalDenied
+			return ErrInstagramWebTwoFactorApprovalDenied
 		case "EXPIRED":
 			return ErrInstagramAuthPlatformApprovalExpired
 		case "PENDING":
