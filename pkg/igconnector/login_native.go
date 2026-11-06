@@ -254,7 +254,9 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	}
 	if m.webTwoFactor != nil {
 		verificationCode := strings.TrimSpace(input[loginFieldWebTwoFactorCode])
-		if verificationCode == "" {
+		if verificationCode == "" && m.webTwoFactor.CanTryAnotherWay {
+			return m.webTwoFactorWaysStep(ctx)
+		} else if verificationCode == "" {
 			return m.webTwoFactorStep(
 				"Enter the verification code to continue creating the Instagram messaging session.",
 			), nil
@@ -405,9 +407,9 @@ func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, 
 
 func (m *MetaNativeLogin) webTwoFactorStep(instructions string) *bridgev2.LoginStep {
 	if m.webTwoFactorMethod == instameow.InstagramWebTwoFactorBackupCode {
-		instructions = cmp.Or(instructions, "Enter one of your Instagram backup codes.")
+		instructions = cmp.Or(instructions, "Enter one of your Instagram backup codes, or tap Continue without entering a code to try another way.")
 	} else if instructions == "" && m.webTwoFactor.CanTryAnotherWay {
-		instructions = instagramWebTwoFactorStep(m.webTwoFactor, "").Instructions + " If it doesn't arrive, go back to try another way."
+		instructions = instagramWebTwoFactorStep(m.webTwoFactor, "").Instructions + " If it doesn't arrive, tap Continue without entering a code to try another way."
 	}
 	step := instagramWebTwoFactorStep(m.webTwoFactor, instructions)
 	step.UserInputParams.CanCancel = m.webTwoFactor.CanTryAnotherWay
@@ -426,7 +428,7 @@ func (m *MetaNativeLogin) webTwoFactorWaysStep(ctx context.Context) (*bridgev2.L
 		return nil, wrapInstagramRespError(err)
 	} else if err != nil {
 		m.User.Log.Warn().Err(err).Msg("Failed to fetch other Instagram web two-factor methods")
-		return m.webTwoFactorStep("Instagram didn't return other ways to sign in. Enter the verification code, or go back to try again."), nil
+		return m.webTwoFactorStep("Instagram didn't return other ways to sign in. Enter the verification code, or tap Continue without entering a code to try again."), nil
 	}
 	ways := []string{webTwoFactorWayCode}
 	for _, method := range alternatives {
