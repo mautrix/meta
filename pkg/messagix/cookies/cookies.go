@@ -54,7 +54,7 @@ type Cookies struct {
 	values   map[MetaCookieName]string
 	lock     sync.RWMutex
 
-	IGWWWClaim string
+	igWWWClaim string
 }
 
 func (c *Cookies) UpdateValues(newValues map[MetaCookieName]string) {
@@ -67,10 +67,14 @@ func (c *Cookies) UpdateValues(newValues map[MetaCookieName]string) {
 }
 
 func (c *Cookies) MarshalJSON() ([]byte, error) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	return json.Marshal(c.values)
 }
 
 func (c *Cookies) UnmarshalJSON(data []byte) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	return json.Unmarshal(data, &c.values)
 }
 
@@ -152,10 +156,41 @@ func (c *Cookies) GetAll() map[MetaCookieName]string {
 	return newMap
 }
 
+func (c *Cookies) GetNames() []string {
+	if c == nil {
+		return nil
+	}
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	names := make([]string, 0, len(c.values))
+	for key, val := range c.values {
+		if val != "" {
+			names = append(names, string(key))
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
 func (c *Cookies) Set(key MetaCookieName, value string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.values[key] = value
+}
+
+func (c *Cookies) GetWWWClaim() string {
+	if c == nil {
+		return ""
+	}
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.igWWWClaim
+}
+
+func (c *Cookies) SetWWWClaim(claim string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.igWWWClaim = claim
 }
 
 func (c *Cookies) UpdateFromResponse(r *http.Response) {
@@ -181,7 +216,7 @@ func (c *Cookies) UpdateFromResponse(r *http.Response) {
 		}
 	}
 	if wwwClaim := r.Header.Get("x-ig-set-www-claim"); wwwClaim != "" {
-		c.IGWWWClaim = wwwClaim
+		c.igWWWClaim = wwwClaim
 	}
 }
 

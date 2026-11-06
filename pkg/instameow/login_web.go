@@ -46,6 +46,7 @@ const instagramWebTwoFactorSendCodeDocID = "27297512486584094"
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
 var ErrInstagramWebLoginRejected = errors.New("instagram web sign-in was rejected")
+var ErrInstagramWebRegistrationOffered = errors.New("instagram offered to register a new account instead of signing in")
 var ErrInstagramWebAccountPendingDeletion = errors.New("instagram account is pending deletion")
 var ErrInstagramWebTwoFactorCodeRejected = errors.New("instagram web two-factor code was rejected")
 var ErrInstagramWebTwoFactorCodeResent = fmt.Errorf("%w: replacement SMS requested", ErrInstagramWebTwoFactorCodeRejected)
@@ -56,12 +57,13 @@ var errInstagramWebTwoFactorSMSNotSent = errors.New("instagram could not send a 
 var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
 
 type InstagramWebTwoFactorChallenge struct {
-	AuthPlatform bool
-	TOTP         bool
-	SMS          bool
-	WhatsApp     bool
-	Email        bool
-	ChallengeURL string
+	AuthPlatform  bool
+	TOTP          bool
+	SMS           bool
+	SMSOrWhatsApp bool
+	WhatsApp      bool
+	Email         bool
+	ChallengeURL  string
 }
 
 type instagramWebTwoFactorInfo struct {
@@ -70,6 +72,7 @@ type instagramWebTwoFactorInfo struct {
 	TOTP              bool   `json:"totp_two_factor_on"`
 	SMS               bool   `json:"sms_two_factor_on"`
 	WhatsApp          bool   `json:"whatsapp_two_factor_on"`
+	SOWA              bool   `json:"is_in_sowa_experience"`
 	EncryptedContext  string `json:"encrypted_context"`
 	MaskedPhoneNumber string `json:"obfuscated_phone_number_2"`
 }
@@ -208,10 +211,10 @@ func (c *Client) addInstagramWebLoginHeaders(headers http.Header) error {
 	}
 	headers.Set("x-instagram-ajax", config.InstagramWebPushInfo.RolloutHash)
 	headers.Set("x-web-session-id", c.configs.WebSessionID)
-	if c.cookies.IGWWWClaim == "" {
+	if wwwClaim := c.cookies.GetWWWClaim(); wwwClaim == "" {
 		headers.Set("x-ig-www-claim", "0")
 	} else {
-		headers.Set("x-ig-www-claim", c.cookies.IGWWWClaim)
+		headers.Set("x-ig-www-claim", wwwClaim)
 	}
 	if config.PolarisSiteData.SendDeviceIDHeader {
 		if config.PolarisSiteData.DeviceID == "" {
@@ -443,9 +446,10 @@ func (c *Client) captureInstagramWebTwoFactor(
 		}
 	}
 	return &InstagramWebTwoFactorChallenge{
-		TOTP:     info.TOTP,
-		SMS:      info.SMS,
-		WhatsApp: info.WhatsApp,
+		TOTP:          info.TOTP,
+		SMS:           info.SMS,
+		SMSOrWhatsApp: info.SMS && info.SOWA,
+		WhatsApp:      info.WhatsApp,
 	}, nil
 }
 
@@ -474,7 +478,7 @@ func (c *Client) CreateInstagramWebSession(
 		cookies.IGCookieMachineID: c.cookies.Get(cookies.IGCookieMachineID),
 		cookies.IGCookieDeviceID:  c.cookies.Get(cookies.IGCookieDeviceID),
 	})
-	c.cookies.IGWWWClaim = ""
+	c.cookies.SetWWWClaim("")
 
 	c.configs = httpclient.NewConfigs(c)
 	c.http.SetConfigs(c.configs)
@@ -1081,6 +1085,7 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 	headers.Set("sec-fetch-dest", "empty")
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
+	c.logLoginRequestShape(rq.FbAPIReqFriendlyName, form, headers)
 	// A lost response must not replay a password, verification code or CAPTCHA.
 	endpoint := c.GetEndpoint("graphql")
 	response, body, err := c.http.MakeRequestOnceNoRedirect(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
@@ -1095,6 +1100,8 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 		return nil, err
 	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
 		return nil, ErrInstagramWebCheckpointRequestFailed
+	} else if gjson.GetBytes(bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix), "errors.#(code==1675004)").Exists() {
+		return nil, httpclient.ErrRateLimited
 	}
 	return body, nil
 }

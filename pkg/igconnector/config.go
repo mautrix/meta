@@ -54,8 +54,9 @@ type Config struct {
 }
 
 type ThreadBackfillConfig struct {
-	BatchCount int           `yaml:"batch_count"`
-	BatchDelay time.Duration `yaml:"batch_delay"`
+	BatchCount    int           `yaml:"batch_count"`
+	BatchDelay    time.Duration `yaml:"batch_delay"`
+	MaxConcurrent int           `yaml:"max_concurrent"`
 }
 
 func (tbc ThreadBackfillConfig) Enabled() bool {
@@ -93,6 +94,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "log_redacted_login_responses")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
+	helper.Copy(up.Int, "thread_backfill", "max_concurrent")
 }
 
 func (ic *IGConnector) GetConfig() (string, any, up.Upgrader) {

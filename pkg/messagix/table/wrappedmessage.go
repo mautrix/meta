@@ -1,6 +1,11 @@
 package table
 
 import (
+	"cmp"
+	"slices"
+	"strconv"
+	"strings"
+
 	badGlobalLog "github.com/rs/zerolog/log"
 )
 
@@ -62,6 +67,9 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 	}
 
 	for _, msg := range table.LSUpsertMessage {
+		if messageMap[msg.MessageId] != nil {
+			continue
+		}
 		wrapped := &WrappedMessage{LSInsertMessage: msg.ToInsert(), IsUpsert: true}
 		chatUpsert, ok := upsert[msg.ThreadKey]
 		if !ok {
@@ -92,6 +100,61 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 	for i, msg := range table.LSInsertMessage {
 		insert[i] = &WrappedMessage{LSInsertMessage: msg}
 		messageMap[msg.MessageId] = insert[i]
+	}
+	for _, poll := range table.LSAddPollForThread {
+		if msg := messageMap[poll.LastUpdateMessageID]; msg != nil && msg.ThreadKey == poll.ThreadKey {
+			msg.PollID = poll.PollID
+			msg.PollEventType = poll.LastUpdateMessageEventType
+		}
+	}
+	for _, update := range table.LSUpdatePollAdminMessageSummary {
+		if msg := messageMap[update.MessageID]; msg != nil && msg.ThreadKey == update.ThreadKey {
+			msg.PollID = update.PollID
+			msg.PollEventType = update.MessageEventType
+		}
+	}
+	for _, poll := range table.LSVerifyPollExists {
+		if msg := messageMap[poll.MessageID]; msg != nil && msg.ThreadKey == poll.ThreadKey {
+			msg.PollID = poll.PollID
+			msg.PollEventType = poll.MessageEventType
+		}
+	}
+	pollCreations := make(map[int64]*WrappedMessage)
+	for _, msg := range messageMap {
+		if msg.PollID != 0 && msg.PollEventType == PollEventCreate {
+			pollCreations[msg.PollID] = msg
+		}
+	}
+	pollOptions := slices.Clone(table.LSAddPollOption)
+	slices.SortStableFunc(pollOptions, func(a, b *LSAddPollOption) int {
+		return cmp.Compare(a.SortKeyCreationTimestamp, b.SortKeyCreationTimestamp)
+	})
+	for _, option := range pollOptions {
+		if msg := pollCreations[option.PollID]; msg != nil {
+			msg.PollOptions = append(msg.PollOptions, PollOption{OptionID: option.OptionID, Text: option.OptionText})
+			msg.PollOptionsComplete = true
+		}
+	}
+	for _, option := range table.LSAddPollOptionV2 {
+		if msg := messageMap[option.MessageID]; msg != nil && msg.ThreadKey == option.ThreadKey {
+			msg.PollID = option.PollID
+			msg.PollEventType = option.MessageEventType
+			msg.PollOptions = append(msg.PollOptions, PollOption{OptionID: option.OptionID, Text: option.OptionText})
+		}
+	}
+	for _, vote := range table.LSAddPollVoteV2 {
+		if msg := messageMap[vote.MessageID]; msg != nil && msg.ThreadKey == vote.ThreadKey {
+			msg.PollID = vote.PollID
+			msg.PollEventType = vote.MessageEventType
+			msg.PollVotes = append(msg.PollVotes, vote)
+		}
+	}
+	for _, vote := range table.LSRemovePollVoteV2 {
+		if msg := messageMap[vote.MessageID]; msg != nil && msg.ThreadKey == vote.ThreadKey {
+			msg.PollID = vote.PollID
+			msg.PollEventType = vote.MessageEventType
+			msg.PollRemovals = append(msg.PollRemovals, vote)
+		}
 	}
 
 	for _, blob := range table.LSInsertBlobAttachment {
@@ -125,12 +188,31 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 		if ok {
 			wrappedXMA := &WrappedXMA{LSInsertXmaAttachment: xma, CTA: ctaMap[xma.AttachmentFbid]}
 			msg.XMAAttachments = append(msg.XMAAttachments, wrappedXMA)
+			if wrappedXMA.CTA != nil && strings.HasPrefix(wrappedXMA.CTA.Type_, "xma_poll_") &&
+				xma.AttachmentFbid == strconv.FormatInt(msg.PollID, 10) {
+				msg.PollQuestion = xma.ListItemsDescriptionText
+				if len(msg.PollOptions) == 0 && msg.PollEventType == PollEventCreate {
+					for _, option := range []PollOption{
+						{OptionID: xma.ListItemId1, Text: xma.ListItemTitleText1},
+						{OptionID: xma.ListItemId2, Text: xma.ListItemTitleText2},
+						{OptionID: xma.ListItemId3, Text: xma.ListItemTitleText3},
+					} {
+						if option.OptionID != 0 {
+							msg.PollOptions = append(msg.PollOptions, option)
+						}
+					}
+				}
+			}
 		} else {
 			badGlobalLog.Warn().
 				Str("message_id", xma.MessageId).
 				Str("attachment_id", xma.AttachmentFbid).
 				Msg("Got XMA attachment in table without corresponding message")
 		}
+	}
+	insert = splitPollUpdates(insert)
+	for _, chatUpsert := range upsert {
+		chatUpsert.Messages = splitPollUpdates(chatUpsert.Messages)
 	}
 	for _, blob := range table.LSInsertStickerAttachment {
 		msg, ok := messageMap[blob.MessageId]
@@ -146,14 +228,48 @@ func (table *LSTable) WrapMessages() (upsert map[int64]*UpsertMessages, insert [
 	return
 }
 
+func splitPollUpdates(msgs []*WrappedMessage) []*WrappedMessage {
+	for i := 0; i < len(msgs); i++ {
+		msg := msgs[i]
+		if msg.PollEventType != PollEventAddVotedOption && msg.PollEventType != PollEventMultipleUpdates {
+			continue
+		} else if len(msg.PollVotes)+len(msg.PollRemovals) == 0 {
+			msg.PollEventType = PollEventAddOption
+			continue
+		}
+		msg.PollEventType = PollEventVote
+		if len(msg.PollOptions) > 0 {
+			options := &WrappedMessage{
+				LSInsertMessage: msg.LSInsertMessage,
+				IsUpsert:        msg.IsUpsert,
+				PollID:          msg.PollID,
+				PollEventType:   PollEventAddOption,
+				PollQuestion:    msg.PollQuestion,
+				PollOptions:     msg.PollOptions,
+			}
+			msg.PollOptions = nil
+			msgs = slices.Insert(msgs, i, options)
+			i++
+		}
+	}
+	return msgs
+}
+
 type WrappedMessage struct {
 	*LSInsertMessage
-	IsUpsert        bool
-	BlobAttachments []*LSInsertBlobAttachment
-	Attachments     []*LSInsertAttachment
-	XMAAttachments  []*WrappedXMA
-	Stickers        []*LSInsertStickerAttachment
-	Reactions       []*LSUpsertReaction
+	IsUpsert            bool
+	BlobAttachments     []*LSInsertBlobAttachment
+	Attachments         []*LSInsertAttachment
+	XMAAttachments      []*WrappedXMA
+	Stickers            []*LSInsertStickerAttachment
+	Reactions           []*LSUpsertReaction
+	PollID              int64
+	PollEventType       PollEventType
+	PollQuestion        string
+	PollOptions         []PollOption
+	PollOptionsComplete bool
+	PollVotes           []*LSAddPollVote
+	PollRemovals        []*LSAddPollVote
 
 	ThreadID         string
 	IsSubthreadStart bool

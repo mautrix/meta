@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"go.mau.fi/util/exslices"
@@ -37,7 +38,7 @@ type GraphQLError struct {
 	QueryPath       any      `json:"query_path"`
 	FbtraceID       string   `json:"fbtrace_id"`
 	WWWRequestID    string   `json:"www_request_id"`
-	Path            []string `json:"path"`
+	Path            []any    `json:"path"`
 }
 
 func (gqe *GraphQLError) Error() string {
@@ -45,7 +46,7 @@ func (gqe *GraphQLError) Error() string {
 	if gqe.Summary != "" || gqe.Description != "" {
 		message = fmt.Sprintf("%s - %s", gqe.Summary, gqe.Description)
 	}
-	return fmt.Sprintf("graphql error at %s: %s", strings.Join(gqe.Path, "."), message)
+	return fmt.Sprintf("graphql error at %s: %s", strings.Join(exslices.CastFunc(gqe.Path, func(from any) string { return fmt.Sprint(from) }), "."), message)
 }
 
 func (gqe *GraphQLError) HumanError() string {
@@ -54,6 +55,7 @@ func (gqe *GraphQLError) HumanError() string {
 
 var ErrPleaseLogIn = &ErrorResponse{ErrorCode: 1357001}
 var ErrPleaseReloadPage = &ErrorResponse{ErrorCode: 1357004}
+var ErrContentUnavailable = &ErrorResponse{ErrorCode: 1357031}
 
 func (er *ErrorResponse) Is(other error) bool {
 	var otherLS *ErrorResponse
@@ -75,6 +77,25 @@ func (er *ErrorResponse) WrapGQLErrors() error {
 	})...)
 }
 
+func (er *ErrorResponse) HumanError() string {
+	if er.ErrorDescription != "" {
+		return er.ErrorDescription
+	}
+	return er.ErrorSummary
+}
+
+func (er *ErrorResponse) RedirectPath() string {
+	if er.RedirectTo == "" {
+		return ""
+	} else if parsed, err := url.Parse(er.RedirectTo); err == nil {
+		return parsed.Path
+	}
+	return "(unparseable)"
+}
+
 func (er *ErrorResponse) Error() string {
+	if redirectPath := er.RedirectPath(); redirectPath != "" {
+		return fmt.Sprintf("%d: %s (redirect to %s)", er.ErrorCode, er.ErrorDescription, redirectPath)
+	}
 	return fmt.Sprintf("%d: %s", er.ErrorCode, er.ErrorDescription)
 }

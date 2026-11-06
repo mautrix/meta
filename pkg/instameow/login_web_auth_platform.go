@@ -83,6 +83,23 @@ func InstagramWebChallengeURL(err error) (string, bool) {
 	return challenge.url, true
 }
 
+func InstagramWebRedirectChallengeURL(err error) (string, bool) {
+	if !errors.Is(err, httpclient.ErrChallengeRequired) && !errors.Is(err, httpclient.ErrCheckpointRequired) &&
+		!errors.Is(err, httpclient.ErrConsentRequired) {
+		return "", false
+	}
+	redirectURL := httpclient.GetErrorRedirectURL(err)
+	if redirectURL == "" {
+		return "", false
+	}
+	switch instagramWebCheckpointURLKind(redirectURL) {
+	case "auth_platform", "legacy_checkpoint", "other_instagram":
+		return redirectURL, true
+	default:
+		return "", false
+	}
+}
+
 func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 	reference, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || strings.TrimSpace(raw) == "" {

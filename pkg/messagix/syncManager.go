@@ -329,6 +329,7 @@ func (sm *SyncManager) UpdateDatabaseSyncParams(dbs []*socket.QueryMetadata) err
 		if !ok {
 			return fmt.Errorf("failed to update sync params for database: %d", db.DatabaseID)
 		}
+		database.LastAppliedCursor = db.LastAppliedCursor
 		database.SendSyncParams = db.SendSyncParams
 		database.SyncChannel = db.SyncChannel
 	}

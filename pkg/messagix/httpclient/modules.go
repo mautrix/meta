@@ -167,6 +167,8 @@ func (m *ModuleParser) handleRequire(data *ModuleEntry) error {
 		var rpsc RelayPrefetchedStreamCache
 		if err := json.Unmarshal(data.Data[2], &rpsc); err != nil {
 			return err
+		} else if rpsc.BBox == nil || rpsc.BBox.BBox == nil || len(rpsc.BBox.BBox.Result) == 0 {
+			return nil
 		}
 		return m.handleLightSpeedQLRequest(rpsc.BBox.BBox.Result, m.parseGraphMethodName(rpsc.PreloadID))
 	}

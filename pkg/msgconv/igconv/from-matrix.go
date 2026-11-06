@@ -97,7 +97,7 @@ func (mc *MessageConverter) ToInstagram(
 		} else {
 			return nil, fmt.Errorf("no IGID for thread saved")
 		}
-		attachmentID, err := mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), portal, content)
+		attachmentID, err := mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), nil, portal, content)
 		if errors.Is(err, types.ErrPleaseReloadPage) {
 			zerolog.Ctx(ctx).Warn().Err(err).
 				Msg("Got please reload page error while reuploading media, reloading index and retrying")
@@ -106,7 +106,7 @@ func (mc *MessageConverter) ToInstagram(
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to reload page to retry media upload")
 			} else if didReload {
 				zerolog.Ctx(ctx).Debug().Msg("Successfully reloaded index, retrying media upload")
-				attachmentID, err = mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), portal, content)
+				attachmentID, err = mediadl.ReuploadFileToMeta(ctx, client.GetHTTP(), nil, portal, content)
 			} else {
 				zerolog.Ctx(ctx).Debug().Msg("Didn't reload index, not retrying media upload")
 			}

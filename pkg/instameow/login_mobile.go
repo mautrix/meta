@@ -240,7 +240,7 @@ func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginSt
 	if c.mobileLogin == nil {
 		// Web and app login sessions use different cookie jars.
 		c.cookies.UpdateValues(nil)
-		c.cookies.IGWWWClaim = ""
+		c.cookies.SetWWWClaim("")
 		var err error
 		c.mobileLogin, err = c.newMobileLoginState(ctx)
 		if err != nil {
@@ -259,7 +259,7 @@ func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginSt
 		ID:                    state.DeviceID,
 		ServerConfigRetrieval: "1",
 	}
-	response, _, requestErr := c.makeMobileSignedRequest(ctx, state, "qe/sync/", keyRequest)
+	response, _, requestErr := c.makeMobileSignedRequest(ctx, state, "launcher/sync/", keyRequest)
 	if response != nil {
 		if err := c.updateMobileLoginResponseState(ctx, state, response); err != nil {
 			return nil, err

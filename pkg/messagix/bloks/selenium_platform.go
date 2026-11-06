@@ -1,6 +1,7 @@
 package bloks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -304,4 +305,45 @@ func instagramCodeInstructions(page *BloksBundle) string {
 		}
 	}
 	return strings.Join(instructions, "\n\n")
+}
+
+func (profile browserPlatformProfile) retryStalledCodeSubmission(
+	ctx context.Context,
+	browser *Browser,
+	input, button *BloksTreeComponent,
+	code string,
+	expectedState BrowserState,
+	actionRPCCountBefore uint64,
+	log *zerolog.Logger,
+) error {
+	if !profile.isInstagram || browser.State != expectedState || browser.ActionRPCCount != actionRPCCountBefore ||
+		browser.CurrentPage == nil || browser.CurrentPage.Interpreter == nil {
+		return nil
+	}
+	interp := browser.CurrentPage.Interpreter
+	inventory := buttonScriptInventory(button, interp)
+
+	localBackup, globalBackup := copyVariables(interp.LocalVars), copyVariables(interp.GlobalVars)
+	for pass := 0; pass < 2; pass++ {
+		names := inventory.variables
+		if pass == 1 {
+			names = nil
+		}
+		cleared := clearTrueFlags(interp, names)
+		if cleared == 0 {
+			continue
+		}
+		log.Debug().Int("pass", pass).Int("cleared_count", cleared).Msg("Retrying code submission with guard flags cleared")
+		if err := input.FillInput(ctx, interp, code); err != nil {
+			return fmt.Errorf("filling otp code input: %w", err)
+		}
+		if err := button.TapButton(ctx, interp); err != nil {
+			return err
+		}
+		if browser.ActionRPCCount != actionRPCCountBefore || browser.State != expectedState || browser.CurrentPage.Interpreter != interp {
+			return nil
+		}
+	}
+	interp.LocalVars, interp.GlobalVars = localBackup, globalBackup
+	return nil
 }

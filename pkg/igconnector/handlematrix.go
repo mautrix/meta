@@ -304,6 +304,8 @@ func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridge
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	meta, err := ic.ensureIGID(ctx, receipt.Portal)
 	if err != nil {
 		return err
@@ -437,11 +439,8 @@ func (ic *IGClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.Ma
 }
 
 func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
-	if msg.Type.IsSelf && msg.OrigSender != nil {
+	if (msg.Type.IsSelf && msg.OrigSender != nil) || msg.Portal.RoomType == database.RoomTypeDM {
 		return nil, nil
-	}
-	if msg.Portal.RoomType == database.RoomTypeDM {
-		return nil, errors.New("cannot change members for DM")
 	}
 
 	// Note: technically this should use the IGID, but only groups can have member changes
@@ -480,7 +479,7 @@ func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Ma
 	case bridgev2.Leave:
 		_, err = ic.Client.LeaveGroup(ctx, &slidetypes.LeaveThreadRequest{ThreadID: threadID})
 	default:
-		return &bridgev2.MatrixMembershipResult{}, fmt.Errorf("not implemented")
+		return nil, nil
 	}
 	if err != nil {
 		return nil, wrapInstagramError(err)
