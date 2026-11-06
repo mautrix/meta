@@ -146,12 +146,10 @@ func (m *MetaClient) downloadStickerPack(ctx context.Context, pack messagix.Stic
 	// Preview and import both download the pack, so a recent result is reused.
 	m.stickerPackLock.Lock(pack.ID)
 	defer m.stickerPackLock.Unlock(pack.ID)
-	m.stickerLock.Lock()
-	cached, ok := m.stickerPacks[pack.ID]
-	if ok && time.Since(cached.fetchedAt) < stickerCacheTime {
-		m.stickerLock.Unlock()
+	if cached, ok := m.stickerPacks.Get(pack.ID); ok && time.Since(cached.fetchedAt) < stickerCacheTime {
 		return cached.pack, nil
 	}
+	m.stickerLock.Lock()
 	stickers, err := m.Client.FetchStickerPack(ctx, pack.ID)
 	m.stickerLock.Unlock()
 	if err != nil {
@@ -178,12 +176,7 @@ func (m *MetaClient) downloadStickerPack(ctx context.Context, pack messagix.Stic
 	if len(imported.Content.Images) == 0 {
 		return nil, mautrix.MNotFound.WithMessage("Sticker pack is empty")
 	}
-	m.stickerLock.Lock()
-	if m.stickerPacks == nil {
-		m.stickerPacks = make(map[string]cachedStickerPack)
-	}
-	m.stickerPacks[pack.ID] = cachedStickerPack{pack: imported, fetchedAt: time.Now()}
-	m.stickerLock.Unlock()
+	m.stickerPacks.Set(pack.ID, cachedStickerPack{pack: imported, fetchedAt: time.Now()})
 	return imported, nil
 }
 

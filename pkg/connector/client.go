@@ -67,7 +67,7 @@ type MetaClient struct {
 	stickerTray          []messagix.StickerPack
 	stickerTrayErr       error
 	stickerTrayFetchedAt time.Time
-	stickerPacks         map[string]cachedStickerPack
+	stickerPacks         *exsync.Map[string, cachedStickerPack]
 	stickerPackLock      exsync.KeyedMutex[string]
 
 	connectBackgroundEvt           chan connectBackgroundEvent
@@ -125,6 +125,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		parsedTablesWake:   make(chan struct{}, 1),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 		historyReadStates:  exsync.NewMap[int64, historyReadState](),
+		stickerPacks:       exsync.NewMap[string, cachedStickerPack](),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 

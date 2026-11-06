@@ -89,7 +89,7 @@ func (c *Client) FetchStickerTray(ctx context.Context) ([]StickerPack, error) {
 			} `json:"sticker_picker"`
 		} `json:"picker_plugins"`
 	}
-	err := c.receiverFetchGraphQL(ctx, "CometStickerPickerCardQuery", map[string]any{
+	err := c.makeGraphQLRequest(ctx, "CometStickerPickerCardQuery", map[string]any{
 		"feedbackID": nil, "scale": 1, "stickerInterface": "MESSAGES",
 	}, &card)
 	if err != nil {
@@ -128,7 +128,7 @@ func (c *Client) FetchStickerTray(ctx context.Context) ([]StickerPack, error) {
 		var next struct {
 			Store *stickerStore `json:"fetch__StickerStore"`
 		}
-		err = c.receiverFetchGraphQL(ctx, "useCometStickerPickerTrayPacksPaginationQuery", map[string]any{
+		err = c.makeGraphQLRequest(ctx, "useCometStickerPickerTrayPacksPaginationQuery", map[string]any{
 			"after_cursor": info.EndCursor, "count": 20, "id": storeID, "scale": 1,
 			"stickerInterface": "MESSAGES", "thumbnailHeight": 20, "thumbnailWidth": 20,
 		}, &next)
@@ -150,7 +150,7 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 	var root struct {
 		Pack *stickersInPack `json:"sticker_pack"`
 	}
-	err := c.receiverFetchGraphQL(ctx, "CometStickerPickerPackContentRootQuery", map[string]any{
+	err := c.makeGraphQLRequest(ctx, "CometStickerPickerPackContentRootQuery", map[string]any{
 		"packID": packID, "scale": 1, "stickerHeight": stickerMediaSize, "stickerWidth": stickerMediaSize,
 	}, &root)
 	if err != nil {
@@ -158,7 +158,6 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 	}
 	pack := root.Pack
 	var stickers []Sticker
-	seenStickers := make(map[string]struct{})
 	for page := 1; ; page++ {
 		if pack == nil || pack.ID != packID || pack.Stickers == nil {
 			return nil, fmt.Errorf("response didn't contain requested sticker pack")
@@ -166,8 +165,6 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 		for _, edge := range pack.Stickers.Edges {
 			node := edge.Node
 			if node == nil || !isStickerFBID(node.ID) {
-				continue
-			} else if _, ok := seenStickers[node.ID]; ok {
 				continue
 			}
 			mediaURL := ""
@@ -182,7 +179,6 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 			if label == "" {
 				label = node.AccessibilityLabel
 			}
-			seenStickers[node.ID] = struct{}{}
 			sticker := Sticker{ID: node.ID, Label: label, URL: mediaURL}
 			if node.Image != nil {
 				sticker.Width, sticker.Height = node.Image.Width, node.Image.Height
@@ -196,7 +192,7 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 		var next struct {
 			Pack *stickersInPack `json:"node"`
 		}
-		err = c.receiverFetchGraphQL(ctx, "CometStickerPickerPackContentPaginationQuery", map[string]any{
+		err = c.makeGraphQLRequest(ctx, "CometStickerPickerPackContentPaginationQuery", map[string]any{
 			"after": info.EndCursor, "first": 40, "id": packID, "scale": 1, "sticker_height": stickerMediaSize, "sticker_width": stickerMediaSize,
 		}, &next)
 		if err != nil {
