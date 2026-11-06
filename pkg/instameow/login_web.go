@@ -29,11 +29,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	"github.com/google/go-querystring/query"
 	"github.com/tidwall/gjson"
 	"golang.org/x/net/html"
+	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -43,6 +45,14 @@ import (
 
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
 const instagramWebTwoFactorSendCodeDocID = "27297512486584094"
+const instagramWebTwoFactorRootDocID = "26677319665197312"
+const instagramWebTwoFactorMethodsDocID = "26515739554748267"
+const instagramWebTwoFactorApprovalDocID = "25878197025142178"
+
+const (
+	InstagramWebTwoFactorBackupCode               = "BACKUP_CODES"
+	InstagramWebTwoFactorApproveFromAnotherDevice = "APPROVE_FROM_ANOTHER_DEVICE"
+)
 
 var ErrInstagramWebCredentialsRejected = errors.New("instagram web credentials were rejected")
 var ErrInstagramWebLoginRejected = errors.New("instagram web sign-in was rejected")
@@ -55,6 +65,7 @@ var ErrInstagramWebCheckpointUnsupported = errors.New("instagram web checkpoint 
 var errInstagramWebTwoFactorSMSRejected = fmt.Errorf("%w: SMS code validation failed", ErrInstagramWebTwoFactorCodeRejected)
 var errInstagramWebTwoFactorSMSNotSent = errors.New("instagram could not send a replacement SMS code")
 var errInstagramWebTwoFactorMissingCSRF = errors.New("instagram web two-factor challenge is missing a CSRF token")
+var errInstagramWebTwoFactorApprovalDenied = fmt.Errorf("%w: login approval was denied", ErrInstagramWebLoginRejected)
 
 type InstagramWebTwoFactorChallenge struct {
 	AuthPlatform  bool
@@ -64,6 +75,8 @@ type InstagramWebTwoFactorChallenge struct {
 	WhatsApp      bool
 	Email         bool
 	ChallengeURL  string
+
+	CanTryAnotherWay bool
 }
 
 type instagramWebTwoFactorInfo struct {
@@ -86,6 +99,8 @@ type instagramWebTwoFactorState struct {
 	csrfToken          string
 	smsReplacementSent bool
 	checkpointURL      string
+	alternativeMethod  string
+	approvalInterval   time.Duration
 }
 
 type instagramWebLoginResponse struct {
@@ -446,10 +461,11 @@ func (c *Client) captureInstagramWebTwoFactor(
 		}
 	}
 	return &InstagramWebTwoFactorChallenge{
-		TOTP:          info.TOTP,
-		SMS:           info.SMS,
-		SMSOrWhatsApp: info.SMS && info.SOWA,
-		WhatsApp:      info.WhatsApp,
+		TOTP:             info.TOTP,
+		SMS:              info.SMS,
+		SMSOrWhatsApp:    info.SMS && info.SOWA,
+		WhatsApp:         info.WhatsApp,
+		CanTryAnotherWay: info.EncryptedContext != "" && (method == "SMS" || method == "WHATSAPP"),
 	}, nil
 }
 
@@ -665,8 +681,9 @@ func (c *Client) newInstagramWebTwoFactorGraphQLForm(
 	if state == nil || state.encryptedContext == "" || state.method == "" {
 		return nil, errors.New("instagram encrypted web two-factor challenge is missing state")
 	}
+	method := cmp.Or(state.alternativeMethod, state.method)
 	var maskedContactPoint *string
-	if state.maskedContactPoint != "" {
+	if state.maskedContactPoint != "" && state.alternativeMethod == "" {
 		maskedContactPoint = &state.maskedContactPoint
 	}
 	variables, err := json.Marshal(instagramWebTwoFactorGraphQLVariables{
@@ -676,7 +693,7 @@ func (c *Client) newInstagramWebTwoFactorGraphQLForm(
 		EncryptedContext:   state.encryptedContext,
 		Flow:               "TWO_FACTOR_LOGIN",
 		MaskedContactPoint: maskedContactPoint,
-		Method:             state.method,
+		Method:             method,
 		TrustThisDevice:    true,
 	})
 	if err != nil {
@@ -856,19 +873,10 @@ func (c *Client) sendInstagramWebTwoFactorCode(ctx context.Context, state *insta
 	if err != nil {
 		return fmt.Errorf("failed to marshal Instagram web verification request: %w", err)
 	}
-	c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
-	rq := c.http.NewHTTPQuery()
-	rq.FbAPIReqFriendlyName = "useTwoStepVerificationSendCodeMutation"
-	rq.DocID = instagramWebTwoFactorSendCodeDocID
-	rq.Variables = string(variables)
-	body, err := c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login_two_step_verification"), state.csrfToken)
-	if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
-		state.csrfToken = csrfToken
-	}
+	body, err := c.instagramWebTwoStepVerificationRequest(ctx, state, "useTwoStepVerificationSendCodeMutation", instagramWebTwoFactorSendCodeDocID, variables)
 	if err != nil {
 		return fmt.Errorf("failed to request an Instagram web verification code: %w", err)
 	}
-	body = bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix)
 	result := gjson.GetBytes(body, "data.xfb_two_step_verification_send_notification")
 	if result.Get("is_success").Type != gjson.True {
 		if message := result.Get("error_message").String(); message != "" {
@@ -986,12 +994,138 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 		}
 		return err
 	}
+	return c.finishInstagramWebTwoFactor()
+}
+
+func (c *Client) finishInstagramWebTwoFactor() error {
 	c.ensureInstagramWebUserID()
 	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
 		return fmt.Errorf("instagram web two-factor login succeeded without required cookies: %v", missing)
 	}
 	c.webTwoFactor = nil
 	return nil
+}
+
+func (c *Client) instagramWebTwoStepVerificationRequest(
+	ctx context.Context,
+	state *instagramWebTwoFactorState,
+	friendlyName, docID string,
+	variables []byte,
+) ([]byte, error) {
+	c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
+	rq := c.http.NewHTTPQuery()
+	rq.FbAPIReqFriendlyName = friendlyName
+	rq.DocID = docID
+	rq.Variables = string(variables)
+	body, err := c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login_two_step_verification"), state.csrfToken)
+	if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
+		state.csrfToken = csrfToken
+	}
+	if err != nil {
+		return nil, err
+	}
+	return bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix), nil
+}
+
+func (c *Client) GetInstagramWebTwoFactorAlternatives(ctx context.Context) ([]string, error) {
+	if c == nil || c.webTwoFactor == nil || c.webTwoFactor.encryptedContext == "" {
+		return nil, errors.New("instagram encrypted web two-factor challenge is not active")
+	}
+	state := c.webTwoFactor
+	variables, err := json.Marshal(map[string]string{"encryptedContext": state.encryptedContext})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal Instagram web two-factor methods request: %w", err)
+	}
+	body, err := c.instagramWebTwoStepVerificationRequest(ctx, state, "TwoStepVerificationChallengePickerDialogQuery", instagramWebTwoFactorMethodsDocID, variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Instagram web two-factor methods: %w", err)
+	}
+	var offered, alternatives []string
+	for _, method := range gjson.GetBytes(body, "data.xfb_two_factor_login_methods.methods").Array() {
+		name := method.Get("method").String()
+		offered = append(offered, name)
+		if method.Get("is_disabled").Type == gjson.True {
+			continue
+		} else if name == InstagramWebTwoFactorApproveFromAnotherDevice || name == InstagramWebTwoFactorBackupCode {
+			alternatives = append(alternatives, name)
+		}
+	}
+	c.log.Debug().Strs("offered_methods", offered).Strs("alternatives", alternatives).Msg("Fetched Instagram web two-factor methods")
+	return alternatives, nil
+}
+
+func (c *Client) SelectInstagramWebTwoFactorMethod(ctx context.Context, method string) error {
+	if c == nil || c.webTwoFactor == nil || c.webTwoFactor.encryptedContext == "" {
+		return errors.New("instagram encrypted web two-factor challenge is not active")
+	}
+	state := c.webTwoFactor
+	switch method {
+	case "", InstagramWebTwoFactorBackupCode:
+	case InstagramWebTwoFactorApproveFromAnotherDevice:
+		variables, err := json.Marshal(map[string]any{
+			"doesRequireTwoFacData": true,
+			"encryptedContext":      state.encryptedContext,
+			"isLoginChallenges":     false,
+			"isPreAuthentication":   false,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal Instagram web two-factor request: %w", err)
+		}
+		body, err := c.instagramWebTwoStepVerificationRequest(ctx, state, "TwoStepVerificationRootQuery", instagramWebTwoFactorRootDocID, variables)
+		if err != nil {
+			return fmt.Errorf("failed to fetch Instagram web login approval settings: %w", err)
+		}
+		interval := gjson.GetBytes(body, "data.xfb_two_step_verification_afad_polling_interval.polling_interval")
+		if interval.Type != gjson.Number || interval.Int() <= 0 || interval.Int() > 60 || interval.Float() != float64(interval.Int()) {
+			return ErrInstagramWebCheckpointUnsupported
+		}
+		state.approvalInterval = time.Duration(interval.Int()) * time.Second
+	default:
+		return fmt.Errorf("unsupported Instagram web two-factor method %q", method)
+	}
+	state.alternativeMethod = method
+	return nil
+}
+
+func (c *Client) WaitForInstagramWebTwoFactorApproval(ctx context.Context) error {
+	if c == nil || c.webTwoFactor == nil || c.webTwoFactor.alternativeMethod != InstagramWebTwoFactorApproveFromAnotherDevice ||
+		c.webTwoFactor.approvalInterval <= 0 {
+		return errors.New("instagram web login approval is not active")
+	}
+	state := c.webTwoFactor
+	variables, err := json.Marshal(map[string]any{"encrypted_context": state.encryptedContext, "trust_this_device": true})
+	if err != nil {
+		return fmt.Errorf("failed to marshal Instagram web login approval request: %w", err)
+	}
+	for {
+		body, err := c.instagramWebTwoStepVerificationRequest(ctx, state, "TwoStepVerificationUpdateLoginMutation", instagramWebTwoFactorApprovalDocID, variables)
+		if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+			return bridgev2.ErrLoginStepCancelled
+		} else if err != nil {
+			return err
+		}
+		approval := gjson.GetBytes(body, "data.xfb_two_step_verification_complete_if_approval_state_allowed.state").String()
+		c.log.Debug().Str("approval_state", approval).Msg("Polled Instagram web login approval")
+		switch approval {
+		case "ALLOWED":
+			return c.finishInstagramWebTwoFactor()
+		case "DENIED":
+			return errInstagramWebTwoFactorApprovalDenied
+		case "EXPIRED":
+			return ErrInstagramAuthPlatformApprovalExpired
+		case "PENDING":
+		default:
+			return ErrInstagramWebCheckpointUnsupported
+		}
+		select {
+		case <-time.After(state.approvalInterval):
+		case <-ctx.Done():
+			if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+				return bridgev2.ErrLoginStepCancelled
+			}
+			return ctx.Err()
+		}
+	}
 }
 
 // ensureInstagramWebUserID derives the ds_user_id cookie from the sessionid when

@@ -17,11 +17,13 @@
 package igconnector
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -46,6 +48,11 @@ const (
 	loginFieldIdentifier       = "username"
 	loginFieldPassword         = "password"
 	loginFieldWebTwoFactorCode = "verification_code"
+	loginFieldWebTwoFactorWay  = "method"
+
+	webTwoFactorWayCode    = "Enter the verification code"
+	webTwoFactorWayApprove = "Approve on another device"
+	webTwoFactorWayBackup  = "Use a backup code"
 )
 
 var loginFlowInstagramNative = bridgev2.LoginFlow{
@@ -114,6 +121,8 @@ type MetaNativeLogin struct {
 	caaPassword            string
 	caaUserID              string
 	webTwoFactor           *instameow.InstagramWebTwoFactorChallenge
+	webTwoFactorWays       []string
+	webTwoFactorMethod     string
 	webSessionReady        bool
 	pendingWebChallengeURL string
 	webLoginRejections     int
@@ -151,6 +160,7 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 	m.clearCAAFallback()
 	m.client = nil
 	m.webTwoFactor = nil
+	m.webTwoFactorWays, m.webTwoFactorMethod = nil, ""
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
 	m.pendingNativeSession = nil
@@ -197,6 +207,7 @@ func (m *MetaNativeLogin) Cancel() {
 	m.clearCAAFallback()
 	m.client = nil
 	m.webTwoFactor = nil
+	m.webTwoFactorWays, m.webTwoFactorMethod = nil, ""
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
 	m.pendingNativeSession = nil
@@ -231,11 +242,16 @@ func (m *MetaNativeLogin) SubmitUserInput(
 	if m.webTwoFactor != nil && m.webTwoFactor.AuthPlatform {
 		return m.continueWebAuthPlatform(ctx, input)
 	}
+	if m.webTwoFactor != nil && m.webTwoFactorWays != nil {
+		return m.selectWebTwoFactorWay(ctx, input[loginFieldWebTwoFactorWay])
+	}
+	if m.webTwoFactor != nil && m.webTwoFactorMethod == instameow.InstagramWebTwoFactorApproveFromAnotherDevice {
+		return m.handleWebAuthPlatformResult(ctx, nil, m.client.WaitForInstagramWebTwoFactorApproval(ctx))
+	}
 	if m.webTwoFactor != nil {
 		verificationCode := strings.TrimSpace(input[loginFieldWebTwoFactorCode])
 		if verificationCode == "" {
-			return instagramWebTwoFactorStep(
-				m.webTwoFactor,
+			return m.webTwoFactorStep(
 				"Enter the verification code to continue creating the Instagram messaging session.",
 			), nil
 		}
@@ -243,8 +259,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 		if err != nil {
 			if httpclient.IsClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 				m.User.Log.Warn().Err(err).Msg("Instagram web two-factor request failed on the client")
-				return instagramWebTwoFactorStep(
-					m.webTwoFactor,
+				return m.webTwoFactorStep(
 					"The request did not complete on this device. Enter a fresh verification code and try again.",
 				), nil
 			} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
@@ -255,8 +270,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 					"Instagram rejected that code. A fresh SMS code was requested. Enter it when it arrives.",
 				), nil
 			} else if errors.Is(err, instameow.ErrInstagramWebTwoFactorCodeRejected) {
-				return instagramWebTwoFactorStep(
-					m.webTwoFactor,
+				return m.webTwoFactorStep(
 					"Instagram did not accept that code. Check that it is the latest code from Instagram, then try again.",
 				), nil
 			} else if errors.Is(err, httpclient.ErrRateLimited) {
@@ -267,6 +281,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 			return nil, wrapInstagramRespError(fmt.Errorf("failed to complete Instagram web two-factor login: %w", err))
 		}
 		m.webTwoFactor = nil
+		m.webTwoFactorWays, m.webTwoFactorMethod = nil, ""
 		m.webSessionReady = true
 		return m.continueWebAccountManager(ctx, input)
 	}
@@ -357,7 +372,8 @@ func (m *MetaNativeLogin) submitWebCredentials(
 		if challenge.AuthPlatform {
 			return m.continueWebAuthPlatform(ctx, nil)
 		}
-		return instagramWebTwoFactorStep(challenge, ""), nil
+		m.webTwoFactorWays, m.webTwoFactorMethod = nil, ""
+		return m.webTwoFactorStep(""), nil
 	}
 	m.webSessionReady = true
 	return m.continueWebAccountManager(ctx, map[string]string{})
@@ -374,10 +390,98 @@ func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, 
 		m.Cancel()
 		return nil, bridgev2.ErrLoginStepCancelled
 	}
+	if m.client != nil && m.webTwoFactor != nil && m.webTwoFactor.CanTryAnotherWay && m.webTwoFactorWays == nil {
+		return m.webTwoFactorWaysStep(ctx)
+	}
 	if m.client == nil || m.webTwoFactor == nil || !m.webTwoFactor.AuthPlatform {
 		return nil, bridgev2.ErrLoginStepCancelled
 	}
 	return m.continueWebAuthPlatform(ctx, map[string]string{"back": "true"})
+}
+
+func (m *MetaNativeLogin) webTwoFactorStep(instructions string) *bridgev2.LoginStep {
+	if m.webTwoFactorMethod == instameow.InstagramWebTwoFactorBackupCode {
+		instructions = cmp.Or(instructions, "Enter one of your Instagram backup codes.")
+	} else if instructions == "" && m.webTwoFactor.CanTryAnotherWay {
+		instructions = instagramWebTwoFactorStep(m.webTwoFactor, "").Instructions + " If it doesn't arrive, go back to try another way."
+	}
+	step := instagramWebTwoFactorStep(m.webTwoFactor, instructions)
+	step.UserInputParams.CanCancel = m.webTwoFactor.CanTryAnotherWay
+	return step
+}
+
+func (m *MetaNativeLogin) webTwoFactorWaysStep(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if err := m.client.SelectInstagramWebTwoFactorMethod(ctx, ""); err != nil {
+		return nil, wrapInstagramRespError(err)
+	}
+	m.webTwoFactorMethod = ""
+	alternatives, err := m.client.GetInstagramWebTwoFactorAlternatives(ctx)
+	if errors.Is(err, httpclient.ErrRateLimited) {
+		return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	} else if err != nil {
+		m.User.Log.Warn().Err(err).Msg("Failed to fetch other Instagram web two-factor methods")
+		return m.webTwoFactorStep("Instagram didn't return other ways to sign in. Enter the verification code, or go back to try again."), nil
+	}
+	ways := []string{webTwoFactorWayCode}
+	for _, method := range alternatives {
+		switch method {
+		case instameow.InstagramWebTwoFactorApproveFromAnotherDevice:
+			ways = append(ways, webTwoFactorWayApprove)
+		case instameow.InstagramWebTwoFactorBackupCode:
+			ways = append(ways, webTwoFactorWayBackup)
+		}
+	}
+	if len(ways) == 1 {
+		return m.webTwoFactorStep("Instagram doesn't offer another way to sign in to this account here. Enter the verification code to continue."), nil
+	}
+	m.webTwoFactorWays = ways
+	return m.webTwoFactorWaysPicker("Choose another way to confirm it's you."), nil
+}
+
+func (m *MetaNativeLogin) webTwoFactorWaysPicker(instructions string) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeUserInput,
+		StepID:       LoginStepIDWebTwoFactor + ".method",
+		Instructions: instructions,
+		UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{{
+			Type: bridgev2.LoginInputFieldTypeSelect, ID: loginFieldWebTwoFactorWay, Name: "Verification method", Options: m.webTwoFactorWays,
+		}}},
+	}
+}
+
+func (m *MetaNativeLogin) selectWebTwoFactorWay(ctx context.Context, way string) (*bridgev2.LoginStep, error) {
+	method := map[string]string{
+		webTwoFactorWayCode:    "",
+		webTwoFactorWayApprove: instameow.InstagramWebTwoFactorApproveFromAnotherDevice,
+		webTwoFactorWayBackup:  instameow.InstagramWebTwoFactorBackupCode,
+	}[way]
+	if !slices.Contains(m.webTwoFactorWays, way) {
+		return m.webTwoFactorWaysPicker("Choose another way to confirm it's you."), nil
+	}
+	err := m.client.SelectInstagramWebTwoFactorMethod(ctx, method)
+	if errors.Is(err, httpclient.ErrRateLimited) {
+		return nil, loginerrors.WithMessage(loginerrors.RateLimited, "Instagram is temporarily limiting verification attempts. Wait a while before starting a new login.")
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	} else if err != nil {
+		m.User.Log.Warn().Err(err).Str("method", method).Msg("Failed to switch Instagram web two-factor method")
+		return m.webTwoFactorWaysPicker("Instagram couldn't switch to that method. Choose another way to confirm it's you."), nil
+	}
+	m.webTwoFactorWays, m.webTwoFactorMethod = nil, method
+	if method != instameow.InstagramWebTwoFactorApproveFromAnotherDevice {
+		return m.webTwoFactorStep(""), nil
+	}
+	return &bridgev2.LoginStep{
+		Type:         bridgev2.LoginStepTypeDisplayAndWait,
+		StepID:       LoginStepIDWebTwoFactor + ".approve",
+		Instructions: "Approve this login in the Instagram app on another device where you're signed in.",
+		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
+			Type:      bridgev2.LoginDisplayTypeNothing,
+			CanCancel: true,
+		},
+	}, nil
 }
 
 func (m *MetaNativeLogin) continueWebAuthPlatform(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
