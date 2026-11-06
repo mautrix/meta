@@ -202,6 +202,14 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "27248216181454285",
 		FriendlyName: "IGDOmniPickerSearchResultsListQuery",
 	},
+	"IGDirectStoreStickerSendMutation": {
+		DocID:        "29499963042934119",
+		FriendlyName: "IGDirectStoreStickerSendMutation",
+	},
+	"IGDComposerRichContentStickersV2Query": {
+		DocID:        "27793508156903587",
+		FriendlyName: "IGDComposerRichContentStickersV2Query",
+	},
 	"useCreateOpenGroupThreadOffMsysMutation": {
 		DocID:        "27529949946640544",
 		FriendlyName: "useCreateOpenGroupThreadOffMsysMutation",
