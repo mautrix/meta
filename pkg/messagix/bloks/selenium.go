@@ -1931,6 +1931,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateChooseMFAPage:
+		if b.CurrentPage.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Choose a way to recover")) != nil {
+			return nil, loginerrors.LoginInfoNotConnected(b.profile.serviceName)
+		}
 		foundMethods, methodNames, numIgnored := b.profile.findMFAMethods(b.CurrentPage, log)
 		b.MFACanGoBack = false
 

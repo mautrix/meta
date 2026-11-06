@@ -59,3 +59,11 @@ func AccountRecovery(service string) bridgev2.RespError {
 		StatusCode: http.StatusBadRequest,
 	}
 }
+
+func LoginInfoNotConnected(service string) bridgev2.RespError {
+	return bridgev2.RespError{
+		ErrCode:    "FI.MAU.META_LOGIN_INFO_NOT_CONNECTED",
+		Err:        service + " says that login info isn't connected to an account anymore. Try your " + service + " username, or recover the account in the " + service + " app first.",
+		StatusCode: http.StatusBadRequest,
+	}
+}
