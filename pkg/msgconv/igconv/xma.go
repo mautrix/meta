@@ -140,6 +140,11 @@ func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMACont
 	}
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
 	captionPart := mc.wrapXMACaption(ctx, xma)
+	if previewPart != nil && captionPart == nil {
+		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons); buttonsHTML != "" {
+			captionPart = ptr.Ptr(format.HTMLToContent(buttonsHTML))
+		}
+	}
 	if previewPart == nil {
 		if captionPart == nil {
 			return nil
