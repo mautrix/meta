@@ -68,6 +68,13 @@ type IGClient struct {
 	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	accountStateRechecks  atomic.Int32
+
+	stickerLock          sync.Mutex
+	stickerTray          []*slidetypes.StickerTraySection
+	stickerTrayErr       error
+	stickerTrayFetchedAt time.Time
+	stickerPacks         *exsync.Map[string, cachedStickerPack]
+	stickerPackLock      exsync.KeyedMutex[string]
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -83,6 +90,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 
 		pendingGroupCreations: exsync.NewSet[string](),
 		webPushCandidates:     exsync.NewSet[networkid.PortalID](),
+		stickerPacks:          exsync.NewMap[string, cachedStickerPack](),
 	}
 	c.mailboxProcessed.Store(true)
 	login.Client = c
