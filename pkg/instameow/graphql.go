@@ -114,11 +114,21 @@ func (c *Client) PaginateMailbox(ctx context.Context, req *slidetypes.PaginateMa
 }
 
 func (c *Client) GetThread(ctx context.Context, req *slidetypes.GetThreadInfoRequest) (*slidetypes.ThreadInfoResponse, error) {
-	return makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req, true)
+	resp, err := makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req, true)
+	if err != nil && resp != nil && resp.ThreadInfo.AsIGDirectThread != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Thread info response contained errors, ignoring")
+		err = nil
+	}
+	return resp, err
 }
 
 func (c *Client) PaginateMessages(ctx context.Context, req *slidetypes.PaginateMessagesRequest) (*slidetypes.PaginateMessagesResponse, error) {
-	return makeGraphQLRequest[*slidetypes.PaginateMessagesResponse](ctx, c, "IGDMessageListOffMsysQuery", req, true)
+	resp, err := makeGraphQLRequest[*slidetypes.PaginateMessagesResponse](ctx, c, "IGDMessageListOffMsysQuery", req, true)
+	if err != nil && resp != nil && resp.ThreadInfo.AsIGDirectThread != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Message pagination response contained errors, ignoring")
+		err = nil
+	}
+	return resp, err
 }
 
 func (c *Client) GetProfile(ctx context.Context, igid string) (*slidetypes.ProfilePageResponse, error) {

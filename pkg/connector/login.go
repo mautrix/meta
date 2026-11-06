@@ -82,7 +82,7 @@ type metaCredentials struct {
 }
 
 func validateNativeSession(session *types.NativeSession) error {
-	if session != nil && (session.AccessToken == "" || session.AppID != useragent.MessengerLiteAndroidAppID || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil) {
+	if session != nil && (session.AccessToken == "" || (session.AppID != useragent.MessengerLiteAndroidAppID && session.AppID != useragent.MessengerLiteIOSAppID) || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil) {
 		return fmt.Errorf("invalid native Messenger session")
 	}
 	return nil
@@ -124,7 +124,11 @@ func (m *MetaConnector) CreateUserLoginFromCredentials(ctx context.Context, user
 	}
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 	if session := transferred.NativeSession; session != nil {
-		authClient, err := getMessagixClient(log, m, &cookies.Cookies{Platform: types.MessengerLiteAndroid}, m.Config.ProxyMessengerLite)
+		authPlatform := types.MessengerLiteAndroid
+		if session.AppID == useragent.MessengerLiteIOSAppID {
+			authPlatform = types.MessengerLiteIOS
+		}
+		authClient, err := getMessagixClient(log, m, &cookies.Cookies{Platform: authPlatform}, m.Config.ProxyMessengerLite)
 		if err != nil {
 			return err
 		}

@@ -315,11 +315,17 @@ type LSInsertXmaAttachment struct {
 }
 
 type LSAddPollForThread struct {
-	PollID                       int64  `index:"0" json:",omitempty"`
-	ThreadKey                    int64  `index:"1" json:",omitempty"`
-	LastUpdateMessageID          string `index:"2" json:",omitempty"`
-	LastUpdateMessageTimestampMS int64  `index:"3" json:",omitempty"`
-	LastUpdateMessageEventType   int64  `index:"4" json:",omitempty"`
+	PollID                       int64         `index:"0" json:",omitempty"`
+	ThreadKey                    int64         `index:"1" json:",omitempty"`
+	LastUpdateMessageID          string        `index:"2" json:",omitempty"`
+	LastUpdateMessageTimestampMS int64         `index:"3" json:",omitempty"`
+	LastUpdateMessageEventType   PollEventType `index:"4" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSHandlePlaceholderPollData struct {
+	PollID int64 `index:"0" json:",omitempty"`
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
@@ -334,6 +340,20 @@ type LSAddPollOption struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSAddPollOptionV2 struct {
+	OptionID                 int64         `index:"0" json:",omitempty"`
+	PollID                   int64         `index:"1" json:",omitempty"`
+	OptionText               string        `index:"2" json:",omitempty"`
+	SortKeyVotingTimestamp   int64         `index:"3" json:",omitempty"`
+	SortKeyCreationTimestamp int64         `index:"4" json:",omitempty"`
+	ThreadKey                int64         `index:"5" json:",omitempty"`
+	MessageTimestampMS       int64         `index:"6" json:",omitempty"`
+	MessageID                string        `index:"7" json:",omitempty"`
+	MessageEventType         PollEventType `index:"8" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
 type LSAddPollVote struct {
 	OptionID    int64 `index:"0" json:",omitempty"`
 	PollID      int64 `index:"1" json:",omitempty"`
@@ -341,10 +361,31 @@ type LSAddPollVote struct {
 	TimestampMS int64 `index:"3" json:",omitempty"`
 
 	// v2 fields
-	VoteCount  int64  `index:"4" json:",omitempty"`
-	ThreadKey  int64  `index:"5" json:",omitempty"`
-	MessageID  string `index:"6" json:",omitempty"`
-	UnknownInt int64  `index:"7" json:",omitempty"`
+	VoteCount        int64         `index:"4" json:",omitempty"`
+	ThreadKey        int64         `index:"5" json:",omitempty"`
+	MessageID        string        `index:"6" json:",omitempty"`
+	MessageEventType PollEventType `index:"7" json:",omitempty"`
+}
+
+type LSUpdatePollAdminMessageSummary struct {
+	PollID           int64         `index:"0" json:",omitempty"`
+	ThreadKey        int64         `index:"1" json:",omitempty"`
+	MessageID        string        `index:"2" json:",omitempty"`
+	TimestampMS      int64         `index:"3" json:",omitempty"`
+	MessageEventType PollEventType `index:"4" json:",omitempty"`
+	MessageText      string        `index:"5" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+type LSVerifyPollExists struct {
+	ThreadKey        int64         `index:"0" json:",omitempty"`
+	PollID           int64         `index:"1" json:",omitempty"`
+	MessageID        string        `index:"2" json:",omitempty"`
+	TimestampMS      int64         `index:"3" json:",omitempty"`
+	MessageEventType PollEventType `index:"4" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
 }
 
 type LSInsertBlobAttachment struct {

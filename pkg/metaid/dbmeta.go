@@ -29,7 +29,21 @@ type MessageMetadata struct {
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
 
+	PollID        int64              `json:"poll_id,omitzero"`
+	PollQuestion  string             `json:"poll_question,omitempty"`
+	PollAnswers   []table.PollOption `json:"poll_answers,omitempty"`
+	PollOptions   map[string]int64   `json:"poll_options,omitempty"`
+	PollVotes     map[int64]PollVote `json:"poll_votes,omitempty"`
+	PollFetched   bool               `json:"poll_fetched,omitzero"`
+	PollUpdatedMS int64              `json:"poll_updated_ms,omitzero"`
+	PollResponse  bool               `json:"poll_response,omitzero"`
+
 	DecryptionFailed bool `json:"decryption_failed,omitempty"`
+}
+
+type PollVote struct {
+	OptionIDs   []int64 `json:"option_ids"`
+	TimestampMS int64   `json:"timestamp_ms"`
 }
 
 func (m *MessageMetadata) GetFBThreadKey(portalID networkid.PortalID) int64 {
