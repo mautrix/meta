@@ -76,7 +76,7 @@ func getOTID(inputTxnID networkid.RawTransactionID) int64 {
 	return methods.GenerateEpochID()
 }
 
-// Only non-relayed stickers from a pack in this account's tray are sent natively, others are uploaded as images.
+// Relayed stickers and stickers from packs outside this account's tray are sent as images.
 func (m *MetaClient) getTrayStickerID(ctx context.Context, msg *bridgev2.MatrixMessage) int64 {
 	info := msg.Content.Info
 	if msg.Event.Type != event.EventSticker || msg.OrigSender != nil || !m.LoginMeta.Platform.IsMessenger() ||

@@ -3,7 +3,6 @@ package messagix
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 )
@@ -11,7 +10,7 @@ import (
 const (
 	maxStickerTrayPages = 5
 	maxStickerPackPages = 10
-	// The picker query returns thumbnail-sized renditions unless asked for a larger box.
+	// Without a larger box the picker query returns thumbnails instead of full-size stickers.
 	stickerMediaSize = 512
 )
 
@@ -64,9 +63,6 @@ type stickersInPack struct {
 				AccessibilityLabel string        `json:"accessibility_label"`
 				Image              *stickerImage `json:"image"`
 				AnimatedImage      *stickerImage `json:"animated_image"`
-				Pack               *struct {
-					ID string `json:"id"`
-				} `json:"pack"`
 			} `json:"node"`
 		} `json:"edges"`
 		PageInfo stickerPageInfo `json:"page_info"`
@@ -78,21 +74,8 @@ func isStickerFBID(id string) bool {
 	return err == nil && parsed > 0 && strconv.FormatInt(parsed, 10) == id
 }
 
-func isStickerMediaURL(rawURL string) bool {
-	parsed, err := url.Parse(rawURL)
-	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
-}
-
-func nextStickerCursor(info stickerPageInfo, seen map[string]struct{}) (string, bool, error) {
-	if !info.HasNextPage {
-		return "", false, nil
-	} else if info.EndCursor == "" {
-		return "", false, fmt.Errorf("response has next page without cursor")
-	} else if _, ok := seen[info.EndCursor]; ok {
-		return "", false, fmt.Errorf("response repeated page cursor")
-	}
-	seen[info.EndCursor] = struct{}{}
-	return info.EndCursor, true, nil
+func (info stickerPageInfo) hasNext(page, maxPages int) bool {
+	return info.HasNextPage && info.EndCursor != "" && page < maxPages
 }
 
 func (c *Client) FetchStickerTray(ctx context.Context) ([]StickerPack, error) {
@@ -106,7 +89,7 @@ func (c *Client) FetchStickerTray(ctx context.Context) ([]StickerPack, error) {
 			} `json:"sticker_picker"`
 		} `json:"picker_plugins"`
 	}
-	err := c.makeGraphQLRequest(ctx, "CometStickerPickerCardQuery", map[string]any{
+	err := c.receiverFetchGraphQL(ctx, "CometStickerPickerCardQuery", map[string]any{
 		"feedbackID": nil, "scale": 1, "stickerInterface": "MESSAGES",
 	}, &card)
 	if err != nil {
@@ -119,7 +102,6 @@ func (c *Client) FetchStickerTray(ctx context.Context) ([]StickerPack, error) {
 	storeID := store.ID
 	var packs []StickerPack
 	seenPacks := make(map[string]struct{})
-	seenCursors := make(map[string]struct{})
 	for page := 1; ; page++ {
 		if store.TrayPacks == nil {
 			return nil, fmt.Errorf("response didn't contain sticker tray")
@@ -137,10 +119,8 @@ func (c *Client) FetchStickerTray(ctx context.Context) ([]StickerPack, error) {
 			seenPacks[edge.Node.ID] = struct{}{}
 			packs = append(packs, StickerPack{ID: edge.Node.ID, Name: name})
 		}
-		cursor, hasNext, err := nextStickerCursor(store.TrayPacks.PageInfo, seenCursors)
-		if err != nil {
-			return nil, err
-		} else if !hasNext || page >= maxStickerTrayPages {
+		info := store.TrayPacks.PageInfo
+		if !info.hasNext(page, maxStickerTrayPages) {
 			return packs, nil
 		} else if storeID == "" {
 			return nil, fmt.Errorf("response didn't contain sticker store ID")
@@ -148,8 +128,8 @@ func (c *Client) FetchStickerTray(ctx context.Context) ([]StickerPack, error) {
 		var next struct {
 			Store *stickerStore `json:"fetch__StickerStore"`
 		}
-		err = c.makeGraphQLRequest(ctx, "useCometStickerPickerTrayPacksPaginationQuery", map[string]any{
-			"after_cursor": cursor, "count": 20, "id": storeID, "scale": 1,
+		err = c.receiverFetchGraphQL(ctx, "useCometStickerPickerTrayPacksPaginationQuery", map[string]any{
+			"after_cursor": info.EndCursor, "count": 20, "id": storeID, "scale": 1,
 			"stickerInterface": "MESSAGES", "thumbnailHeight": 20, "thumbnailWidth": 20,
 		}, &next)
 		if err != nil {
@@ -170,7 +150,7 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 	var root struct {
 		Pack *stickersInPack `json:"sticker_pack"`
 	}
-	err := c.makeGraphQLRequest(ctx, "CometStickerPickerPackContentRootQuery", map[string]any{
+	err := c.receiverFetchGraphQL(ctx, "CometStickerPickerPackContentRootQuery", map[string]any{
 		"packID": packID, "scale": 1, "stickerHeight": stickerMediaSize, "stickerWidth": stickerMediaSize,
 	}, &root)
 	if err != nil {
@@ -179,22 +159,21 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 	pack := root.Pack
 	var stickers []Sticker
 	seenStickers := make(map[string]struct{})
-	seenCursors := make(map[string]struct{})
 	for page := 1; ; page++ {
 		if pack == nil || pack.ID != packID || pack.Stickers == nil {
 			return nil, fmt.Errorf("response didn't contain requested sticker pack")
 		}
 		for _, edge := range pack.Stickers.Edges {
 			node := edge.Node
-			if node == nil || !isStickerFBID(node.ID) || (node.Pack != nil && node.Pack.ID != packID) {
+			if node == nil || !isStickerFBID(node.ID) {
 				continue
 			} else if _, ok := seenStickers[node.ID]; ok {
 				continue
 			}
 			mediaURL := ""
-			if node.AnimatedImage != nil && isStickerMediaURL(node.AnimatedImage.URI) {
+			if node.AnimatedImage != nil && node.AnimatedImage.URI != "" {
 				mediaURL = node.AnimatedImage.URI
-			} else if node.Image != nil && isStickerMediaURL(node.Image.URI) {
+			} else if node.Image != nil && node.Image.URI != "" {
 				mediaURL = node.Image.URI
 			} else {
 				continue
@@ -210,17 +189,15 @@ func (c *Client) FetchStickerPack(ctx context.Context, packID string) ([]Sticker
 			}
 			stickers = append(stickers, sticker)
 		}
-		cursor, hasNext, err := nextStickerCursor(pack.Stickers.PageInfo, seenCursors)
-		if err != nil {
-			return nil, err
-		} else if !hasNext || page >= maxStickerPackPages {
+		info := pack.Stickers.PageInfo
+		if !info.hasNext(page, maxStickerPackPages) {
 			return stickers, nil
 		}
 		var next struct {
 			Pack *stickersInPack `json:"node"`
 		}
-		err = c.makeGraphQLRequest(ctx, "CometStickerPickerPackContentPaginationQuery", map[string]any{
-			"after": cursor, "first": 40, "id": packID, "scale": 1, "sticker_height": stickerMediaSize, "sticker_width": stickerMediaSize,
+		err = c.receiverFetchGraphQL(ctx, "CometStickerPickerPackContentPaginationQuery", map[string]any{
+			"after": info.EndCursor, "first": 40, "id": packID, "scale": 1, "sticker_height": stickerMediaSize, "sticker_width": stickerMediaSize,
 		}, &next)
 		if err != nil {
 			return nil, err

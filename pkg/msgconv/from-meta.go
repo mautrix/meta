@@ -451,7 +451,7 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 		if att.TimestampMs == 0 {
 			seen.SeenAt = time.Now()
 		}
-		// Encrypted, direct, async or non-image media isn't reused, the import reuploads it from the CDN instead.
+		// Only plain image uploads can be reused, other stickers are reuploaded from the CDN on import.
 		if err == nil && converted.Content.File == nil && !mc.DirectMedia && !mc.AsyncFiles &&
 			strings.HasPrefix(converted.Content.Info.MimeType, "image/") {
 			seen.MXC, seen.MIME = converted.Content.URL, converted.Content.Info.MimeType

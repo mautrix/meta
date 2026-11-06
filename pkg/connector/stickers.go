@@ -19,6 +19,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
+const seenStickerPackName = "Seen Facebook stickers"
 const seenStickerPackURL = "facebook://seen-stickers"
 const stickerPackURLPrefix = "facebook://sticker-pack/"
 const maxStickerSize = 10 * 1024 * 1024
@@ -33,19 +34,11 @@ type cachedStickerPack struct {
 	fetchedAt time.Time
 }
 
-func seenStickerPackMetadata() event.ImagePackMetadata {
+func stickerPackMetadata(name, url string) event.ImagePackMetadata {
 	return event.ImagePackMetadata{
-		DisplayName: "Seen Facebook stickers",
+		DisplayName: name,
 		Usage:       []event.ImagePackUsage{event.ImagePackUsageSticker},
-		BridgedPack: &event.BridgedStickerPack{Network: "facebook", URL: seenStickerPackURL},
-	}
-}
-
-func stickerPackMetadata(pack messagix.StickerPack) event.ImagePackMetadata {
-	return event.ImagePackMetadata{
-		DisplayName: pack.Name,
-		Usage:       []event.ImagePackUsage{event.ImagePackUsageSticker},
-		BridgedPack: &event.BridgedStickerPack{Network: "facebook", URL: stickerPackURLPrefix + pack.ID},
+		BridgedPack: &event.BridgedStickerPack{Network: "facebook", URL: url},
 	}
 }
 
@@ -97,11 +90,11 @@ func (m *MetaClient) ListImagePacks(ctx context.Context) ([]*event.ImagePackMeta
 	}
 	metadata := make([]*event.ImagePackMetadata, 0, len(packs)+1)
 	for _, pack := range packs {
-		meta := stickerPackMetadata(pack)
+		meta := stickerPackMetadata(pack.Name, stickerPackURLPrefix+pack.ID)
 		metadata = append(metadata, &meta)
 	}
 	if len(stickers) > 0 {
-		meta := seenStickerPackMetadata()
+		meta := stickerPackMetadata(seenStickerPackName, seenStickerPackURL)
 		metadata = append(metadata, &meta)
 	}
 	return metadata, nil
@@ -150,7 +143,7 @@ func (m *MetaClient) uploadSticker(ctx context.Context, url, name string) (id.Co
 }
 
 func (m *MetaClient) downloadStickerPack(ctx context.Context, pack messagix.StickerPack) (*bridgev2.ImportedImagePack, error) {
-	// Previews and imports both download the pack, so reuse recent results instead of refetching and reuploading.
+	// Preview and import both download the pack, so a recent result is reused.
 	m.stickerPackLock.Lock(pack.ID)
 	defer m.stickerPackLock.Unlock(pack.ID)
 	m.stickerLock.Lock()
@@ -164,7 +157,7 @@ func (m *MetaClient) downloadStickerPack(ctx context.Context, pack messagix.Stic
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sticker pack: %w", err)
 	}
-	metadata := stickerPackMetadata(pack)
+	metadata := stickerPackMetadata(pack.Name, stickerPackURLPrefix+pack.ID)
 	imported := &bridgev2.ImportedImagePack{
 		Shortcode: "facebook_" + pack.ID,
 		Content:   &event.ImagePackEventContent{Metadata: metadata, Images: make(map[string]*event.ImagePackImage)},
@@ -200,7 +193,7 @@ func (m *MetaClient) downloadSeenStickerPack(ctx context.Context) (*bridgev2.Imp
 		return nil, err
 	}
 	pack := &bridgev2.ImportedImagePack{Content: &event.ImagePackEventContent{
-		Metadata: seenStickerPackMetadata(), Images: make(map[string]*event.ImagePackImage),
+		Metadata: stickerPackMetadata(seenStickerPackName, seenStickerPackURL), Images: make(map[string]*event.ImagePackImage),
 	}}
 	for _, sticker := range stickers {
 		stickerID := strconv.FormatInt(sticker.ID, 10)
