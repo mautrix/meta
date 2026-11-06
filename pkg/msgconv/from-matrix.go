@@ -47,6 +47,9 @@ func (mc *MessageConverter) ToMeta(
 ) ([]socket.Task, error) {
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage
+		if nativeStickerID > 0 {
+			content.MsgType = event.MessageType(event.EventSticker.Type)
+		}
 	}
 
 	threadID := metaid.ParseFBPortalID(portal.ID)
@@ -109,7 +112,7 @@ func (mc *MessageConverter) ToMeta(
 		text, mentions := mc.HTMLParser.Parse(ctx, content, portal)
 		task.MentionData = mentions.ToData()
 		task.Text = text
-	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
+	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile, event.MessageType(event.EventSticker.Type):
 		if nativeStickerID > 0 {
 			task.SendType = table.STICKER
 			task.StickerId = nativeStickerID
