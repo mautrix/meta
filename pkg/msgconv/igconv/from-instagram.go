@@ -38,6 +38,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
@@ -199,7 +200,12 @@ func (mc *MessageConverter) wrapText(ctx context.Context, text string, mentions 
 func (mc *MessageConverter) mutateWrappedAdminText(part *bridgev2.ConvertedMessagePart, msg *slidetypes.Message) {
 	switch msg.ContentType {
 	case "IG_VIDEO_CALL_XMAT":
-		// TODO include call metadata if possible
+		// Keep Instagram's own text, but mark it as a call so clients can render it as one.
+		call := msgconv.CallLogFromText(part.Content.Body, "").ToMatrix()
+		if part.Extra == nil {
+			part.Extra = make(map[string]any)
+		}
+		part.Extra["fi.mau.meta.call"] = call.Extra["fi.mau.meta.call"]
 	default:
 		part.DontBridge = true
 	}
