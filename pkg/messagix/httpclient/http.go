@@ -276,7 +276,17 @@ func (c *HTTPClient) changeProxyAfter(prevProxy, reason string) bool {
 	if c.proxyAddr != prevProxy {
 		return true
 	}
-	return c.UpdateProxy(reason) && c.proxyAddr != prevProxy
+	proxyAddr, err := c.GetNewProxy(reason)
+	if err != nil {
+		c.log.Err(err).Str("reason", reason).Msg("Failed to get new proxy")
+		return false
+	} else if proxyAddr == prevProxy {
+		return false
+	} else if err = c.SetProxy(proxyAddr); err != nil {
+		c.log.Err(err).Str("reason", reason).Msg("Failed to set new proxy")
+		return false
+	}
+	return true
 }
 
 var DisableTLSVerification = false
