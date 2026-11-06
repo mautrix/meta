@@ -627,7 +627,9 @@ func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Clien
 func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, error) {
 	headers := c.BuildHeaders(true, true)
 	//headers.Set("host", m.client.getEndpoint("host"))
-	response, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
+	response, responseBody, err := c.makeRequest(ctx, c.GetHTTPClient, page, "GET", headers, nil, types.NONE, func(e *zerolog.Event) *zerolog.Event {
+		return e.Strs("cookie_names", c.parent.GetCookies().GetNames())
+	})
 	if response != nil {
 		c.parent.GetCookies().UpdateFromResponse(response)
 		if err != nil && c.LogRedactedLoginResponses {
