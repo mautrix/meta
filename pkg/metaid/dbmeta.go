@@ -24,7 +24,8 @@ type MessageMetadata struct {
 	// Default direct media meta. Used for blob media, whatsapp media and old XMA media
 	DirectMediaMeta json.RawMessage `json:"direct_media_meta,omitempty"`
 	// New XMA direct media meta.
-	XMADirectMediaMeta json.RawMessage `json:"xma_media_meta,omitempty"`
+	XMADirectMediaMeta   json.RawMessage   `json:"xma_media_meta,omitempty"`
+	LinkPreviewMediaMeta []json.RawMessage `json:"link_preview_media_meta,omitempty"`
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
