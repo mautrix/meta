@@ -177,6 +177,10 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		cursor = threads.PageInfo.EndCursor
 		hasMore = threads.PageInfo.HasNextPage
 		for _, edge := range threads.Edges {
+			if edge.Node.AsIGDirectThread == nil {
+				log.Warn().Str("thread_igid", edge.Node.ID).Msg("Skipping null thread in chat list")
+				continue
+			}
 			if edge.Node.AsIGDirectThread.Users == nil {
 				log.Warn().Str("thread_igid", edge.Node.AsIGDirectThread.ID).Msg("Skipping thread without users in chat list")
 				continue
