@@ -43,6 +43,19 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			return false
 		}
 		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
+	case *events.UndecryptableMessage:
+		log.Debug().
+			Any("info", evt.Info).
+			Bool("unavailable", evt.IsUnavailable).
+			Str("decrypt_fail", string(evt.DecryptFailMode)).
+			Msg("Received undecryptable WhatsApp message")
+		if evt.DecryptFailMode == events.DecryptFailHide {
+			return true
+		}
+		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
+			return false
+		}
+		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAUndecryptableMessage{UndecryptableMessage: evt, m: m}).Success
 	case *events.ChatPresence:
 		m.handleWAChatPresence(m.Main.Bridge.BackgroundCtx, evt)
 	case *events.Receipt:

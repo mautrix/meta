@@ -37,6 +37,8 @@ type MessageMetadata struct {
 	PollFetched   bool               `json:"poll_fetched,omitzero"`
 	PollUpdatedMS int64              `json:"poll_updated_ms,omitzero"`
 	PollResponse  bool               `json:"poll_response,omitzero"`
+
+	DecryptionFailed bool `json:"decryption_failed,omitempty"`
 }
 
 type PollVote struct {
