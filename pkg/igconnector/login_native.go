@@ -413,6 +413,7 @@ func (m *MetaNativeLogin) webTwoFactorStep(instructions string) *bridgev2.LoginS
 	}
 	step := instagramWebTwoFactorStep(m.webTwoFactor, instructions)
 	step.UserInputParams.CanCancel = m.webTwoFactor.CanTryAnotherWay
+	step.UserInputParams.Fields[0].Optional = m.webTwoFactor.CanTryAnotherWay
 	return step
 }
 
