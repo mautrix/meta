@@ -78,10 +78,8 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	}
 
 	targetURL, err := url.Parse(xma.TargetURL)
-	if err == nil && targetURL.Host == "l.facebook.com" {
-		if realURL, err := url.Parse(targetURL.Query().Get("u")); err == nil && realURL.String() != "" {
-			targetURL = realURL
-		}
+	if err == nil {
+		targetURL = unwrapLinkShim(targetURL)
 	}
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
@@ -93,7 +91,43 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	if captionHTML == "" {
 		return nil
 	}
+	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons)
 	return ptr.Ptr(format.HTMLToContent(captionHTML))
+}
+
+func unwrapLinkShim(u *url.URL) *url.URL {
+	if u.Host == "l.facebook.com" {
+		if realURL, err := url.Parse(u.Query().Get("u")); err == nil && realURL.String() != "" {
+			return realURL
+		}
+	}
+	return u
+}
+
+func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton) string {
+	var links, buttons []string
+	for _, cta := range ctas {
+		if cta == nil || cta.Title == "" {
+			continue
+		}
+		actionURL, err := url.Parse(cta.ActionURL)
+		if err == nil {
+			actionURL = unwrapLinkShim(actionURL)
+		}
+		if err == nil && (actionURL.Scheme == "https" || actionURL.Scheme == "http") {
+			links = append(links, fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
+		} else {
+			buttons = append(buttons, html.EscapeString(cta.Title))
+		}
+	}
+	var out string
+	if len(links) > 0 {
+		out += fmt.Sprintf("<p>%s</p>", strings.Join(links, " - "))
+	}
+	if len(buttons) > 0 {
+		out += fmt.Sprintf("<p>%s<br>Use the Instagram app to click buttons</p>", strings.Join(buttons, " - "))
+	}
+	return out
 }
 
 func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {
