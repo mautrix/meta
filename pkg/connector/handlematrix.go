@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,6 +76,31 @@ func getOTID(inputTxnID networkid.RawTransactionID) int64 {
 	return methods.GenerateEpochID()
 }
 
+// Relayed stickers and stickers from packs outside this account's tray are sent as images.
+func (m *MetaClient) getTrayStickerID(ctx context.Context, msg *bridgev2.MatrixMessage) int64 {
+	info := msg.Content.Info
+	if msg.Event.Type != event.EventSticker || msg.OrigSender != nil || !m.LoginMeta.Platform.IsMessenger() ||
+		info == nil || info.BridgedSticker == nil || info.BridgedSticker.Network != "facebook" {
+		return 0
+	}
+	packID, ok := strings.CutPrefix(info.BridgedSticker.PackURL, stickerPackURLPrefix)
+	stickerID, err := strconv.ParseInt(info.BridgedSticker.ID, 10, 64)
+	if !ok || packID == "" || err != nil || stickerID <= 0 {
+		return 0
+	}
+	packs, err := m.getStickerPacks(ctx)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to check sticker tray, sending sticker as image")
+		return 0
+	}
+	for _, pack := range packs {
+		if pack.ID == packID {
+			return stickerID
+		}
+	}
+	return 0
+}
+
 func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if m.LoginMeta.Cookies == nil {
 		return nil, bridgev2.ErrNotLoggedIn
@@ -123,8 +149,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			return nil, ErrNotConnected
 		}
 
+		stickerID := m.getTrayStickerID(ctx, msg)
 		tasks, err := m.Main.MsgConv.ToMeta(
-			ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
+			ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal, stickerID,
 		)
 		if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
 			log.Debug().Err(err).Msg("Doing full reconnect and retrying upload")
@@ -133,7 +160,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				return nil, ErrNotConnected
 			}
 			tasks, err = m.Main.MsgConv.ToMeta(
-				ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
+				ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal, stickerID,
 			)
 		}
 		if errors.Is(err, httpclient.ErrTokenInvalidated) {
@@ -406,7 +433,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 			return ErrNotConnected
 		}
 		fakeSendTasks, err := m.Main.MsgConv.ToMeta(
-			ctx, m.Client, edit.Event, edit.Content, nil, nil, otid, false, edit.Portal,
+			ctx, m.Client, edit.Event, edit.Content, nil, nil, otid, false, edit.Portal, 0,
 		)
 		if err != nil {
 			return wrapConversionError(fmt.Errorf("failed to convert message: %w", err))

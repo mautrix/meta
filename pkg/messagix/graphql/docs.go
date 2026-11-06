@@ -86,6 +86,22 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		CallerClass:  "DeidentifiedRelayEnvironment",
 		FriendlyName: "MSGRMediaReceiverFetchDeidentifiedQuery",
 	},
+	"CometStickerPickerCardQuery": {
+		DocID:        "28475074195489368",
+		FriendlyName: "CometStickerPickerCardQuery",
+	},
+	"useCometStickerPickerTrayPacksPaginationQuery": {
+		DocID:        "28388851920775024",
+		FriendlyName: "useCometStickerPickerTrayPacksPaginationQuery",
+	},
+	"CometStickerPickerPackContentRootQuery": {
+		DocID:        "25236323532672635",
+		FriendlyName: "CometStickerPickerPackContentRootQuery",
+	},
+	"CometStickerPickerPackContentPaginationQuery": {
+		DocID:        "32176334508681942",
+		FriendlyName: "CometStickerPickerPackContentPaginationQuery",
+	},
 	"IGDEditThreadNameDialogOffMsysMutation": {
 		DocID:        "26508340268868683",
 		FriendlyName: "IGDEditThreadNameDialogOffMsysMutation",
