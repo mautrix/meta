@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,7 @@ type HTTPClient struct {
 	lsSyncHTTP      *http.Client
 	websocketClient *http.Client
 	proxyAddr       string
+	proxyLock       sync.Mutex
 	GetNewProxy     func(reason string) (string, error)
 	instagramNative atomic.Bool
 
@@ -263,6 +265,18 @@ func (c *HTTPClient) UpdateProxy(reason string) bool {
 		return false
 	}
 	return true
+}
+
+func (c *HTTPClient) changeProxyAfter(prevProxy, reason string) bool {
+	if c.GetNewProxy == nil {
+		return false
+	}
+	c.proxyLock.Lock()
+	defer c.proxyLock.Unlock()
+	if c.proxyAddr != prevProxy {
+		return true
+	}
+	return c.UpdateProxy(reason) && c.proxyAddr != prevProxy
 }
 
 var DisableTLSVerification = false
@@ -515,9 +529,11 @@ func (c *HTTPClient) makeRequest(
 	logContext func(e *zerolog.Event) *zerolog.Event,
 ) (*http.Response, []byte, error) {
 	var attempts int
+	var changedProxy bool
 	for {
 		attempts++
 		start := time.Now()
+		proxyAddr := c.proxyAddr
 		resp, respDat, err := c.makeRequestOnce(ctx, getClient(), url, method, headers, payload, contentType)
 		dur := time.Since(start)
 		if err == nil {
@@ -528,6 +544,14 @@ func (c *HTTPClient) makeRequest(
 				Int("status_code", resp.StatusCode).
 				Msg("Request successful")
 			return resp, respDat, nil
+		} else if errors.Is(err, ErrRateLimited) && !changedProxy && !isClientHTTP(resp, err) && c.changeProxyAfter(proxyAddr, "rate_limited") {
+			changedProxy = true
+			logContext(c.log.Warn().Err(err)).
+				Str("url", url).
+				Str("method", method).
+				Dur("duration", dur).
+				Msg("Request rate limited, retrying with new proxy")
+			continue
 		} else if attempts > MaxHTTPRetries {
 			logContext(c.log.Err(err)).
 				Str("url", url).
