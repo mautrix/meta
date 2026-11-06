@@ -130,7 +130,6 @@ var errInstagramCAAUnsupportedStep = bridgev2.RespError{ErrCode: "FI.MAU.META_UN
 var errCAAFlowFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadRequest}
 var errCAAClientHTTPFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_CLIENT_HTTP_FAILED", Err: "Instagram couldn't complete this sign-in step. Try again.", StatusCode: http.StatusBadRequest}
 var errCAARequestFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_REQUEST_FAILED", Err: "Couldn't reach Instagram. Try again.", StatusCode: http.StatusBadRequest}
-var errCAAClientRequestFailed = bridgev2.RespError{ErrCode: "FI.MAU.META_CAA_CLIENT_REQUEST_FAILED", Err: "Couldn't reach Instagram. Check your internet connection and try again.", StatusCode: http.StatusBadRequest}
 var errMissingAuth = bridgev2.RespError{ErrCode: "FI.MAU.IG_MISSING_AUTH", Err: "Native auth token missing after login. Please try again.", StatusCode: http.StatusBadRequest}
 var errUnexpectedCheckpoint = bridgev2.RespError{ErrCode: "FI.MAU.IG_CAA_FALLBACK_DISABLED", Err: "Instagram returned an unexpected verification step.", StatusCode: http.StatusBadRequest}
 var errInstagramWebCheckpointUnsupported = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_WEB_CHECKPOINT", Err: "Instagram returned a verification step this bridge cannot safely complete. Finish it in Instagram, then start a new login.", StatusCode: http.StatusBadRequest}
@@ -514,9 +513,6 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, wrapInstagramRespError(err)
 		} else if errors.Is(err, httpclient.ErrRequestFailed) {
-			if m.transport != nil {
-				return nil, errCAAClientRequestFailed
-			}
 			return nil, errCAARequestFailed
 		}
 		zerolog.Ctx(ctx).Err(err).Msg("Unexpected error during Instagram CAA login flow")
