@@ -516,6 +516,14 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
 		return []*bridgev2.ConvertedMessagePart{mc.xmaLocationToMatrix(ctx, att)}
 	}
+	if att.CTA != nil && strings.HasPrefix(att.CTA.Type_, "xma_rtc_") {
+		cl := CallLogFromText(att.TitleText, att.SubtitleText)
+		ctaType := strings.ToLower(att.CTA.Type_)
+		cl.Video = cl.Video || strings.Contains(ctaType, "video")
+		cl.Missed = cl.Missed || strings.Contains(ctaType, "missed")
+		cl.Group = cl.Group || strings.Contains(ctaType, "group")
+		return []*bridgev2.ConvertedMessagePart{cl.ToMatrix()}
+	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	var width, height int64
