@@ -26,9 +26,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/url"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/jsontime"
@@ -43,7 +41,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
-	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
@@ -168,7 +165,7 @@ func (mc *MessageConverter) ToMatrix(
 	for i, sticker := range msg.Stickers {
 		partID := networkid.PartID(fmt.Sprintf("sticker_%d", i))
 		ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
-		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker, msg.StickerId))
+		cm.Parts = append(cm.Parts, mc.stickerToMatrix(ctx, sticker))
 		importantPartIDs = append(importantPartIDs, partID)
 	}
 	hasRelationSnippet := msg.ReplySnippet != "" && len(msg.XMAAttachments) > 0 && len(msg.XMAAttachments) != len(urlPreviews)
@@ -428,7 +425,7 @@ func (mc *MessageConverter) legacyAttachmentToMatrix(ctx context.Context, att *t
 // nonetheless it's displayed at 96x96 like everything else.
 const stickerSize = 96
 
-func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSInsertStickerAttachment, stickerID int64) *bridgev2.ConvertedMessagePart {
+func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSInsertStickerAttachment) *bridgev2.ConvertedMessagePart {
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	if url == "" {
@@ -440,35 +437,9 @@ func (mc *MessageConverter) stickerToMatrix(ctx context.Context, att *table.LSIn
 		ctx, table.AttachmentTypeSticker, url, att.AccessibilitySummaryText, mime, 0, stickerSize, stickerSize, 0,
 		nil,
 	)
-	client, _ := ctx.Value(mediadl.ContextKeyFBClient).(*messagix.Client)
-	login, _ := ctx.Value(mediadl.ContextKeyUserLogin).(*bridgev2.UserLogin)
-	isFacebookSticker := stickerID > 0 && client.GetPlatform().IsMessenger()
-	if isFacebookSticker && login != nil {
-		seen := metadb.SeenSticker{
-			ID: stickerID, SeenAt: time.UnixMilli(att.TimestampMs), CDNURL: url, Body: att.AccessibilitySummaryText, MIME: mime,
-			Width: int(att.PreviewWidth), Height: int(att.PreviewHeight),
-		}
-		if att.TimestampMs == 0 {
-			seen.SeenAt = time.Now()
-		}
-		// Only plain image uploads can be reused, other stickers are reuploaded from the CDN on import.
-		if err == nil && converted.Content.File == nil && !mc.DirectMedia && !mc.AsyncFiles &&
-			strings.HasPrefix(converted.Content.Info.MimeType, "image/") {
-			seen.MXC, seen.MIME = converted.Content.URL, converted.Content.Info.MimeType
-		}
-		if err := mc.DB.PutSeenSticker(ctx, login.ID, seen); err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to cache seen sticker")
-		}
-	}
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to transfer sticker media")
 		return errorToNotice(err, "sticker")
-	}
-	if isFacebookSticker {
-		converted.Content.Info.BridgedSticker = &event.BridgedSticker{
-			Network: "facebook",
-			ID:      strconv.FormatInt(stickerID, 10),
-		}
 	}
 	return converted
 }
