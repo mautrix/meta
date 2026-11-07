@@ -33,6 +33,7 @@ const (
 	ContextKeyMsgID
 	ContextKeyPartID
 	ContextKeyWAMediaPaths
+	ContextKeyLinkPreviewIndex
 )
 
 func ShouldFetchXMA(ctx context.Context) bool {

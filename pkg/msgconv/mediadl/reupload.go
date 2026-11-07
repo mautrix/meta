@@ -198,7 +198,12 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 		if params.RefreshMeta.IsXMA() {
 			mediaIDType = metaid.DirectMediaTypeMetaXMA
 		}
-		mediaID := metaid.MakeMediaID(mediaIDType, loginID, msgID, partID)
+		var mediaID networkid.MediaID
+		if previewIndex, ok := ctx.Value(ContextKeyLinkPreviewIndex).(int); ok {
+			mediaID = metaid.MakeLinkPreviewMediaID(loginID, msgID, partID, previewIndex)
+		} else {
+			mediaID = metaid.MakeMediaID(mediaIDType, loginID, msgID, partID)
+		}
 		var err error
 		content.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
 		if err != nil {
