@@ -159,6 +159,21 @@ func FilterByAttribute(compid BloksComponentID, attr BloksAttributeID, value str
 	}
 }
 
+func FilterByAttributePrefix(compid BloksComponentID, attr BloksAttributeID, prefixes ...string) func(comp *BloksTreeComponent) bool {
+	return func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != compid {
+			return false
+		}
+		value := comp.GetAttribute(attr)
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(value, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 func (comp *BloksTreeComponent) GetAttribute(name BloksAttributeID) string {
 	if comp == nil {
 		return ""
@@ -2055,23 +2070,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		b.profile.finishCodeSubmission(b, StateTOTPPage, actionRPCCountBefore)
 
 	case StateAFADPage:
-		notif := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
-			if comp.ComponentID != "bk.data.TextSpan" {
-				return false
-			}
-			for _, prefix := range []string{
-				// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
-				"We sent a",
-				"Open the notification",
-				"You need to sign in on",
-				"Check your notifications",
-			} {
-				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
-					return true
-				}
-			}
-			return false
-		})
+		notif := b.CurrentPage.FindDescendant(FilterByAttributePrefix(
+			"bk.data.TextSpan", "text",
+			// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
+			"We sent a",
+			"Open the notification",
+			"You need to sign in on",
+		))
+		if notif == nil {
+			notif = b.CurrentPage.FindDescendant(FilterByAttributePrefix("bk.data.TextSpan", "text", "Check your notifications"))
+		}
 		if notif == nil {
 			return nil, fmt.Errorf("couldn't find AFAD notification info")
 		}
