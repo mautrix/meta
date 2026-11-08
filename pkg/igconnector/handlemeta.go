@@ -128,7 +128,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			ic.cancelPeriodicReconnect()
 			nativeSession := ic.LoginMeta.InstagramNativeSession != nil
 			minInterval := time.Duration(ic.Main.Config.MinFullReconnectIntervalSeconds) * time.Second
-			if nativeSession && time.Since(ic.lastUnauthorizedReconnect) > minInterval {
+			if nativeSession && ic.accountStateRechecks.Load() == 0 && time.Since(ic.lastUnauthorizedReconnect) > minInterval {
 				ic.lastUnauthorizedReconnect = time.Now()
 				ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Native connection unauthorized, doing full reconnect to check session")
 				retErr = fmt.Errorf("connection unauthorized; doing full reconnect")
