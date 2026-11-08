@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
@@ -161,7 +162,7 @@ func (ic *IGConnector) refreshMediaURL(
 
 	// Route to appropriate refresh method based on attachment type
 	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMACarousel {
-		return ic.refreshXMACarouselMedia(ctx, client, msg, mediaInfo.CarouselIndex)
+		return ic.refreshXMACarouselMedia(ctx, client, mediaInfo, info.URL)
 	} else if info.IsXMA() {
 		refreshedURL, err := ic.refreshXMAMedia(ctx, client, info)
 		if err != nil {
@@ -468,17 +469,30 @@ func (ic *IGConnector) refreshXMAMedia(
 	return "", fmt.Errorf("no XMA identifiers available for refresh")
 }
 
+var carouselRefreshLocks = exsync.NewKeyedMutex[networkid.MessageID]()
+
 func (ic *IGConnector) refreshXMACarouselMedia(
 	ctx context.Context,
 	client *IGClient,
-	msg *database.Message,
-	index int,
+	mediaInfo *metaid.MediaInfo,
+	expiredURL string,
 ) (string, error) {
 	ig := client.Client
 	if ig == nil {
 		return "", fmt.Errorf("instagram client not available")
 	}
+	defer carouselRefreshLocks.WithLock(mediaInfo.MessageID)()
+	msg, err := ic.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
+	if err != nil {
+		return "", err
+	} else if msg == nil {
+		return "", fmt.Errorf("message not found")
+	}
+	index := mediaInfo.CarouselIndex
 	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	if index >= len(msgMeta.XMACarouselMediaMeta) {
+		return "", fmt.Errorf("carousel index out of range")
+	}
 	items := make([]*mediadl.DirectMediaMeta, len(msgMeta.XMACarouselMediaMeta))
 	for i, raw := range msgMeta.XMACarouselMediaMeta {
 		if err := json.Unmarshal(raw, &items[i]); err != nil {
@@ -486,6 +500,9 @@ func (ic *IGConnector) refreshXMACarouselMedia(
 		}
 	}
 	target := items[index]
+	if target.URL != expiredURL {
+		return target.URL, nil
+	}
 	zerolog.Ctx(ctx).Debug().
 		Int64("target_id", target.XMATargetID).
 		Str("shortcode", target.XMAShortcode).
