@@ -110,7 +110,7 @@ func (c *Client) instagramAccountManagerHeaders() http.Header {
 	session := c.mobileSession.Load()
 	headers := http.Header{}
 	headers.Set("authorization", session.Authorization)
-	headers.Set("user-agent", instagramMobileUserAgent)
+	headers.Set("user-agent", useragent.IGAndroidUserAgent)
 	headers.Set("ig-u-ds-user-id", session.UserID)
 	headers.Set("ig-intended-user-id", session.UserID)
 	headers.Set("ig-u-rur", session.RUR)

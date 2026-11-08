@@ -14,8 +14,8 @@ const BloksVersionIOS = "e74cbfe42b6152a793f3ee3d81eeba4c48b5c4477b54d05ab8d8bce
 // Messenger Android 584.1.0.61.98
 const BloksVersionAndroid = "d74221353bbda70cea538a0a70883f4024469172593df5e77725adc162af5e6f"
 
-// Instagram Android 446.0.0.49.77
-const BloksVersionInstagramAndroid = "935a519904e9017324cdedb64a283a3c2c1a3d5b0bbc698b451f5aef72cc11df"
+// Instagram Android 454.0.0.54.77
+const BloksVersionInstagramAndroid = "8e8a63073c08f2c7e6701e497d777db5d8d7ad32a5788ce6b1094f20cad0c9f1"
 
 func GetBloksVersion(p types.Platform) (string, error) {
 	switch p {

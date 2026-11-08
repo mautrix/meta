@@ -107,7 +107,7 @@ func TestInstagramCAABloksRequestUsesCurrentNativeContract(t *testing.T) {
 		}
 		if request.Header.Get("X-Bloks-Version-Id") != bloks.BloksVersionInstagramAndroid ||
 			request.Header.Get("X-Ig-App-Id") != useragent.IGAndroidAppID ||
-			!strings.HasPrefix(request.Header.Get("User-Agent"), "Instagram 446.0.0.49.77 Android") ||
+			request.Header.Get("User-Agent") != useragent.IGAndroidUserAgent ||
 			request.Header.Get("X-Meta-Usdid") != "test-usdid-header" ||
 			request.Header.Get("X-Fb-Friendly-Name") != "IgApi: bloks/async_action/"+instagramCAASendEntrypoint+"/" {
 			t.Fatal("Instagram CAA headers do not match the current signed APK profile")

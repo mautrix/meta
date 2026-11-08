@@ -15,7 +15,10 @@ const SecCHMobile = "?0"
 const SecCHModel = `""`
 const SecCHPrefersColorScheme = "light"
 
-const AndroidUserAgent = "Instagram 404.0.0.48.76 Android (35/15; 420dpi; 1080x2400; Google/google; Pixel 7; panther; panther; en_US; 813748018)"
+const IGAndroidAppVersion = "454.0.0.54.77"
+const IGAndroidBuildNumber = "1105698528"
+const IGAndroidUserAgent = "Instagram " + IGAndroidAppVersion + " Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " + IGAndroidBuildNumber + ")"
+const IGAndroidCapabilities = "3brTv10C"
 const IGAndroidAppID = "567067343352427"
 
 const MessengerLiteIOSAppID = "437626316973788"
