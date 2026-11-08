@@ -109,7 +109,7 @@ func (c *Client) RemoveGroupAvatar(ctx context.Context, threadID string) error {
 func (c *Client) buildAndroidHeaders() http.Header {
 	h := http.Header{}
 	h.Set("authorization", c.http.GetRUploadToken())
-	h.Set("user-agent", useragent.AndroidUserAgent)
+	h.Set("user-agent", useragent.IGAndroidUserAgent)
 	h.Set("ig-intended-user-id", strconv.FormatInt(c.cookies.GetUserID(), 10))
 	h.Set("ig-u-ds-user-id", strconv.FormatInt(c.cookies.GetUserID(), 10))
 	h.Set("x-mid", c.cookies.Get(cookies.IGCookieMachineID))

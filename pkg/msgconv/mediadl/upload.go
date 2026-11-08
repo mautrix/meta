@@ -133,7 +133,7 @@ func reuploadVideoToMetaFallback(ctx context.Context, client *httpclient.HTTPCli
 	h.Add("offset", "0")
 	h.Add("segment-start-offset", "0")
 	h.Add("segment-type", "3")
-	h.Add("user-agent", useragent.AndroidUserAgent)
+	h.Add("user-agent", useragent.IGAndroidUserAgent)
 	h.Add("video_type", "FILE_ATTACHMENT")
 	h.Add("x-entity-length", fmt.Sprintf("%d", len(data)))
 	h.Add("x-entity-name", uploadID)

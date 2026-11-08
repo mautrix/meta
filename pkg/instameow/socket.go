@@ -260,8 +260,8 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQuery,
 	}
 	if native {
-		params.UserAgent = instagramMobileUserAgent
-		params.SnapshotAppVersion = instagramMobileAppVersion
+		params.UserAgent = useragent.IGAndroidUserAgent
+		params.SnapshotAppVersion = useragent.IGAndroidAppVersion
 	}
 	marshaledSyncParams, err := json.Marshal(&params)
 	if err != nil {

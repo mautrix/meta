@@ -29,6 +29,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/thrift"
 	"go.mau.fi/mautrix-meta/pkg/instameow/thrift/mqttbypass"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 type indicateActivity struct {
@@ -102,9 +103,9 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 			}
 			if session := c.mobileSession.Load(); session != nil {
 				appInfo, err := json.Marshal(map[string]string{
-					"capabilities":              "3brTv10=",
-					"app_version":               instagramMobileAppVersion,
-					"User-Agent":                instagramMobileUserAgent,
+					"capabilities":              useragent.IGAndroidCapabilities,
+					"app_version":               useragent.IGAndroidAppVersion,
+					"User-Agent":                useragent.IGAndroidUserAgent,
 					"Accept-Language":           "en-US",
 					"platform":                  "android",
 					"ig_mqtt_route":             "django",
@@ -115,7 +116,7 @@ func (c *Client) getMQTTBypassSocketOptions() dgw.SocketOptions {
 				}
 				appInfoString := string(appInfo)
 				connect.ClientCapabilities = 23
-				connect.UserAgent = instagramMobileUserAgent
+				connect.UserAgent = useragent.IGAndroidUserAgent
 				connect.DeviceId = session.Device.DeviceID
 				connect.FamilyDeviceId = session.Device.PhoneID
 				connect.Subscription.Topics = []string{"/ig_send_message_response"}
