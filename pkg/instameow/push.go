@@ -70,6 +70,15 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 	if userID := response.Header.Get("ig-set-ig-u-ds-user-id"); userID != "" && userID != session.UserID {
 		return errors.New("native push response belongs to a different account")
 	}
+	c.updateNativeSession(response)
+	return nil
+}
+
+func (c *Client) updateNativeSession(response *http.Response) {
+	session := c.GetInstagramNativeSession()
+	if session == nil || response == nil {
+		return
+	}
 	if authorization := response.Header.Get("ig-set-authorization"); authorization != "" {
 		session.Authorization = authorization
 	}
@@ -80,5 +89,4 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 		session.Device.MachineID = mid
 	}
 	c.SetInstagramNativeSession(session)
-	return nil
 }

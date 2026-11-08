@@ -63,11 +63,12 @@ func (c *Client) EditGroupAvatar(ctx context.Context, threadID string, avatar []
 	h.Set("offset", "0")
 	h.Set("priority", "u=6, i")
 
-	_, respBody, err := c.http.MakeRequest(ctx, reqUrl, http.MethodPost, h, avatar, types.NONE)
+	resp, respBody, err := c.http.MakeRequest(ctx, reqUrl, http.MethodPost, h, avatar, types.NONE)
 	if err != nil {
 		c.checkResponseError(err)
 		return fmt.Errorf("failed to upload group avatar: %w", err)
 	}
+	c.updateNativeSession(resp)
 
 	var uploadResp httpclient.RUploadResponse
 	err = json.Unmarshal(respBody, &uploadResp)
@@ -107,6 +108,9 @@ func (c *Client) RemoveGroupAvatar(ctx context.Context, threadID string) error {
 }
 
 func (c *Client) buildAndroidHeaders() http.Header {
+	if c.mobileSession.Load() != nil {
+		return c.instagramAccountManagerHeaders()
+	}
 	h := http.Header{}
 	h.Set("authorization", c.http.GetRUploadToken())
 	h.Set("user-agent", useragent.AndroidUserAgent)
@@ -157,11 +161,12 @@ func (c *Client) makeIGraphQLRequest(ctx context.Context, docName, rootFieldName
 	}
 	payloadBytes := []byte(form.Encode())
 
-	_, respBody, err := c.http.MakeRequest(ctx, graphQLUrl, http.MethodPost, h, payloadBytes, types.FORM)
+	resp, respBody, err := c.http.MakeRequest(ctx, graphQLUrl, http.MethodPost, h, payloadBytes, types.FORM)
 	if err != nil {
 		c.checkResponseError(err)
 		return nil, err
 	}
+	c.updateNativeSession(resp)
 
 	return respBody, nil
 }
