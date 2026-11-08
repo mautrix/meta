@@ -16,10 +16,9 @@ const (
 	DirectMediaTypeWhatsAppV1 DirectMediaType = 3
 
 	// recommended for current use
-	DirectMediaTypeMetaV2     DirectMediaType = 4
-	DirectMediaTypeWhatsAppV2 DirectMediaType = 5
-	DirectMediaTypeMetaXMA    DirectMediaType = 6
-
+	DirectMediaTypeMetaV2          DirectMediaType = 4
+	DirectMediaTypeWhatsAppV2      DirectMediaType = 5
+	DirectMediaTypeMetaXMA         DirectMediaType = 6
 	DirectMediaTypeMetaXMACarousel DirectMediaType = 7
 )
 

@@ -160,20 +160,18 @@ func (ic *IGConnector) refreshMediaURL(
 	client := ul.Client.(*IGClient)
 
 	// Route to appropriate refresh method based on attachment type
-	if info.IsXMA() {
+	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMACarousel {
+		return ic.refreshXMACarouselMedia(ctx, client, msg, mediaInfo.CarouselIndex)
+	} else if info.IsXMA() {
 		refreshedURL, err := ic.refreshXMAMedia(ctx, client, info)
 		if err != nil {
 			return "", err
 		}
 		info.URL = refreshedURL
-		msgMeta := msg.Metadata.(*metaid.MessageMetadata)
-		switch mediaInfo.Type {
-		case metaid.DirectMediaTypeMetaXMA:
-			msgMeta.XMADirectMediaMeta, err = json.Marshal(info)
-		case metaid.DirectMediaTypeMetaXMACarousel:
-			msgMeta.XMACarouselMediaMeta[mediaInfo.CarouselIndex], err = json.Marshal(info)
-		default:
-			msgMeta.DirectMediaMeta, err = json.Marshal(info)
+		if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+			msg.Metadata.(*metaid.MessageMetadata).XMADirectMediaMeta, err = json.Marshal(info)
+		} else {
+			msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta, err = json.Marshal(info)
 		}
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to marshal updated direct media metadata")
@@ -183,7 +181,7 @@ func (ic *IGConnector) refreshMediaURL(
 			zerolog.Ctx(ctx).Debug().Msg("Updated message in database with refreshed XMA media URL")
 		}
 		return refreshedURL, nil
-	} else if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA || mediaInfo.Type == metaid.DirectMediaTypeMetaXMACarousel {
+	} else if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
 		return "", fmt.Errorf("can't refresh blob media for XMA type")
 	}
 	return ic.refreshBlobMedia(ctx, client, msg, info)
@@ -462,11 +460,68 @@ func (ic *IGConnector) refreshXMAMedia(
 					return extractBestURL(child)
 				}
 			}
+			return "", fmt.Errorf("carousel item not found in FetchMedia response")
 		}
 		return extractBestURL(resp.Items[0])
 	}
 
 	return "", fmt.Errorf("no XMA identifiers available for refresh")
+}
+
+func (ic *IGConnector) refreshXMACarouselMedia(
+	ctx context.Context,
+	client *IGClient,
+	msg *database.Message,
+	index int,
+) (string, error) {
+	ig := client.Client
+	if ig == nil {
+		return "", fmt.Errorf("instagram client not available")
+	}
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	items := make([]*mediadl.DirectMediaMeta, len(msgMeta.XMACarouselMediaMeta))
+	for i, raw := range msgMeta.XMACarouselMediaMeta {
+		if err := json.Unmarshal(raw, &items[i]); err != nil {
+			return "", err
+		}
+	}
+	target := items[index]
+	zerolog.Ctx(ctx).Debug().
+		Int64("target_id", target.XMATargetID).
+		Str("shortcode", target.XMAShortcode).
+		Int("carousel_index", index).
+		Msg("Refreshing XMA carousel media")
+	resp, err := ig.FetchMedia(ctx, strconv.FormatInt(target.XMATargetID, 10), target.XMAShortcode)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch media: %w", err)
+	} else if len(resp.Items) == 0 {
+		return "", fmt.Errorf("empty response from FetchMedia")
+	}
+	var refreshedURL string
+	for i, item := range items {
+		for _, child := range resp.Items[0].CarouselMedia {
+			if item.CarouselMediaID == "" || !strings.Contains(child.ID, item.CarouselMediaID) {
+				continue
+			}
+			if freshURL, err := extractBestURL(child); err == nil {
+				item.URL = freshURL
+				item.ExpiresAt = jsontime.UM(mediadl.ParseExpiryFromURL(freshURL))
+				if i == index {
+					refreshedURL = freshURL
+				}
+			}
+			break
+		}
+		if msgMeta.XMACarouselMediaMeta[i], err = json.Marshal(item); err != nil {
+			return "", err
+		}
+	}
+	if refreshedURL == "" {
+		return "", fmt.Errorf("carousel item not found in FetchMedia response")
+	} else if err = ic.Bridge.DB.Message.Update(ctx, msg); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to update message in database after refreshing XMA carousel media")
+	}
+	return refreshedURL, nil
 }
 
 func extractBestURL(item *responses.Items) (string, error) {

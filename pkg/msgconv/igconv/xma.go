@@ -409,8 +409,9 @@ func (mc *MessageConverter) addXMACarousel(
 			XMAShortcode:    mediaShortcode,
 			CarouselMediaID: item.ID,
 		}
-		params.CarouselIndex = &i
-		params.DirectMedia = true
+		params.CarouselIndex = ptr.Ptr(i)
+		params.DirectMedia = mc.DirectMedia
+		params.MaxFileSize = mc.MaxFileSize
 		itemPart, err := mediadl.ReuploadFileToMatrix(ctx, params)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Int("carousel_index", i).Msg("Failed to wrap XMA carousel item")
