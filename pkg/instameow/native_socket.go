@@ -33,7 +33,7 @@ func nativeStreamHeaders(session *types.InstagramNativeSession, authorization, u
 		"X-Dgw-Deviceid":           {session.Device.DeviceID},
 		"X-Dgw-Fdid":               {session.Device.PhoneID},
 		"X-Dgw-Version":            {"8"},
-		"X-Dgw-Osversion":          {"14"},
+		"X-Dgw-Osversion":          {useragent.IGAndroidOSVersion},
 		"X-Dgw-Streamgrouptraceid": {uuid.NewString()},
 		"X-Dgw-App-Stream-Group":   {group},
 	}
