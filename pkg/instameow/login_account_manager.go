@@ -578,3 +578,25 @@ func instagramAccountManagerSelectionStep(
 		},
 	}
 }
+
+func (c *Client) LogoutNative(ctx context.Context) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
+	session := c.GetInstagramNativeSession()
+	if session == nil || session.Authorization == "" {
+		return errors.New("missing native Instagram session")
+	}
+	form := url.Values{
+		"device_id":                     {session.Device.AndroidDeviceID},
+		"guid":                          {session.Device.DeviceID},
+		"phone_id":                      {session.Device.PhoneID},
+		"prevent_remove_device_from_wa": {"true"},
+		"_uuid":                         {session.Device.DeviceID},
+	}
+	_, _, err := c.http.MakeRequest(ctx, instagramMobileAPIBase+"accounts/logout/", http.MethodPost, c.instagramAccountManagerHeaders(), []byte(form.Encode()), types.FORM)
+	if err != nil {
+		return fmt.Errorf("failed to log out native session: %w", err)
+	}
+	return nil
+}
