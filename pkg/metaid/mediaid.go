@@ -19,6 +19,8 @@ const (
 	DirectMediaTypeMetaV2     DirectMediaType = 4
 	DirectMediaTypeWhatsAppV2 DirectMediaType = 5
 	DirectMediaTypeMetaXMA    DirectMediaType = 6
+
+	DirectMediaTypeMetaXMACarousel DirectMediaType = 7
 )
 
 func (t DirectMediaType) isSupported() bool {
@@ -26,7 +28,7 @@ func (t DirectMediaType) isSupported() bool {
 	case
 		DirectMediaTypeMetaV1, DirectMediaTypeWhatsAppV1,
 		DirectMediaTypeMetaV2, DirectMediaTypeWhatsAppV2,
-		DirectMediaTypeMetaXMA:
+		DirectMediaTypeMetaXMA, DirectMediaTypeMetaXMACarousel:
 		return true
 	}
 	return false
@@ -45,6 +47,8 @@ type MediaInfo struct {
 	UserID    networkid.UserLoginID
 	MessageID networkid.MessageID
 	PartID    networkid.PartID
+
+	CarouselIndex int
 }
 
 func MakeMediaID(mediaType DirectMediaType, userID networkid.UserLoginID, messageID networkid.MessageID, partID networkid.PartID) networkid.MediaID {
@@ -58,6 +62,10 @@ func MakeMediaID(mediaType DirectMediaType, userID networkid.UserLoginID, messag
 		mediaID = append(mediaID, partID...)
 	}
 	return mediaID
+}
+
+func MakeXMACarouselMediaID(userID networkid.UserLoginID, messageID networkid.MessageID, partID networkid.PartID, index int) networkid.MediaID {
+	return append(MakeMediaID(DirectMediaTypeMetaXMACarousel, userID, messageID, partID), byte(index))
 }
 
 func ParseMediaID(mediaID networkid.MediaID) (*MediaInfo, error) {
@@ -121,6 +129,14 @@ func ParseMediaID(mediaID networkid.MediaID) (*MediaInfo, error) {
 		}
 
 		info.PartID = networkid.PartID(b)
+	}
+
+	if info.Type == DirectMediaTypeMetaXMACarousel {
+		c, err = readOne("carousel index")
+		if err != nil {
+			return nil, err
+		}
+		info.CarouselIndex = int(c)
 	}
 
 	return &info, nil

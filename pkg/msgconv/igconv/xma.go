@@ -366,19 +366,86 @@ func (mc *MessageConverter) fetchXMAMedia(
 		return nil, "empty response", fmt.Errorf("no items found in XMA media fetch response")
 	}
 	targetItem := resp.Items[0]
-	if carouselMediaID != "" {
-		for _, subitem := range targetItem.CarouselMedia {
-			if strings.Contains(subitem.ID, carouselMediaID) {
+	carousel := targetItem.CarouselMedia
+	if len(carousel) > 0 {
+		targetItem = carousel[0]
+		for _, subitem := range carousel {
+			if carouselMediaID != "" && strings.Contains(subitem.ID, carouselMediaID) {
 				targetItem = subitem
 				break
 			}
 		}
+		carouselMediaID = targetItem.ID
 	}
-	return mc.wrapXMAItem(ctx, targetItem, targetURL.String(), baseContent, baseDirectMediaMeta, &mediadl.MediaRefreshMeta{
+	part, status, err := mc.wrapXMAItem(ctx, targetItem, targetURL.String(), baseContent, baseDirectMediaMeta, &mediadl.MediaRefreshMeta{
 		XMATargetID:     targetID,
 		XMAShortcode:    mediaShortcode,
 		CarouselMediaID: carouselMediaID,
 	})
+	if err == nil && mc.DirectMedia && len(carousel) > 1 {
+		mc.addXMACarousel(ctx, part, carousel, targetItem, targetID, mediaShortcode)
+	}
+	return part, status, err
+}
+
+type XMACarousel struct {
+	Items []*event.MessageEventContent `json:"items"`
+}
+
+func (mc *MessageConverter) addXMACarousel(
+	ctx context.Context,
+	part *bridgev2.ConvertedMessagePart,
+	carousel []*responses.Items,
+	sharedItem *responses.Items,
+	targetID int64,
+	mediaShortcode string,
+) {
+	items := make([]*event.MessageEventContent, len(carousel))
+	itemMeta := make([]json.RawMessage, len(carousel))
+	for i, item := range carousel {
+		params := xmaItemReuploadParams(item)
+		params.RefreshMeta = &mediadl.MediaRefreshMeta{
+			XMATargetID:     targetID,
+			XMAShortcode:    mediaShortcode,
+			CarouselMediaID: item.ID,
+		}
+		params.CarouselIndex = &i
+		params.DirectMedia = true
+		itemPart, err := mediadl.ReuploadFileToMatrix(ctx, params)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Int("carousel_index", i).Msg("Failed to wrap XMA carousel item")
+			return
+		}
+		if item == sharedItem {
+			itemPart.Content.URL = part.Content.URL
+		}
+		items[i] = itemPart.Content
+		itemMeta[i] = itemPart.DBMetadata.(*metaid.MessageMetadata).XMADirectMediaMeta
+	}
+	part.Extra["com.beeper.meta.carousel"] = &XMACarousel{Items: items}
+	part.DBMetadata.(*metaid.MessageMetadata).XMACarouselMediaMeta = itemMeta
+}
+
+func xmaItemReuploadParams(item *responses.Items) mediadl.ReuploadParams {
+	params := mediadl.ReuploadParams{AttachmentType: table.AttachmentTypeVideo}
+	for _, video := range item.VideoVersions {
+		if video.Width*video.Height > params.Width*params.Height {
+			params.URL = video.URL
+			params.Width = video.Width
+			params.Height = video.Height
+		}
+	}
+	if params.URL == "" {
+		params.AttachmentType = table.AttachmentTypeImage
+		for _, image := range item.ImageVersions2.Candidates {
+			if image.Width*image.Height > params.Width*params.Height {
+				params.URL = image.URL
+				params.Width = image.Width
+				params.Height = image.Height
+			}
+		}
+	}
+	return params
 }
 
 func (mc *MessageConverter) wrapXMAItem(
@@ -389,35 +456,11 @@ func (mc *MessageConverter) wrapXMAItem(
 	baseDirectMediaMeta json.RawMessage,
 	refreshMeta *mediadl.MediaRefreshMeta,
 ) (*bridgev2.ConvertedMessagePart, string, error) {
-	var width, height int
-	var bestURL string
-	attachmentType := table.AttachmentTypeVideo
-	for _, video := range targetItem.VideoVersions {
-		if video.Width*video.Height > width*height {
-			bestURL = video.URL
-			width = video.Width
-			height = video.Height
-		}
-	}
-	if bestURL == "" {
-		attachmentType = table.AttachmentTypeImage
-		for _, image := range targetItem.ImageVersions2.Candidates {
-			if image.Width*image.Height > width*height {
-				bestURL = image.URL
-				width = image.Width
-				height = image.Height
-			}
-		}
-	}
-	part, err := mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
-		AttachmentType: attachmentType,
-		URL:            bestURL,
-		Width:          width,
-		Height:         height,
-		RefreshMeta:    refreshMeta,
-		DirectMedia:    mc.DirectMedia,
-		MaxFileSize:    mc.MaxFileSize,
-	})
+	params := xmaItemReuploadParams(targetItem)
+	params.RefreshMeta = refreshMeta
+	params.DirectMedia = mc.DirectMedia
+	params.MaxFileSize = mc.MaxFileSize
+	part, err := mediadl.ReuploadFileToMatrix(ctx, params)
 	if err != nil {
 		return nil, "reupload fail", fmt.Errorf("failed to reupload media: %w", err)
 	}

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -67,7 +68,7 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	}
 
 	switch mediaInfo.Type {
-	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaXMA:
+	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaXMA, metaid.DirectMediaTypeMetaXMACarousel:
 		// ok
 	default:
 		return nil, fmt.Errorf("unknown media type: %v", mediaInfo.Type)
@@ -88,9 +89,14 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 
 	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
 	var dmm json.RawMessage
-	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+	switch mediaInfo.Type {
+	case metaid.DirectMediaTypeMetaXMA:
 		dmm = msgMeta.XMADirectMediaMeta
-	} else {
+	case metaid.DirectMediaTypeMetaXMACarousel:
+		if mediaInfo.CarouselIndex < len(msgMeta.XMACarouselMediaMeta) {
+			dmm = msgMeta.XMACarouselMediaMeta[mediaInfo.CarouselIndex]
+		}
+	default:
 		dmm = msgMeta.DirectMediaMeta
 	}
 	if dmm == nil {
@@ -160,10 +166,14 @@ func (ic *IGConnector) refreshMediaURL(
 			return "", err
 		}
 		info.URL = refreshedURL
-		if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
-			msg.Metadata.(*metaid.MessageMetadata).XMADirectMediaMeta, err = json.Marshal(info)
-		} else {
-			msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta, err = json.Marshal(info)
+		msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+		switch mediaInfo.Type {
+		case metaid.DirectMediaTypeMetaXMA:
+			msgMeta.XMADirectMediaMeta, err = json.Marshal(info)
+		case metaid.DirectMediaTypeMetaXMACarousel:
+			msgMeta.XMACarouselMediaMeta[mediaInfo.CarouselIndex], err = json.Marshal(info)
+		default:
+			msgMeta.DirectMediaMeta, err = json.Marshal(info)
 		}
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to marshal updated direct media metadata")
@@ -173,7 +183,7 @@ func (ic *IGConnector) refreshMediaURL(
 			zerolog.Ctx(ctx).Debug().Msg("Updated message in database with refreshed XMA media URL")
 		}
 		return refreshedURL, nil
-	} else if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+	} else if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA || mediaInfo.Type == metaid.DirectMediaTypeMetaXMACarousel {
 		return "", fmt.Errorf("can't refresh blob media for XMA type")
 	}
 	return ic.refreshBlobMedia(ctx, client, msg, info)
@@ -445,6 +455,13 @@ func (ic *IGConnector) refreshXMAMedia(
 		}
 		if len(resp.Items) == 0 {
 			return "", fmt.Errorf("empty response from FetchMedia")
+		}
+		if info.CarouselMediaID != "" {
+			for _, child := range resp.Items[0].CarouselMedia {
+				if strings.Contains(child.ID, info.CarouselMediaID) {
+					return extractBestURL(child)
+				}
+			}
 		}
 		return extractBestURL(resp.Items[0])
 	}
