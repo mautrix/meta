@@ -17,6 +17,7 @@
 package instameow
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -121,7 +122,7 @@ func (c *Client) instagramAccountManagerHeaders() http.Header {
 	headers.Set("x-ig-device-id", session.Device.DeviceID)
 	headers.Set("x-ig-family-device-id", session.Device.PhoneID)
 	headers.Set("x-ig-android-id", session.Device.AndroidDeviceID)
-	headers.Set("x-mid", c.cookies.Get(cookies.IGCookieMachineID))
+	headers.Set("x-mid", cmp.Or(session.Device.MachineID, c.cookies.Get(cookies.IGCookieMachineID)))
 	headers.Set("x-ig-app-id", useragent.IGAndroidAppID)
 	return headers
 }

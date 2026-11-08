@@ -51,9 +51,6 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 		"hpke_pubkey":          {base64.StdEncoding.EncodeToString(private.PublicKey().Bytes())},
 	}
 	headers := c.instagramAccountManagerHeaders()
-	if session.Device.MachineID != "" {
-		headers.Set("x-mid", session.Device.MachineID)
-	}
 	response, body, err := c.http.MakeRequest(ctx, instagramMobileAPIBase+"push/register/", http.MethodPost, headers, []byte(form.Encode()), types.FORM)
 	if err != nil {
 		c.checkResponseError(err)
