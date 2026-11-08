@@ -199,6 +199,8 @@ func instagramAccountManagerRequestError(
 	var failure instagramAccountManagerError
 	_ = json.Unmarshal(body, &failure)
 	switch {
+	case failure.ErrorType == "two_factor_required":
+		return fmt.Errorf("%s: %w", action, ErrInstagramAccountManagerTwoFactorRequired)
 	case failure.ErrorType != "" && failure.Message != "":
 		return fmt.Errorf(
 			"%s: Instagram returned %s (%s, HTTP %d)",
