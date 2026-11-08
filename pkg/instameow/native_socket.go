@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/google/uuid"
 
 	lightspeed "go.mau.fi/mautrix-meta/pkg/instameow/flatbuffer"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
@@ -22,17 +23,19 @@ func (c *Client) nativeSocketHeaders() http.Header {
 
 func nativeStreamHeaders(session *types.InstagramNativeSession, authorization, userID, group string) http.Header {
 	return http.Header{
-		"Authorization":          {authorization},
-		"User-Agent":             {useragent.IGAndroidUserAgent},
-		"X-Dgw-Authtype":         {"6:0"},
-		"X-Dgw-Uuid":             {userID},
-		"X-Dgw-Regionhint":       {session.DirectRegionHint},
-		"X-Dgw-Appid":            {useragent.IGAndroidAppID},
-		"X-Dgw-Appversion":       {useragent.IGAndroidAppVersion},
-		"X-Dgw-Deviceid":         {session.Device.DeviceID},
-		"X-Dgw-Fdid":             {session.Device.PhoneID},
-		"X-Dgw-Version":          {"9"},
-		"X-Dgw-App-Stream-Group": {group},
+		"Authorization":            {authorization},
+		"User-Agent":               {useragent.IGAndroidUserAgent},
+		"X-Dgw-Authtype":           {"6:0"},
+		"X-Dgw-Uuid":               {userID},
+		"X-Dgw-Regionhint":         {session.DirectRegionHint},
+		"X-Dgw-Appid":              {useragent.IGAndroidAppID},
+		"X-Dgw-Appversion":         {useragent.IGAndroidAppVersion},
+		"X-Dgw-Deviceid":           {session.Device.DeviceID},
+		"X-Dgw-Fdid":               {session.Device.PhoneID},
+		"X-Dgw-Version":            {"8"},
+		"X-Dgw-Osversion":          {"14"},
+		"X-Dgw-Streamgrouptraceid": {uuid.NewString()},
+		"X-Dgw-App-Stream-Group":   {group},
 	}
 }
 
