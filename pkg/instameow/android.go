@@ -68,7 +68,7 @@ func (c *Client) EditGroupAvatar(ctx context.Context, threadID string, avatar []
 		c.checkResponseError(err)
 		return fmt.Errorf("failed to upload group avatar: %w", err)
 	}
-	c.updateNativeSession(resp)
+	c.updateNativeSession(ctx, resp)
 
 	var uploadResp httpclient.RUploadResponse
 	err = json.Unmarshal(respBody, &uploadResp)
@@ -166,7 +166,7 @@ func (c *Client) makeIGraphQLRequest(ctx context.Context, docName, rootFieldName
 		c.checkResponseError(err)
 		return nil, err
 	}
-	c.updateNativeSession(resp)
+	c.updateNativeSession(ctx, resp)
 
 	return respBody, nil
 }

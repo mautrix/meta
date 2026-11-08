@@ -53,6 +53,7 @@ type Client struct {
 	mobileLoginDevice     *types.InstagramLoginDevice
 	mobileSession         atomic.Pointer[instagramMobileSession]
 	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
+	saveNativeSession     func(context.Context, *types.InstagramNativeSession) error
 
 	socket        atomic.Pointer[dgw.Socket]
 	cancelSocket  atomic.Pointer[context.CancelFunc]
@@ -110,6 +111,7 @@ type ClientParams struct {
 	// identity across login processes for the same bridge user.
 	MobileLoginDevice     *types.InstagramLoginDevice
 	SaveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
+	SaveNativeSession     func(context.Context, *types.InstagramNativeSession) error
 }
 
 func NewClient(params ClientParams) *Client {
@@ -129,6 +131,7 @@ func NewClient(params ClientParams) *Client {
 		logRedactedLoginResponses: params.LogRedactedLoginResponses,
 
 		saveMobileLoginDevice: params.SaveMobileLoginDevice,
+		saveNativeSession:     params.SaveNativeSession,
 	}
 	if params.MobileLoginDevice != nil {
 		device := *params.MobileLoginDevice

@@ -67,15 +67,16 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 	if userID := response.Header.Get("ig-set-ig-u-ds-user-id"); userID != "" && userID != session.UserID {
 		return errors.New("native push response belongs to a different account")
 	}
-	c.updateNativeSession(response)
+	c.updateNativeSession(ctx, response)
 	return nil
 }
 
-func (c *Client) updateNativeSession(response *http.Response) {
+func (c *Client) updateNativeSession(ctx context.Context, response *http.Response) {
 	session := c.GetInstagramNativeSession()
 	if session == nil || response == nil {
 		return
 	}
+	previous := *session
 	if authorization := response.Header.Get("ig-set-authorization"); authorization != "" {
 		session.Authorization = authorization
 	}
@@ -85,5 +86,13 @@ func (c *Client) updateNativeSession(response *http.Response) {
 	if mid := response.Header.Get("ig-set-x-mid"); mid != "" {
 		session.Device.MachineID = mid
 	}
+	if *session == previous {
+		return
+	}
 	c.SetInstagramNativeSession(session)
+	if c.saveNativeSession != nil {
+		if err := c.saveNativeSession(ctx, session); err != nil {
+			c.log.Err(err).Msg("Failed to save updated native Instagram session")
+		}
+	}
 }
