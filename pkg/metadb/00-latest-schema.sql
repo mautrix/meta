@@ -1,4 +1,4 @@
--- v0 -> v14 (compatible with v11+): Latest schema
+-- v0 -> v18 (compatible with v11+): Latest schema
 CREATE TABLE meta_thread (
     parent_key BIGINT NOT NULL,
     thread_key BIGINT NOT NULL,
@@ -107,3 +107,41 @@ CREATE TABLE meta_instagram_login_device (
 	CONSTRAINT meta_instagram_login_device_user_fkey FOREIGN KEY (bridge_id, user_mxid)
 		REFERENCES "user" (bridge_id, mxid) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+CREATE TABLE meta_thread_cutover (
+    bridge_id                 TEXT    NOT NULL,
+    login_id                  TEXT    NOT NULL,
+    thread_jid                BIGINT  NOT NULL,
+    open_thread_key           BIGINT  NOT NULL,
+    show_open_message_history BOOLEAN NOT NULL,
+
+    PRIMARY KEY (bridge_id, login_id, thread_jid),
+    CONSTRAINT meta_thread_cutover_user_login_fkey FOREIGN KEY (bridge_id, login_id)
+        REFERENCES user_login (bridge_id, id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE meta_instagram_web_push (
+    bridge_id     TEXT    NOT NULL,
+    login_id      TEXT    NOT NULL,
+    last_received BIGINT  NOT NULL,
+    stale         BOOLEAN NOT NULL,
+
+    PRIMARY KEY (bridge_id, login_id),
+    CONSTRAINT meta_instagram_web_push_user_login_fkey FOREIGN KEY (bridge_id, login_id)
+        REFERENCES user_login (bridge_id, id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE meta_poll (
+    bridge_id       TEXT   NOT NULL,
+    portal_id       TEXT   NOT NULL,
+    poll_id         BIGINT NOT NULL,
+    portal_receiver TEXT   NOT NULL,
+    message_rowid   BIGINT NOT NULL,
+
+    PRIMARY KEY (bridge_id, portal_id, poll_id, portal_receiver),
+    CONSTRAINT meta_poll_portal_fkey FOREIGN KEY (bridge_id, portal_id, portal_receiver)
+        REFERENCES portal (bridge_id, id, receiver) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT meta_poll_message_fkey FOREIGN KEY (message_rowid)
+        REFERENCES message (rowid) ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX meta_poll_message_idx ON meta_poll (message_rowid);

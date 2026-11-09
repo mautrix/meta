@@ -19,13 +19,21 @@ package igconnector
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+)
+
+var (
+	chatBackfillSlotsOnce sync.Once
+	chatBackfillSlots     chan struct{}
 )
 
 func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slidetypes.Mailbox) {
@@ -53,6 +61,14 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		done()
 		return
 	}
+	resyncSince := ic.resyncChatsSince.Swap(nil)
+	if resyncSince != nil && ic.LoginMeta.ThreadBackfillCursor != "" {
+		ic.LoginMeta.ThreadBackfillCursor = ""
+		err := ic.UserLogin.Save(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to clear chat backfill cursor after resnapshot")
+		}
+	}
 	go func() {
 		defer done()
 
@@ -69,6 +85,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		if ctx.Err() != nil {
 			return
 		}
+		backfilling := false
 		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background {
 			if !mailbox.ThreadsByFolder.PageInfo.HasNextPage {
 				zerolog.Ctx(ctx).Info().Msg("Only one page in inbox, marking backfill as completed")
@@ -77,9 +94,19 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 				if err != nil {
 					zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after mailbox processing")
 				}
-			} else if ic.Main.Config.ThreadBackfill.Enabled() {
-				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor)
+			} else if ic.Main.Config.ThreadBackfill.Enabled() && ic.LoginMeta.ThreadBackfillCursor == "" {
+				backfilling = true
+				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, time.Time{})
 			}
+		}
+		edges := mailbox.ThreadsByFolder.Edges
+		if resyncSince != nil && !backfilling && !ic.Main.Bridge.Background &&
+			mailbox.ThreadsByFolder.PageInfo.HasNextPage && len(edges) > 0 &&
+			!edges[len(edges)-1].Node.AsIGDirectThread.LastActivityTimestampMS.Before(*resyncSince) {
+			zerolog.Ctx(ctx).Info().
+				Time("since", *resyncSince).
+				Msg("First inbox page doesn't cover time since last seq ID, resyncing more chats")
+			go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, *resyncSince)
 		}
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, mailbox.UQSeqID, startTS)
 		if err != nil {
@@ -88,7 +115,30 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 	}()
 }
 
-func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
+func (ic *IGConnector) waitForChatBackfillSlot(ctx context.Context) (func(), error) {
+	limit := ic.Config.ThreadBackfill.MaxConcurrent
+	if limit <= 0 {
+		return func() {}, nil
+	}
+	chatBackfillSlotsOnce.Do(func() {
+		chatBackfillSlots = make(chan struct{}, limit)
+	})
+	select {
+	case chatBackfillSlots <- struct{}{}:
+		return func() { <-chatBackfillSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since time.Time) {
+	defer func() {
+		if v := recover(); v != nil {
+			zerolog.Ctx(ctx).Err(exerrors.RecoverToError(v)).
+				Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+				Msg("Panic in chat backfill")
+		}
+	}()
 	viewerFBID := metaid.ParseUserLoginID(ic.UserLogin.ID)
 	if viewerFBID == 0 {
 		zerolog.Ctx(ctx).Warn().Msg("No viewer FBID for chat backfill")
@@ -108,30 +158,63 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
 	log := zerolog.Ctx(ctx).With().Str("action", "chat backfill").Logger()
 	ctx = log.WithContext(ctx)
 
+	if since.IsZero() && !ic.newLogin {
+		release, err := ic.Main.waitForChatBackfillSlot(ctx)
+		if err != nil {
+			return
+		}
+		defer release()
+	}
+
 	processThread := func(thread *slidetypes.ThreadInfo) error {
 		err := ic.saveThreadMappings(ctx, thread)
 		if err != nil {
 			return fmt.Errorf("failed to save thread mappings: %w", err)
 		}
-		res := ic.UserLogin.QueueRemoteEvent(ic.wrapChatResync(thread, false, "backfill"))
+		source := "backfill"
+		if !since.IsZero() {
+			source = "resnapshot"
+		}
+		res := ic.UserLogin.QueueRemoteEvent(ic.wrapChatResync(thread, false, source))
 		if !res.Success {
 			return res.Error
 		}
 		return nil
 	}
+	hasMore := true
 	processThreads := func(threads slidetypes.Edged[slidetypes.Node[slidetypes.WrappedThreadInfo]]) bool {
+		cursor = threads.PageInfo.EndCursor
+		hasMore = threads.PageInfo.HasNextPage
 		for _, edge := range threads.Edges {
+			if edge.Node.AsIGDirectThread == nil {
+				log.Warn().Str("thread_igid", edge.Node.ID).Msg("Skipping null thread in chat list")
+				continue
+			}
+			if edge.Node.AsIGDirectThread.Users == nil {
+				log.Warn().Str("thread_igid", edge.Node.AsIGDirectThread.ID).Msg("Skipping thread without users in chat list")
+				continue
+			}
+			if !since.IsZero() && edge.Node.AsIGDirectThread.LastActivityTimestampMS.Before(since) {
+				hasMore = false
+				return true
+			}
 			if err := processThread(edge.Node.AsIGDirectThread); err != nil {
 				log.Err(err).Str("thread_igid", edge.Node.AsIGDirectThread.ID).Msg("Failed to process thread")
 				return false
+			}
+		}
+		if ctx.Err() != nil {
+			return false
+		} else if since.IsZero() {
+			ic.LoginMeta.ThreadBackfillCursor = cursor
+			if err := ic.UserLogin.Save(ctx); err != nil {
+				log.Err(err).Msg("Failed to save chat backfill cursor")
 			}
 		}
 		return true
 	}
 
 	batchCount := 0
-	cursor := startCursor
-	hasNextPage := true
 	if cursor == "" {
 		log.Info().Msg("No start cursor, loading from scratch")
 		resp, err := ic.Client.GetMailbox(ctx)
@@ -150,13 +233,18 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
 	} else {
 		batchCount++
 	}
-	for hasNextPage && cursor != "" && batchCount < ic.Main.Config.ThreadBackfill.BatchCount {
+	maxBatches := ic.Main.Config.ThreadBackfill.BatchCount
+	for hasMore && cursor != "" && (!since.IsZero() || maxBatches < 0 || batchCount < maxBatches) {
 		select {
 		case <-time.After(ic.Main.Config.ThreadBackfill.BatchDelay):
 		case <-ctx.Done():
 			return
 		}
 		resp, err := ic.Client.PaginateMailbox(ctx, slidetypes.MakePaginateMailboxRequest(viewerFBID, cursor, "INBOX", nil))
+		if err != nil && resp != nil && resp.Mailbox != nil {
+			log.Warn().Err(err).Msg("Chat list page contained errors, ignoring")
+			err = nil
+		}
 		if err != nil {
 			log.Err(err).Msg("Failed to fetch more chats")
 			return
@@ -168,11 +256,14 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, startCursor string) {
 			return
 		}
 		batchCount++
-		cursor = resp.Mailbox.ThreadsByFolder.PageInfo.EndCursor
-		hasNextPage = resp.Mailbox.ThreadsByFolder.PageInfo.HasNextPage
+	}
+	if !since.IsZero() {
+		log.Info().Int("total_batch_count", batchCount).Msg("Completed resyncing chats after resnapshot")
+		return
 	}
 	log.Info().Int("total_batch_count", batchCount).Msg("Completed chat backfill successfully")
 	ic.LoginMeta.BackfillCompleted = true
+	ic.LoginMeta.ThreadBackfillCursor = ""
 	err := ic.UserLogin.Save(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to save user login after chat backfill")

@@ -1,5 +1,7 @@
 package responses
 
+import "encoding/json"
+
 type FetchMediaResponse struct {
 	Items               []*Items `json:"items,omitempty"`
 	NumResults          int      `json:"num_results,omitempty"`
@@ -61,7 +63,7 @@ type User struct {
 	ID                             string                 `json:"id,omitempty"`
 	IsPrivate                      bool                   `json:"is_private,omitempty"`
 	IsUnpublished                  bool                   `json:"is_unpublished,omitempty"`
-	Pk                             string                 `json:"pk,omitempty"`
+	Pk                             json.Number            `json:"pk,omitempty"`
 	PkID                           string                 `json:"pk_id,omitempty"`
 	ShowAccountTransparencyDetails bool                   `json:"show_account_transparency_details,omitempty"`
 	StrongID                       string                 `json:"strong_id__,omitempty"`
@@ -291,7 +293,7 @@ type VideoVersions struct {
 }
 type Items struct {
 	TakenAt                             int                       `json:"taken_at,omitempty"`
-	Pk                                  string                    `json:"pk,omitempty"`
+	Pk                                  json.Number               `json:"pk,omitempty"`
 	ID                                  string                    `json:"id,omitempty"`
 	DeviceTimestamp                     int64                     `json:"device_timestamp,omitempty"`
 	ClientCacheKey                      string                    `json:"client_cache_key,omitempty"`

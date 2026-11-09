@@ -29,7 +29,7 @@ const (
 	LoginStepIDCookies  = "fi.mau.meta.cookies"
 	LoginStepIDComplete = "fi.mau.meta.complete"
 
-	instagramWebLoggedInURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$"
+	instagramWebLoggedInURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?|accounts/onetap/)?(?:\\?.*)?$"
 )
 
 func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
@@ -125,6 +125,15 @@ func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, u
 	return client, nil
 }
 
+type redirectedLoginError struct {
+	bridgev2.RespError
+	cause error
+}
+
+func (e redirectedLoginError) Unwrap() []error {
+	return []error{e.RespError, e.cause}
+}
+
 func loginWithCookies(
 	ctx context.Context,
 	log zerolog.Logger,
@@ -141,7 +150,7 @@ func loginWithCookies(
 		Msg("Logging in with cookies")
 	if requireNative {
 		if nativeSession == nil || nativeSession.Authorization == "" || nativeSession.UserID != c.Get(cookies.IGCookieDSUserID) {
-			return nil, errInstagramCAAFlowFailed
+			return nil, errMissingAuth
 		}
 		client.SetInstagramNativeSession(nativeSession)
 	}
@@ -151,15 +160,17 @@ func loginWithCookies(
 		if errors.Is(err, httpclient.ErrRateLimited) {
 			return nil, loginerrors.RateLimited
 		} else if errors.Is(err, httpclient.ErrChallengeRequired) {
-			return nil, loginerrors.Challenge
+			return nil, redirectedLoginError{loginerrors.Challenge, err}
 		} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
-			return nil, loginerrors.Checkpoint
+			return nil, redirectedLoginError{loginerrors.Checkpoint, err}
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
 			return nil, loginerrors.Consent
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			return nil, loginerrors.AccountSuspended
 		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
 			return nil, loginerrors.TokenInvalidated
+		} else if errors.Is(err, httpclient.ErrUnexpectedError) {
+			return nil, fmt.Errorf("%w: %w", loginerrors.InboxLoadFailed, err)
 		} else {
 			return nil, fmt.Errorf("%w: %w", loginerrors.Unknown, err)
 		}
@@ -173,7 +184,7 @@ func loginWithCookies(
 		nativeSession = nil
 	}
 	if requireNative && (nativeSession == nil || nativeSession.Authorization == "") {
-		return nil, errInstagramCAAFlowFailed
+		return nil, errMissingAuth
 	}
 	client.SetInstagramNativeSession(nativeSession)
 	loginID := metaid.MakeUserLoginID(ownFBID)
@@ -204,6 +215,7 @@ func loginWithCookies(
 	}
 
 	igClient := ul.Client.(*IGClient)
+	igClient.newLogin = true
 	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
 	client.SetLogger(ul.Log.With().Str("component", "instameow").Logger())
 	client.SetEventHandler(igClient.handleIGEvent)
@@ -235,7 +247,7 @@ func loginWithCookies(
 	}, nil
 }
 
-func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string, nativeSession *types.InstagramNativeSession) (*bridgev2.LoginStep, error) {
 	c := &cookies.Cookies{Platform: types.Instagram}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
@@ -253,9 +265,9 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, user, conn, c, nil, false, nil)
+	return loginWithCookies(ctx, log, client, user, conn, c, nativeSession, false, nil)
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	return submitInstagramCookies(ctx, m.Main, m.User, strCookies)
+	return submitInstagramCookies(ctx, m.Main, m.User, strCookies, nil)
 }

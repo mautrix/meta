@@ -15,7 +15,10 @@ const SecCHMobile = "?0"
 const SecCHModel = `""`
 const SecCHPrefersColorScheme = "light"
 
-const AndroidUserAgent = "Instagram 404.0.0.48.76 Android (35/15; 420dpi; 1080x2400; Google/google; Pixel 7; panther; panther; en_US; 813748018)"
+const IGAndroidAppVersion = "454.0.0.54.77"
+const IGAndroidBuildNumber = "1105698528"
+const IGAndroidUserAgent = "Instagram " + IGAndroidAppVersion + " Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " + IGAndroidBuildNumber + ")"
+const IGAndroidCapabilities = "3brTv10C"
 const IGAndroidAppID = "567067343352427"
 
 const MessengerLiteIOSAppID = "437626316973788"
@@ -24,8 +27,8 @@ const MessengerLiteIOSUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/571
 
 const MessengerLiteAndroidAppID = "256002347743983"
 const MessengerLiteAndroidAccessToken = MessengerLiteAndroidAppID + "|374e60f8b9bb6b8cbb30f78030438895"
-const MessengerLiteAndroidUserAgent = "Dalvik/2.1.0 (Linux; U; Android 16; Pixel 7 Build/BP2A.250805.005) [FBAN/Orca-Android;FBAV/569.0.0.44.91;FBPN/com.facebook.orca;FBLC/en_US;FBBV/1012430703;FBCR/Tello;FBMF/Google;FBBD/google;FBDV/Pixel 7;FBSV/16;FBCA/arm64-v8a:null;FBDM/{density=2.625,width=1080,height=2400};FB_FW/1;]"
-const MessengerLiteAndroidBuild = 345613452 // FIXME the user agent above and this build number don't match
+const MessengerLiteAndroidUserAgent = "Dalvik/2.1.0 (Linux; U; Android 16; Pixel 7 Build/BP2A.250805.005) [FBAN/Orca-Android;FBAV/584.1.0.61.98;FBPN/com.facebook.orca;FBLC/en_US;FBBV/1096943644;FBCR/Tello;FBMF/Google;FBBD/google;FBDV/Pixel 7;FBSV/16;FBCA/arm64-v8a:null;FBDM/{density=2.625,width=1080,height=2400};FB_FW/1;]"
+const MessengerLiteAndroidBuild = 346817025
 
 const IGDUserAgent = "WMI Web"
 

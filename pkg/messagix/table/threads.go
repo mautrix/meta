@@ -742,6 +742,15 @@ type LSVerifyHybridThreadExists struct {
 	Unrecognized map[int]any `json:",omitempty"`
 }
 
+type LSCreateOpenToE2EEThreadLink struct {
+	OpenThreadID           int64 `index:"0" json:",omitempty"`
+	ArmadilloThreadID      int64 `index:"1" json:",omitempty"`
+	ShowOpenMessageHistory bool  `index:"2" json:",omitempty"`
+	TimestampMS            int64 `index:"3" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
 type LSUpdateThreadAuthorityAndMappingWithOTIDFromJID struct {
 	ThreadJID int64 `index:"0" json:",omitempty"`
 	ThreadKey int64 `index:"1" json:",omitempty"`

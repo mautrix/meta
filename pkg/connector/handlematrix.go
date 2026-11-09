@@ -14,6 +14,7 @@ import (
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
+	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -49,10 +50,18 @@ func (m *MetaConnector) GenerateTransactionID(userID id.UserID, roomID id.RoomID
 	return networkid.RawTransactionID(strconv.FormatInt(methods.GenerateEpochID(), 10))
 }
 
-var (
-	ErrServerRejectedMessage = bridgev2.WrapErrorInStatus(errors.New("server rejected message")).WithErrorAsMessage().WithSendNotice(true)
-	ErrNotConnected          = bridgev2.WrapErrorInStatus(errors.New("not connected")).WithErrorAsMessage().WithSendNotice(true)
-)
+var ErrServerRejectedMessage = bridgev2.WrapErrorInStatus(errors.New("server rejected message")).
+	WithMessage("rejected by Facebook, if this keeps happening, check the Facebook website or app for a notice on your account").
+	WithStatus(event.MessageStatusFail).
+	WithErrorReason(event.MessageStatusNetworkError).
+	WithIsCertain(true).
+	WithSendNotice(true)
+
+var ErrMessageNotConfirmed = bridgev2.WrapErrorInStatus(errors.New("server didn't confirm message")).
+	WithMessage("Facebook didn't confirm that the message was sent").
+	WithSendNotice(true)
+
+var ErrNotConnected = bridgev2.WrapErrorInStatus(errors.New("not connected")).WithErrorAsMessage().WithSendNotice(true)
 
 const ConnectWaitTimeout = 1 * time.Minute
 
@@ -83,20 +92,26 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 		waMsg, waMeta, err := m.Main.MsgConv.ToWhatsApp(ctx, msg.Event, msg.Content, msg.Portal, m.E2EEClient, msg.OrigSender != nil, msg.ReplyTo)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert message: %w", err)
+			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		}
 		messageID := strconv.FormatInt(otid, 10)
 		chatJID := portalMeta.JID(msg.Portal.ID)
 		senderJID := m.WADevice.ID
+		if waMeta == nil {
+			waMeta = &waMsgApplication.MessageApplication_Metadata{}
+		}
 		resp, err := m.E2EEClient.SendFBMessage(ctx, chatJID, waMsg, waMeta, whatsmeow.SendRequestExtra{
 			ID: messageID,
 		})
 		if err != nil {
-			return nil, err
+			return nil, wrapMetaError(err)
 		}
+		m.uploadSentMessageToHistory(ctx, chatJID, messageID, "", waMsg, waMeta)
+		dbMessageID := metaid.MakeWAMessageID(chatJID, senderJID.ToNonAD(), messageID)
+		m.Main.AddMediaEditCache(msg.Portal, dbMessageID, &bridgev2.ConvertedMessagePart{Type: msg.Event.Type, Content: msg.Content})
 		return &bridgev2.MatrixMessageResponse{
 			DB: &database.Message{
-				ID:        metaid.MakeWAMessageID(chatJID, senderJID.ToNonAD(), messageID),
+				ID:        dbMessageID,
 				SenderID:  networkid.UserID(m.UserLogin.ID),
 				Timestamp: resp.Timestamp,
 			},
@@ -114,6 +129,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		if errors.Is(err, types.ErrPleaseReloadPage) && m.canReconnect() {
 			log.Debug().Err(err).Msg("Doing full reconnect and retrying upload")
 			m.FullReconnect()
+			if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
+				return nil, ErrNotConnected
+			}
 			tasks, err = m.Main.MsgConv.ToMeta(
 				ctx, m.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, otid, msg.OrigSender != nil, msg.Portal,
 			)
@@ -122,16 +140,18 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			if m.canReconnect() {
 				go m.FullReconnect()
 			}
-			return nil, err
+			return nil, wrapMetaError(err)
 		} else if errors.Is(err, httpclient.ErrConsentRequired) {
-			m.UserLogin.BridgeState.Send(status.BridgeState{
+			m.permanentErrored.Store(true)
+			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
 				Error:      FBConsentRequired,
 				UserAction: status.UserActionRestart,
-			})
-			return nil, err
+			}
+			m.sendBridgeState(m.metaState)
+			return nil, wrapMetaError(err)
 		} else if err != nil {
-			return nil, fmt.Errorf("failed to convert message: %w", err)
+			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		}
 
 		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
@@ -143,6 +163,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 
 		var resp *table.LSTable
 
+		// An attempt that fails after the tasks were written may still have been delivered, so later
+		// failures can't be certain either.
+		maybeSent := false
 		for retries := 0; retries < 5; retries++ {
 			if err = m.Client.WaitUntilCanSendMessages(ctx, 15*time.Second); err != nil {
 				log.Err(err).Msg("Error waiting to be able to send messages, retrying")
@@ -152,12 +175,17 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 					break
 				}
 				log.Err(err).Msg("Failed to send message to Meta, retrying")
+				maybeSent = true
 			}
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
 		}
 		if err != nil {
+			err = wrapMetaError(err)
+			if ms, ok := err.(bridgev2.MessageStatus); ok && maybeSent {
+				err = ms.WithIsCertain(false)
+			}
 			return nil, err
 		}
 
@@ -177,16 +205,16 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 				}
 				for _, failed := range resp.LSHandleFailedTask {
 					log.Warn().Str("message", failed.Message).Msg("Sending message failed (task)")
-					return nil, fmt.Errorf("%w: %s", ErrServerRejectedMessage, failed.Message)
+					return nil, fmt.Errorf("%w: %s", ErrMessageNotConfirmed, failed.Message)
 				}
-				return nil, fmt.Errorf("%w: message send response didn't include message ID", ErrServerRejectedMessage)
+				return nil, fmt.Errorf("%w: message send response didn't include message ID", ErrMessageNotConfirmed)
 			}
 		}
 		var parsedTSTime time.Time
 		parsedTS, err := methods.ParseMessageID(msgID)
 		if err != nil {
 			log.Warn().Err(err).Str("message_id", msgID).Msg("Failed to parse message ID")
-			return nil, fmt.Errorf("%w: failed to parse message ID: %v", ErrServerRejectedMessage, err)
+			return nil, fmt.Errorf("%w: failed to parse message ID: %v", ErrMessageNotConfirmed, err)
 		} else {
 			parsedTSTime = time.UnixMilli(parsedTS)
 			if parsedTSTime.Before(time.Now().Add(-1 * time.Hour)) {
@@ -206,9 +234,11 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			}
 		}
 
+		dbMessageID := metaid.MakeFBMessageID(msgID)
+		m.Main.AddMediaEditCache(msg.Portal, dbMessageID, &bridgev2.ConvertedMessagePart{Type: msg.Event.Type, Content: msg.Content})
 		return &bridgev2.MatrixMessageResponse{
 			DB: &database.Message{
-				ID:        metaid.MakeFBMessageID(msgID),
+				ID:        dbMessageID,
 				SenderID:  networkid.UserID(m.UserLogin.ID),
 				Timestamp: parsedTSTime,
 			},
@@ -278,7 +308,7 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 			return nil, ErrNotConnected
 		}
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.SendReactionTask{
-			ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
+			ThreadKey:       msg.TargetMessage.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Portal.ID),
 			TimestampMs:     msg.Event.Timestamp,
 			MessageID:       messageID.ID,
 			Reaction:        msg.PreHandleResp.Emoji,
@@ -287,7 +317,7 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 			SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
 		})
 		if err != nil {
-			return nil, err
+			return nil, wrapMetaError(err)
 		}
 		// TODO fail if response doesn't contain LSReplaceOptimisticReaction?
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Meta reaction response")
@@ -306,7 +336,7 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 			ID: waTypes.MessageID(msg.InputTransactionID),
 		})
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
-		return nil, err
+		return nil, wrapMetaError(err)
 	default:
 		return nil, fmt.Errorf("invalid message ID")
 	}
@@ -321,8 +351,14 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 		if !m.connectWaiter.WaitTimeout(ConnectWaitTimeout) {
 			return ErrNotConnected
 		}
+		target, err := m.Main.Bridge.DB.Message.GetPartByID(ctx, msg.Portal.Receiver, msg.TargetReaction.MessageID, msg.TargetReaction.MessagePartID)
+		if err != nil {
+			return err
+		} else if target == nil {
+			return fmt.Errorf("reaction target message not found")
+		}
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.SendReactionTask{
-			ThreadKey:       metaid.ParseFBPortalID(msg.Portal.ID),
+			ThreadKey:       target.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Portal.ID),
 			TimestampMs:     msg.Event.Timestamp,
 			MessageID:       messageID.ID,
 			Reaction:        "",
@@ -331,7 +367,7 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 			SendAttribution: table.MESSENGER_INBOX_IN_THREAD,
 		})
 		if err != nil {
-			return err
+			return wrapMetaError(err)
 		}
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Meta reaction remove response")
 		return nil
@@ -349,13 +385,16 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 			ID: waTypes.MessageID(msg.InputTransactionID),
 		})
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
-		return err
+		return wrapMetaError(err)
 	default:
 		return fmt.Errorf("invalid message ID")
 	}
 }
 
 func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
+	if edit.EditTarget.Metadata.(*metaid.MessageMetadata).PollResponse {
+		return bridgev2.ErrEditsNotSupported
+	}
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
@@ -370,7 +409,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 			ctx, m.Client, edit.Event, edit.Content, nil, nil, otid, false, edit.Portal,
 		)
 		if err != nil {
-			return fmt.Errorf("failed to convert message: %w", err)
+			return wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		}
 
 		fakeTask := fakeSendTasks[0].(*socket.SendMessageTask)
@@ -398,7 +437,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		resp, err = m.Client.ExecuteTasks(ctx, editTask)
 		log.Trace().Any("response", resp).Msg("Meta edit response")
 		if err != nil {
-			return fmt.Errorf("failed to send edit to Meta: %w", err)
+			return wrapMetaError(fmt.Errorf("failed to send edit to Meta: %w", err))
 		}
 
 		if len(resp.LSEditMessage) == 0 {
@@ -464,13 +503,16 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 			ID: strconv.FormatInt(otid, 10),
 		})
 		log.Trace().Any("response", resp).Msg("WhatsApp edit response")
-		return err
+		return wrapMetaError(err)
 	default:
 		return fmt.Errorf("invalid message ID")
 	}
 }
 
 func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	if msg.TargetMessage.Metadata.(*metaid.MessageMetadata).PollResponse {
+		return bridgev2.ErrRedactionsNotSupported
+	}
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
@@ -483,7 +525,7 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.DeleteMessageTask{MessageId: messageID.ID})
 		// TODO does the response data need to be checked?
 		log.Trace().Any("response", resp).Msg("Meta delete response")
-		return err
+		return wrapMetaError(err)
 	case metaid.ParsedWAMessageID:
 		if !m.e2eeConnectWaiter.WaitTimeout(ConnectWaitTimeout) {
 			return ErrNotConnected
@@ -492,11 +534,17 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 			Key: m.messageIDToWAKey(messageID),
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
-		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: waTypes.MessageID(msg.InputTransactionID),
+		revokeID := strconv.FormatInt(getOTID(msg.InputTransactionID), 10)
+		waMeta := &waMsgApplication.MessageApplication_Metadata{}
+		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, waMeta, whatsmeow.SendRequestExtra{
+			ID: revokeID,
 		})
 		log.Trace().Any("response", resp).Msg("WhatsApp delete response")
-		return err
+		if err != nil {
+			return wrapMetaError(err)
+		}
+		m.uploadSentMessageToHistory(ctx, portalJID, revokeID, messageID.ID, consumerMsg, waMeta)
+		return nil
 	default:
 		return fmt.Errorf("invalid message ID")
 	}
@@ -506,7 +554,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 	if m.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	if !receipt.ReadUpTo.After(receipt.LastRead) {
+	if receipt.Receipt.IsThread() || !receipt.ReadUpTo.After(receipt.LastRead) {
 		return nil
 	}
 	if receipt.LastRead.IsZero() {
@@ -524,15 +572,24 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 		Time("read_up_to", receipt.ReadUpTo).
 		Int("message_count", len(messages)).
 		Msg("Handling read receipt")
+	portalMeta := receipt.Portal.Metadata.(*metaid.PortalMetadata)
 	waMessagesToRead := make(map[waTypes.JID][]string)
-	var fbMessageToReadTS time.Time
+	fbMessagesToRead := make(map[int64]time.Time)
 	for _, msg := range messages {
 		switch messageID := metaid.ParseMessageID(msg.ID).(type) {
 		case metaid.ParsedFBMessageID:
-			if fbMessageToReadTS.Before(msg.Timestamp) {
-				fbMessageToReadTS = msg.Timestamp
+			threadKey := msg.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Room.ID)
+			if fbMessagesToRead[threadKey].Before(msg.Timestamp) {
+				fbMessagesToRead[threadKey] = msg.Timestamp
 			}
 		case metaid.ParsedWAMessageID:
+			readTS := msg.Timestamp
+			if readTS.Nanosecond() == 0 {
+				readTS = readTS.Add(999 * time.Millisecond)
+			}
+			if portalMeta.FBThreadKey != 0 && fbMessagesToRead[portalMeta.FBThreadKey].Before(readTS) {
+				fbMessagesToRead[portalMeta.FBThreadKey] = readTS
+			}
 			if msg.SenderID == networkid.UserID(m.UserLogin.ID) {
 				continue
 			}
@@ -544,9 +601,14 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 			waMessagesToRead[key] = append(waMessagesToRead[key], messageID.ID)
 		}
 	}
-	threadID := metaid.ParseFBPortalID(receipt.Portal.ID)
-	if !fbMessageToReadTS.IsZero() && threadID != 0 && !receipt.Implicit {
+	for threadID, fbMessageToReadTS := range fbMessagesToRead {
+		if threadID == 0 || receipt.Implicit {
+			continue
+		}
 		var syncGroup int64 = 1
+		if threadID == portalMeta.FBThreadKey {
+			syncGroup = 95
+		}
 		// TODO set sync group to 104 for community groups?
 		resp, err := m.Client.ExecuteTasks(ctx, &socket.ThreadMarkReadTask{
 			ThreadId:            threadID,
@@ -560,7 +622,7 @@ func (m *MetaClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridg
 			log.Debug().Time("read_watermark", fbMessageToReadTS).Msg("Read receipt sent")
 		}
 	}
-	portalJID := receipt.Portal.Metadata.(*metaid.PortalMetadata).JID(receipt.Portal.ID)
+	portalJID := portalMeta.JID(receipt.Portal.ID)
 	if len(waMessagesToRead) > 0 && !portalJID.IsEmpty() {
 		for messageSender, ids := range waMessagesToRead {
 			err = m.E2EEClient.MarkRead(ctx, ids, receipt.Receipt.Timestamp, portalJID, messageSender)
@@ -630,7 +692,7 @@ func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.Matri
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
 			}
 		}
-		return m.E2EEClient.SendChatPresence(ctx, portalJID, chatPresence, mediaPresence)
+		return wrapMetaError(m.E2EEClient.SendChatPresence(ctx, portalJID, chatPresence, mediaPresence))
 	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
 	isGroupThread := int64(1)
@@ -641,14 +703,14 @@ func (m *MetaClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.Matri
 	if msg.IsTyping {
 		isTyping = 1
 	}
-	return m.Client.ExecuteStatelessTask(ctx, &socket.UpdatePresenceTask{
+	return wrapMetaError(m.Client.ExecuteStatelessTask(ctx, &socket.UpdatePresenceTask{
 		ThreadKey:     threadID,
 		IsGroupThread: isGroupThread,
 		IsTyping:      isTyping,
 		Attribution:   0,
 		SyncGroup:     1,
 		ThreadType:    int64(portalMeta.ThreadType),
-	})
+	}))
 }
 
 func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.MatrixDeleteChat) error {
@@ -662,6 +724,25 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		Bool("is_whatsapp_e2ee", portalMeta.ThreadType.IsWhatsApp()).
 		Msg("Deleting chat")
 
+	if chat.Portal.RoomType != database.RoomTypeDM {
+		memberInfo, err := t.Main.Bridge.Matrix.GetMemberInfo(ctx, chat.Portal.MXID, t.UserLogin.UserMXID)
+		if err != nil {
+			return fmt.Errorf("failed to get own member info: %w", err)
+		} else if memberInfo.Membership == event.MembershipJoin {
+			if portalMeta.ThreadType == table.ENCRYPTED_OVER_WA_GROUP {
+				err = t.E2EEClient.LeaveGroup(ctx, portalMeta.JID(chat.Portal.ID))
+			} else {
+				_, err = t.Client.ExecuteTasks(ctx, &socket.RemoveParticipantTask{
+					ThreadID:  threadID,
+					ContactID: metaid.ParseUserLoginID(t.UserLogin.ID),
+				})
+			}
+			if err != nil {
+				return wrapMetaError(fmt.Errorf("failed to leave group before deleting chat: %w", err))
+			}
+		}
+	}
+
 	syncGroup := int64(1)
 	if portalMeta.ThreadType.IsWhatsApp() && portalMeta.FBThreadKey != 0 {
 		threadID = portalMeta.FBThreadKey
@@ -672,7 +753,7 @@ func (t *MetaClient) HandleMatrixDeleteChat(ctx context.Context, chat *bridgev2.
 		RemoveType: 0,
 		SyncGroup:  syncGroup,
 	})
-	return err
+	return wrapMetaError(err)
 }
 
 func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *bridgev2.MatrixAcceptMessageRequest) error {
@@ -696,7 +777,7 @@ func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *
 		ThreadKey: threadKey,
 		SyncGroup: 95,
 	})
-	return err
+	return wrapMetaError(err)
 }
 
 func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
@@ -709,7 +790,7 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 		SyncGroup:  1,
 	})
 	if err != nil {
-		return false, err
+		return false, wrapMetaError(err)
 	}
 	return true, nil
 }
@@ -735,7 +816,7 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 			MediaData: data,
 		})
 		if err != nil {
-			return false, fmt.Errorf("failed to upload avatar: %w", err)
+			return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
 		}
 
 		imageID = resp.Payload.RealMetadata.GetFbId()
@@ -749,15 +830,15 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		SyncGroup: 1,
 	})
 	if err != nil {
-		return false, err
+		return false, wrapMetaError(err)
 	}
 	// TODO update portal metadata
 	return true, nil
 }
 
 func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
-	if msg.Portal.RoomType == database.RoomTypeDM {
-		return nil, errors.New("cannot change members for DM")
+	if (msg.Type.IsSelf && msg.OrigSender != nil) || msg.Portal.RoomType == database.RoomTypeDM {
+		return nil, nil
 	}
 
 	var targetID int64
@@ -783,12 +864,14 @@ func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.M
 			action = whatsmeow.ParticipantChangeAdd
 		case bridgev2.Kick:
 			action = whatsmeow.ParticipantChangeRemove
+		case bridgev2.Leave:
+			return nil, wrapMetaError(m.E2EEClient.LeaveGroup(ctx, portalJID))
 		default:
 			return nil, nil
 		}
 		resp, err := m.E2EEClient.UpdateGroupParticipants(ctx, portalJID, []waTypes.JID{targetJID}, action)
 		if err != nil {
-			return nil, err
+			return nil, wrapMetaError(err)
 		} else if len(resp) == 0 {
 			return nil, fmt.Errorf("no response for participant change")
 		} else if resp[0].Error != 0 {
@@ -806,7 +889,7 @@ func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.M
 			ContactIDs: []int64{targetID},
 			SyncGroup:  1,
 		}
-	case bridgev2.Kick:
+	case bridgev2.Kick, bridgev2.Leave:
 		task = &socket.RemoveParticipantTask{
 			ThreadID:  threadID,
 			ContactID: targetID,
@@ -816,7 +899,7 @@ func (m *MetaClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.M
 	}
 	_, err := m.Client.ExecuteTasks(ctx, task)
 	if err != nil {
-		return nil, err
+		return nil, wrapMetaError(err)
 	}
 	return &bridgev2.MatrixMembershipResult{}, nil
 }
@@ -851,5 +934,5 @@ func (m *MetaClient) HandleMatrixBlockUser(ctx context.Context, msg *bridgev2.Ma
 			}
 		}
 	}
-	return err
+	return wrapMetaError(err)
 }

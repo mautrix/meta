@@ -43,17 +43,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-const (
-	instagramMobileAPIBase = "https://i.instagram.com/api/v1/"
-
-	// These values match the current first-party Android profile used by the
-	// official Instagram APK. They must be updated together.
-	instagramMobileAppVersion  = "446.0.0.49.77"
-	instagramMobileVersionCode = "385211303"
-	instagramMobileUserAgent   = "Instagram " + instagramMobileAppVersion +
-		" Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " +
-		instagramMobileVersionCode + ")"
-)
+const instagramMobileAPIBase = "https://i.instagram.com/api/v1/"
 
 type mobileLoginState struct {
 	PhoneID           string
@@ -240,7 +230,7 @@ func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginSt
 	if c.mobileLogin == nil {
 		// Web and app login sessions use different cookie jars.
 		c.cookies.UpdateValues(nil)
-		c.cookies.IGWWWClaim = ""
+		c.cookies.SetWWWClaim("")
 		var err error
 		c.mobileLogin, err = c.newMobileLoginState(ctx)
 		if err != nil {
@@ -259,7 +249,7 @@ func (c *Client) prepareMobilePasswordLogin(ctx context.Context) (*mobileLoginSt
 		ID:                    state.DeviceID,
 		ServerConfigRetrieval: "1",
 	}
-	response, _, requestErr := c.makeMobileSignedRequest(ctx, state, "qe/sync/", keyRequest)
+	response, _, requestErr := c.makeMobileSignedRequest(ctx, state, "launcher/sync/", keyRequest)
 	if response != nil {
 		if err := c.updateMobileLoginResponseState(ctx, state, response); err != nil {
 			return nil, err
@@ -311,7 +301,7 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 	headers := make(http.Header)
 	headers.Set("accept", "*/*")
 	headers.Set("accept-language", "en-US")
-	headers.Set("user-agent", instagramMobileUserAgent)
+	headers.Set("user-agent", useragent.IGAndroidUserAgent)
 	headers.Set("x-ig-app-locale", "en_US")
 	headers.Set("x-ig-device-locale", "en_US")
 	headers.Set("x-ig-mapped-locale", "en_US")
@@ -320,17 +310,15 @@ func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
 		"x-pigeon-rawclienttime",
 		strconv.FormatFloat(float64(time.Now().UnixMilli())/1000, 'f', 3, 64),
 	)
-	headers.Set("x-ig-app-startup-country", "US")
 	headers.Set("x-bloks-version-id", bloks.BloksVersionInstagramAndroid)
 	headers.Set("x-ig-www-claim", "0")
 	headers.Set("x-bloks-is-layout-rtl", "false")
-	headers.Set("x-bloks-is-panorama-enabled", "true")
 	headers.Set("x-ig-device-id", state.DeviceID)
 	headers.Set("x-ig-family-device-id", state.PhoneID)
 	headers.Set("x-ig-android-id", state.AndroidDeviceID)
 	headers.Set("x-ig-timezone-offset", strconv.Itoa(timezoneOffset))
 	headers.Set("x-ig-connection-type", "WIFI")
-	headers.Set("x-ig-capabilities", "3brTv10=")
+	headers.Set("x-ig-capabilities", useragent.IGAndroidCapabilities)
 	headers.Set("x-ig-app-id", useragent.IGAndroidAppID)
 	headers.Set("x-fb-http-engine", "Tigon/MNS/TCP")
 	headers.Set("x-tigon-is-retry", "False")

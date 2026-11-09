@@ -56,11 +56,18 @@ type IGClient struct {
 	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
 	stopChatBackfill      atomic.Pointer[context.CancelFunc]
 	chatBackfillLock      sync.Mutex
+	newLogin              bool
+	resyncChatsSince      atomic.Pointer[time.Time]
 	pushRegistrationLock  sync.Mutex
 	mailboxProcessed      atomic.Bool
+	resetReconnecting     atomic.Bool
 	waitMailboxProcessed  chan struct{}
 	permanentErrored      atomic.Bool
+	webPushStaleReported  atomic.Bool
+	webPushChecking       atomic.Bool
+	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
+	accountStateRechecks  atomic.Int32
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -75,6 +82,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		caughtUp:  exsync.NewEvent(),
 
 		pendingGroupCreations: exsync.NewSet[string](),
+		webPushCandidates:     exsync.NewSet[networkid.PortalID](),
 	}
 	c.mailboxProcessed.Store(true)
 	login.Client = c
@@ -85,6 +93,8 @@ var (
 	_ bridgev2.NetworkAPI                    = (*IGClient)(nil)
 	_ bridgev2.CredentialExportingNetworkAPI = (*IGClient)(nil)
 )
+
+var getProxyClient = &http.Client{Timeout: 30 * time.Second}
 
 type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
@@ -108,7 +118,7 @@ func (ic *IGConnector) getProxy(reason string) (string, error) {
 		return "", fmt.Errorf("failed to prepare request: %w", err)
 	}
 	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := getProxyClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
@@ -151,6 +161,7 @@ func (ic *IGClient) ExportCredentials(ctx context.Context) any {
 
 func (ic *IGClient) Connect(ctx context.Context) {
 	if ic.LoginMeta.Platform != types.Instagram {
+		ic.permanentErrored.Store(true)
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: MetaNotInstagram})
 		return
 	}
@@ -189,7 +200,6 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		} else if errors.Is(err, httpclient.ErrUserIDIsZero) {
 			state.Error = MetaUserIDIsZero
 		}
-		ic.Disconnect()
 		ic.LoginMeta.Cookies = nil
 		err = ic.UserLogin.Save(ctx)
 		if err != nil {
@@ -206,6 +216,7 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 		state = &status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGAccountSuspended,
+			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
 	} else if errors.Is(err, httpclient.ErrCheckpointRequired) {
@@ -222,9 +233,20 @@ func (ic *IGClient) errorToBridgeState(ctx context.Context, err error) (state *s
 			UserAction: status.UserActionRestart,
 			Info:       map[string]any{"open_url": httpclient.GetErrorRedirectURL(err)},
 		}
+	} else if errors.Is(err, types.ErrContentUnavailable) {
+		state = &status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      IGAccountRestricted,
+			UserAction: status.UserActionRestart,
+			Info:       map[string]any{"open_url": "https://www.instagram.com/"},
+		}
 	}
-	if state != nil {
+	if state != nil && !ic.permanentErrored.Load() {
+		ic.Disconnect()
 		ic.permanentErrored.Store(true)
+		if state.UserAction == status.UserActionRestart {
+			ic.scheduleAccountStateRecheck()
+		}
 	}
 	return
 }
@@ -305,13 +327,15 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 			stateEvt := status.StateUnknownError
 			if lsErr.ErrorCode == 1357053 {
 				stateEvt = status.StateBadCredentials
+				ic.permanentErrored.Store(true)
 			} else if attempts < MaxConnectRetries {
 				stateEvt = status.StateTransientDisconnect
 			}
 			ic.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
-				Message:    lsErr.Error(),
+				Message:    "Instagram returned an error while connecting",
+				Info:       map[string]any{"go_error": lsErr.Error()},
 			})
 			if stateEvt == status.StateTransientDisconnect {
 				ic.connectWithRetry(retryCtx, ctx, attempts+1)
@@ -397,7 +421,7 @@ func (ic *IGClient) Disconnect() {
 }
 
 func (ic *IGClient) IsLoggedIn() bool {
-	return ic.Client.IsAuthenticated() && !ic.permanentErrored.Load()
+	return ic.LoginMeta.Cookies != nil && !ic.permanentErrored.Load()
 }
 
 func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
@@ -437,6 +461,40 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 	}()
 }
 
+const accountStateRecheckBaseDelay = 5 * time.Minute
+
+func (ic *IGClient) scheduleAccountStateRecheck() {
+	attempt := ic.accountStateRechecks.Add(1) - 1
+	delay := accountStateRecheckBaseDelay << min(attempt, 8)
+	if maxDelay := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second; maxDelay > 0 && delay > maxDelay {
+		delay = maxDelay
+	}
+	ctx, cancel := context.WithCancel(ic.Main.Bridge.BackgroundCtx)
+	if oldCancel := ic.stopPeriodicReconnect.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	ic.UserLogin.Log.Info().Stringer("delay", delay).Msg("Scheduled reconnect to check if the account state was resolved")
+	go func() {
+		defer cancel()
+		select {
+		case <-time.After(delay):
+			ic.UserLogin.Log.Info().Msg("Reconnecting to check if the account state was resolved")
+			ic.FullReconnect(false, true)
+		case <-ctx.Done():
+		}
+	}()
+}
+
+func (ic *IGClient) reconnectAfterNetworkReset() {
+	if !ic.resetReconnecting.CompareAndSwap(false, true) {
+		return
+	}
+	defer ic.resetReconnecting.Store(false)
+	ic.UserLogin.BridgeState.StopUnknownErrorReconnect()
+	ic.Disconnect()
+	ic.Connect(ic.UserLogin.Log.WithContext(ic.Main.Bridge.BackgroundCtx))
+}
+
 func (ic *IGClient) FullReconnect(seqIDOnly, reconnectionStateOnly bool) {
 	if ic.LoginMeta.Cookies == nil {
 		return
@@ -445,6 +503,11 @@ func (ic *IGClient) FullReconnect(seqIDOnly, reconnectionStateOnly bool) {
 	ic.Disconnect()
 	var err error
 	if seqIDOnly {
+		if _, seqTS, err := ic.Main.DB.GetIGSeqID(ctx, ic.UserLogin.ID); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to get seq ID before deleting it")
+		} else if !seqTS.IsZero() {
+			ic.resyncChatsSince.Store(&seqTS)
+		}
 		err = ic.Main.DB.DeleteIGSeqID(ctx, ic.UserLogin.ID)
 	} else if reconnectionStateOnly {
 		err = ic.Main.DB.DeleteReconnectionStateOnly(ctx, ic.UserLogin.ID)

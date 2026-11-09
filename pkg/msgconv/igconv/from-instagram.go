@@ -247,7 +247,7 @@ func (mc *MessageConverter) wrapLinkPreview(ctx context.Context, xma *slidetypes
 		realURL = parsedURL.Query().Get("u")
 	}
 	img := cmp.Or(xma.PreviewImage, xma.XMAPreviewImage)
-	if img == nil {
+	if img == nil || img.URL == "" {
 		return &event.BeeperLinkPreview{
 			LinkPreview: event.LinkPreview{
 				CanonicalURL: realURL,

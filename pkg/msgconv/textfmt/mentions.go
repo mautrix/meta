@@ -18,6 +18,7 @@ package textfmt
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"unicode/utf16"
 
@@ -51,9 +52,15 @@ func parseMetaMentions(ctx context.Context, text string, mentions []socket.Menti
 	outList := make([]*wrappedMention, 0, len(mentions))
 	prevEnd := 0
 	var output strings.Builder
+	var droppedSameOffset int
+	keptTypes := make(map[socket.MentionType]int)
+	droppedTypes := make(map[socket.MentionType]int)
 	for _, mention := range mentions {
 		if mention.Offset < prevEnd {
-			zerolog.Ctx(ctx).Warn().Msg("Ignoring overlapping mentions in message")
+			droppedTypes[mention.Type]++
+			if len(outList) > 0 && mention.Offset == outList[len(outList)-1].Offset {
+				droppedSameOffset++
+			}
 			continue
 		} else if mention.Offset >= len(utf16Text) {
 			zerolog.Ctx(ctx).Warn().Msg("Ignoring mention outside of message")
@@ -72,6 +79,16 @@ func parseMetaMentions(ctx context.Context, text string, mentions []socket.Menti
 			OrigText:    utf16Text[mention.Offset:end].String(),
 		})
 		prevEnd = end
+		keptTypes[mention.Type]++
+	}
+	if len(droppedTypes) > 0 {
+		zerolog.Ctx(ctx).Warn().
+			Int("mention_count", len(mentions)).
+			Int("dropped_same_offset", droppedSameOffset).
+			Bool("sorted", sort.IsSorted(socket.Mentions(mentions))).
+			Any("kept_types", keptTypes).
+			Any("dropped_types", droppedTypes).
+			Msg("Ignoring overlapping mentions in message")
 	}
 	output.WriteString(utf16Text[prevEnd:].String())
 	return output.String(), outList

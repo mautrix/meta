@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -16,7 +17,6 @@ import (
 	"maunium.net/go/mautrix/mediaproxy"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
-	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
@@ -80,7 +80,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 			if refreshErr != nil {
 				log.Warn().Err(refreshErr).Msg("Failed to refresh media URL")
 				// Return the original error if refresh failed
-				return nil, err
+				return nil, mediadl.WrapDirectMediaError(err)
 			}
 
 			log.Debug().Str("refreshed_url", refreshedURL).Msg("Successfully refreshed media URL")
@@ -88,7 +88,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 		}
 
 		if err != nil {
-			return nil, err
+			return nil, mediadl.WrapDirectMediaError(err)
 		}
 
 		return &mediaproxy.GetMediaResponseData{
@@ -105,12 +105,15 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 
 		ul := m.Bridge.GetCachedUserLoginByID(mediaInfo.UserID)
 		if ul == nil || !ul.Client.IsLoggedIn() {
-			return nil, fmt.Errorf("login %s not found for download", mediaInfo.UserID)
+			return nil, fmt.Errorf("%w: login %s not found for download", bridgev2.ErrNotLoggedIn, mediaInfo.UserID)
 		}
-		client := ul.Client.(*MetaClient)
+		e2eeClient := ul.Client.(*MetaClient).E2EEClient
+		if e2eeClient == nil {
+			return nil, fmt.Errorf("%w: e2ee client of %s not connected", bridgev2.ErrNotLoggedIn, mediaInfo.UserID)
+		}
 		return &mediaproxy.GetMediaResponseFile{
 			Callback: func(f *os.File) (*mediaproxy.FileMeta, error) {
-				return &mediaproxy.FileMeta{}, client.E2EEClient.DownloadToFile(ctx, info, f)
+				return &mediaproxy.FileMeta{}, e2eeClient.DownloadToFile(ctx, info, f)
 			},
 		}, nil
 	default:
@@ -138,6 +141,25 @@ func (m *MetaConnector) refreshMediaURL(
 	return "", fmt.Errorf("no refresh identifiers available")
 }
 
+func (m *MetaConnector) getAlreadyRefreshedURL(ctx context.Context, msg *database.Message, info *mediadl.DirectMediaMeta) string {
+	current, err := m.Bridge.DB.Message.GetPartByID(ctx, msg.Room.Receiver, msg.ID, msg.PartID)
+	if err != nil || current == nil {
+		return ""
+	}
+	meta, ok := current.Metadata.(*metaid.MessageMetadata)
+	if !ok || meta.DirectMediaMeta == nil {
+		return ""
+	}
+	var dmm mediadl.DirectMediaMeta
+	if json.Unmarshal(meta.DirectMediaMeta, &dmm) != nil ||
+		dmm.AttachmentFBID != info.AttachmentFBID ||
+		dmm.URL == info.URL ||
+		time.Now().After(dmm.ExpiresAt.Add(-5*time.Minute)) {
+		return ""
+	}
+	return dmm.URL
+}
+
 // refreshBlobMedia re-fetches messages to get fresh attachment URLs.
 // It updates all fetched messages in the database, not just the one we need.
 func (m *MetaConnector) refreshBlobMedia(
@@ -148,10 +170,15 @@ func (m *MetaConnector) refreshBlobMedia(
 ) (string, error) {
 	log := zerolog.Ctx(ctx)
 
-	// Parse thread key from portal ID
-	threadKey := metaid.ParseFBPortalID(msg.Room.ID)
+	threadKey := msg.Metadata.(*metaid.MessageMetadata).GetFBThreadKey(msg.Room.ID)
 	if threadKey == 0 {
 		return "", fmt.Errorf("invalid thread key")
+	}
+
+	client.mediaRefreshLock.Lock(threadKey)
+	defer client.mediaRefreshLock.Unlock(threadKey)
+	if freshURL := m.getAlreadyRefreshedURL(ctx, msg, info); freshURL != "" {
+		return freshURL, nil
 	}
 
 	// Parse message ID for the target message
@@ -168,11 +195,23 @@ func (m *MetaConnector) refreshBlobMedia(
 		Int("part_index", info.PartIndex).
 		Msg("Refreshing blob media by re-fetching messages")
 
+	doneCh := make(chan struct{})
+	collector := &BackfillCollector{
+		MaxMessages: 1,
+		Done: sync.OnceFunc(func() {
+			close(doneCh)
+		}),
+	}
+	if !client.addBackfillCollector(threadKey, collector) {
+		return "", fmt.Errorf("backfill collector already exists for thread %d", threadKey)
+	}
+	defer client.removeBackfillCollector(threadKey, collector)
+
 	// Re-fetch messages around the target
-	resp, err := client.Client.ExecuteTasks(ctx, &socket.FetchMessagesTask{
+	_, err := client.Client.ExecuteTasks(ctx, &socket.FetchMessagesTask{
 		ThreadKey:            threadKey,
 		Direction:            0,
-		ReferenceTimestampMs: msg.Timestamp.UnixMilli(),
+		ReferenceTimestampMs: msg.Timestamp.UnixMilli() + 1,
 		ReferenceMessageId:   fbMsgID.ID,
 		SyncGroup:            1,
 		Cursor:               client.Client.GetCursor(1),
@@ -180,14 +219,14 @@ func (m *MetaConnector) refreshBlobMedia(
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch messages: %w", err)
 	}
-
-	// Collect all fetched messages
-	upsertMap, insertMsgs := resp.WrapMessages()
-	var allMessages []*table.WrappedMessage
-	for _, upsert := range upsertMap {
-		allMessages = append(allMessages, upsert.Messages...)
+	select {
+	case <-doneCh:
+	case <-time.After(BackfillForwardTimeout):
+		return "", fmt.Errorf("timed out waiting for re-fetched messages")
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	allMessages = append(allMessages, insertMsgs...)
+	allMessages := collector.UpsertMessages.Messages
 
 	var resultURL string
 	var updatedCount int
@@ -215,6 +254,22 @@ func (m *MetaConnector) refreshBlobMedia(
 		}
 
 		for _, att := range wrappedMsg.Attachments {
+			if att.AttachmentFbid == "" {
+				continue
+			}
+			url := att.PlayableUrl
+			expiry := att.PlayableUrlExpirationTimestampMs
+			if url == "" {
+				url = att.PreviewUrl
+				expiry = att.PreviewUrlExpirationTimestampMs
+			}
+			if url != "" {
+				attachmentURLs[att.AttachmentFbid] = url
+				attachmentExpiry[att.AttachmentFbid] = time.UnixMilli(expiry)
+			}
+		}
+
+		for _, att := range wrappedMsg.XMAAttachments {
 			if att.AttachmentFbid == "" {
 				continue
 			}

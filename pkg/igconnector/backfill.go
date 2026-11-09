@@ -57,6 +57,10 @@ func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.Fe
 			Any("thread_response", resp.ThreadInfo.AsIGDirectThread).
 			Msg("Response for initial thread fetch")
 		thread = resp.ThreadInfo.AsIGDirectThread
+		if thread == nil {
+			zerolog.Ctx(ctx).Debug().Msg("No thread info received for forward backfill")
+			return &bridgev2.FetchMessagesResponse{}, nil
+		}
 		params.Portal.UpdateInfo(ctx, ic.wrapChatInfo(thread), ic.UserLogin, nil, time.Time{})
 	}
 	canBackwardsBackfill := params.AnchorMessage == nil && ic.Main.Bridge.Config.Backfill.Queue.AnyEnabled()
@@ -113,19 +117,23 @@ func (ic *IGClient) fetchForwardBackfill(ctx context.Context, params bridgev2.Fe
 		appendMessages(resp.ThreadInfo.AsIGDirectThread.Messages)
 	}
 	var markRead bool
+	var readUpTo time.Time
 	for _, rr := range thread.SlideReadReceipts {
 		if metaid.MakeUserLoginID(rr.ParticipantFBID) == ic.UserLogin.ID {
-			markRead = !rr.WatermarkTimestampMS.Before(thread.LastActivityTimestampMS.Time)
+			readUpTo = rr.WatermarkTimestampMS.Time
+			markRead = !readUpTo.Before(thread.LastActivityTimestampMS.Time)
 			break
 		}
 	}
 	if thread.MarkedAsUnread {
 		markRead = false
+		readUpTo = time.Time{}
 	}
 	return &bridgev2.FetchMessagesResponse{
 		Messages: ic.wrapBackfillMessages(ctx, params.Portal, messages),
 		Forward:  true,
 		MarkRead: markRead,
+		ReadUpTo: readUpTo,
 	}, ctx.Err()
 }
 

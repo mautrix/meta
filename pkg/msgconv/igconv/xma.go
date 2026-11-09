@@ -64,10 +64,11 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 		captionHTML += fmt.Sprintf("<blockquote>%s</blockquote>", html.EscapeString(xma.EyebrowText))
 	}
 	if xma.TitleText != "" {
-		if len(xma.TitleText) > 110 {
-			xma.TitleText = xma.TitleText[:100] + "…"
+		title := xma.TitleText
+		if titleRunes := []rune(title); len(titleRunes) > 110 {
+			title = string(titleRunes[:100]) + "…"
 		}
-		captionHTML += fmt.Sprintf("<strong>%s</strong>", html.EscapeString(xma.TitleText))
+		captionHTML += fmt.Sprintf("<strong>%s</strong>", html.EscapeString(title))
 	}
 	if xma.SubtitleText != "" {
 		captionHTML += fmt.Sprintf("<br>%s", html.EscapeString(xma.SubtitleText))
@@ -77,6 +78,9 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	}
 
 	targetURL, err := url.Parse(xma.TargetURL)
+	if err == nil {
+		targetURL = unwrapLinkShim(targetURL)
+	}
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
 	} else if targetURL.String() != "" {
@@ -87,7 +91,43 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	if captionHTML == "" {
 		return nil
 	}
+	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons)
 	return ptr.Ptr(format.HTMLToContent(captionHTML))
+}
+
+func unwrapLinkShim(u *url.URL) *url.URL {
+	if u.Host == "l.facebook.com" {
+		if realURL, err := url.Parse(u.Query().Get("u")); err == nil && realURL.String() != "" {
+			return realURL
+		}
+	}
+	return u
+}
+
+func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton) string {
+	var links, buttons []string
+	for _, cta := range ctas {
+		if cta == nil || cta.Title == "" {
+			continue
+		}
+		actionURL, err := url.Parse(cta.ActionURL)
+		if err == nil {
+			actionURL = unwrapLinkShim(actionURL)
+		}
+		if err == nil && (actionURL.Scheme == "https" || actionURL.Scheme == "http") {
+			links = append(links, fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
+		} else {
+			buttons = append(buttons, html.EscapeString(cta.Title))
+		}
+	}
+	var out string
+	if len(links) > 0 {
+		out += fmt.Sprintf("<p>%s</p>", strings.Join(links, " - "))
+	}
+	if len(buttons) > 0 {
+		out += fmt.Sprintf("<p>%s<br>Use the Instagram app to click buttons</p>", strings.Join(buttons, " - "))
+	}
+	return out
 }
 
 func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {
@@ -108,14 +148,24 @@ func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMACont
 		}
 	}
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
+	captionPart := mc.wrapXMACaption(ctx, xma)
+	if previewPart != nil && captionPart == nil {
+		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons); buttonsHTML != "" {
+			captionPart = ptr.Ptr(format.HTMLToContent(buttonsHTML))
+		}
+	}
 	if previewPart == nil {
 		if captionPart == nil {
 			return nil
 		}
-		return &bridgev2.ConvertedMessagePart{
+		part := &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: captionPart,
 		}
+		if xma.TitleText != "" {
+			part.Extra = map[string]any{"com.beeper.meta.full_post_title": xma.TitleText}
+		}
+		return part
 	} else if captionPart != nil {
 		previewPart.Content.EnsureHasHTML()
 		previewPart.Content.Body = captionPart.Body
@@ -136,8 +186,9 @@ func isNumeric(str string) bool {
 }
 
 type UnresolvedMediaContent struct {
-	Kind string                     `json:"kind"`
-	Base *event.MessageEventContent `json:"fi.mau.instagram.base_part,omitempty"`
+	Kind      string                     `json:"kind"`
+	Base      *event.MessageEventContent `json:"fi.mau.instagram.base_part,omitempty"`
+	FullTitle string                     `json:"fi.mau.instagram.full_title,omitempty"`
 }
 
 func filterUnresolvedMediaContent(content *event.MessageEventContent) *event.MessageEventContent {
@@ -159,6 +210,9 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 		basePart.Extra = make(map[string]any)
 	}
 	basePart.Extra["external_url"] = xma.TargetURL
+	if xma.TitleText != "" {
+		basePart.Extra["com.beeper.meta.full_post_title"] = xma.TitleText
+	}
 	targetID, _ := strconv.ParseInt(xma.TargetID, 10, 64)
 	targetURL, _ := url.Parse(xma.TargetURL)
 	if targetURL == nil {
@@ -177,8 +231,9 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 	if !mediadl.ShouldFetchXMA(ctx) {
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "skip"
 		basePart.Extra["com.beeper.unresolved_media"] = &UnresolvedMediaContent{
-			Kind: "permanent",
-			Base: filterUnresolvedMediaContent(basePart.Content),
+			Kind:      "permanent",
+			Base:      filterUnresolvedMediaContent(basePart.Content),
+			FullTitle: xma.TitleText,
 		}
 		basePart.DBMetadata.(*metaid.MessageMetadata).XMAFetchMeta = &metaid.XMAFetchMeta{
 			TargetURL: xma.TargetURL,
@@ -203,6 +258,9 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 			Msg("Failed to fetch XMA item")
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = fetchStatus
 		return basePart
+	}
+	if xma.TitleText != "" {
+		resultPart.Extra["com.beeper.meta.full_post_title"] = xma.TitleText
 	}
 	return resultPart
 }
@@ -251,6 +309,9 @@ func (mc *MessageConverter) FetchUnresolvedXMA(
 	if err != nil {
 		return nil, err
 	}
+	if unresolvedMediaContent.FullTitle != "" {
+		resultPart.Extra["com.beeper.meta.full_post_title"] = unresolvedMediaContent.FullTitle
+	}
 	editPart := resultPart.ToEditPart(msg)
 	if editPart.TopLevelExtra == nil {
 		editPart.TopLevelExtra = make(map[string]any)
@@ -278,7 +339,7 @@ func (mc *MessageConverter) fetchXMAStory(
 	}
 	var targetItem *responses.ReelItem
 	for _, item := range reel.Items {
-		if item.Pk == mediaID {
+		if item.Pk.String() == mediaID {
 			targetItem = item
 			break
 		}

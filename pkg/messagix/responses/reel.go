@@ -1,5 +1,7 @@
 package responses
 
+import "encoding/json"
+
 /*
 Reel info is mapped by the reel id
 */
@@ -10,33 +12,33 @@ type ReelInfoResponse struct {
 }
 
 type ReelInfo struct {
-	ID                          string      `json:"id,omitempty"`
-	StrongID                    string      `json:"strong_id__,omitempty"`
-	LatestReelMedia             int         `json:"latest_reel_media,omitempty"`
-	ExpiringAt                  int         `json:"expiring_at,omitempty"`
-	Seen                        int         `json:"seen,omitempty"`
-	CanReply                    bool        `json:"can_reply,omitempty"`
-	CanGifQuickReply            bool        `json:"can_gif_quick_reply,omitempty"`
-	CanReshare                  bool        `json:"can_reshare,omitempty"`
-	CanReactWithAvatar          bool        `json:"can_react_with_avatar,omitempty"`
-	ReelType                    string      `json:"reel_type,omitempty"`
-	AdExpiryTimestampInMillis   any         `json:"ad_expiry_timestamp_in_millis,omitempty"`
-	IsCtaStickerAvailable       any         `json:"is_cta_sticker_available,omitempty"`
-	AppStickerInfo              any         `json:"app_sticker_info,omitempty"`
-	ShouldTreatLinkStickerAsCta any         `json:"should_treat_link_sticker_as_cta,omitempty"`
-	CoverMedia                  CoverMedia  `json:"cover_media,omitempty"`
-	User                        *User       `json:"user,omitempty"`
-	Items                       []*ReelItem `json:"items,omitempty"`
-	Title                       string      `json:"title,omitempty"`
-	CreatedAt                   int         `json:"created_at,omitempty"`
-	IsPinnedHighlight           bool        `json:"is_pinned_highlight,omitempty"`
-	PrefetchCount               int         `json:"prefetch_count,omitempty"`
-	MediaCount                  int         `json:"media_count,omitempty"`
-	MediaIds                    []string    `json:"media_ids,omitempty"`
-	IsCacheable                 bool        `json:"is_cacheable,omitempty"`
-	IsConvertedToClips          bool        `json:"is_converted_to_clips,omitempty"`
-	DisabledReplyTypes          []string    `json:"disabled_reply_types,omitempty"`
-	HighlightReelType           string      `json:"highlight_reel_type,omitempty"`
+	ID                          any           `json:"id,omitempty"`
+	StrongID                    string        `json:"strong_id__,omitempty"`
+	LatestReelMedia             int           `json:"latest_reel_media,omitempty"`
+	ExpiringAt                  int           `json:"expiring_at,omitempty"`
+	Seen                        int           `json:"seen,omitempty"`
+	CanReply                    bool          `json:"can_reply,omitempty"`
+	CanGifQuickReply            bool          `json:"can_gif_quick_reply,omitempty"`
+	CanReshare                  bool          `json:"can_reshare,omitempty"`
+	CanReactWithAvatar          bool          `json:"can_react_with_avatar,omitempty"`
+	ReelType                    string        `json:"reel_type,omitempty"`
+	AdExpiryTimestampInMillis   any           `json:"ad_expiry_timestamp_in_millis,omitempty"`
+	IsCtaStickerAvailable       any           `json:"is_cta_sticker_available,omitempty"`
+	AppStickerInfo              any           `json:"app_sticker_info,omitempty"`
+	ShouldTreatLinkStickerAsCta any           `json:"should_treat_link_sticker_as_cta,omitempty"`
+	CoverMedia                  CoverMedia    `json:"cover_media,omitempty"`
+	User                        *User         `json:"user,omitempty"`
+	Items                       []*ReelItem   `json:"items,omitempty"`
+	Title                       string        `json:"title,omitempty"`
+	CreatedAt                   int           `json:"created_at,omitempty"`
+	IsPinnedHighlight           bool          `json:"is_pinned_highlight,omitempty"`
+	PrefetchCount               int           `json:"prefetch_count,omitempty"`
+	MediaCount                  int           `json:"media_count,omitempty"`
+	MediaIds                    []json.Number `json:"media_ids,omitempty"`
+	IsCacheable                 bool          `json:"is_cacheable,omitempty"`
+	IsConvertedToClips          bool          `json:"is_converted_to_clips,omitempty"`
+	DisabledReplyTypes          []string      `json:"disabled_reply_types,omitempty"`
+	HighlightReelType           string        `json:"highlight_reel_type,omitempty"`
 }
 type CoverMedia struct {
 	CropRect            []float64 `json:"crop_rect,omitempty"`

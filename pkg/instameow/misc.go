@@ -120,16 +120,20 @@ func (c *Client) FetchReel(ctx context.Context, reelIDs []string, mediaID string
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin")
 	h.Set("X-Web-Session-ID", c.configs.WebSessionID)
-	query := url.Values{}
+	h.Set("x-instagram-ajax", c.configs.BrowserConfigTable.InstagramWebPushInfo.RolloutHash)
+	reelIDsJSON, err := json.Marshal(reelIDs)
+	if err != nil {
+		return nil, err
+	}
+	form := url.Values{}
 	if mediaID != "" {
-		query.Add("media_id", mediaID)
+		form.Set("media_id", mediaID)
 	}
-	for _, id := range reelIDs {
-		query.Add("reel_ids", id)
-	}
+	form.Set("reel_ids", string(reelIDsJSON))
+	form.Set("fb_dtsg", c.configs.BrowserConfigTable.DTSGInitData.Token)
+	form.Set("jazoest", c.configs.Jazoest)
 
-	reqURL := c.GetEndpoint("reels_media") + query.Encode()
-	resp, respBody, err := c.http.MakeRequest(ctx, reqURL, http.MethodGet, h, nil, types.NONE)
+	resp, respBody, err := c.http.MakeRequest(ctx, c.GetEndpoint("reels_media"), http.MethodPost, h, []byte(form.Encode()), types.FORM)
 	if err != nil {
 		c.checkResponseError(err)
 		return nil, fmt.Errorf("failed to fetch reels by ids %v: %w", reelIDs, err)

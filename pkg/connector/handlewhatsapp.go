@@ -3,8 +3,10 @@ package connector
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
+	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -32,10 +34,28 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Any("ig_transport", evt.IGTransport).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
+		if armadillo, ok := evt.Message.(*waArmadilloApplication.Armadillo); ok && evt.Info.IsFromMe {
+			if metadataSync := armadillo.GetPayload().GetApplicationData().GetMetadataSync(); metadataSync != nil {
+				return m.handleWAMetadataSync(metadataSync)
+			}
+		}
 		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
 			return false
 		}
 		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
+	case *events.UndecryptableMessage:
+		log.Debug().
+			Any("info", evt.Info).
+			Bool("unavailable", evt.IsUnavailable).
+			Str("decrypt_fail", string(evt.DecryptFailMode)).
+			Msg("Received undecryptable WhatsApp message")
+		if evt.DecryptFailMode == events.DecryptFailHide {
+			return true
+		}
+		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
+			return false
+		}
+		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAUndecryptableMessage{UndecryptableMessage: evt, m: m}).Success
 	case *events.ChatPresence:
 		m.handleWAChatPresence(m.Main.Bridge.BackgroundCtx, evt)
 	case *events.Receipt:
@@ -80,8 +100,17 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		m.e2eeConnectWaiter.Set()
+		m.e2eeLogoutRetried.Store(false)
 		m.waState = status.BridgeState{StateEvent: status.StateConnected}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
+		if m.waLastPresence == waTypes.PresenceAvailable {
+			go func() {
+				err := m.updateWAPresence(m.Main.Bridge.BackgroundCtx, waTypes.PresenceAvailable)
+				if err != nil {
+					log.Warn().Err(err).Msg("Failed to restore presence after connecting")
+				}
+			}()
+		}
 	case *events.Disconnected:
 		log.Debug().Msg("Disconnected from WhatsApp socket")
 		m.e2eeConnectWaiter.Clear()
@@ -89,7 +118,7 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			StateEvent: status.StateTransientDisconnect,
 			Error:      WADisconnected,
 		}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
 	case *events.CATRefreshError:
 		if errors.Is(evt.Error, types.ErrPleaseReloadPage) && m.canReconnect() {
 			log.Err(evt.Error).Msg("Got CATRefreshError, reloading page")
@@ -101,17 +130,24 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Error:      WACATError,
 			Message:    evt.PermanentDisconnectDescription(),
 		}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
 		if m.canReconnect() {
 			go m.FullReconnect()
+		} else {
+			m.scheduleE2EEReconnect()
 		}
 	case events.PermanentDisconnect:
+		retryE2EE := false
 		switch e := evt.(type) {
 		case *events.LoggedOut:
 			if e.Reason == events.ConnectFailureLoggedOut && !e.OnConnect && m.canReconnect() {
 				m.resetWADevice()
 				log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
 				go m.FullReconnect()
+			} else if !m.e2eeLogoutRetried.Swap(true) {
+				// Each retry registers a new device, so only retry once per connection.
+				m.resetWADevice()
+				retryE2EE = true
 			}
 		case *events.ConnectFailure:
 			if e.Reason == events.ConnectFailureNotFound {
@@ -134,6 +170,8 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 				// WhatsApp 400 errors have been observed after outages, likely caused by the CAT being somehow wrong, do a full reconnect to get a new one
 				log.Debug().Msg("Doing full reconnect after WhatsApp 400 error")
 				go m.FullReconnect()
+			} else {
+				retryE2EE = true
 			}
 		}
 
@@ -142,7 +180,10 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Error:      WAPermanentError,
 			Message:    evt.PermanentDisconnectDescription(),
 		}
-		m.UserLogin.BridgeState.Send(m.waState)
+		m.sendBridgeState(m.waState)
+		if retryE2EE {
+			m.scheduleE2EEReconnect()
+		}
 	case *events.GroupInfo:
 		portalKey := m.makeWAPortalKey(evt.JID)
 		memberChanges := &bridgev2.ChatMemberList{
@@ -204,4 +245,35 @@ func (m *MetaClient) handleWAChatPresence(ctx context.Context, evt *events.ChatP
 		Timeout: timeout,
 		Type:    typingType,
 	})
+}
+
+func (m *MetaClient) handleWAMetadataSync(sync *waArmadilloApplication.Armadillo_ApplicationData_MetadataSyncNotification) bool {
+	log := m.UserLogin.Log
+	for _, action := range sync.GetActions() {
+		chatAction := action.GetChatAction()
+		if chatAction.GetChatDelete() == nil {
+			log.Debug().Type("action_type", action.GetActionType()).Msg("Ignoring unsupported metadata sync action")
+			continue
+		}
+		chatID := chatAction.GetChatID()
+		if !strings.ContainsRune(chatID, '@') {
+			chatID += "@" + waTypes.MessengerServer
+		}
+		chatJID, err := waTypes.ParseJID(chatID)
+		if err != nil {
+			log.Warn().Err(err).Str("chat_id", chatAction.GetChatID()).Msg("Failed to parse chat ID in metadata sync chat delete")
+			continue
+		}
+		log.Debug().Stringer("chat_jid", chatJID).Msg("Handling chat delete from metadata sync")
+		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.ChatDelete{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatDelete,
+				PortalKey: m.makeWAPortalKey(chatJID),
+			},
+			OnlyForMe: true,
+		}).Success {
+			return false
+		}
+	}
+	return true
 }

@@ -25,6 +25,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exslices"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
@@ -53,7 +54,7 @@ func (ic *IGClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 
 	id, err := metaid.ParseIDFromString(identifier)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse identifier: %w", err)
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("failed to parse identifier: %w", err), mautrix.MInvalidParam)
 	}
 	userID := metaid.MakeUserID(id)
 	ghost, err := ic.Main.Bridge.GetGhostByID(ctx, userID)
@@ -88,11 +89,11 @@ func (ic *IGClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 				PortalInfo: ic.makeMinimalDMInfo(id),
 			}
 		} else if err != nil {
-			return nil, fmt.Errorf("failed to get DM chat ID for user %d: %w", id, err)
+			return nil, wrapInstagramRespError(fmt.Errorf("failed to get DM chat ID for user %d: %w", id, err))
 		} else {
 			resp, err := ic.Client.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(igChatID))
 			if err != nil {
-				return nil, fmt.Errorf("failed to get DM chat info with %d: %w", id, err)
+				return nil, wrapInstagramRespError(fmt.Errorf("failed to get DM chat info with %d: %w", id, err))
 			}
 			chatInfo := ic.wrapChatInfo(resp.ThreadInfo.AsIGDirectThread)
 			if chatInfo.Members != nil {
@@ -122,7 +123,7 @@ func (ic *IGClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCreat
 		OfflineThreadingID: otid,
 	})
 	if err != nil {
-		return nil, err
+		return nil, wrapInstagramRespError(err)
 	}
 	idInt, err := strconv.ParseInt(resp.Data.ID, 10, 64)
 	if err != nil {
@@ -164,7 +165,7 @@ func (ic *IGClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 	}
 	resp, err := ic.Client.SearchUsers(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, wrapInstagramRespError(err)
 	}
 
 	users := make([]*bridgev2.ResolveIdentifierResponse, len(resp.Data.Results))

@@ -17,6 +17,7 @@
 package msgconv
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -42,12 +43,14 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
+	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
@@ -149,7 +152,7 @@ var (
 	_ whatsmeow.MediaTypeable       = (*DirectMediaWhatsApp)(nil)
 )
 
-type convertFunc func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error)
+type convertFunc func(ctx context.Context, data []byte, mimeType, fileName string) ([]byte, string, string, error)
 
 type userVisibleError struct {
 	Message string
@@ -168,6 +171,7 @@ func convertWhatsAppAttachment[
 	mc *MessageConverter,
 	msg AttachmentMessage[Integral, Ancillary, Transport],
 	mediaType whatsmeow.MediaType,
+	fileName string,
 	convert convertFunc,
 ) (metadata Ancillary, media, caption *bridgev2.ConvertedMessagePart, err error) {
 	var typedTransport Transport
@@ -177,8 +181,9 @@ func convertWhatsAppAttachment[
 	}
 	untypedTransport := any(typedTransport)
 	if stickerTransport, ok := untypedTransport.(*waMediaTransport.StickerTransport); ok {
-		if stickerTransport.Ancillary.GetReceiverFetchID() != "" {
-			err = userVisibleError{Message: "Unsupported sticker, view in Messenger"}
+		if receiverFetchID := stickerTransport.Ancillary.GetReceiverFetchID(); receiverFetchID != "" {
+			metadata = typedTransport.GetAncillary()
+			media, err = mc.reuploadReceiverFetchSticker(ctx, receiverFetchID)
 			return
 		}
 	}
@@ -189,19 +194,45 @@ func convertWhatsAppAttachment[
 	}
 	metadata = typedTransport.GetAncillary()
 	transport := typedTransport.GetIntegral().GetTransport()
-	media, err = mc.reuploadWhatsAppAttachment(ctx, transport, mediaType, convert)
+	media, err = mc.reuploadWhatsAppAttachment(ctx, transport, mediaType, fileName, convert)
 	return
+}
+
+func (mc *MessageConverter) reuploadReceiverFetchSticker(ctx context.Context, receiverFetchID string) (*bridgev2.ConvertedMessagePart, error) {
+	client := ctx.Value(mediadl.ContextKeyFBClient).(*messagix.Client)
+	media, err := client.FetchReceiverFetchMedia(ctx, receiverFetchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch sticker %s: %w", receiverFetchID, err)
+	}
+	return mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
+		AttachmentType: table.AttachmentTypeSticker,
+		URL:            media.URL,
+		MimeType:       media.MimeType,
+		Width:          media.Width,
+		Height:         media.Height,
+		MaxFileSize:    mc.MaxFileSize,
+	})
 }
 
 func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	ctx context.Context,
 	transport *waMediaTransport.WAMediaTransport,
 	mediaType whatsmeow.MediaType,
+	fileName string,
 	convert convertFunc,
 ) (*bridgev2.ConvertedMessagePart, error) {
 	client := ctx.Value(mediadl.ContextKeyWAClient).(*whatsmeow.Client)
 	intent := ctx.Value(mediadl.ContextKeyIntent).(bridgev2.MatrixAPI)
 	portal := ctx.Value(mediadl.ContextKeyPortal).(*bridgev2.Portal)
+	paths, _ := ctx.Value(mediadl.ContextKeyWAMediaPaths).(map[string]string)
+	if path := paths[transport.GetAncillary().GetObjectID()]; path != "" && transport.GetIntegral() != nil {
+		transport = proto.CloneOf(transport)
+		transport.Integral.DirectPath = proto.String(path)
+	}
+	mimeType := transport.GetAncillary().GetMimetype()
+	if !strings.ContainsRune(fileName, '.') {
+		fileName += exmime.ExtensionFromMimetype(mimeType)
+	}
 
 	if mc.DirectMedia {
 		msgID := ctx.Value(mediadl.ContextKeyMsgID).(networkid.MessageID)
@@ -216,8 +247,9 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		}
 		mediaID := metaid.MakeMediaID(metaid.DirectMediaTypeWhatsAppV2, loginID, msgID, partID)
 		content := &event.MessageEventContent{
+			Body: fileName,
 			Info: &event.FileInfo{
-				MimeType: transport.GetAncillary().GetMimetype(),
+				MimeType: mimeType,
 				Size:     int(transport.GetAncillary().GetFileLength()),
 			},
 		}
@@ -231,7 +263,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 			Type:       mediaType,
 			SHA256:     transport.Integral.FileSHA256,
 			EncSHA256:  transport.Integral.FileEncSHA256,
-			DirectPath: *transport.Integral.DirectPath,
+			DirectPath: transport.GetIntegral().GetDirectPath(),
 		})
 		if err != nil {
 			return nil, err
@@ -249,10 +281,8 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
-	var fileName string
-	mimeType := transport.GetAncillary().GetMimetype()
 	if convert != nil {
-		data, mimeType, fileName, err = convert(ctx, data, mimeType)
+		data, mimeType, fileName, err = convert(ctx, data, mimeType, fileName)
 		if err != nil {
 			return nil, err
 		}
@@ -277,10 +307,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 }
 
 func (mc *MessageConverter) convertWhatsAppImage(ctx context.Context, image *waConsumerApplication.ConsumerApplication_ImageMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
-	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.ImageTransport](ctx, mc, image, whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-		fileName := "image" + exmime.ExtensionFromMimetype(mimeType)
-		return data, mimeType, fileName, nil
-	})
+	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.ImageTransport](ctx, mc, image, whatsmeow.MediaImage, "image", nil)
 	addImageMetadata(converted, metadata)
 	return
 }
@@ -295,10 +322,7 @@ func addImageMetadata(converted *bridgev2.ConvertedMessagePart, metadata *waMedi
 }
 
 func (mc *MessageConverter) convertWhatsAppSticker(ctx context.Context, sticker *waConsumerApplication.ConsumerApplication_StickerMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
-	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.StickerTransport](ctx, mc, sticker, whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-		fileName := "sticker" + exmime.ExtensionFromMimetype(mimeType)
-		return data, mimeType, fileName, nil
-	})
+	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.StickerTransport](ctx, mc, sticker, whatsmeow.MediaImage, "sticker", nil)
 	addStickerMetadata(converted, metadata)
 	return
 }
@@ -308,18 +332,16 @@ func addStickerMetadata(converted *bridgev2.ConvertedMessagePart, metadata *waMe
 		return
 	}
 	converted.Type = event.EventSticker
-	converted.Content.Info.Width = int(metadata.GetWidth())
-	converted.Content.Info.Height = int(metadata.GetHeight())
+	if metadata.GetReceiverFetchID() == "" || converted.Content.Info.Width == 0 {
+		converted.Content.Info.Width = int(metadata.GetWidth())
+	}
+	if metadata.GetReceiverFetchID() == "" || converted.Content.Info.Height == 0 {
+		converted.Content.Info.Height = int(metadata.GetHeight())
+	}
 }
 
 func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, document *waConsumerApplication.ConsumerApplication_DocumentMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
-	_, converted, caption, err = convertWhatsAppAttachment[*waMediaTransport.DocumentTransport](ctx, mc, document, whatsmeow.MediaDocument, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-		fileName := document.GetFileName()
-		if fileName == "" {
-			fileName = "file" + exmime.ExtensionFromMimetype(mimeType)
-		}
-		return data, mimeType, fileName, nil
-	})
+	_, converted, caption, err = convertWhatsAppAttachment[*waMediaTransport.DocumentTransport](ctx, mc, document, whatsmeow.MediaDocument, cmp.Or(document.GetFileName(), "file"), nil)
 	if converted != nil {
 		converted.Content.MsgType = event.MsgFile
 	}
@@ -329,8 +351,7 @@ func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, documen
 func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waConsumerApplication.ConsumerApplication_AudioMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
 	// Treat all audio messages as voice messages, official clients don't set the flag for some reason
 	isVoiceMessage := true // audio.GetPTT()
-	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.AudioTransport](ctx, mc, audio, whatsmeow.MediaAudio, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-		fileName := "audio" + exmime.ExtensionFromMimetype(mimeType)
+	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.AudioTransport](ctx, mc, audio, whatsmeow.MediaAudio, "audio", func(ctx context.Context, data []byte, mimeType, fileName string) ([]byte, string, string, error) {
 		if isVoiceMessage && !strings.HasPrefix(mimeType, "audio/ogg") {
 			data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-c:a", "libopus"}, mimeType)
 			if err != nil {
@@ -356,10 +377,7 @@ func (mc *MessageConverter) convertWhatsAppAudio(ctx context.Context, audio *waC
 }
 
 func (mc *MessageConverter) convertWhatsAppVideo(ctx context.Context, video *waConsumerApplication.ConsumerApplication_VideoMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
-	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.VideoTransport](ctx, mc, video, whatsmeow.MediaVideo, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-		fileName := "video" + exmime.ExtensionFromMimetype(mimeType)
-		return data, mimeType, fileName, nil
-	})
+	metadata, converted, caption, err := convertWhatsAppAttachment[*waMediaTransport.VideoTransport](ctx, mc, video, whatsmeow.MediaVideo, "video", nil)
 	addVideoMetadata(converted, metadata)
 	return
 }
@@ -574,9 +592,7 @@ func (mc *MessageConverter) waExternalLinkShareToMatrix(ctx context.Context, con
 		if transport.GetIntegral().GetDirectPath() == "" {
 			continue
 		}
-		converted, err := mc.reuploadWhatsAppAttachment(ctx, transport, whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-			return data, mimeType, "preview" + exmime.ExtensionFromMimetype(mimeType), nil
-		})
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, transport, whatsmeow.MediaImage, "preview", nil)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload external link preview image")
 			continue
@@ -677,10 +693,7 @@ func (mc *MessageConverter) waRavenMessageToMatrix(ctx context.Context, message 
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode raven image message: %w", err)
 		}
-		converted, err := mc.reuploadWhatsAppAttachment(ctx, img.GetIntegral().GetTransport(), whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-			fileName := "image" + exmime.ExtensionFromMimetype(mimeType)
-			return data, mimeType, fileName, nil
-		})
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, img.GetIntegral().GetTransport(), whatsmeow.MediaImage, "image", nil)
 		if err != nil {
 			return nil, err
 		}
@@ -691,10 +704,7 @@ func (mc *MessageConverter) waRavenMessageToMatrix(ctx context.Context, message 
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode raven video message: %w", err)
 		}
-		converted, err := mc.reuploadWhatsAppAttachment(ctx, video.GetIntegral().GetTransport(), whatsmeow.MediaVideo, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-			fileName := "video" + exmime.ExtensionFromMimetype(mimeType)
-			return data, mimeType, fileName, nil
-		})
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, video.GetIntegral().GetTransport(), whatsmeow.MediaVideo, "video", nil)
 		if err != nil {
 			return nil, err
 		}
@@ -718,10 +728,7 @@ func (mc *MessageConverter) waArmadilloGalleryToMatrix(ctx context.Context, mess
 	}
 	parts := make([]*bridgev2.ConvertedMessagePart, len(images))
 	for i, img := range images {
-		converted, err := mc.reuploadWhatsAppAttachment(ctx, img.GetIntegral().GetTransport(), whatsmeow.MediaImage, func(ctx context.Context, data []byte, mimeType string) ([]byte, string, string, error) {
-			fileName := "image" + exmime.ExtensionFromMimetype(mimeType)
-			return data, mimeType, fileName, nil
-		})
+		converted, err := mc.reuploadWhatsAppAttachment(ctx, img.GetIntegral().GetTransport(), whatsmeow.MediaImage, "image", nil)
 		if err != nil {
 			parts[i] = wrapError("Failed to transfer media", err)
 		} else {
@@ -846,13 +853,23 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 			}
 		}
 	default:
-		if evt.Message == nil && evt.FBApplication.GetMetadata().GetChatEphemeralSetting() != nil {
-			portal.Metadata.(*metaid.PortalMetadata).EphemeralSettingTimestamp = evt.Info.Timestamp.Unix()
-			portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
-				Sender:    intent,
-				Timestamp: evt.Info.Timestamp,
-				Save:      true,
-			})
+		if disappear := evt.FBApplication.GetMetadata().GetChatEphemeralSetting(); evt.Message == nil && disappear != nil {
+			meta := portal.Metadata.(*metaid.PortalMetadata)
+			dontBridge := cm.Disappear == portal.Disappear
+			if disappear.EphemeralSettingTimestamp == nil || disappear.GetEphemeralSettingTimestamp() > meta.EphemeralSettingTimestamp {
+				meta.EphemeralSettingTimestamp = disappear.GetEphemeralSettingTimestamp()
+				portal.UpdateDisappearingSetting(ctx, cm.Disappear, bridgev2.UpdateDisappearingSettingOpts{
+					Sender:    intent,
+					Timestamp: evt.Info.Timestamp,
+					Save:      true,
+				})
+			} else {
+				dontBridge = true
+				zerolog.Ctx(ctx).Debug().
+					Int64("setting_timestamp", disappear.GetEphemeralSettingTimestamp()).
+					Int64("portal_setting_timestamp", meta.EphemeralSettingTimestamp).
+					Msg("Ignoring outdated disappearing timer change")
+			}
 			cm.Parts = []*bridgev2.ConvertedMessagePart{{
 				Type:    event.EventMessage,
 				Content: bridgev2.DisappearingMessageNotice(cm.Disappear.Timer, false),
@@ -864,7 +881,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 						"implicit":   false,
 					},
 				},
-				DontBridge: cm.Disappear == portal.Disappear,
+				DontBridge: dontBridge,
 			}}
 		} else {
 			cm.Parts = []*bridgev2.ConvertedMessagePart{{
@@ -886,7 +903,7 @@ func (mc *MessageConverter) WhatsAppToMatrix(
 		pcp, _ := types.ParseJID(replyOverride.GetParticipant())
 		// TODO what if participant is not set?
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
-			MessageID: metaid.MakeWAMessageID(evt.Info.Chat, pcp, qm.GetStanzaID()),
+			MessageID: metaid.MakeWAMessageID(evt.Info.Chat, pcp, replyOverride.GetID()),
 		}
 	}
 	for i, part := range cm.Parts {

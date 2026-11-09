@@ -143,9 +143,13 @@ type LSTable struct {
 	LSDeletePartialThread                            []*LSDeletePartialThread                            `json:",omitempty"`
 	LSAddPollForThread                               []*LSAddPollForThread                               `json:",omitempty"`
 	LSAddPollOption                                  []*LSAddPollOption                                  `json:",omitempty"`
-	LSAddPollOptionV2                                []*LSAddPollOption                                  `json:",omitempty"`
+	LSAddPollOptionV2                                []*LSAddPollOptionV2                                `json:",omitempty"`
 	LSAddPollVote                                    []*LSAddPollVote                                    `json:",omitempty"`
 	LSAddPollVoteV2                                  []*LSAddPollVote                                    `json:",omitempty"`
+	LSRemovePollVoteV2                               []*LSAddPollVote                                    `json:",omitempty"`
+	LSHandlePlaceholderPollData                      []*LSHandlePlaceholderPollData                      `json:",omitempty"`
+	LSUpdatePollAdminMessageSummary                  []*LSUpdatePollAdminMessageSummary                  `json:",omitempty"`
+	LSVerifyPollExists                               []*LSVerifyPollExists                               `json:",omitempty"`
 	LSUpdateThreadMuteSetting                        []*LSUpdateThreadMuteSetting                        `json:",omitempty"`
 	LSInsertAttachment                               []*LSInsertAttachment                               `json:",omitempty"`
 	LSUpdateExtraAttachmentColumns                   []*LSUpdateExtraAttachmentColumns                   `json:",omitempty"`
@@ -155,6 +159,7 @@ type LSTable struct {
 	LSRemoveOptimisticGroupThread                    []*LSRemoveOptimisticGroupThread                    `json:",omitempty"`
 	LSUpdateOrInsertEditMessageHistory               []*LSUpdateOrInsertEditMessageHistory               `json:",omitempty"`
 	LSVerifyHybridThreadExists                       []*LSVerifyHybridThreadExists                       `json:",omitempty"`
+	LSCreateOpenToE2EEThreadLink                     []*LSCreateOpenToE2EEThreadLink                     `json:",omitempty"`
 	LSUpdateThreadAuthorityAndMappingWithOTIDFromJID []*LSUpdateThreadAuthorityAndMappingWithOTIDFromJID `json:",omitempty"`
 	LSVerifyContactParticipantExist                  []*LSVerifyContactParticipantExist                  `json:",omitempty"`
 	LSVerifyCommunityMemberContextualProfileExists   []*LSVerifyCommunityMemberContextualProfileExists   `json:",omitempty"`
@@ -317,7 +322,11 @@ var SPTable = map[string]string{
 	"addPollOptionV2":                                "LSAddPollOptionV2",
 	"addPollVote":                                    "LSAddPollVote",
 	"addPollVoteV2":                                  "LSAddPollVoteV2",
+	"removePollVoteV2":                               "LSRemovePollVoteV2",
+	"handlePlaceholderPollData":                      "LSHandlePlaceholderPollData",
 	"addPollForThread":                               "LSAddPollForThread",
+	"updatePollAdminMessageSummary":                  "LSUpdatePollAdminMessageSummary",
+	"verifyPollExists":                               "LSVerifyPollExists",
 	"deleteReaction":                                 "LSDeleteReaction",
 	"updateThreadMuteSetting":                        "LSUpdateThreadMuteSetting",
 	"insertAttachment":                               "LSInsertAttachment",
@@ -328,6 +337,7 @@ var SPTable = map[string]string{
 	"removeOptimisticGroupThread":                    "LSRemoveOptimisticGroupThread",
 	"updateOrInsertEditMessageHistory":               "LSUpdateOrInsertEditMessageHistory",
 	"verifyHybridThreadExists":                       "LSVerifyHybridThreadExists",
+	"createOpenToE2EEThreadLink":                     "LSCreateOpenToE2EEThreadLink",
 	"updateThreadAuthorityAndMappingWithOTIDFromJID": "LSUpdateThreadAuthorityAndMappingWithOTIDFromJID",
 	"verifyContactParticipantExist":                  "LSVerifyContactParticipantExist",
 	"verifyCommunityMemberContextualProfileExists":   "LSVerifyCommunityMemberContextualProfileExists",

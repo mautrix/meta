@@ -40,6 +40,24 @@ import (
 
 var MaxConnectionRetryInterval = 60 * time.Second
 
+// MaxDeltaAttempts is how many times the same delta may fail before it's skipped.
+// The server replays from the last saved sequence ID after a reconnect,
+// so a delta that can never be handled would otherwise block the stream forever.
+var MaxDeltaAttempts = 5
+
+type deltaHandlingError struct {
+	attempts int
+	err      error
+}
+
+func (e *deltaHandlingError) Error() string {
+	return fmt.Sprintf("failed to handle delta: %v", e.err)
+}
+
+func (e *deltaHandlingError) Unwrap() error {
+	return e.err
+}
+
 func (c *Client) makeNewSocket() {
 	old := c.socket.Swap(dgw.NewSocket(c.getSocketOptions()))
 	if old != nil {
@@ -110,17 +128,39 @@ func (c *Client) Connect(ctx context.Context) {
 			return
 		}
 		c.socketRetries++
-		if !wasConnected {
+		var deltaErr *deltaHandlingError
+		if errors.As(err, &deltaErr) {
+			sequentialFailures = 0
+			sock.Log.Warn().Err(err).
+				Int("connection_num", c.socketRetries).
+				Int("delta_attempts", deltaErr.attempts).
+				Msg("Delta handling failed, reconnecting after backoff")
+			select {
+			case <-ctx.Done():
+				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
+				return
+			case <-time.After(min(time.Duration(1<<deltaErr.attempts)*time.Second, MaxConnectionRetryInterval)):
+				continue
+			}
+		} else if !wasConnected {
 			sequentialFailures++
 			sock.Log.Warn().Err(err).
 				Int("connection_num", c.socketRetries).
 				Int("sequential_failures", sequentialFailures).
 				Msg("Connection failed, reconnecting...")
+			if sequentialFailures >= NativeMainStreamAttempts && errors.Is(err, ErrMainStreamClosed) && c.useNativeMainStream() {
+				sock.Log.Warn().Msg("Native main stream keeps closing before subscribing, switching to web main stream")
+				c.webMainStream.Store(true)
+				if webSock := dgw.NewSocket(c.getSocketOptions()); c.socket.CompareAndSwap(sock, webSock) {
+					sock = webSock
+				}
+				sequentialFailures = 0
+			}
 			select {
 			case <-ctx.Done():
 				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
 				return
-			case <-time.After(min(time.Duration(1<<sequentialFailures)*time.Second, MaxConnectionRetryInterval)):
+			case <-time.After(min(time.Duration(1<<min(sequentialFailures, 10))*time.Second, MaxConnectionRetryInterval)):
 				continue
 			}
 		} else {
@@ -144,6 +184,13 @@ func (c *Client) ForceReconnect() {
 
 var ErrMainStreamClosed = errors.New("main stream closed")
 var ErrUserIDMissing = errors.New("native messaging user ID is missing")
+
+// NativeMainStreamAttempts is how many native main stream closes before subscribing trigger the web socket fallback.
+var NativeMainStreamAttempts = 2
+
+func (c *Client) useNativeMainStream() bool {
+	return c.mobileSession.Load() != nil && !c.webMainStream.Load()
+}
 
 func (c *Client) getSocketOptions() dgw.SocketOptions {
 	options := dgw.SocketOptions{
@@ -178,9 +225,9 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
-	if c.mobileSession.Load() != nil {
+	if c.useNativeMainStream() {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
-			Client: c.http.HTTP, URL: c.GetEndpoint("dgw_lightspeed_native"), GetHeaders: c.nativeSocketHeaders,
+			GetClient: c.http.GetHTTPClient, URL: c.GetEndpoint("dgw_lightspeed_native"), GetHeaders: c.nativeSocketHeaders,
 		}
 	}
 	return options
@@ -206,15 +253,15 @@ type seqIDCursor struct {
 }
 
 func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) {
-	native := c.mobileSession.Load() != nil
+	native := c.useNativeMainStream()
 	params := syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
 		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQuery,
 	}
 	if native {
-		params.UserAgent = instagramMobileUserAgent
-		params.SnapshotAppVersion = instagramMobileAppVersion
+		params.UserAgent = useragent.IGAndroidUserAgent
+		params.SnapshotAppVersion = useragent.IGAndroidAppVersion
 	}
 	marshaledSyncParams, err := json.Marshal(&params)
 	if err != nil {
@@ -257,7 +304,7 @@ type IGFrame struct {
 func (c *Client) handleDataFrame(ctx context.Context, frame []byte) error {
 	var igFrame IGFrame
 	var err error
-	if c.mobileSession.Load() != nil {
+	if c.useNativeMainStream() {
 		igFrame.Payload = lightspeed.GetRootAsResponse(slices.Clip(frame), 0).PayloadBytes()
 	} else {
 		err = json.Unmarshal(frame, &igFrame)
@@ -308,7 +355,10 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 			for _, delta := range deltas.Data.SlideDeltaProcessor {
 				err = c.eventHandler(ctx, delta)
 				if err != nil {
-					return fmt.Errorf("failed to handle delta: %w", err)
+					attempts, skip := c.trackFailedDelta(ctx, delta, err)
+					if !skip {
+						return &deltaHandlingError{attempts: attempts, err: err}
+					}
 				}
 				if c.seqID < delta.UQSeqID {
 					c.seqID = delta.UQSeqID
@@ -335,6 +385,26 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 	default:
 		return fmt.Errorf("unrecognized operation type: %T", rawOp.Operation)
 	}
+}
+
+func (c *Client) trackFailedDelta(ctx context.Context, delta *slidetypes.Delta, err error) (attempts int, skip bool) {
+	if ctx.Err() != nil || delta.UQSeqID == 0 {
+		return 1, false
+	}
+	if c.failedDeltaSeqID != delta.UQSeqID {
+		c.failedDeltaSeqID = delta.UQSeqID
+		c.failedDeltaCount = 0
+	}
+	c.failedDeltaCount++
+	if c.failedDeltaCount < MaxDeltaAttempts {
+		return c.failedDeltaCount, false
+	}
+	c.log.Err(err).
+		Int64("uq_seq_id", delta.UQSeqID).
+		Str("delta_type", delta.TypeName).
+		Int("attempts", c.failedDeltaCount).
+		Msg("Skipping delta that failed repeatedly")
+	return c.failedDeltaCount, true
 }
 
 func (c *Client) Disconnect() {

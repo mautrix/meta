@@ -19,11 +19,10 @@ package msgconv
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"image"
-	"image/color"
-	"image/draw"
-	"image/png"
+	"image/jpeg"
 	"net/http"
 	"strconv"
 	"strings"
@@ -86,7 +85,7 @@ func (mc *MessageConverter) ToWhatsApp(
 			MessageText: mc.TextToWhatsApp(ctx, portal, content),
 		}
 	case event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile, event.MessageType(event.EventSticker.Type):
-		reuploaded, fileName, err := mc.reuploadMediaToWhatsApp(ctx, evt, content)
+		reuploaded, fileName, sidecar, err := mc.reuploadMediaToWhatsApp(ctx, evt, content)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -96,7 +95,7 @@ func (mc *MessageConverter) ToWhatsApp(
 		} else {
 			caption = &waCommon.MessageText{}
 		}
-		waContent.Content, err = mc.wrapWhatsAppMedia(evt, content, reuploaded, caption, fileName)
+		waContent.Content, err = mc.wrapWhatsAppMedia(evt, content, reuploaded, sidecar, caption, fileName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -217,25 +216,35 @@ func clampTo400(w, h int) (int, int) {
 	return w, h
 }
 
-func reencodeNRGBA(ctx context.Context, data []byte) []byte {
-	img, err := png.Decode(bytes.NewReader(data))
-	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode png for re-encoding")
+const pngHeader = "\x89PNG\r\n\x1a\n"
+
+func trimPNGTrailer(ctx context.Context, data []byte) []byte {
+	if !bytes.HasPrefix(data, []byte(pngHeader)) {
 		return data
 	}
-	b := img.Bounds()
-	nrgba := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(nrgba, nrgba.Bounds(), img, b.Min, draw.Src)
-	var buf bytes.Buffer
-	if err = png.Encode(&buf, img); err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to re-encode png")
-		return data
+	for pos := 8; pos+12 <= len(data); {
+		length := int(binary.BigEndian.Uint32(data[pos : pos+4]))
+		end := pos + 12 + length
+		if end > len(data) || end <= pos || length < 0 {
+			break
+		}
+		if string(data[pos+4:pos+8]) == "IEND" {
+			if length != 0 {
+				break
+			}
+			if end < len(data) {
+				zerolog.Ctx(ctx).Debug().
+					Int("trailer_size", len(data)-end).
+					Msg("Removed trailing data after png IEND")
+			}
+			return data[:end]
+		}
+		pos = end
 	}
-	zerolog.Ctx(ctx).Debug().Msg("Re-encoded non-NRGBA png")
-	return buf.Bytes()
+	return data
 }
 
-func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, error) {
+func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, []byte, error) {
 	mimeType := content.Info.MimeType
 	fileName := content.FileName
 	if fileName == "" {
@@ -243,30 +252,22 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	}
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+		return nil, "", nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
 	if mimeType == "" {
 		mimeType = http.DetectContentType(data)
 	}
-	if content.MSC3245Voice != nil && ffmpeg.Supported() {
+	if content.MSC3245Voice != nil && mimeType != "audio/mp4" && ffmpeg.Supported() {
 		data, err = ffmpeg.ConvertBytes(ctx, data, ".m4a", []string{}, []string{"-c:a", "aac"}, mimeType)
 		if err != nil {
-			return nil, "", fmt.Errorf("%w voice message to m4a: %w", bridgev2.ErrMediaConvertFailed, err)
+			return nil, "", nil, fmt.Errorf("%w voice message to m4a: %w", bridgev2.ErrMediaConvertFailed, err)
 		}
 		mimeType = "audio/mp4"
 		fileName += ".m4a"
 	}
 	if content.MsgType == event.MsgImage && mimeType == "image/png" {
-		cfg, err := png.DecodeConfig(bytes.NewReader(data))
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode png config")
-		} else if cfg.ColorModel != color.NRGBAModel {
-			// Messenger gets angry about certain color models in PNGs
-			data = reencodeNRGBA(ctx, data)
-		}
-		if content.Info.Width == 0 {
-			content.Info.Width, content.Info.Height = cfg.Width, cfg.Height
-		}
+		// Messenger Android gets angry about trailing data after the IEND chunk
+		data = trimPNGTrailer(ctx, data)
 	}
 	if content.MsgType == event.MsgImage && content.Info.Width == 0 {
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
@@ -279,13 +280,41 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 	}
 	mediaType := msgToMediaType(content.MsgType)
 	client := ctx.Value(mediadl.ContextKeyWAClient).(*whatsmeow.Client)
+	isVideo := content.MsgType == event.MsgVideo && mimeType != "image/gif"
 	uploaded, err := client.Upload(ctx, data, mediaType)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+		return nil, "", nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
 	w, h := clampTo400(content.Info.Width, content.Info.Height)
 	if w == 0 && content.MsgType == event.MsgImage {
 		w, h = 400, 400
+	}
+	thumbnail := &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
+		ThumbnailWidth:  proto.Uint32(uint32(w)),
+		ThumbnailHeight: proto.Uint32(uint32(h)),
+	}
+	fileLength := proto.Uint64(uint64(len(data)))
+	if isVideo {
+		fileLength = nil
+		thumbData, thumbW, thumbH, err := mc.getVideoThumbnail(ctx, content, data, mimeType)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get video thumbnail")
+		} else if thumbUploaded, err := client.Upload(ctx, thumbData, whatsmeow.MediaImage); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload video thumbnail")
+		} else {
+			thumbnail = &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
+				DownloadableThumbnail: &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail_DownloadableThumbnail{
+					FileSHA256:        thumbUploaded.FileSHA256,
+					FileEncSHA256:     thumbUploaded.FileEncSHA256,
+					DirectPath:        &thumbUploaded.DirectPath,
+					MediaKey:          thumbUploaded.MediaKey,
+					MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
+					ObjectID:          &thumbUploaded.ObjectID,
+				},
+				ThumbnailWidth:  proto.Uint32(uint32(thumbW)),
+				ThumbnailHeight: proto.Uint32(uint32(thumbH)),
+			}
+		}
 	}
 	mediaTransport := &waMediaTransport.WAMediaTransport{
 		Integral: &waMediaTransport.WAMediaTransport_Integral{
@@ -296,25 +325,59 @@ func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *ev
 			MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
 		},
 		Ancillary: &waMediaTransport.WAMediaTransport_Ancillary{
-			FileLength: proto.Uint64(uint64(len(data))),
+			FileLength: fileLength,
 			Mimetype:   &mimeType,
 			// This field is extremely required for some reason.
 			// Messenger iOS & Android will refuse to display the media if it's not present.
 			// iOS also requires that width and height are non-empty.
-			Thumbnail: &waMediaTransport.WAMediaTransport_Ancillary_Thumbnail{
-				ThumbnailWidth:  proto.Uint32(uint32(w)),
-				ThumbnailHeight: proto.Uint32(uint32(h)),
-			},
-			ObjectID: &uploaded.ObjectID,
+			Thumbnail: thumbnail,
+			ObjectID:  &uploaded.ObjectID,
 		},
 	}
-	return mediaTransport, fileName, nil
+	var sidecar []byte
+	if isVideo {
+		sidecar = uploaded.StreamingSidecar
+	}
+	return mediaTransport, fileName, sidecar, nil
+}
+
+func (mc *MessageConverter) getVideoThumbnail(ctx context.Context, content *event.MessageEventContent, data []byte, mimeType string) ([]byte, int, int, error) {
+	if content.Info.ThumbnailURL != "" || content.Info.ThumbnailFile != nil {
+		thumbData, err := mc.Bridge.Bot.DownloadMedia(ctx, content.Info.ThumbnailURL, content.Info.ThumbnailFile)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to download video thumbnail, falling back to generating one")
+		} else if img, format, err := image.Decode(bytes.NewReader(thumbData)); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to decode video thumbnail, falling back to generating one")
+		} else if format == "jpeg" {
+			return thumbData, img.Bounds().Dx(), img.Bounds().Dy(), nil
+		} else {
+			var buf bytes.Buffer
+			err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("failed to re-encode video thumbnail: %w", err)
+			}
+			return buf.Bytes(), img.Bounds().Dx(), img.Bounds().Dy(), nil
+		}
+	}
+	if !ffmpeg.Supported() {
+		return nil, 0, 0, fmt.Errorf("no thumbnail in event and ffmpeg is not available")
+	}
+	thumbData, err := ffmpeg.ConvertBytes(ctx, data, ".jpg", []string{}, []string{"-frames:v", "1", "-vf", "scale='if(gt(iw,ih),min(960,iw),-2)':'if(gt(iw,ih),-2,min(960,ih))'", "-update", "1", "-f", "image2"}, mimeType)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to extract first frame: %w", err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(thumbData))
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to decode generated thumbnail: %w", err)
+	}
+	return thumbData, cfg.Width, cfg.Height, nil
 }
 
 func (mc *MessageConverter) wrapWhatsAppMedia(
 	evt *event.Event,
 	content *event.MessageEventContent,
 	reuploaded *waMediaTransport.WAMediaTransport,
+	sidecar []byte,
 	caption *waCommon.MessageText,
 	fileName string,
 ) (output waConsumerApplication.ConsumerApplication_Content_Content, err error) {
@@ -351,11 +414,7 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 		}
 		var seconds *uint32
 		if content.Info.Duration != 0 {
-			seconds = proto.Uint32(uint32(content.Info.Duration / 1000))
-		}
-		var gifPlayback *bool
-		if content.Info.MauGIF {
-			gifPlayback = proto.Bool(true)
+			seconds = proto.Uint32(uint32((content.Info.Duration + 999) / 1000))
 		}
 		err = videoMsg.Set(&waMediaTransport.VideoTransport{
 			Integral: &waMediaTransport.VideoTransport_Integral{
@@ -365,7 +424,10 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 				Height:      proto.Uint32(uint32(content.Info.Height)),
 				Width:       proto.Uint32(uint32(content.Info.Width)),
 				Seconds:     seconds,
-				GifPlayback: gifPlayback,
+				Caption:     caption,
+				GifPlayback: proto.Bool(content.Info.MauGIF),
+				Sidecar:     sidecar,
+				IsHd:        proto.Bool(false),
 			},
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_VideoMessage{VideoMessage: videoMsg}

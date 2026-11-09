@@ -22,10 +22,61 @@ type connectionTransport interface {
 type connection struct {
 	connectionTransport
 	extendedData bool
+	writes       chan *writeRequest
+	done         chan struct{}
+}
+
+type writeRequest struct {
+	ctx    context.Context
+	data   []byte
+	result chan error
+}
+
+func newConnection(transport connectionTransport, extendedData bool) *connection {
+	return &connection{
+		connectionTransport: transport,
+		extendedData:        extendedData,
+		writes:              make(chan *writeRequest),
+		done:                make(chan struct{}),
+	}
+}
+
+func (c *connection) queueWrite(ctx context.Context, data []byte) error {
+	req := &writeRequest{ctx: ctx, data: data, result: make(chan error, 1)}
+	select {
+	case c.writes <- req:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return ErrSocketNotOpen
+	}
+	select {
+	case err := <-req.result:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *connection) writeLoop(ctx context.Context) {
+	for {
+		select {
+		case req := <-c.writes:
+			if err := req.ctx.Err(); err != nil {
+				req.result <- err
+				continue
+			}
+			writeCtx, cancel := context.WithTimeout(ctx, WriteTimeout)
+			req.result <- c.Write(writeCtx, websocket.MessageBinary, req.data)
+			cancel()
+		case <-c.done:
+			return
+		}
+	}
 }
 
 type HTTPStreamOptions struct {
-	Client     *http.Client
+	GetClient  func() *http.Client
 	URL        string
 	GetHeaders func() http.Header
 }
@@ -41,7 +92,11 @@ type httpConnection struct {
 }
 
 func newHTTPConnection(ctx context.Context, opts *HTTPStreamOptions) (*connection, error) {
-	if opts.Client == nil {
+	var client *http.Client
+	if opts.GetClient != nil {
+		client = opts.GetClient()
+	}
+	if client == nil {
 		return nil, fmt.Errorf("%w: HTTP client is required", ErrDial)
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -57,14 +112,14 @@ func newHTTPConnection(ctx context.Context, opts *HTTPStreamOptions) (*connectio
 		request.Header = opts.GetHeaders().Clone()
 	}
 	conn := &httpConnection{
-		client:  *opts.Client,
+		client:  *client,
 		request: request,
 		cancel:  cancel,
 		input:   input,
 		output:  output,
 	}
 	conn.client.Timeout = 0
-	return &connection{connectionTransport: conn, extendedData: true}, nil
+	return newConnection(conn, true), nil
 }
 
 func (c *httpConnection) Read(ctx context.Context) (websocket.MessageType, []byte, error) {

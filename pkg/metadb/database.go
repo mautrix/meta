@@ -180,6 +180,28 @@ func (db *MetaDB) GetHybridThreadInfoByJID(ctx context.Context, loginID networki
 	return
 }
 
+func (db *MetaDB) PutThreadCutover(ctx context.Context, loginID networkid.UserLoginID, threadJID, openThreadKey int64, showOpenMessageHistory bool) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_thread_cutover (bridge_id, login_id, thread_jid, open_thread_key, show_open_message_history)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (bridge_id, login_id, thread_jid) DO UPDATE SET
+			open_thread_key = excluded.open_thread_key,
+			show_open_message_history = excluded.show_open_message_history
+	`, db.BridgeID, loginID, threadJID, openThreadKey, showOpenMessageHistory)
+	return err
+}
+
+func (db *MetaDB) GetOpenThreadKey(ctx context.Context, loginID networkid.UserLoginID, threadJID int64) (openThreadKey int64, err error) {
+	err = db.QueryRow(ctx, `
+		SELECT open_thread_key FROM meta_thread_cutover
+		WHERE bridge_id = $1 AND login_id = $2 AND thread_jid = $3
+	`, db.BridgeID, loginID, threadJID).Scan(&openThreadKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return
+}
+
 func (db *MetaDB) GetIGSeqID(ctx context.Context, loginID networkid.UserLoginID) (int64, time.Time, error) {
 	var seqID, ts int64
 	err := db.QueryRow(ctx, "SELECT seq_id, timestamp FROM meta_instagram_seq_id WHERE bridge_id = $1 AND login_id = $2", db.BridgeID, loginID).Scan(&seqID, &ts)
@@ -199,6 +221,60 @@ func (db *MetaDB) PutIGSeqID(ctx context.Context, loginID networkid.UserLoginID,
 		ON CONFLICT (bridge_id, login_id) DO UPDATE SET seq_id = excluded.seq_id, timestamp = excluded.timestamp
 		WHERE meta_instagram_seq_id.seq_id <= excluded.seq_id
 	`, db.BridgeID, loginID, seqID, ts.UnixMilli())
+	return err
+}
+
+func (db *MetaDB) InitIGWebPush(ctx context.Context, loginID networkid.UserLoginID, ts time.Time, reset bool) error {
+	conflict := "DO NOTHING"
+	if reset {
+		conflict = "DO UPDATE SET last_received = excluded.last_received, stale = false"
+	}
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_instagram_web_push (bridge_id, login_id, last_received, stale)
+		VALUES ($1, $2, $3, false)
+		ON CONFLICT (bridge_id, login_id) `+conflict, db.BridgeID, loginID, ts.UnixMilli())
+	return err
+}
+
+func (db *MetaDB) PutIGWebPushReceived(ctx context.Context, loginID networkid.UserLoginID, ts time.Time) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO meta_instagram_web_push (bridge_id, login_id, last_received, stale)
+		VALUES ($1, $2, $3, false)
+		ON CONFLICT (bridge_id, login_id) DO UPDATE SET last_received = excluded.last_received, stale = false
+		WHERE meta_instagram_web_push.last_received < excluded.last_received
+	`, db.BridgeID, loginID, ts.UnixMilli())
+	return err
+}
+
+func (db *MetaDB) GetIGWebPush(ctx context.Context, loginID networkid.UserLoginID) (lastReceived time.Time, stale bool, err error) {
+	var ts int64
+	err = db.QueryRow(ctx, `
+		SELECT last_received, stale FROM meta_instagram_web_push WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID).Scan(&ts, &stale)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	} else if err != nil {
+		return
+	}
+	return time.UnixMilli(ts), stale, nil
+}
+
+func (db *MetaDB) SetIGWebPushStale(ctx context.Context, loginID networkid.UserLoginID, receivedBefore time.Time) (bool, error) {
+	res, err := db.Exec(ctx, `
+		UPDATE meta_instagram_web_push SET stale = true
+		WHERE bridge_id = $1 AND login_id = $2 AND last_received < $3 AND NOT stale
+	`, db.BridgeID, loginID, receivedBefore.UnixMilli())
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected > 0, err
+}
+
+func (db *MetaDB) DeleteIGWebPush(ctx context.Context, loginID networkid.UserLoginID) error {
+	_, err := db.Exec(ctx, `
+		DELETE FROM meta_instagram_web_push WHERE bridge_id = $1 AND login_id = $2
+	`, db.BridgeID, loginID)
 	return err
 }
 

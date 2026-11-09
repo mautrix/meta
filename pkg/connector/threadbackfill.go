@@ -19,11 +19,69 @@ func (m *MetaClient) StartThreadBackfill(ctx context.Context) error {
 
 	if m.LoginMeta.BackfillCompleted {
 		log.Debug().Msg("Thread backfill already completed, skipping")
-		return nil
+	} else {
+		log.Info().Msg("Starting thread backfill")
+		if err := m.runThreadBackfill(ctx); err != nil {
+			return err
+		}
 	}
-	log.Info().Msg("Starting thread backfill")
 
-	return m.runThreadBackfill(ctx)
+	if !m.LoginMeta.E2EEBackfillCompleted {
+		log.Info().Msg("Starting E2EE thread backfill")
+		return m.runE2EEThreadBackfill(ctx)
+	}
+	return nil
+}
+
+func (m *MetaClient) runE2EEThreadBackfill(ctx context.Context) error {
+	const syncGroup = 95
+	log := zerolog.Ctx(ctx)
+	if err := m.Client.WaitForInitialThreadRange(ctx, syncGroup); err != nil {
+		return err
+	}
+	batchCount := 0
+	for {
+		keyStore := m.Client.GetSyncGroupKeyStore(syncGroup)
+		if keyStore == nil || !keyStore.HasMoreBefore {
+			log.Info().Int("batches_processed", batchCount).Msg("E2EE thread backfill complete")
+			break
+		} else if limit := m.Main.Config.ThreadBackfill.BatchCount; limit > 0 && batchCount >= limit {
+			log.Info().Int("batches_processed", batchCount).Msg("E2EE thread backfill complete - hit batch count limit")
+			break
+		}
+		prevMinThreadKey := keyStore.MinThreadKey
+		gen := m.Client.ThreadRangeGeneration(syncGroup)
+		_, tbl, err := m.Client.FetchMoreThreads(ctx, syncGroup)
+		if err != nil {
+			log.Err(err).Msg("Failed to fetch more E2EE threads")
+			return err
+		} else if tbl != nil {
+			m.parseAndQueueTable(ctx, tbl, false)
+		}
+		if err = m.Client.WaitForThreadRange(ctx, syncGroup, gen); err != nil {
+			return err
+		}
+		batchCount++
+		if keyStore.HasMoreBefore && keyStore.MinThreadKey == prevMinThreadKey {
+			log.Info().Int("batches_processed", batchCount).Msg("E2EE thread backfill complete - thread key did not change")
+			break
+		}
+		log.Debug().
+			Int("batch", batchCount).
+			Int64("min_thread_key", keyStore.MinThreadKey).
+			Int64("min_activity_ts", keyStore.MinLastActivityTimestampMs).
+			Msg("Processed E2EE thread backfill batch")
+		select {
+		case <-time.After(m.Main.Config.ThreadBackfill.BatchDelay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	m.LoginMeta.E2EEBackfillCompleted = true
+	if err := m.UserLogin.Save(ctx); err != nil {
+		log.Err(err).Msg("Failed to save E2EE backfill completion state")
+	}
+	return nil
 }
 
 func (m *MetaClient) runThreadBackfill(ctx context.Context) error {

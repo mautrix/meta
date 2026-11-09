@@ -5,6 +5,8 @@ type GraphQLDoc struct {
 	ClientDocID  string
 	CallerClass  string
 	FriendlyName string
+	NoRetry      bool
+	SlowQuery    bool
 
 	Jsessw string
 }
@@ -13,18 +15,76 @@ const IGDSlideDeltaProcessorQuery = "27931342966497053"
 const IGDTypingIndicatorClientSubscription = "27563068933278040"
 
 var GraphQLDocs = map[string]GraphQLDoc{
+	"EBAddDeviceGraphQLEBFetchVirtualDeviceInfoQuery": {
+		DocID:        "27078903168382564",
+		FriendlyName: "EBAddDeviceGraphQLEBFetchVirtualDeviceInfoQuery",
+	},
+	"EBAddDeviceMutation": {
+		DocID:        "26934669346130743",
+		FriendlyName: "EBAddDeviceMutation",
+		NoRetry:      true,
+	},
+	"EBMessageRangeQueryForThreadsQuery": {
+		DocID:        "28543107645309813",
+		FriendlyName: "EBMessageRangeQueryForThreadsQuery",
+	},
+	"EBMinosFetchContactKeysQuery": {
+		DocID:        "26531892553066563",
+		FriendlyName: "EBMinosFetchContactKeysQuery",
+	},
+	"EBMinosUploadMessagesMutation": {
+		DocID:        "39866297732983438",
+		FriendlyName: "EBMinosUploadMessagesMutation",
+	},
+	"useMWEncryptedBackupsFetchBackupIdsV2Query": {
+		DocID:        "25220416984279164",
+		FriendlyName: "useMWEncryptedBackupsFetchBackupIdsV2Query",
+	},
+	"VestaServerGraphQLLoginProviderInitQuery": {
+		DocID:        "28587565877599806",
+		FriendlyName: "VestaServerGraphQLLoginProviderInitQuery",
+	},
+	"VestaServerGraphQLLoginProviderBeginLoginMutation": {
+		DocID:        "28781838094734033",
+		FriendlyName: "VestaServerGraphQLLoginProviderBeginLoginMutation",
+		NoRetry:      true,
+	},
+	"VestaServerGraphQLLoginProviderFinishLoginMutation": {
+		DocID:        "28557176640587196",
+		FriendlyName: "VestaServerGraphQLLoginProviderFinishLoginMutation",
+		NoRetry:      true,
+	},
 	"LSPlatformGraphQLLightspeedRequestQuery": {
 		DocID:        "9697184873702141",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestQuery",
+		SlowQuery:    true,
 	},
 	"LSPlatformGraphQLLightspeedRequestForIGDQuery": {
 		DocID:        "6195354443842040",
 		FriendlyName: "LSPlatformGraphQLLightspeedRequestForIGDQuery",
+		SlowQuery:    true,
 	},
 	"MAWCatQuery": {
 		DocID:        "29559957360285299",
 		FriendlyName: "MAWCatQuery",
 		Jsessw:       "1",
+	},
+	"OhaiWebClientMessengerConfigsQuery": {
+		DocID:        "25661686400163633",
+		FriendlyName: "OhaiWebClientMessengerConfigsQuery",
+	},
+	"MessagingWebACSGraphQLServerProviderConfigQuery": {
+		DocID:        "34400859499527881",
+		FriendlyName: "MessagingWebACSGraphQLServerProviderConfigQuery",
+	},
+	"MessagingWebACSGraphQLServerProviderTokenIssuanceQuery": {
+		DocID:        "26385769824353967",
+		FriendlyName: "MessagingWebACSGraphQLServerProviderTokenIssuanceQuery",
+	},
+	"MSGRMediaReceiverFetchDeidentifiedQuery": {
+		DocID:        "26354607094238870",
+		CallerClass:  "DeidentifiedRelayEnvironment",
+		FriendlyName: "MSGRMediaReceiverFetchDeidentifiedQuery",
 	},
 	"IGDEditThreadNameDialogOffMsysMutation": {
 		DocID:        "26508340268868683",

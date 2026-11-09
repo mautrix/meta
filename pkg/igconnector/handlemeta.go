@@ -52,9 +52,11 @@ const (
 	IGChallengeRequired       status.BridgeStateErrorCode = "ig-challenge-required"
 	IGAccountSuspended        status.BridgeStateErrorCode = "ig-account-suspended"
 	IGConsentRequired         status.BridgeStateErrorCode = "ig-consent-required"
+	IGAccountRestricted       status.BridgeStateErrorCode = "ig-account-restricted"
 	FBCheckpointRequired      status.BridgeStateErrorCode = "fb-checkpoint-required"
 	MetaProxyUpdateFail       status.BridgeStateErrorCode = "meta-proxy-update-fail"
 	MetaNotInstagram          status.BridgeStateErrorCode = "meta-not-instagram-account"
+	IGWebPushStale            status.BridgeStateErrorCode = "ig-web-push-stale"
 )
 
 func init() {
@@ -70,10 +72,12 @@ func init() {
 		IGAccountSuspended:        "Logged out, please check the Instagram website to continue",
 		IGChallengeRequired:       "Challenge required, please check the Instagram website to continue",
 		IGConsentRequired:         "Consent required, please check the Instagram website to continue",
+		IGAccountRestricted:       "Instagram is limiting your account, please check the Instagram app or website to continue",
 		FBCheckpointRequired:      "Checkpoint required, please check the Facebook website to continue",
 		MetaConnectError:          "Unknown connection error",
 		MetaProxyUpdateFail:       "Failed to update proxy",
 		MetaNotInstagram:          "Non-Instagram login present on Instagram-only bridge",
+		IGWebPushStale:            "Instagram stopped sending notifications, please relogin to restore them",
 	})
 }
 
@@ -94,7 +98,14 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
 		ic.permanentErrored.Store(false)
-		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		ic.accountStateRechecks.Store(0)
+		stale := ic.isWebPushStale(ctx)
+		ic.webPushStaleReported.Store(stale)
+		if stale {
+			ic.sendWebPushStaleState()
+		} else {
+			ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		}
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
@@ -106,7 +117,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			ic.catchingUpTo = evt.LatestSeqID
 		}
 		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
-			go ic.doChatBackfill(ctx, "")
+			go ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{})
 		}
 		return nil
 	case *slidetypes.Disconnected:
@@ -127,7 +138,6 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			stateEvt = status.StateUnknownError
 			errCode = DGWMainStreamClosed
 			retErr = fmt.Errorf("main stream closed too many times; stop reconnects")
-			ic.permanentErrored.Store(true)
 			ic.cancelPeriodicReconnect()
 		}
 		ic.UserLogin.BridgeState.Send(status.BridgeState{
@@ -280,10 +290,18 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	allowCreate := true
 	switch evt := d.Data.(type) {
 	case *slidetypes.DeleteThreadEvent, *slidetypes.DeleteMessageEvent, *slidetypes.DeleteReactionEvent,
-		*slidetypes.ParticipantLeaveEvent:
+		*slidetypes.ParticipantLeaveEvent, *slidetypes.MarkReadEvent, *slidetypes.MarkUnreadEvent,
+		*slidetypes.ReadReceiptEvent:
 		allowCreate = false
 	case *slidetypes.PinThreadEvent:
 		allowCreate = evt.IsPinned
+	case *slidetypes.UpdateThreadFolderEvent:
+		allowCreate = evt.Folder != "OTHER"
+		log = log.With().
+			Str("folder", evt.Folder).
+			Str("ig_inbox_folder", evt.IGInboxFolder).
+			Logger()
+		ctx = log.WithContext(ctx)
 	case *slidetypes.NewMessageEvent:
 		// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
 		// so extract it from the message for finding the portal.
@@ -311,6 +329,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	var res bridgev2.EventHandlingResult
 	switch evt := d.Data.(type) {
 	case *slidetypes.NewMessageEvent:
+		ic.checkWebPushStale(portalKey, evt.Message)
 		res = ic.handleMessage(portalKey, evt.Message)
 	case *slidetypes.AdminMessageEvent:
 		res = ic.handleMessage(portalKey, evt.Message)
@@ -522,7 +541,7 @@ func (ic *IGClient) handleThreadFolder(portalKey networkid.PortalKey, folder str
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatInfoChange,
 			PortalKey:    portalKey,
-			CreatePortal: !isRequest,
+			CreatePortal: !isRequest && folder != "OTHER",
 		},
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo: &bridgev2.ChatInfo{MessageRequest: &isRequest},
@@ -592,6 +611,9 @@ func (ic *IGClient) handleThreadImage(portalKey networkid.PortalKey, evt *slidet
 }
 
 func (ic *IGClient) handleGroupJoin(portalKey networkid.PortalKey, evt *slidetypes.ParticipantJoinEvent) bridgev2.EventHandlingResult {
+	if evt.Thread.AsIGDirectThread == nil {
+		return bridgev2.EventHandlingResultIgnored
+	}
 	members := &bridgev2.ChatMemberList{
 		MemberMap: make(bridgev2.ChatMemberMap, len(evt.Thread.AsIGDirectThread.Users)),
 	}
@@ -609,9 +631,11 @@ func (ic *IGClient) handleGroupJoin(portalKey networkid.PortalKey, evt *slidetyp
 }
 
 func (ic *IGClient) handleGroupLeave(portalKey networkid.PortalKey, evt *slidetypes.ParticipantLeaveEvent) bridgev2.EventHandlingResult {
-	return ic.handleMessageChatInfoChange(portalKey, evt.Message, &bridgev2.ChatInfo{
-		Name: &evt.Thread.AsIGDirectThread.ThreadTitle,
-	}, bridgev2.ChatMember{
+	var info bridgev2.ChatInfo
+	if evt.Thread.AsIGDirectThread != nil {
+		info.Name = &evt.Thread.AsIGDirectThread.ThreadTitle
+	}
+	return ic.handleMessageChatInfoChange(portalKey, evt.Message, &info, bridgev2.ChatMember{
 		EventSender: ic.makeEventSender(evt.LeftParticipantFBID),
 		Membership:  event.MembershipLeave,
 	})

@@ -47,6 +47,8 @@ type InterpBridge struct {
 	OpenDialog             func(context.Context, *BloksDialog) error
 	PopScreen              func(context.Context, string) error
 	HandleVariableChange   func(ctx context.Context, name string, value *BloksScriptLiteral) error
+
+	ShowLoggedInResetPassword func(ctx context.Context) error
 }
 
 type BloksDialogButton struct {
@@ -803,21 +805,21 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		}
 		return BloksLiteralOf(first.Value() == second.Value()), nil
 	case "bk.action.f32.Lt", "bk.action.i64.Lt":
-		first, err := evalAs[int64](ctx, i, &call.Args[0], "lt lhs")
+		first, err := evalFloat(ctx, i, &call.Args[0], "lt lhs")
 		if err != nil {
 			return nil, err
 		}
-		second, err := evalAs[int64](ctx, i, &call.Args[1], "lt rhs")
+		second, err := evalFloat(ctx, i, &call.Args[1], "lt rhs")
 		if err != nil {
 			return nil, err
 		}
 		return BloksLiteralOf(first < second), nil
 	case "bk.action.f32.Gt", "bk.action.i64.Gt":
-		first, err := evalAs[int64](ctx, i, &call.Args[0], "gt lhs")
+		first, err := evalFloat(ctx, i, &call.Args[0], "gt lhs")
 		if err != nil {
 			return nil, err
 		}
-		second, err := evalAs[int64](ctx, i, &call.Args[1], "gt rhs")
+		second, err := evalFloat(ctx, i, &call.Args[1], "gt rhs")
 		if err != nil {
 			return nil, err
 		}
@@ -1607,22 +1609,32 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksLiteralOf(int64(len(str))), nil
-	case "bk.action.mins.Ge":
-		lhs, err := evalAs[int64](ctx, i, &call.Args[0], "mins.ge")
+	case "bk.action.string.StartsWith":
+		str, err := evalAs[string](ctx, i, &call.Args[0], "string.startswith")
 		if err != nil {
 			return nil, err
 		}
-		rhs, err := evalAs[int64](ctx, i, &call.Args[1], "mins.ge")
+		prefix, err := evalAs[string](ctx, i, &call.Args[1], "string.startswith")
+		if err != nil {
+			return nil, err
+		}
+		return BloksLiteralOf(strings.HasPrefix(str, prefix)), nil
+	case "bk.action.mins.Ge":
+		lhs, err := evalFloat(ctx, i, &call.Args[0], "mins.ge")
+		if err != nil {
+			return nil, err
+		}
+		rhs, err := evalFloat(ctx, i, &call.Args[1], "mins.ge")
 		if err != nil {
 			return nil, err
 		}
 		return BloksLiteralOf(lhs >= rhs), nil
 	case "bk.action.mins.Le":
-		lhs, err := evalAs[int64](ctx, i, &call.Args[0], "mins.ge")
+		lhs, err := evalFloat(ctx, i, &call.Args[0], "mins.le")
 		if err != nil {
 			return nil, err
 		}
-		rhs, err := evalAs[int64](ctx, i, &call.Args[1], "mins.ge")
+		rhs, err := evalFloat(ctx, i, &call.Args[1], "mins.le")
 		if err != nil {
 			return nil, err
 		}
@@ -1655,15 +1667,21 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, nil
-	case "bk.action.timer.Cancel":
-		// Args are (timer context, name), the first of which we have no use for.
-		name, err := evalAs[string](ctx, i, &call.Args[1], "timer.cancel")
+	case "bk.action.timer.Cancel", "bk.action.timer.Stop":
+		name, err := evalAs[string](ctx, i, &call.Args[len(call.Args)-1], "timer.cancel")
 		if err != nil {
 			return nil, err
 		}
 		err = i.Bridge.CancelTimer(name)
 		if err != nil {
 			return nil, err
+		}
+		return BloksNothing, nil
+	case "bk.action.caa.ShowLoggedInResetPassword", "bk.action.caa.ShowLoggedInResetPasswordV2":
+		if i.Bridge.ShowLoggedInResetPassword != nil {
+			if err := i.Bridge.ShowLoggedInResetPassword(ctx); err != nil {
+				return nil, err
+			}
 		}
 		return BloksNothing, nil
 	case "bk.action.caa.PresentCheckpointsFlow":
@@ -1710,6 +1728,26 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return nil, fmt.Errorf("%s", msg)
+	case "bk.action.callback.Apply":
+		if len(call.Args) < 1 {
+			return nil, fmt.Errorf("callback.Apply needs a callback")
+		}
+		callback, err := i.Evaluate(ctx, &call.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		if callback.Value() == nil {
+			return BloksNothing, nil
+		}
+		if _, ok := callback.Value().(*BloksLambda); !ok {
+			return nil, fmt.Errorf("callback.Apply expected a callback, got %T", callback.Value())
+		}
+		return i.Evaluate(ctx, &BloksScriptNode{
+			Content: &BloksScriptFuncall{
+				Function: "bk.action.core.Apply",
+				Args:     append([]BloksScriptNode{{Content: callback}}, call.Args[1:]...),
+			},
+		})
 	case "bk.action.callback.MakeWithScopeOnly":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.session_store.Get":
@@ -1737,6 +1775,15 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		// V2 has a second argument which is always null in the flows we see,
 		// presumably some kind of navigation options.
 		url, err := evalAs[string](ctx, i, &call.Args[0], "openurl")
+		if err != nil {
+			return nil, err
+		}
+		return BloksNothing, i.Bridge.OpenURL(url)
+	case "bk.action.caa.PlayVoiceCaptchaAudio":
+		if len(call.Args) != 2 {
+			return nil, fmt.Errorf("PlayVoiceCaptchaAudio expects 2 arguments, got %d", len(call.Args))
+		}
+		url, err := evalAs[string](ctx, i, &call.Args[1], "captcha audio URL")
 		if err != nil {
 			return nil, err
 		}
@@ -1830,8 +1877,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.text_input.ClearText",
 		"bk.action.caa.reg.SaveCachedInfo",
 		"bk.action.textinput.SetTextV2",
-		"bk.action.caa.reg.SaveMachineID",
-		"bk.action.caa.ShowLoggedInResetPassword":
+		"bk.action.caa.reg.SaveMachineID":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))

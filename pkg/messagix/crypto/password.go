@@ -89,7 +89,7 @@ func encryptPasswordNacl(pubKeyId int, pubKey, password, format string) (string,
 
 // EncryptInstagramAppPassword creates the password envelope used by the
 // first-party Instagram Android API. The app endpoint publishes an RSA public
-// key in the response headers from /api/v1/qe/sync/.
+// key in the response headers from /api/v1/launcher/sync/.
 func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (string, error) {
 	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKey)
 	if err != nil {

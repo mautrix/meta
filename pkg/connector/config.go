@@ -34,6 +34,7 @@ type Config struct {
 	DisableViewOnce           bool `yaml:"disable_view_once"`
 	MarketplaceSpace          bool `yaml:"marketplace_space"`
 	LogRedactedLoginResponses bool `yaml:"log_redacted_login_responses"`
+	E2EEBackfill              bool `yaml:"e2ee_backfill"`
 
 	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
 }
@@ -78,6 +79,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Bool, "marketplace_space")
 	helper.Copy(up.Bool, "log_redacted_login_responses")
+	helper.Copy(up.Bool, "e2ee_backfill")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
 }

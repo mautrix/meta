@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package vesta;
+option go_package = "go.mau.fi/mautrix-meta/pkg/messagix/securehistory";
+
+message LoginPayload {
+  required bytes backup_key_data_encrypted = 1;
+  required bytes rk_nonce = 2;
+}
+
+message WaBackupKeyData {
+  required bytes aes_k = 1;
+  required bytes k_nonce = 2;
+}

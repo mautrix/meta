@@ -82,7 +82,7 @@ type metaCredentials struct {
 }
 
 func validateNativeSession(session *types.NativeSession) error {
-	if session != nil && (session.AccessToken == "" || session.AppID != useragent.MessengerLiteAndroidAppID || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil) {
+	if session != nil && (session.AccessToken == "" || (session.AppID != useragent.MessengerLiteAndroidAppID && session.AppID != useragent.MessengerLiteIOSAppID) || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil) {
 		return fmt.Errorf("invalid native Messenger session")
 	}
 	return nil
@@ -124,7 +124,11 @@ func (m *MetaConnector) CreateUserLoginFromCredentials(ctx context.Context, user
 	}
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 	if session := transferred.NativeSession; session != nil {
-		authClient, err := getMessagixClient(log, m, &cookies.Cookies{Platform: types.MessengerLiteAndroid}, m.Config.ProxyMessengerLite)
+		authPlatform := types.MessengerLiteAndroid
+		if session.AppID == useragent.MessengerLiteIOSAppID {
+			authPlatform = types.MessengerLiteIOS
+		}
+		authClient, err := getMessagixClient(log, m, &cookies.Cookies{Platform: authPlatform}, m.Config.ProxyMessengerLite)
 		if err != nil {
 			return err
 		}
@@ -182,6 +186,8 @@ func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 }
 
 type MetaCookieLogin struct {
+	MessengerHistoryLogin
+
 	Mode types.Platform
 	User *bridgev2.User
 	Main *MetaConnector
@@ -189,6 +195,7 @@ type MetaCookieLogin struct {
 }
 
 var _ bridgev2.LoginProcessCookies = (*MetaCookieLogin)(nil)
+var _ bridgev2.LoginProcessUserInput = (*MetaCookieLogin)(nil)
 
 func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridgev2.LoginCookieField {
 	fields := make([]bridgev2.LoginCookieField, len(cookies))
@@ -275,6 +282,10 @@ func loginWithCookies(
 			return nil, loginerrors.Consent
 		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
 			return nil, loginerrors.TokenInvalidated
+		} else if errors.Is(err, httpclient.ErrRateLimited) {
+			return nil, loginerrors.RateLimited
+		} else if errors.Is(err, httpclient.ErrUnexpectedError) {
+			return nil, fmt.Errorf("%w: %w", loginerrors.InboxLoadFailed, err)
 		} else {
 			return nil, fmt.Errorf("%w: %w", loginerrors.Unknown, err)
 		}
@@ -345,10 +356,16 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if err != nil {
 		return nil, err
 	}
-	return loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
+	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
+	if err != nil {
+		return nil, err
+	}
+	return m.startHistory(ctx, step)
 }
 
 type MetaNativeLogin struct {
+	MessengerHistoryLogin
+
 	Mode types.Platform
 	User *bridgev2.User
 	Main *MetaConnector
@@ -385,6 +402,9 @@ func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.L
 }
 
 func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	if m.historyComplete != nil {
+		return m.MessengerHistoryLogin.SubmitUserInput(ctx, input)
+	}
 	return m.proceed(ctx, input)
 }
 
@@ -397,8 +417,11 @@ func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error)
 }
 
 func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if m.historyComplete != nil {
+		return m.finishHistory(ctx)
+	}
 	if err := m.SavedClient.MessengerLite.CancelLoginStep(ctx); err != nil {
-		return nil, err
+		return nil, wrapMetaRespError(err)
 	}
 	return m.proceed(ctx, nil)
 }
@@ -411,6 +434,8 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
 			err = loginerrors.Checkpoint
+		} else if httpclient.IsClientHTTPError(err) {
+			err = loginerrors.ClientHTTPFailed.WithInternalError(err)
 		}
 		return nil, err
 	}
@@ -435,7 +460,7 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 		return nil, err
 	}
 
-	return step, nil
+	return m.startHistory(ctx, step)
 }
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)

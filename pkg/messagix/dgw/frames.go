@@ -566,7 +566,5 @@ func writeFrames(ctx context.Context, conn *connection, frames ...Frame) error {
 		}
 		b = frame.MarshalAppend(b)
 	}
-	writeCtx, cancel := context.WithTimeout(ctx, WriteTimeout)
-	defer cancel()
-	return conn.Write(writeCtx, websocket.MessageBinary, b)
+	return conn.queueWrite(ctx, b)
 }
