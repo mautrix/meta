@@ -1788,6 +1788,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		return BloksNothing, i.Bridge.OpenURL(url)
+	case "bk.action.caa.GetAppBuildType":
+		return BloksLiteralOf("release"), nil
 	case "bk.action.caa.GenerateUUID":
 		// This may be wrong, just guessed the implementation based on the function name, it seems to work
 		return BloksLiteralOf(uuid.New().String()), nil
