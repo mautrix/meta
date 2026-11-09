@@ -58,7 +58,7 @@ func parseMetaMentions(ctx context.Context, text string, mentions []socket.Menti
 	for _, mention := range mentions {
 		if mention.Offset < prevEnd {
 			droppedTypes[mention.Type]++
-			if mention.Offset == outList[len(outList)-1].Offset {
+			if len(outList) > 0 && mention.Offset == outList[len(outList)-1].Offset {
 				droppedSameOffset++
 			}
 			continue
