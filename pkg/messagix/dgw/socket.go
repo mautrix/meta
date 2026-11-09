@@ -363,9 +363,9 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 					}, "ack for unknown stream")
 				}
 			} else {
-				incoming <- wrappedDataFrame{
-					s: stream,
-					f: f,
+				select {
+				case incoming <- wrappedDataFrame{s: stream, f: f}:
+				case <-done:
 				}
 			}
 		case *AckFrame:
@@ -388,8 +388,10 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 					Uint16("stream_id", uint16(streamID)).
 					Stringer("reason", f.GetReason()).
 					Msg("Received end of data frame")
-				incoming <- wrappedDataFrame{
-					s: stream,
+				select {
+				case incoming <- wrappedDataFrame{s: stream}:
+				case <-done:
+					stream.close(false)
 				}
 				s.streams.Delete(streamID)
 			}
