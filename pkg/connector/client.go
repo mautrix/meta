@@ -63,6 +63,13 @@ type MetaClient struct {
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
+	stickerLock          sync.Mutex
+	stickerTray          []messagix.StickerPack
+	stickerTrayErr       error
+	stickerTrayFetchedAt time.Time
+	stickerPacks         *exsync.Map[string, cachedStickerPack]
+	stickerPackLock      exsync.KeyedMutex[string]
+
 	connectBackgroundEvt           chan connectBackgroundEvent
 	connectBackgroundWAOfflineSync *exsync.Event
 	connectBackgroundWAEventCount  atomic.Uint32
@@ -118,6 +125,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		parsedTablesWake:   make(chan struct{}, 1),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 		historyReadStates:  exsync.NewMap[int64, historyReadState](),
+		stickerPacks:       exsync.NewMap[string, cachedStickerPack](),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 

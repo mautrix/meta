@@ -35,6 +35,7 @@ var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	AggressiveUpdateInfo: false,
 	ImplicitReadReceipts: true,
 	Provisioning: bridgev2.ProvisioningCapabilities{
+		ImagePackImport: true,
 		ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
 			CreateDM: true,
 			Search:   true,
