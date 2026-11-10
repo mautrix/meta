@@ -62,6 +62,10 @@ type Client struct {
 	socketRetries int
 	webMainStream atomic.Bool
 
+	lastMainStreamActivity atomic.Int64
+	mainStreamCheckPending atomic.Bool
+	lastStaleResubscribe   time.Time
+
 	mqttBypassSocket      *dgw.Socket
 	mqttBypassConnectLock sync.Mutex
 	mqttBypassStream      atomic.Pointer[dgw.PersistentStream]
