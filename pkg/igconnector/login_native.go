@@ -382,7 +382,11 @@ func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, 
 }
 
 func (m *MetaNativeLogin) continueWebAuthPlatform(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	step, err := m.client.DoInstagramWebAuthPlatformSteps(ctx, input)
+	client := m.client
+	if client == nil {
+		return nil, bridgev2.ErrLoginStepCancelled
+	}
+	step, err := client.DoInstagramWebAuthPlatformSteps(ctx, input)
 	return m.handleWebAuthPlatformResult(ctx, step, err)
 }
 
