@@ -473,7 +473,15 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSDeleteThenInsertMessageRequest, m.handleDeleteThenInsertMessageRequest, &innerQueue)
 	collectPortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
-	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, m.handleRemoveParticipant, &innerQueue)
+	adminMessageSenders := make(exmaps.Set[[2]int64])
+	for _, msg := range insert {
+		if msg.IsAdminMessage {
+			adminMessageSenders.Add([2]int64{msg.ThreadKey, msg.SenderId})
+		}
+	}
+	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, func(tk handlerParams, evt *table.LSRemoveParticipantFromThread) bridgev2.RemoteEvent {
+		return m.handleRemoveParticipant(tk, evt, adminMessageSenders.Has([2]int64{evt.ThreadKey, evt.ParticipantId}))
+	}, &innerQueue)
 	// TODO request more inbox if applicable
 
 	for _, igThread := range tbl.LSDeleteThenInsertIgThreadInfo {
@@ -781,18 +789,22 @@ func (m *MetaClient) handleSelfLeaveThread(tk handlerParams, evt *table.LSRemove
 	return m.handleDeleteThreadKey(tk, tk.ID, true /* OnlyForMe */)
 }
 
-func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemoveParticipantFromThread) bridgev2.RemoteEvent {
+func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemoveParticipantFromThread, leftThemselves bool) bridgev2.RemoteEvent {
 	memberMap := make(bridgev2.ChatMemberMap, 1)
 	memberMap.Add(bridgev2.ChatMember{
 		EventSender:    m.makeEventSender(evt.ParticipantId),
 		Membership:     event.MembershipLeave,
 		PrevMembership: event.MembershipJoin,
 	})
-	return m.wrapChatInfoChange(tk.ID, evt.ParticipantId, tk.Type, &bridgev2.ChatInfoChange{
+	change := m.wrapChatInfoChange(tk.ID, evt.ParticipantId, tk.Type, &bridgev2.ChatInfoChange{
 		MemberChanges: &bridgev2.ChatMemberList{
 			MemberMap: memberMap,
 		},
 	}, "LSRemoveParticipantFromThread")
+	if leftThemselves {
+		change.Sender = m.makeEventSender(evt.ParticipantId)
+	}
+	return change
 }
 
 func (m *MetaClient) handleSubthread(ctx context.Context, msg *table.WrappedMessage) {
