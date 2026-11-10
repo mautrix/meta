@@ -122,6 +122,7 @@ type MetaNativeLogin struct {
 
 var _ bridgev2.LoginProcessUserInput = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessCookies = (*MetaNativeLogin)(nil)
+var _ bridgev2.LoginProcessWithOverride = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessWithParams = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessDisplayAndWait = (*MetaNativeLogin)(nil)
 var _ bridgev2.LoginProcessStepCancel = (*MetaNativeLogin)(nil)
@@ -140,12 +141,20 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	return m.StartWithParams(ctx, bridgev2.LoginStartParams{})
 }
 
+func (m *MetaNativeLogin) StartWithOverride(ctx context.Context, override *bridgev2.UserLogin) (*bridgev2.LoginStep, error) {
+	return m.StartWithParams(ctx, bridgev2.LoginStartParams{Override: override})
+}
+
 func (m *MetaNativeLogin) StartWithParams(
 	ctx context.Context,
 	params bridgev2.LoginStartParams,
 ) (*bridgev2.LoginStep, error) {
 	m.transport = params.HTTP
-	return m.start(ctx, "Enter your Instagram email or username and password.")
+	step, err := m.start(ctx, "Enter your Instagram email or username and password.")
+	if err == nil && params.Override != nil {
+		step.UserInputParams.Fields[0].DefaultValue = params.Override.RemoteProfile.Username
+	}
+	return step, err
 }
 
 func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*bridgev2.LoginStep, error) {
