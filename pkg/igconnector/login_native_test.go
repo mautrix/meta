@@ -79,7 +79,6 @@ func TestInstagramNativeReconnectDefaultsUsername(t *testing.T) {
 		User: &bridgev2.User{Log: zerolog.Nop()},
 		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
 	}
-	defer login.Cancel()
 	step, err := login.StartWithOverride(context.Background(), &bridgev2.UserLogin{UserLogin: &database.UserLogin{
 		RemoteProfile: status.RemoteProfile{Username: "saved_username"},
 	}})
@@ -97,7 +96,6 @@ func TestInstagramNativeReconnectHasNoPasswordDefault(t *testing.T) {
 		User: &bridgev2.User{Log: zerolog.Nop()},
 		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
 	}
-	defer login.Cancel()
 	step, err := login.StartWithOverride(context.Background(), &bridgev2.UserLogin{UserLogin: &database.UserLogin{
 		RemoteProfile: status.RemoteProfile{Username: "saved_username"},
 	}})
@@ -115,7 +113,6 @@ func TestInstagramNativeNewLoginHasNoUsernameDefault(t *testing.T) {
 		User: &bridgev2.User{Log: zerolog.Nop()},
 		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
 	}
-	defer login.Cancel()
 	step, err := login.Start(context.Background())
 	if err != nil {
 		t.Fatalf("failed to start native login: %v", err)
