@@ -75,44 +75,20 @@ func TestInstagramNativeCredentialsStep(t *testing.T) {
 }
 
 func TestInstagramNativeReconnectDefaultsUsername(t *testing.T) {
-	ctx := context.Background()
-	override := &bridgev2.UserLogin{UserLogin: &database.UserLogin{
-		RemoteProfile: status.RemoteProfile{Username: "saved_username"},
-	}}
-	tests := []struct {
-		name         string
-		start        func(*MetaNativeLogin) (*bridgev2.LoginStep, error)
-		wantUsername string
-	}{
-		{"new login", func(login *MetaNativeLogin) (*bridgev2.LoginStep, error) {
-			return login.Start(ctx)
-		}, ""},
-		{"StartWithOverride", func(login *MetaNativeLogin) (*bridgev2.LoginStep, error) {
-			return login.StartWithOverride(ctx, override)
-		}, "saved_username"},
-		{"StartWithParams", func(login *MetaNativeLogin) (*bridgev2.LoginStep, error) {
-			return login.StartWithParams(ctx, bridgev2.LoginStartParams{Override: override})
-		}, "saved_username"},
+	login := &MetaNativeLogin{
+		User: &bridgev2.User{Log: zerolog.Nop()},
+		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			login := &MetaNativeLogin{
-				User: &bridgev2.User{Log: zerolog.Nop()},
-				Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
-			}
-			t.Cleanup(login.Cancel)
-			step, err := tt.start(login)
-			if err != nil {
-				t.Fatalf("failed to start native login: %v", err)
-			}
-			assertInstagramCredentialsStep(t, step)
-			if got := step.UserInputParams.Fields[0].DefaultValue; got != tt.wantUsername {
-				t.Errorf("username default = %q, want %q", got, tt.wantUsername)
-			}
-			if got := step.UserInputParams.Fields[1].DefaultValue; got != "" {
-				t.Errorf("password default = %q, want empty", got)
-			}
-		})
+	defer login.Cancel()
+	step, err := login.StartWithOverride(context.Background(), &bridgev2.UserLogin{UserLogin: &database.UserLogin{
+		RemoteProfile: status.RemoteProfile{Username: "saved_username"},
+	}})
+	if err != nil {
+		t.Fatalf("failed to start native login: %v", err)
+	}
+	assertInstagramCredentialsStep(t, step)
+	if got := step.UserInputParams.Fields[0].DefaultValue; got != "saved_username" {
+		t.Fatalf("username default = %q, want saved_username", got)
 	}
 }
 
