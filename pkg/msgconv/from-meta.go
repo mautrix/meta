@@ -184,11 +184,8 @@ func (mc *MessageConverter) ToMatrix(
 			content.BeeperLinkPreviews = make([]*event.BeeperLinkPreview, len(urlPreviews))
 			previewLinks := make([]string, len(urlPreviews))
 			for i, preview := range urlPreviews {
-				partID := networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i))
-				ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
 				content.BeeperLinkPreviews[i] = mc.urlPreviewToBeeper(ctx, preview)
 				previewLinks[i] = content.BeeperLinkPreviews[i].CanonicalURL
-				importantPartIDs = append(importantPartIDs, partID)
 			}
 			// TODO do more fancy detection of whether the link is in the body?
 			if len(content.Body) == 0 {
@@ -496,11 +493,15 @@ func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.W
 		},
 	}
 	if att.PreviewUrl != "" {
-		// URL previews don't typically need refresh metadata
-		converted, err := mc.reuploadAttachment(
-			ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, 0, int(att.PreviewWidth), int(att.PreviewHeight), 0,
-			nil,
-		)
+		converted, err := mediadl.ReuploadFileToMatrix(ctx, mediadl.ReuploadParams{
+			AttachmentType: att.AttachmentType,
+			URL:            att.PreviewUrl,
+			FileName:       "preview",
+			MimeType:       att.PreviewUrlMimeType,
+			Width:          int(att.PreviewWidth),
+			Height:         int(att.PreviewHeight),
+			MaxFileSize:    mc.MaxFileSize,
+		})
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload URL preview image")
 		} else {
