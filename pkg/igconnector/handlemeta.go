@@ -383,6 +383,15 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 		}
 	}
 
+	ic.rateLimitedLock.Lock()
+	if pending, ok := ic.rateLimitedThreads[d.ThreadIGID]; ok {
+		ic.rateLimitedThreads[d.ThreadIGID] = append(pending, d)
+		ic.rateLimitedLock.Unlock()
+		log.Debug().Msg("Thread resync is pending after rate limit, queued delta")
+		return nil
+	}
+	ic.rateLimitedLock.Unlock()
+
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate, fmt.Sprintf("delta %s", d.TypeName))
 	if errors.Is(err, httpclient.ErrRateLimited) {
 		log.Warn().Err(err).Msg("Thread info fetch was rate limited, resyncing thread later")
