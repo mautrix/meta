@@ -19,6 +19,7 @@ import (
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
+	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix"
@@ -705,6 +706,7 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
+	m.removeE2EEDevice(ctx)
 	m.disconnect(false)
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete(ctx)
@@ -717,6 +719,33 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	m.waState = status.BridgeState{}
 	m.LoginMeta.Cookies = nil
 	m.lastFullReconnect = time.Time{}
+}
+
+func (m *MetaClient) removeE2EEDevice(ctx context.Context) {
+	cli, dev := m.E2EEClient, m.WADevice
+	if cli == nil || dev == nil || dev.ID == nil || dev.IdentityKey == nil || !cli.IsConnected() {
+		return
+	}
+	//lint:ignore SA1019 whatsmeow has no public API for removing a Messenger device
+	_, err := cli.DangerousInternals().SendIQ(ctx, whatsmeow.DangerousInfoQuery{
+		Namespace: "fbid:devices",
+		Type:      "set",
+		To:        waTypes.ServerJID,
+		Content: []waBinary.Node{{
+			Tag:   "remove",
+			Attrs: waBinary.Attrs{"id": int(dev.ID.Device)},
+			Content: []waBinary.Node{{
+				Tag:     "identity",
+				Content: dev.IdentityKey.Pub[:],
+			}},
+		}},
+		Timeout: 10 * time.Second,
+	})
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to remove encrypted chat device")
+	} else {
+		zerolog.Ctx(ctx).Debug().Uint16("device_id", dev.ID.Device).Msg("Removed encrypted chat device")
+	}
 }
 
 func (m *MetaClient) canReconnect() bool {
