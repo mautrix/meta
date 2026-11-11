@@ -192,6 +192,10 @@ func (mc *MessageConverter) wrapRavenMedia(
 		if content.ViewMode == slidetypes.RavenViewModeViewTwice {
 			part.Content.BeeperViewLimited.Count = 2
 		}
+		if part.DBMetadata == nil {
+			part.DBMetadata = &metaid.MessageMetadata{}
+		}
+		part.DBMetadata.(*metaid.MessageMetadata).ViewLimited = ptr.Clone(part.Content.BeeperViewLimited)
 	}
 	return part
 }

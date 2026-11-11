@@ -10,6 +10,7 @@ import (
 	"go.mau.fi/util/random"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/pushcrypto"
@@ -28,6 +29,8 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+
+	ViewLimited *event.BeeperViewLimitedMedia `json:"view_limited,omitempty"`
 
 	PollID        int64              `json:"poll_id,omitzero"`
 	PollQuestion  string             `json:"poll_question,omitempty"`

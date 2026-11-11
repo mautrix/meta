@@ -27,6 +27,7 @@ import (
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/util/variationselector"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -45,14 +46,15 @@ var (
 	_ bridgev2.RedactionHandlingNetworkAPI   = (*IGClient)(nil)
 	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*IGClient)(nil)
 	//_ bridgev2.ChatViewingNetworkAPI             = (*IGClient)(nil)
-	_ bridgev2.TypingHandlingNetworkAPI          = (*IGClient)(nil)
-	_ bridgev2.MessageRequestAcceptingNetworkAPI = (*IGClient)(nil)
-	_ bridgev2.DeleteChatHandlingNetworkAPI      = (*IGClient)(nil)
-	_ bridgev2.MuteHandlingNetworkAPI            = (*IGClient)(nil)
-	_ bridgev2.TagHandlingNetworkAPI             = (*IGClient)(nil)
-	_ bridgev2.RoomNameHandlingNetworkAPI        = (*IGClient)(nil)
-	_ bridgev2.RoomAvatarHandlingNetworkAPI      = (*IGClient)(nil)
-	_ bridgev2.UserBlockingNetworkAPI            = (*IGClient)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI           = (*IGClient)(nil)
+	_ bridgev2.MessageRequestAcceptingNetworkAPI  = (*IGClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI       = (*IGClient)(nil)
+	_ bridgev2.MuteHandlingNetworkAPI             = (*IGClient)(nil)
+	_ bridgev2.TagHandlingNetworkAPI              = (*IGClient)(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI         = (*IGClient)(nil)
+	_ bridgev2.RoomAvatarHandlingNetworkAPI       = (*IGClient)(nil)
+	_ bridgev2.UserBlockingNetworkAPI             = (*IGClient)(nil)
+	_ bridgev2.ViewLimitedMediaHandlingNetworkAPI = (*IGClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*IGConnector)(nil)
@@ -302,6 +304,19 @@ func (ic *IGClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 		},
 	})
 	return wrapInstagramError(err)
+}
+
+func (ic *IGClient) HandleMatrixViewLimitedMedia(ctx context.Context, msg *bridgev2.MatrixViewLimitedMedia) error {
+	meta, ok := msg.Message.Metadata.(*metaid.MessageMetadata)
+	if !ok || meta.ViewLimited == nil || msg.Content == nil || *meta.ViewLimited != *msg.Content {
+		return mautrix.MInvalidParam.WithMessage("View limit does not match the message")
+	}
+	meta.ViewLimited.Count--
+	if meta.ViewLimited.Count <= 0 {
+		meta.ViewLimited = nil
+		meta.DirectMediaMeta = nil
+	}
+	return ic.Main.Bridge.DB.Message.Update(ctx, msg.Message)
 }
 
 func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) error {
