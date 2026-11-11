@@ -147,3 +147,46 @@ func (c *Client) FetchReel(ctx context.Context, reelIDs []string, mediaID string
 
 	return reelInfo, nil
 }
+
+func (c *Client) MarkVisualItemSeen(ctx context.Context, threadID, itemID string, replayed bool) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
+	h := c.http.BuildHeaders(true, false)
+	h.Set("x-requested-with", "XMLHttpRequest")
+	h.Set("referer", c.GetEndpoint("base_url"))
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-site", "same-origin")
+	h.Set("X-Web-Session-ID", c.configs.WebSessionID)
+	h.Set("x-instagram-ajax", c.configs.BrowserConfigTable.InstagramWebPushInfo.RolloutHash)
+	itemIDsJSON, err := json.Marshal([]string{itemID})
+	if err != nil {
+		return err
+	}
+	form := url.Values{}
+	form.Set("item_ids", string(itemIDsJSON))
+	form.Set("target_item_type", "raven_media")
+	form.Set("fb_dtsg", c.configs.BrowserConfigTable.DTSGInitData.Token)
+	form.Set("jazoest", c.configs.Jazoest)
+	endpoint := "visual_item_seen"
+	if replayed {
+		endpoint = "visual_item_replayed"
+	}
+	reqURL := fmt.Sprintf(c.GetEndpoint(endpoint), threadID)
+
+	_, respBody, err := c.http.MakeRequest(ctx, reqURL, http.MethodPost, h, []byte(form.Encode()), types.FORM)
+	if err != nil {
+		c.checkResponseError(err)
+		return fmt.Errorf("failed to mark visual item %s as seen: %w", itemID, err)
+	}
+	var resp struct {
+		Status string `json:"status"`
+	}
+	if err = json.Unmarshal(respBody, &resp); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	} else if resp.Status != "ok" {
+		return fmt.Errorf("unexpected response status: %s", resp.Status)
+	}
+	return nil
+}

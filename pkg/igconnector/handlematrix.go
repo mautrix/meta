@@ -307,16 +307,23 @@ func (ic *IGClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 }
 
 func (ic *IGClient) HandleMatrixViewLimitedMedia(ctx context.Context, msg *bridgev2.MatrixViewLimitedMedia) error {
-	meta, ok := msg.Message.Metadata.(*metaid.MessageMetadata)
-	if !ok || meta.ViewLimited == nil || msg.Content == nil || *meta.ViewLimited != *msg.Content {
+	dbMeta, ok := msg.Message.Metadata.(*metaid.MessageMetadata)
+	if !ok || dbMeta.ViewLimited == nil || msg.Content == nil || msg.Content.Type != dbMeta.ViewLimited.Type ||
+		msg.Content.Time != dbMeta.ViewLimited.Time || msg.Content.Count < 1 || msg.Content.Count > dbMeta.ViewLimited.Count {
 		return mautrix.MInvalidParam.WithMessage("View limit does not match the message")
 	}
-	meta.ViewLimited.Count--
-	if meta.ViewLimited.Count <= 0 {
-		meta.ViewLimited = nil
-		meta.DirectMediaMeta = nil
+	messageID, ok := metaid.ParseMessageID(msg.Message.ID).(metaid.ParsedFBMessageID)
+	if !ok {
+		return mautrix.MInvalidParam.WithMessage("Invalid view-limited media message")
+	} else if msg.Message.SenderID == networkid.UserID(ic.UserLogin.ID) {
+		return mautrix.MInvalidParam.WithMessage("Outgoing media is not view-limited")
 	}
-	return ic.Main.Bridge.DB.Message.Update(ctx, msg.Message)
+	meta, err := ic.ensureIGID(ctx, msg.Portal)
+	if err != nil {
+		return err
+	}
+	err = ic.Client.MarkVisualItemSeen(ctx, meta.IGThreadID, messageID.ID, msg.Content.Count < dbMeta.ViewLimited.Count)
+	return wrapInstagramError(err)
 }
 
 func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) error {
