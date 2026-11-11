@@ -269,6 +269,9 @@ func (ic *IGClient) resyncRateLimitedThread(d *slidetypes.Delta, source string) 
 					Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
 					Msg("Panic in rate limited thread resync")
 			}
+			if deltas := takeDeltas(); len(deltas) > 0 {
+				log.Warn().Int("delta_count", len(deltas)).Msg("Dropping deltas queued for rate limited thread")
+			}
 		}()
 		ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
 		for i, delay := range rateLimitedThreadResyncDelays {
@@ -278,26 +281,23 @@ func (ic *IGClient) resyncRateLimitedThread(d *slidetypes.Delta, source string) 
 				return
 			}
 			if ic.Client == nil {
-				log.Debug().Int("delta_count", len(takeDeltas())).Msg("Client disconnected, not resyncing thread")
 				return
 			}
 			_, err := ic.getAndResyncThread(ctx, threadIGID, source)
-			if err == nil {
-				deltas := takeDeltas()
-				log.Info().Int("attempt", i+1).Int("delta_count", len(deltas)).Msg("Resynced thread after rate limit, replaying deltas")
-				for _, delta := range deltas {
-					if err = ic.handleDelta(ctx, delta); err != nil {
-						log.Err(err).Str("delta_type", delta.TypeName).Msg("Failed to replay delta after rate limit")
-					}
-				}
-				return
-			} else if !errors.Is(err, httpclient.ErrRateLimited) {
-				log.Err(err).Int("attempt", i+1).Int("delta_count", len(takeDeltas())).Msg("Failed to resync thread after rate limit")
-				return
+			if err != nil {
+				log.Warn().Err(err).Int("attempt", i+1).Msg("Failed to resync thread after rate limit")
+				continue
 			}
-			log.Warn().Err(err).Int("attempt", i+1).Msg("Thread info fetch still rate limited")
+			deltas := takeDeltas()
+			log.Info().Int("attempt", i+1).Int("delta_count", len(deltas)).Msg("Resynced thread after rate limit, replaying deltas")
+			for _, delta := range deltas {
+				if err = ic.handleDelta(ctx, delta); err != nil {
+					log.Err(err).Str("delta_type", delta.TypeName).Msg("Failed to replay delta after rate limit")
+				}
+			}
+			return
 		}
-		log.Error().Int("delta_count", len(takeDeltas())).Msg("Giving up resyncing thread after repeated rate limits")
+		log.Error().Msg("Giving up resyncing thread after repeated failures")
 	}()
 }
 
