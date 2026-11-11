@@ -146,7 +146,10 @@ func NewClient(params ClientParams) *Client {
 
 func (c *Client) SetEventHandler(handler func(context.Context, slidetypes.ClientEvent) error) {
 	if handler == nil {
-		handler = func(context.Context, slidetypes.ClientEvent) error {
+		handler = func(_ context.Context, evt slidetypes.ClientEvent) error {
+			if _, ok := evt.(*slidetypes.ReconnectionStateUpdate); ok {
+				return nil
+			}
 			return fmt.Errorf("event handler disabled")
 		}
 	}
