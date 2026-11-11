@@ -87,7 +87,10 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		}
 		backfilling := false
 		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background {
-			if !mailbox.ThreadsByFolder.PageInfo.HasNextPage {
+			if !mailbox.ThreadsByFolder.PageInfo.HasNextPage && ic.Main.Config.ThreadBackfill.Enabled() {
+				backfilling = true
+				go ic.doChatBackfill(ctx, "", time.Time{}, true)
+			} else if !mailbox.ThreadsByFolder.PageInfo.HasNextPage {
 				zerolog.Ctx(ctx).Info().Msg("Only one page in inbox, marking backfill as completed")
 				ic.LoginMeta.BackfillCompleted = true
 				err := ic.UserLogin.Save(ctx)
@@ -96,7 +99,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 				}
 			} else if ic.Main.Config.ThreadBackfill.Enabled() && ic.LoginMeta.ThreadBackfillCursor == "" {
 				backfilling = true
-				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, time.Time{})
+				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, time.Time{}, false)
 			}
 		}
 		edges := mailbox.ThreadsByFolder.Edges
@@ -106,7 +109,7 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 			zerolog.Ctx(ctx).Info().
 				Time("since", *resyncSince).
 				Msg("First inbox page doesn't cover time since last seq ID, resyncing more chats")
-			go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, *resyncSince)
+			go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, *resyncSince, false)
 		}
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, mailbox.UQSeqID, startTS)
 		if err != nil {
@@ -131,7 +134,7 @@ func (ic *IGConnector) waitForChatBackfillSlot(ctx context.Context) (func(), err
 	}
 }
 
-func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since time.Time) {
+func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since time.Time, inboxDone bool) {
 	defer func() {
 		if v := recover(); v != nil {
 			zerolog.Ctx(ctx).Err(exerrors.RecoverToError(v)).
@@ -216,7 +219,9 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 	}
 
 	batchCount := 0
-	if cursor == "" {
+	if inboxDone {
+		hasMore = false
+	} else if cursor == "" {
 		log.Info().Msg("No start cursor, loading from scratch")
 		resp, err := ic.Client.GetMailbox(ctx)
 		if err != nil {
