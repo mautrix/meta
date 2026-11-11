@@ -455,6 +455,7 @@ func (m *MetaClient) periodicReconnect() {
 		(*oldCancel)()
 	}
 	interval := time.Duration(m.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	interval -= rand.N(interval / 10)
 	timer := time.NewTimer(interval)
 	defer timer.Stop()
 	m.UserLogin.Log.Info().Stringer("interval", interval).Msg("Starting periodic reconnect loop")
