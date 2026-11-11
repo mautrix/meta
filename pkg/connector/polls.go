@@ -28,6 +28,7 @@ type pollQuery struct {
 	done        chan struct{}
 	running     atomic.Bool
 	importVotes bool
+	importing   atomic.Bool
 	requestedMS atomic.Int64
 	updatedMS   atomic.Int64
 	coveredMS   atomic.Int64
@@ -195,11 +196,17 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 	query := value.(*pollQuery)
 	var expected []networkid.PartID
 	var expectedOptions []table.PollOption
+	var importing bool
 	return &simplevent.Message[*table.PollData]{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageUpsert,
 			PortalKey: query.portal,
 			PostHandleFunc: func(ctx context.Context, portal *bridgev2.Portal) {
+				if importing {
+					query.importing.Store(false)
+				} else if query.importing.Load() {
+					return
+				}
 				parts, err := m.Main.Bridge.DB.Message.GetAllPartsByID(ctx, portal.Receiver, query.target)
 				parent := pollRoot(parts)
 				if err == nil && parent == nil {
@@ -237,6 +244,7 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 				return bridgev2.UpsertResult{}, nil
 			}
 			query.importVotes = query.importVotes || !parent.Metadata.(*metaid.MessageMetadata).PollFetched
+			importing = query.importVotes && query.importing.CompareAndSwap(false, true)
 			edit, err := m.Main.MsgConv.ConvertPollSnapshot(parent, data)
 			if err != nil && !errors.Is(err, bridgev2.ErrIgnoringRemoteEvent) {
 				return bridgev2.UpsertResult{}, err
@@ -255,7 +263,7 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 			}
 			votes := meta.PollVotes
 			requestedMS := query.requestedMS.Load()
-			if !query.importVotes {
+			if !importing {
 				votes = reconcilePollVotes(meta, data, requestedMS)
 				if edit == nil && (updated || len(votes) > 0) {
 					if err = m.Main.Bridge.DB.Message.Update(ctx, parent); err != nil {
@@ -266,12 +274,19 @@ func (m *MetaClient) wrapPollSnapshot(data *table.PollData) bridgev2.RemoteEvent
 					return result, nil
 				}
 			}
+			existingParts := make(map[networkid.PartID]struct{}, len(parts))
+			for _, part := range parts {
+				existingParts[part.PartID] = struct{}{}
+			}
 			for actor, vote := range votes {
 				partID := networkid.PartID(pollVotePartPrefix + strconv.FormatInt(actor, 10))
-				if !query.importVotes {
+				if !importing {
 					partID += networkid.PartID(":" + strconv.FormatInt(requestedMS, 10))
 				}
 				expected = append(expected, partID)
+				if _, ok := existingParts[partID]; ok {
+					continue
+				}
 				result.SubEvents = append(result.SubEvents, &simplevent.Message[struct{}]{
 					EventMeta: simplevent.EventMeta{
 						Type:        bridgev2.RemoteEventMessageUpsert,
