@@ -62,8 +62,9 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		return
 	}
 	resyncSince := ic.resyncChatsSince.Swap(nil)
-	if resyncSince != nil && ic.LoginMeta.ThreadBackfillCursor != "" {
+	if resyncSince != nil && (ic.LoginMeta.ThreadBackfillCursor != "" || ic.LoginMeta.InboxBackfillCompleted) {
 		ic.LoginMeta.ThreadBackfillCursor = ""
+		ic.LoginMeta.InboxBackfillCompleted = false
 		err := ic.UserLogin.Save(ctx)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to clear chat backfill cursor after resnapshot")
