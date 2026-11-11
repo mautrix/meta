@@ -53,7 +53,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 19
+	return 1, 20
 }
 
 const MaxTextLength = 20000
@@ -69,7 +69,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2026_11_02"
+	base := "fi.mau.meta.capabilities.2026_11_11"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -214,6 +214,7 @@ func init() {
 	}
 
 	metaCaps.BlockUser = true
+	metaCapsWithE2E.BlockUser = true
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
