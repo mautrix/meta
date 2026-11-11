@@ -213,6 +213,7 @@ func init() {
 	}
 
 	metaCaps.BlockUser = true
+	metaCapsWithE2E.BlockUser = true
 }
 
 func (m *MetaClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
