@@ -722,10 +722,13 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 }
 
 func (m *MetaClient) removeE2EEDevice(ctx context.Context) {
+	m.e2eeConnectLock.Lock()
+	defer m.e2eeConnectLock.Unlock()
 	cli, dev := m.E2EEClient, m.WADevice
-	if cli == nil || dev == nil || dev.ID == nil || dev.IdentityKey == nil || !cli.IsConnected() {
+	if cli == nil || dev == nil || dev.ID == nil || dev.IdentityKey == nil || !cli.IsLoggedIn() {
 		return
 	}
+	cli.RemoveEventHandlers()
 	//lint:ignore SA1019 whatsmeow has no public API for removing a Messenger device
 	_, err := cli.DangerousInternals().SendIQ(ctx, whatsmeow.DangerousInfoQuery{
 		Namespace: "fbid:devices",
@@ -742,9 +745,9 @@ func (m *MetaClient) removeE2EEDevice(ctx context.Context) {
 		Timeout: 10 * time.Second,
 	})
 	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to remove encrypted chat device")
+		m.UserLogin.Log.Err(err).Msg("Failed to remove encrypted chat device")
 	} else {
-		zerolog.Ctx(ctx).Debug().Uint16("device_id", dev.ID.Device).Msg("Removed encrypted chat device")
+		m.UserLogin.Log.Debug().Uint16("device_id", dev.ID.Device).Msg("Removed encrypted chat device")
 	}
 }
 
