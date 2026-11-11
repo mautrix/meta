@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sync"
@@ -449,6 +450,7 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		(*oldCancel)()
 	}
 	interval := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	interval -= rand.N(interval / 10)
 	ic.UserLogin.Log.Info().Stringer("interval", interval).Msg("Periodic reconnect scheduled")
 	go func() {
 		defer cancel()
