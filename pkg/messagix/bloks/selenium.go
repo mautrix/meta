@@ -388,6 +388,8 @@ func instagramLoginSubmissionErrorDiagnostic(err error) (kind, detail string) {
 	case strings.Contains(message, "isn’t connected to an account") ||
 		strings.Contains(message, "isn't connected to an account"):
 		return "unlinked_identifier", ""
+	case strings.Contains(message, "com.bloks.www.caa.assistive_login_confirmation"):
+		return "invalid_identifier", ""
 	case strings.Contains(message, "unexpected HTTP status 429"):
 		return "rate_limited", ""
 	}
@@ -873,8 +875,12 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_step_verification.google_recaptcha",
 				"com.bloks.www.ap.anti_scripting.recaptcha":
 				newState = StateReCaptchaPage
-			case "com.bloks.www.caa.login.password_as_id_confirmation",
-				"com.bloks.www.caa.assistive_login_confirmation":
+			case "com.bloks.www.caa.login.password_as_id_confirmation":
+				newState = StateSuggestedAccountPage
+			case "com.bloks.www.caa.assistive_login_confirmation":
+				if page.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).FindContainingButton() == nil {
+					return fmt.Errorf("unexpected new screen %s", name)
+				}
 				newState = StateSuggestedAccountPage
 			case "com.bloks.www.caa.ar.password_form",
 				"com.bloks.www.caa.login.aymh_password_entry":
@@ -1397,6 +1403,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					thing = "email address"
 				}
 				b.LastError = fmt.Sprintf("That %s is not connected to a %s account", thing, b.profile.serviceName)
+			} else if strings.Contains(err.Error(), "com.bloks.www.caa.assistive_login_confirmation") {
+				// Facebook tries to send us to this screen when they think we are
+				// demonstrating substantial incompetence at entering an email
+				// address, like not putting a domain after the at-sign. It really
+				// just means the email address isn't valid though so let's report
+				// it like that.
+				//
+				// Technically we don't know that's the ONLY case where this screen
+				// comes up, but it's the only one sighted thus far. Update this if
+				// something new is discovered.
+				b.LastError = "Invalid email address"
 			} else if errorKind == "rate_limited" {
 				return nil, loginerrors.RateLimited
 			} else {
