@@ -53,7 +53,8 @@ type IGClient struct {
 	catchingUpTo int64
 
 	pendingGroupCreations *exsync.Set[string]
-	rateLimitedThreads    *exsync.Set[string]
+	rateLimitedThreads    map[string][]*slidetypes.Delta
+	rateLimitedLock       sync.Mutex
 	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
 	stopChatBackfill      atomic.Pointer[context.CancelFunc]
 	chatBackfillLock      sync.Mutex
@@ -83,7 +84,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		caughtUp:  exsync.NewEvent(),
 
 		pendingGroupCreations: exsync.NewSet[string](),
-		rateLimitedThreads:    exsync.NewSet[string](),
+		rateLimitedThreads:    make(map[string][]*slidetypes.Delta),
 		webPushCandidates:     exsync.NewSet[networkid.PortalID](),
 	}
 	c.mailboxProcessed.Store(true)

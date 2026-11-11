@@ -242,12 +242,23 @@ var rateLimitedThreadResyncDelays = []time.Duration{
 	30 * time.Second, 1 * time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 15 * time.Minute, 30 * time.Minute,
 }
 
-func (ic *IGClient) resyncRateLimitedThread(threadIGID, source string) {
-	if !ic.rateLimitedThreads.Add(threadIGID) {
+func (ic *IGClient) resyncRateLimitedThread(d *slidetypes.Delta, source string) {
+	threadIGID := d.ThreadIGID
+	ic.rateLimitedLock.Lock()
+	pending, alreadyQueued := ic.rateLimitedThreads[threadIGID]
+	ic.rateLimitedThreads[threadIGID] = append(pending, d)
+	ic.rateLimitedLock.Unlock()
+	if alreadyQueued {
 		return
 	}
 	go func() {
-		defer ic.rateLimitedThreads.Remove(threadIGID)
+		takeDeltas := func() []*slidetypes.Delta {
+			ic.rateLimitedLock.Lock()
+			defer ic.rateLimitedLock.Unlock()
+			deltas := ic.rateLimitedThreads[threadIGID]
+			delete(ic.rateLimitedThreads, threadIGID)
+			return deltas
+		}
 		log := ic.UserLogin.Log.With().
 			Str("action", "resync rate limited thread").
 			Str("thread_fbid", threadIGID).
@@ -267,20 +278,26 @@ func (ic *IGClient) resyncRateLimitedThread(threadIGID, source string) {
 				return
 			}
 			if ic.Client == nil {
-				log.Debug().Msg("Client disconnected, not resyncing thread")
+				log.Debug().Int("delta_count", len(takeDeltas())).Msg("Client disconnected, not resyncing thread")
 				return
 			}
 			_, err := ic.getAndResyncThread(ctx, threadIGID, source)
 			if err == nil {
-				log.Info().Int("attempt", i+1).Msg("Resynced thread after rate limit")
+				deltas := takeDeltas()
+				log.Info().Int("attempt", i+1).Int("delta_count", len(deltas)).Msg("Resynced thread after rate limit, replaying deltas")
+				for _, delta := range deltas {
+					if err = ic.handleDelta(ctx, delta); err != nil {
+						log.Err(err).Str("delta_type", delta.TypeName).Msg("Failed to replay delta after rate limit")
+					}
+				}
 				return
 			} else if !errors.Is(err, httpclient.ErrRateLimited) {
-				log.Err(err).Int("attempt", i+1).Msg("Failed to resync thread after rate limit")
+				log.Err(err).Int("attempt", i+1).Int("delta_count", len(takeDeltas())).Msg("Failed to resync thread after rate limit")
 				return
 			}
 			log.Warn().Err(err).Int("attempt", i+1).Msg("Thread info fetch still rate limited")
 		}
-		log.Error().Msg("Giving up resyncing thread after repeated rate limits")
+		log.Error().Int("delta_count", len(takeDeltas())).Msg("Giving up resyncing thread after repeated rate limits")
 	}()
 }
 
@@ -369,7 +386,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate, fmt.Sprintf("delta %s", d.TypeName))
 	if errors.Is(err, httpclient.ErrRateLimited) {
 		log.Warn().Err(err).Msg("Thread info fetch was rate limited, resyncing thread later")
-		ic.resyncRateLimitedThread(d.ThreadIGID, fmt.Sprintf("delta %s", d.TypeName))
+		ic.resyncRateLimitedThread(d, fmt.Sprintf("delta %s", d.TypeName))
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
