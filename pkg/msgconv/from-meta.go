@@ -518,6 +518,9 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
 		return []*bridgev2.ConvertedMessagePart{mc.xmaLocationToMatrix(ctx, att)}
 	}
+	if isXMACallLog(att) {
+		return []*bridgev2.ConvertedMessagePart{xmaCallLogToMatrix(att)}
+	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	expiresAt := att.PlayableUrlExpirationTimestampMs
@@ -702,4 +705,33 @@ func (mc *MessageConverter) reuploadAttachment(
 		DirectMedia:    mc.DirectMedia,
 		MaxFileSize:    mc.MaxFileSize,
 	})
+}
+
+func xmaCallLogToMatrix(att *table.WrappedXMA) *bridgev2.ConvertedMessagePart {
+	body := att.TitleText
+	if body == "" {
+		missed := strings.Contains(att.CTA.Type_, "_missed_")
+		video := strings.Contains(att.CTA.Type_, "video")
+		switch {
+		case missed && video:
+			body = "Missed video call"
+		case missed:
+			body = "Missed audio call"
+		case video:
+			body = "Video call"
+		default:
+			body = "Audio call"
+		}
+	}
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    body,
+		},
+	}
+}
+
+func isXMACallLog(att *table.WrappedXMA) bool {
+	return att.CTA != nil && strings.HasPrefix(att.CTA.Type_, "xma_rtc_")
 }
