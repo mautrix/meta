@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"html"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -87,7 +88,7 @@ func (mc *MessageConverter) ToMatrix(
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.TextBody, msg.Mentions))
 	case *slidetypes.MessageContentAdminText:
 		adminText := mc.wrapAdminText(content.TextFragments, msg.IGDSnippet)
-		mc.mutateWrappedAdminText(adminText, msg)
+		mc.mutateWrappedAdminText(ctx, adminText, msg, content)
 		cm.Parts = append(cm.Parts, adminText)
 	case *slidetypes.MessageContentImage:
 		for i, att := range content.Attachments {
@@ -196,12 +197,20 @@ func (mc *MessageConverter) wrapText(ctx context.Context, text string, mentions 
 	}
 }
 
-func (mc *MessageConverter) mutateWrappedAdminText(part *bridgev2.ConvertedMessagePart, msg *slidetypes.Message) {
+func (mc *MessageConverter) mutateWrappedAdminText(ctx context.Context, part *bridgev2.ConvertedMessagePart, msg *slidetypes.Message, content *slidetypes.MessageContentAdminText) {
 	switch msg.ContentType {
 	case "IG_VIDEO_CALL_XMAT":
 		// TODO include call metadata if possible
 	default:
 		part.DontBridge = true
+		zerolog.Ctx(ctx).Debug().
+			Str("content_type", msg.ContentType).
+			Bool("reaction_action_log", content.IsReactionActionLog).
+			Int("fragment_count", len(content.TextFragments)).
+			Bool("has_link", slices.ContainsFunc(content.TextFragments, func(f slidetypes.TextFragment) bool {
+				return f.LinkFragment != nil
+			})).
+			Msg("Not bridging admin text")
 	}
 }
 
