@@ -76,6 +76,35 @@ func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string,
 	return nil
 }
 
+func (c *Client) Logout(ctx context.Context) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
+	h := c.http.BuildHeaders(true, false)
+	h.Set("x-requested-with", "XMLHttpRequest")
+	h.Set("referer", c.GetEndpoint("base_url"))
+	h.Set("x-instagram-ajax", c.configs.BrowserConfigTable.InstagramWebPushInfo.RolloutHash)
+	form := url.Values{}
+	form.Set("one_tap_app_login", "0")
+	form.Set("user_id", c.cookies.Get(cookies.IGCookieDSUserID))
+	form.Set("fb_dtsg", c.configs.BrowserConfigTable.DTSGInitData.Token)
+	form.Set("jazoest", c.configs.Jazoest)
+
+	_, body, err := c.http.MakeRequest(ctx, c.GetEndpoint("logout_ajax"), http.MethodPost, h, []byte(form.Encode()), types.FORM)
+	if err != nil {
+		return err
+	}
+	var resp struct {
+		Status string `json:"status"`
+	}
+	if err = json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	} else if resp.Status != "ok" {
+		return fmt.Errorf("unexpected response status: %s", resp.Status)
+	}
+	return nil
+}
+
 func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
 	if c == nil {
 		return nil, ErrClientIsNil

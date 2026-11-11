@@ -15,6 +15,7 @@ var InstagramEndpoints = map[string]string{
 	"messages":                    instaBaseUrl + "/direct/inbox/",
 	"login":                       instaBaseUrl + "/accounts/login/",
 	"login_ajax":                  instaWebApiV1Url + "/accounts/login/ajax/",
+	"logout_ajax":                 instaWebApiV1Url + "/accounts/logout/ajax/",
 	"login_two_factor":            instaBaseUrl + "/accounts/login/two_factor/",
 	"login_two_factor_ajax":       instaWebApiV1Url + "/accounts/login/ajax/two_factor/",
 	"login_two_factor_sms":        instaWebApiV1Url + "/accounts/send_two_factor_login_sms/",

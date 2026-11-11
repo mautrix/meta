@@ -429,8 +429,14 @@ func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 }
 
 func (ic *IGClient) LogoutRemote(ctx context.Context) {
-	// TODO actual logout request?
+	cli := ic.Client
 	ic.Disconnect()
+	if cli != nil {
+		err := cli.Logout(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out")
+		}
+	}
 	ic.LoginMeta.Cookies = nil
 }
 
