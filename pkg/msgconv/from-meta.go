@@ -708,26 +708,29 @@ func (mc *MessageConverter) reuploadAttachment(
 }
 
 func xmaCallLogToMatrix(att *table.WrappedXMA) *bridgev2.ConvertedMessagePart {
+	callType := event.BeeperActionMessageCallTypeVoice
+	if strings.Contains(att.CTA.Type_, "video") {
+		callType = event.BeeperActionMessageCallTypeVideo
+	}
 	body := att.TitleText
 	if body == "" {
-		missed := strings.Contains(att.CTA.Type_, "_missed_")
-		video := strings.Contains(att.CTA.Type_, "video")
-		switch {
-		case missed && video:
-			body = "Missed video call"
-		case missed:
-			body = "Missed audio call"
-		case video:
+		body = "Audio call"
+		if callType == event.BeeperActionMessageCallTypeVideo {
 			body = "Video call"
-		default:
-			body = "Audio call"
+		}
+		if strings.Contains(att.CTA.Type_, "_missed_") {
+			body = "Missed " + strings.ToLower(body)
 		}
 	}
 	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
-			MsgType: event.MsgNotice,
+			MsgType: event.MsgText,
 			Body:    body,
+			BeeperActionMessage: &event.BeeperActionMessage{
+				Type:     event.BeeperActionMessageCall,
+				CallType: callType,
+			},
 		},
 	}
 }
