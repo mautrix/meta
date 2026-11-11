@@ -138,11 +138,19 @@ func (m *MetaClient) requestPoll(ctx context.Context, portal networkid.PortalKey
 				case <-requestCtx.Done():
 					err = requestCtx.Err()
 				}
+				for query.importing.Load() {
+					select {
+					case <-query.done:
+						cancel()
+						return
+					case <-time.After(time.Second):
+					}
+				}
 			}
 			cancel()
 			zerolog.Ctx(ctx).Err(err).Int64("poll_id", pollID).Int("attempt", attempt+1).Msg("Failed to fetch poll details")
 		}
-		if answered && query.updatedMS.Load() <= query.coveredMS.Load() {
+		if answered && !query.importing.Load() && query.updatedMS.Load() <= query.coveredMS.Load() {
 			m.removePollQuery(pollID, query)
 		}
 	}()
