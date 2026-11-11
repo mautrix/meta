@@ -127,7 +127,9 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		}
 	case *messagix.PermanentErrorEvent:
 		if websocket.CloseStatus(evt.Err) == dgw.CloseStatusUnauthorized {
-			if m.canReconnect() {
+			minInterval := time.Duration(m.Main.Config.MinFullReconnectIntervalSeconds) * time.Second
+			if m.LoginMeta.Cookies != nil && time.Since(m.lastUnauthorizedReconnect) > minInterval {
+				m.lastUnauthorizedReconnect = time.Now()
 				log.Debug().Err(evt.Err).Msg("Doing full reconnect after socket was closed as unauthorized")
 				go m.FullReconnect()
 				return
