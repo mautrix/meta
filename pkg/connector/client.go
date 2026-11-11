@@ -750,6 +750,7 @@ func (m *MetaClient) FullReconnect() {
 		return
 	}
 	defer m.reconnecting.Store(false)
+	m.lastFullReconnect = time.Now()
 	ctx := m.UserLogin.Log.WithContext(m.Main.Bridge.BackgroundCtx)
 	m.connectWaiter.Clear()
 	m.e2eeConnectWaiter.Clear()
@@ -764,7 +765,6 @@ func (m *MetaClient) FullReconnect() {
 	m.connectLock.Lock()
 	defer m.connectLock.Unlock()
 	m.connect(ctx)
-	m.lastFullReconnect = time.Now()
 }
 
 func (m *MetaClient) resetWADevice() {
