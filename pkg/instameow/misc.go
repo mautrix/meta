@@ -90,7 +90,7 @@ func (c *Client) Logout(ctx context.Context) error {
 	form.Set("fb_dtsg", c.configs.BrowserConfigTable.DTSGInitData.Token)
 	form.Set("jazoest", c.configs.Jazoest)
 
-	_, body, err := c.http.MakeRequest(ctx, c.GetEndpoint("logout_ajax"), http.MethodPost, h, []byte(form.Encode()), types.FORM)
+	_, body, err := c.http.MakeRequestOnce(ctx, c.GetEndpoint("logout_ajax"), http.MethodPost, h, []byte(form.Encode()), types.FORM)
 	if err != nil {
 		return err
 	}

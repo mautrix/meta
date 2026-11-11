@@ -68,6 +68,7 @@ type IGClient struct {
 	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	accountStateRechecks  atomic.Int32
+	credentialsExported   atomic.Bool
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -153,6 +154,7 @@ func (ic *IGClient) ensureIGClient() {
 }
 
 func (ic *IGClient) ExportCredentials(ctx context.Context) any {
+	ic.credentialsExported.Store(true)
 	if ic.Client == nil {
 		return nil
 	}
@@ -431,8 +433,10 @@ func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 func (ic *IGClient) LogoutRemote(ctx context.Context) {
 	cli := ic.Client
 	ic.Disconnect()
-	if cli != nil {
+	if cli != nil && !ic.credentialsExported.Load() {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err := cli.Logout(ctx)
+		cancel()
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out")
 		}
