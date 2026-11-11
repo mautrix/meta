@@ -40,6 +40,7 @@ type HTTPClient struct {
 	uploadHTTP      *http.Client
 	lsSyncHTTP      *http.Client
 	websocketClient *http.Client
+	uploadClient    *http.Client
 	proxyAddr       string
 	proxyLock       sync.Mutex
 	GetNewProxy     func(reason string) (string, error)
@@ -108,9 +109,13 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	uploadReqClient := c.newReqClient()
 	lsSyncReqClient := c.newReqClient()
 	wsClient := req.C().ImpersonateChrome()
+	uploadReqClient := req.C().ImpersonateChrome()
 	forceHTTP1ChromeFingerprint(wsClient)
 	if DisableTLSVerification {
 		wsClient.SetTLSClientConfig(&tls.Config{
+			InsecureSkipVerify: true,
+		})
+		uploadReqClient.SetTLSClientConfig(&tls.Config{
 			InsecureSkipVerify: true,
 		})
 	}
@@ -129,11 +134,16 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 	c.lsSyncHTTP = req.WithTransportOverride(lsSyncSettings, lsSyncReqClient).Compile()
 	c.lsSyncHTTP.CheckRedirect = c.checkHTTPRedirect
 	c.HTTP.CheckRedirect = c.checkHTTPRedirect
-	if oldHTTP != nil && oldHTTP.Transport != oldTransport {
-		c.SetTransportOverride(oldHTTP.Transport)
+	uploadSettings := c.HTTPSettings.
+		WithGlobalTimeout(MediaUploadTimeout).
+		WithResponseHeaderTimeout(MediaUploadTimeout)
+	c.uploadClient = req.WithTransportOverride(uploadSettings, uploadReqClient).Compile()
+	c.uploadClient.CheckRedirect = c.checkHTTPRedirect
+	if oldHTTP != nil {
+		oldHTTP.CloseIdleConnections()
 	}
-	if oldTransport != nil {
-		oldTransport.CloseIdleConnections()
+	if oldUpload != nil {
+		oldUpload.CloseIdleConnections()
 	}
 	if oldUploadHTTP != nil {
 		oldUploadHTTP.CloseIdleConnections()
@@ -144,6 +154,9 @@ func (c *HTTPClient) SetConfig(settings exhttp.ClientSettings) {
 
 	if DisableTLSVerification {
 		c.HTTP.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		c.uploadClient.Transport.(*http.Transport).TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true,
 		}
 	}
@@ -294,6 +307,12 @@ var WebsocketHandshakeTimeout = 20 * time.Second
 var MediaUploadTimeout = 5 * time.Minute
 var LightspeedSyncHeaderTimeout = 60 * time.Second
 var LightspeedSyncTimeout = 90 * time.Second
+
+// MediaUploadTimeout is used instead of the default timeouts for media uploads.
+// Uploading a large file takes much longer than the default global timeout, and the
+// server doesn't send response headers until it has received the entire body, which
+// means the default response header timeout applies to the upload itself.
+var MediaUploadTimeout = 5 * time.Minute
 
 func (c *HTTPClient) GetWebsocketDialer() *websocket.DialOptions {
 	if c == nil {
@@ -536,6 +555,7 @@ func (c *HTTPClient) makeRequest(
 	headers http.Header,
 	payload []byte,
 	contentType types.ContentType,
+	httpClient *http.Client,
 	logContext func(e *zerolog.Event) *zerolog.Event,
 ) (*http.Response, []byte, error) {
 	var attempts int
@@ -598,22 +618,8 @@ func (c *HTTPClient) makeRequest(
 	}
 }
 
-func (c *HTTPClient) MakeRequestOnce(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
-	return c.makeRequestOnce(ctx, c.HTTP, url, method, headers, payload, contentType)
-}
-
-// MakeRequestOnceNoRedirect returns the first response so callers can persist
-// cookies before deciding whether a redirect target is safe to follow.
-func (c *HTTPClient) MakeRequestOnceNoRedirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
-	httpClient := *c.HTTP
-	httpClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-	return c.makeRequestOnce(ctx, &httpClient, url, method, headers, payload, contentType)
-}
-
-func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Client, requestURL string, method string, headers http.Header, payload []byte, contentType types.ContentType) (*http.Response, []byte, error) {
-	newRequest, err := http.NewRequestWithContext(ctx, method, requestURL, bytes.NewBuffer(payload))
+func (c *HTTPClient) makeRequestDirect(ctx context.Context, url string, method string, headers http.Header, payload []byte, contentType types.ContentType, httpClient *http.Client) (*http.Response, []byte, error) {
+	newRequest, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, nil, err
 	}
