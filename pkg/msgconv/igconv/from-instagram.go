@@ -110,17 +110,9 @@ func (mc *MessageConverter) ToMatrix(
 			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "animated media", i, mc.animatedMediaReuploadParams(att)))
 		}
 	case *slidetypes.MessageContentRavenImage:
-		if (content.Attachment == nil || mc.DisableViewOnce) && content.ViewMode.ViewType() != "" {
-			cm.Parts = append(cm.Parts, mc.makeViewOnceError("image", content.ViewMode.ViewType()))
-		} else {
-			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven image", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeImage)))
-		}
+		cm.Parts = append(cm.Parts, mc.wrapRavenMedia(ctx, userLogin, msg, content, "image", table.AttachmentTypeImage))
 	case *slidetypes.MessageContentRavenVideo:
-		if (content.Attachment == nil || mc.DisableViewOnce) && content.ViewMode.ViewType() != "" {
-			cm.Parts = append(cm.Parts, mc.makeViewOnceError("video", content.ViewMode.ViewType()))
-		} else {
-			cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "raven video", 0, mc.attachmentReuploadParams(content.Attachment, table.AttachmentTypeVideo)))
-		}
+		cm.Parts = append(cm.Parts, mc.wrapRavenMedia(ctx, userLogin, msg, (*slidetypes.MessageContentRavenImage)(content), "video", table.AttachmentTypeVideo))
 	case *slidetypes.MessageContentSticker:
 		cm.Parts = append(cm.Parts, mc.wrapMedia(ctx, "sticker", 0, mc.stickerReuploadParams(content)))
 	case *slidetypes.MessageContentMusicSticker:
@@ -176,6 +168,32 @@ func (mc *MessageConverter) ToMatrix(
 
 func (mc *MessageConverter) MetaToMatrixText(ctx context.Context, text string, mentions slidetypes.MentionList) *event.MessageEventContent {
 	return textfmt.MetaToMatrixText(ctx, text, mentions.ToSocket(), mc.getBasicUserInfo)
+}
+
+func (mc *MessageConverter) wrapRavenMedia(
+	ctx context.Context,
+	userLogin *bridgev2.UserLogin,
+	msg *slidetypes.Message,
+	content *slidetypes.MessageContentRavenImage,
+	mediaType string,
+	attachmentType table.AttachmentType,
+) *bridgev2.ConvertedMessagePart {
+	viewType := content.ViewMode.ViewType()
+	if viewType != "" && content.Attachment == nil {
+		return mc.makeViewOnceError(mediaType, viewType)
+	}
+	viewLimited := viewType != "" && mc.Bridge.Config.ViewLimitedMedia && metaid.MakeUserLoginID(msg.SenderFBID) != userLogin.ID
+	if viewType != "" && !viewLimited && mc.DisableViewOnce {
+		return mc.makeViewOnceError(mediaType, viewType)
+	}
+	part := mc.wrapMedia(ctx, "raven "+mediaType, 0, mc.attachmentReuploadParams(content.Attachment, attachmentType))
+	if viewLimited && (part.Content.MsgType == event.MsgImage || part.Content.MsgType == event.MsgVideo) {
+		part.Content.BeeperViewLimited = &event.BeeperViewLimitedMedia{Type: "count", Count: 1}
+		if content.ViewMode == slidetypes.RavenViewModeViewTwice {
+			part.Content.BeeperViewLimited.Count = 2
+		}
+	}
+	return part
 }
 
 func (mc *MessageConverter) makeViewOnceError(mediaType, viewed string) *bridgev2.ConvertedMessagePart {
