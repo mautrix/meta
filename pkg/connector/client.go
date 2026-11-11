@@ -377,10 +377,10 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 			})
 			m.connectWithRetry(retryCtx, ctx, attempts+1)
 		} else if m.LoginMeta.Platform.IsMessengerLite() && errors.Is(err, httpclient.ErrPageInternalServerError) {
-			m.permanentErrored.Store(true)
 			m.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateBadCredentials,
-				Error:      MetaInboxLoadFailed,
+				StateEvent:         status.StateUnknownError,
+				Error:              MetaInboxLoadFailed,
+				BlockAutoReconnect: true,
 				Info: map[string]any{
 					"go_error": err.Error(),
 				},
