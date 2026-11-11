@@ -109,7 +109,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
-				if ic.doWaitMailboxProcessed(ctx) == nil {
+				if ic.doWaitMailboxProcessed(ctx) == nil && !ic.LoginMeta.BackfillCompleted {
 					ic.caughtUp.Set()
 				}
 			}()
@@ -117,7 +117,11 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			ic.catchingUpTo = evt.LatestSeqID
 		}
 		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
-			go ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{})
+			go func() {
+				if ic.doWaitMailboxProcessed(ctx) == nil && !ic.LoginMeta.BackfillCompleted {
+					ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{})
+				}
+			}()
 		}
 		return nil
 	case *slidetypes.Disconnected:
