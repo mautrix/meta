@@ -491,6 +491,11 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 	}
 
 	wg.Wait()
+	for frame := range incoming {
+		if frame.s != nil && frame.f == nil {
+			frame.s.close(false)
+		}
+	}
 
 	s.stopped.Set()
 	s.conn.Store(nil)
