@@ -37,6 +37,7 @@ const (
 	MetaRedirectedToLoginPage status.BridgeStateErrorCode = "meta-redirected-to-login"
 	MetaNotLoggedIn           status.BridgeStateErrorCode = "meta-not-logged-in"
 	MetaConnectError          status.BridgeStateErrorCode = "meta-connect-error"
+	MetaInboxLoadFailed       status.BridgeStateErrorCode = "meta-inbox-load-failed"
 	MetaGraphQLError          status.BridgeStateErrorCode = "meta-graphql-error"
 	MetaTransientDisconnect   status.BridgeStateErrorCode = "meta-transient-disconnect"
 	FBChallengeRequired       status.BridgeStateErrorCode = "fb-challenge-required"
@@ -62,6 +63,7 @@ func init() {
 		FBConsentRequired:         "Consent required, please check the Facebook website to continue",
 		FBCheckpointRequired:      "Checkpoint required, please check the Facebook website to continue",
 		MetaConnectError:          "Unknown connection error",
+		MetaInboxLoadFailed:       "Facebook keeps failing to load your messages, please relogin to continue",
 		MetaPermanentError:        "Unknown permanent connection error",
 		MetaProxyUpdateFail:       "Failed to update proxy",
 		IGNotSupported:            "This bridge no longer supports Instagram",

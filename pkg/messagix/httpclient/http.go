@@ -411,6 +411,7 @@ var (
 	ErrResponseReadFailed       = errors.New("failed to read response body")
 	ErrUnexpectedError          = errors.New("server returned unexpected HTTP status")
 	ErrRateLimited              = fmt.Errorf("%w 429", ErrUnexpectedError)
+	ErrInternalServerError      = fmt.Errorf("%w 500", ErrUnexpectedError)
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
 	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
@@ -650,7 +651,9 @@ func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Clien
 		return response, nil, fmt.Errorf("%w: %w", ErrResponseReadFailed, readErr)
 	}
 
-	if response.StatusCode >= 400 {
+	if response.StatusCode == http.StatusInternalServerError {
+		return response, responseBody, ErrInternalServerError
+	} else if response.StatusCode >= 400 {
 		// Return the body as well: some APIs only explain what went wrong there.
 		return response, responseBody, fmt.Errorf("%w %d", ErrUnexpectedError, response.StatusCode)
 	}
