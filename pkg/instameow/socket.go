@@ -34,7 +34,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
-	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -140,7 +139,7 @@ func (c *Client) Connect(ctx context.Context) {
 			case <-ctx.Done():
 				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
 				return
-			case <-time.After(min(time.Duration(1<<min(deltaErr.attempts, 10))*time.Second, MaxConnectionRetryInterval)):
+			case <-time.After(min(time.Duration(1<<deltaErr.attempts)*time.Second, MaxConnectionRetryInterval)):
 				continue
 			}
 		} else if !wasConnected {
@@ -395,11 +394,6 @@ func (c *Client) trackFailedDelta(ctx context.Context, delta *slidetypes.Delta, 
 	if c.failedDeltaSeqID != delta.UQSeqID {
 		c.failedDeltaSeqID = delta.UQSeqID
 		c.failedDeltaCount = 0
-		c.rateLimitedDeltaCount = 0
-	}
-	if errors.Is(err, httpclient.ErrRateLimited) {
-		c.rateLimitedDeltaCount++
-		return c.failedDeltaCount + c.rateLimitedDeltaCount, false
 	}
 	c.failedDeltaCount++
 	if c.failedDeltaCount < MaxDeltaAttempts {

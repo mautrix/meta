@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -35,6 +36,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -236,6 +238,52 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID, source s
 	return evt.PortalKey, nil
 }
 
+var rateLimitedThreadResyncDelays = []time.Duration{
+	30 * time.Second, 1 * time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 15 * time.Minute, 30 * time.Minute,
+}
+
+func (ic *IGClient) resyncRateLimitedThread(threadIGID, source string) {
+	if !ic.rateLimitedThreads.Add(threadIGID) {
+		return
+	}
+	go func() {
+		defer ic.rateLimitedThreads.Remove(threadIGID)
+		log := ic.UserLogin.Log.With().
+			Str("action", "resync rate limited thread").
+			Str("thread_fbid", threadIGID).
+			Logger()
+		defer func() {
+			if v := recover(); v != nil {
+				log.Err(exerrors.RecoverToError(v)).
+					Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+					Msg("Panic in rate limited thread resync")
+			}
+		}()
+		ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+		for i, delay := range rateLimitedThreadResyncDelays {
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
+			if ic.Client == nil {
+				log.Debug().Msg("Client disconnected, not resyncing thread")
+				return
+			}
+			_, err := ic.getAndResyncThread(ctx, threadIGID, source)
+			if err == nil {
+				log.Info().Int("attempt", i+1).Msg("Resynced thread after rate limit")
+				return
+			} else if !errors.Is(err, httpclient.ErrRateLimited) {
+				log.Err(err).Int("attempt", i+1).Msg("Failed to resync thread after rate limit")
+				return
+			}
+			log.Warn().Err(err).Int("attempt", i+1).Msg("Thread info fetch still rate limited")
+		}
+		log.Error().Msg("Giving up resyncing thread after repeated rate limits")
+	}()
+}
+
 func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool, source string) (networkid.PortalKey, bool, error) {
 	if threadIGID == "" {
 		return networkid.PortalKey{}, false, nil
@@ -319,7 +367,11 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	}
 
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate, fmt.Sprintf("delta %s", d.TypeName))
-	if err != nil {
+	if errors.Is(err, httpclient.ErrRateLimited) {
+		log.Warn().Err(err).Msg("Thread info fetch was rate limited, resyncing thread later")
+		ic.resyncRateLimitedThread(d.ThreadIGID, fmt.Sprintf("delta %s", d.TypeName))
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	} else if portalKey.IsEmpty() {
 		log.Warn().Msg("Ignoring event with no portal")
