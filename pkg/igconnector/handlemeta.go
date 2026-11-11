@@ -109,7 +109,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
-				if ic.doWaitMailboxProcessed(ctx) == nil && !ic.LoginMeta.BackfillCompleted {
+				if ic.doWaitMailboxProcessed(ctx) == nil {
 					ic.caughtUp.Set()
 				}
 			}()
