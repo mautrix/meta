@@ -529,7 +529,7 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 			return nil, errCAARequestFailed
 		}
 		zerolog.Ctx(ctx).Err(err).Msg("Unexpected error during Instagram CAA login flow")
-		return nil, fmt.Errorf("%w: %w", errCAAFlowFailed, err)
+		return nil, fmt.Errorf("%w: %w", errCAAFlowFailed.WithInternalError(err), err)
 	} else if step != nil {
 		return step, nil
 	}
