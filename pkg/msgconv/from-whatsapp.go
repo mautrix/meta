@@ -411,6 +411,13 @@ func (mc *MessageConverter) convertWhatsAppMedia(ctx context.Context, rawContent
 	case *waConsumerApplication.ConsumerApplication_Content_StickerMessage:
 		return mc.convertWhatsAppSticker(ctx, content.StickerMessage)
 	case *waConsumerApplication.ConsumerApplication_Content_ViewOnceMessage:
+		if mc.DisableViewOnce {
+			mediaType := "photo"
+			if content.ViewOnceMessage.GetVideoMessage() != nil {
+				mediaType = "video"
+			}
+			return mc.makeViewOnceError(ctx, mediaType, "viewed"), nil, nil
+		}
 		switch realContent := content.ViewOnceMessage.GetViewOnceContent().(type) {
 		case *waConsumerApplication.ConsumerApplication_ViewOnceMessage_ImageMessage:
 			return mc.convertWhatsAppImage(ctx, realContent.ImageMessage)
