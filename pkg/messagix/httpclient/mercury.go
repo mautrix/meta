@@ -59,7 +59,7 @@ type MercuryUploadMedia struct {
 
 type WaveformData struct {
 	Amplitudes        []float64 `json:"amplitudes"`
-	SamplingFrequency int       `json:"sampling_frequency"`
+	SamplingFrequency int       `json:"sampling_freq"`
 }
 
 func (c *HTTPClient) SendMercuryUploadRequest(ctx context.Context, threadID int64, media *MercuryUploadMedia) (*types.MercuryUploadResponse, error) {
