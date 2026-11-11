@@ -77,9 +77,10 @@ type UserLoginMetadata struct {
 	HistoryDevice          *securehistory.Device         `json:"history_device,omitempty"`
 
 	// Thread backfill state
-	BackfillCompleted     bool   `json:"backfill_completed,omitempty"`
-	E2EEBackfillCompleted bool   `json:"e2ee_backfill_completed,omitempty"`
-	ThreadBackfillCursor  string `json:"thread_backfill_cursor,omitempty"`
+	BackfillCompleted      bool   `json:"backfill_completed,omitempty"`
+	E2EEBackfillCompleted  bool   `json:"e2ee_backfill_completed,omitempty"`
+	ThreadBackfillCursor   string `json:"thread_backfill_cursor,omitempty"`
+	InboxBackfillCompleted bool   `json:"inbox_backfill_completed,omitempty"`
 }
 
 func (m *UserLoginMetadata) CopyFrom(other any) {

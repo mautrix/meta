@@ -117,7 +117,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			ic.catchingUpTo = evt.LatestSeqID
 		}
 		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
-			go ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{}, false)
+			go ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{})
 		}
 		return nil
 	case *slidetypes.Disconnected:
