@@ -263,11 +263,15 @@ func (ic *IGClient) resyncRateLimitedThread(d *slidetypes.Delta, source string) 
 			Str("action", "resync rate limited thread").
 			Str("thread_fbid", threadIGID).
 			Logger()
+		replaying := false
 		defer func() {
 			if v := recover(); v != nil {
 				log.Err(exerrors.RecoverToError(v)).
 					Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
 					Msg("Panic in rate limited thread resync")
+			}
+			if replaying {
+				return
 			}
 			if deltas := takeDeltas(); len(deltas) > 0 {
 				log.Warn().Int("delta_count", len(deltas)).Msg("Dropping deltas queued for rate limited thread")
@@ -288,6 +292,7 @@ func (ic *IGClient) resyncRateLimitedThread(d *slidetypes.Delta, source string) 
 				log.Warn().Err(err).Int("attempt", i+1).Msg("Failed to resync thread after rate limit")
 				continue
 			}
+			replaying = true
 			deltas := takeDeltas()
 			log.Info().Int("attempt", i+1).Int("delta_count", len(deltas)).Msg("Resynced thread after rate limit, replaying deltas")
 			for _, delta := range deltas {
