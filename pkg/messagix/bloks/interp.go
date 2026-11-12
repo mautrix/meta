@@ -598,6 +598,8 @@ func getBloksType(lit *BloksScriptLiteral) (int64, error) {
 		return 7, nil
 	case *BloksLambda:
 		return 8, nil
+	case *BloksIllegalValue:
+		return 5, nil
 	}
 	// Native code would return 5 in this case
 	return -1, fmt.Errorf("unexpected bloks typecheck for %T", lit.Value())
