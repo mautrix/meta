@@ -705,8 +705,9 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
-	m.removeE2EEDevice(ctx)
+	cli := m.Client
 	m.disconnect(false)
+	m.logoutMetaSession(ctx, cli)
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete(ctx)
 		if err != nil {
@@ -720,18 +721,16 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	m.lastFullReconnect = time.Time{}
 }
 
-func (m *MetaClient) removeE2EEDevice(ctx context.Context) {
-	m.e2eeConnectLock.Lock()
-	defer m.e2eeConnectLock.Unlock()
-	cli := m.E2EEClient
-	if cli == nil || !cli.IsLoggedIn() {
+func (m *MetaClient) logoutMetaSession(ctx context.Context, cli *messagix.Client) {
+	if cli == nil || m.LoginMeta.Platform != types.Messenger {
 		return
 	}
-	cli.RemoveEventHandlers()
-	if err := cli.Logout(ctx); err != nil {
-		m.UserLogin.Log.Err(err).Msg("Failed to remove encrypted chat device")
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := cli.Facebook.Logout(ctx); err != nil {
+		m.UserLogin.Log.Err(err).Msg("Failed to log out Messenger web session")
 	} else {
-		m.UserLogin.Log.Debug().Msg("Removed encrypted chat device")
+		m.UserLogin.Log.Debug().Msg("Logged out Messenger web session")
 	}
 }
 
