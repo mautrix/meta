@@ -276,10 +276,7 @@ func (mc *MessageConverter) FetchUnresolvedXMA(
 	ctx = context.WithValue(ctx, mediadl.ContextKeyUserLogin, userLogin)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyPortal, portal)
 	ctx = context.WithValue(ctx, mediadl.ContextKeyMsgID, msg.ID)
-	var unresolvedMediaContent struct {
-		UnresolvedMediaContent
-		MediaType json.RawMessage `json:"media_type"`
-	}
+	var unresolvedMediaContent UnresolvedMediaContent
 	err := json.Unmarshal(unresolvedMedia, &unresolvedMediaContent)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal unresolved media: %w", err)
