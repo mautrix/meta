@@ -89,10 +89,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 	return nil
 }
 
-var (
-	_ bridgev2.NetworkAPI                    = (*IGClient)(nil)
-	_ bridgev2.CredentialExportingNetworkAPI = (*IGClient)(nil)
-)
+var _ bridgev2.NetworkAPI = (*IGClient)(nil)
 
 var getProxyClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -150,13 +147,6 @@ func (ic *IGClient) ensureIGClient() {
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})
 	}
-}
-
-func (ic *IGClient) ExportCredentials(ctx context.Context) any {
-	if ic.Client == nil {
-		return nil
-	}
-	return ic.Client.GetCookies()
 }
 
 func (ic *IGClient) Connect(ctx context.Context) {
