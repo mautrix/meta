@@ -178,6 +178,7 @@ func isNumeric(str string) bool {
 
 type UnresolvedMediaContent struct {
 	Kind      string                     `json:"kind"`
+	MediaType string                     `json:"media_type,omitempty"`
 	Base      *event.MessageEventContent `json:"fi.mau.instagram.base_part,omitempty"`
 	FullTitle string                     `json:"fi.mau.instagram.full_title,omitempty"`
 }
@@ -220,9 +221,15 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 		basePart.DBMetadata = &metaid.MessageMetadata{}
 	}
 	if !mediadl.ShouldFetchXMA(ctx) {
+		var mediaType string
+		if (xma.PreviewImage != nil && xma.PreviewImage.PreviewImageDecorationType == "REEL") ||
+			(xma.XMAPreviewImage != nil && xma.XMAPreviewImage.PreviewImageDecorationType == "REEL") {
+			mediaType = "video"
+		}
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "skip"
 		basePart.Extra["com.beeper.unresolved_media"] = &UnresolvedMediaContent{
 			Kind:      "permanent",
+			MediaType: mediaType,
 			Base:      filterUnresolvedMediaContent(basePart.Content),
 			FullTitle: xma.TitleText,
 		}
