@@ -471,9 +471,15 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 		return nil, err
 	}
 	redirect := data.Get("redirect_uri").String()
-	if data.Get("error_style").String() == "INLINE" && redirect == "" && op == instagramAPSubmit {
+	noError := data.Get("error_message").String() == "" && data.Get("ap_error_code").Type == gjson.Null
+	if redirect == "" && noError {
+		c.log.Warn().Str("auth_platform_operation", op.name).Msg("Instagram returned no redirect after verification request")
+	}
+	if redirect == "" && op == instagramAPSubmit && (data.Get("error_style").String() == "INLINE" || noError) {
 		return s.step("Instagram did not accept that code. Check the latest code and try again, or go back to choose another method."), nil
-	} else if redirect == "" || data.Get("error_message").String() != "" || data.Get("ap_error_code").Type != gjson.Null {
+	} else if redirect == "" && op == instagramAPSelect && noError {
+		return s.step("Instagram didn't continue with that method. Choose it again or pick another one."), nil
+	} else if redirect == "" || !noError {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	return c.followInstagramAuthPlatformRedirect(ctx, redirect)
