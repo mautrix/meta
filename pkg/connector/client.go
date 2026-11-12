@@ -727,7 +727,6 @@ func (m *MetaClient) logoutMetaSession(ctx context.Context, cli *messagix.Client
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	cli.GetHTTP().GetNewProxy = nil
 	if err := cli.Facebook.Logout(ctx); err != nil {
 		m.UserLogin.Log.Err(err).Msg("Failed to log out Messenger web session")
 	} else {
