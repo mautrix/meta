@@ -473,14 +473,19 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 	collectPortalEvents(params, tbl.LSDeleteThenInsertMessageRequest, m.handleDeleteThenInsertMessageRequest, &innerQueue)
 	collectPortalEvents(params, tbl.LSUpsertReaction, m.handleUpsertReaction, &innerQueue)
 	collectPortalEvents(params, tbl.LSDeleteReaction, m.handleDeleteReaction, &innerQueue)
-	adminMessageSenders := make(exmaps.Set[[2]int64])
+	adminMessageSender := make(map[int64]int64)
 	for _, msg := range insert {
-		if msg.IsAdminMessage {
-			adminMessageSenders.Add([2]int64{msg.ThreadKey, msg.SenderId})
+		if !msg.IsAdminMessage {
+			continue
+		}
+		if prev, ok := adminMessageSender[msg.ThreadKey]; ok && prev != msg.SenderId {
+			adminMessageSender[msg.ThreadKey] = 0
+		} else {
+			adminMessageSender[msg.ThreadKey] = msg.SenderId
 		}
 	}
 	collectPortalEvents(params, tbl.LSRemoveParticipantFromThread, func(tk handlerParams, evt *table.LSRemoveParticipantFromThread) bridgev2.RemoteEvent {
-		return m.handleRemoveParticipant(tk, evt, adminMessageSenders.Has([2]int64{evt.ThreadKey, evt.ParticipantId}))
+		return m.handleRemoveParticipant(tk, evt, adminMessageSender[evt.ThreadKey] == evt.ParticipantId)
 	}, &innerQueue)
 	// TODO request more inbox if applicable
 
