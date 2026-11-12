@@ -610,7 +610,38 @@ func (mc *MessageConverter) waExternalLinkShareToMatrix(ctx context.Context, con
 	return part
 }
 
+func waCallLogToMatrix(content *waArmadilloXMA.ExtendedContentMessage) *bridgev2.ConvertedMessagePart {
+	cl := CallLog{Title: content.GetTitleText(), Subtitle: content.GetSubtitleText()}
+	switch content.GetTargetType() {
+	case waArmadilloXMA.ExtendedContentMessage_RTC_AUDIO_CALL:
+	case waArmadilloXMA.ExtendedContentMessage_RTC_VIDEO_CALL:
+		cl.Video = true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_MISSED_AUDIO_CALL:
+		cl.Missed = true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_MISSED_VIDEO_CALL:
+		cl.Missed, cl.Video = true, true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_GROUP_AUDIO_CALL:
+		cl.Group = true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_GROUP_VIDEO_CALL:
+		cl.Group, cl.Video = true, true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_MISSED_GROUP_AUDIO_CALL:
+		cl.Missed, cl.Group = true, true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_MISSED_GROUP_VIDEO_CALL:
+		cl.Missed, cl.Group, cl.Video = true, true, true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_ONGOING_AUDIO_CALL:
+		cl.Ongoing = true
+	case waArmadilloXMA.ExtendedContentMessage_RTC_ONGOING_VIDEO_CALL:
+		cl.Ongoing, cl.Video = true, true
+	default:
+		return nil
+	}
+	return cl.ToMatrix()
+}
+
 func (mc *MessageConverter) waExtendedContentMessageToMatrix(ctx context.Context, content *waArmadilloXMA.ExtendedContentMessage) (parts []*bridgev2.ConvertedMessagePart) {
+	if part := waCallLogToMatrix(content); part != nil {
+		return []*bridgev2.ConvertedMessagePart{part}
+	}
 	body := content.GetMessageText()
 	nativeURL := ""
 	for _, cta := range content.GetCtas() {
