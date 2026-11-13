@@ -82,6 +82,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		log.Debug().Msg("Initial connect to Meta socket completed")
 		m.permanentErrored.Store(false)
 		m.connectWaiter.Set()
+		m.requestedThreads.Clear()
 		m.retryPendingPolls(ctx)
 		m.firstE2EEConnectDone = true
 		go m.tryConnectE2EE(false)
@@ -120,6 +121,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		}
 		log.Debug().Msg("Reconnected to Meta socket")
 		m.connectWaiter.Set()
+		m.requestedThreads.Clear()
 		m.retryPendingPolls(ctx)
 		if m.metaState.StateEvent != status.StateBadCredentials {
 			m.metaState = status.BridgeState{StateEvent: status.StateConnected}
