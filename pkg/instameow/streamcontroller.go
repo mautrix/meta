@@ -207,9 +207,6 @@ func (c *Client) handleStreamControllerFrame(ctx context.Context, frame []byte) 
 					if err != nil {
 						return fmt.Errorf("failed to handle typing notification event: %w", err)
 					}
-					if realEvt.ActivityStatus != 0 {
-						c.checkMainStreamAfterTyping(ctx)
-					}
 				}
 			}
 		}

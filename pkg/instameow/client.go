@@ -61,10 +61,6 @@ type Client struct {
 	connected     *exsync.Event
 	socketRetries int
 
-	lastMainStreamActivity atomic.Int64
-	mainStreamCheckPending atomic.Bool
-	lastStaleResubscribe   time.Time
-
 	mqttBypassSocket      *dgw.Socket
 	mqttBypassConnectLock sync.Mutex
 	mqttBypassStream      atomic.Pointer[dgw.PersistentStream]

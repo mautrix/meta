@@ -164,35 +164,6 @@ func (c *Client) Connect(ctx context.Context) {
 	}
 }
 
-var StaleMainStreamTimeout = 2 * time.Minute
-var StaleMainStreamResubscribeInterval = 30 * time.Minute
-
-func (c *Client) checkMainStreamAfterTyping(ctx context.Context) {
-	if !c.connected.IsSet() || !c.mainStreamCheckPending.CompareAndSwap(false, true) {
-		return
-	}
-	typingAt := time.Now()
-	go func() {
-		defer c.mainStreamCheckPending.Store(false)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(StaleMainStreamTimeout):
-		}
-		lastActivity := time.Unix(0, c.lastMainStreamActivity.Load())
-		if !c.connected.IsSet() || lastActivity.After(typingAt) || time.Since(c.lastStaleResubscribe) < StaleMainStreamResubscribeInterval {
-			return
-		}
-		c.lastStaleResubscribe = time.Now()
-		sock := c.socket.Load()
-		sock.Log.Warn().
-			Time("typing_at", typingAt).
-			Time("last_activity_at", lastActivity).
-			Msg("No deltas on main stream since typing notification, resubscribing")
-		sock.ForceReconnect()
-	}()
-}
-
 func (c *Client) ForceReconnect() {
 	if c == nil {
 		return
@@ -345,7 +316,6 @@ var errResnapshotRequired = errors.New("resnapshot required")
 func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operation) error {
 	switch op := rawOp.Operation.(type) {
 	case *mdCoreSync.Operation_Subscribe:
-		c.lastMainStreamActivity.Store(time.Now().UnixNano())
 		c.connected.Set()
 		c.log.Info().Any("subscribe_payload", op.Subscribe).Msg("Successfully subscribed to iris socket")
 		err := c.eventHandler(ctx, &slidetypes.Connected{
@@ -360,7 +330,6 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 		c.log.Info().Any("resnapshot_payload", op.Resnapshot).Msg("Received resnapshot operation")
 		return fmt.Errorf("%w (%d): %s", errResnapshotRequired, op.Resnapshot.GetErrorType(), op.Resnapshot.GetErrorMessage())
 	case *mdCoreSync.Operation_Delta:
-		c.lastMainStreamActivity.Store(time.Now().UnixNano())
 		var deltaWrappers []*slidetypes.DeltaWrapper
 		err := json.Unmarshal(exstrings.UnsafeBytes(op.Delta.GetDelta()), &deltaWrappers)
 		if err != nil {
