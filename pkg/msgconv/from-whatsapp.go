@@ -338,6 +338,20 @@ func addStickerMetadata(converted *bridgev2.ConvertedMessagePart, metadata *waMe
 	if metadata.GetReceiverFetchID() == "" || converted.Content.Info.Height == 0 {
 		converted.Content.Info.Height = int(metadata.GetHeight())
 	}
+	fixStickerDimensions(converted.Content.Info)
+}
+
+func fixStickerDimensions(info *event.FileInfo) {
+	if info.Width <= 0 || info.Height <= 0 || info.Width == info.Height {
+		info.Width = stickerSize
+		info.Height = stickerSize
+	} else if info.Width > info.Height {
+		info.Height = max(1, info.Height*stickerSize/info.Width)
+		info.Width = stickerSize
+	} else {
+		info.Width = max(1, info.Width*stickerSize/info.Height)
+		info.Height = stickerSize
+	}
 }
 
 func (mc *MessageConverter) convertWhatsAppDocument(ctx context.Context, document *waConsumerApplication.ConsumerApplication_DocumentMessage) (converted, caption *bridgev2.ConvertedMessagePart, err error) {
