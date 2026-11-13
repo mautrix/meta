@@ -51,12 +51,11 @@ func (ic *IGConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (ic *IGConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 18
+	return 1, 19
 }
 
 const MaxTextLength = 1000
 const MaxFileSize = 25 * 1000 * 1000
-const MaxImageSize = 8 * 1000 * 1000
 
 func supportedIfFFmpeg() event.CapabilitySupportLevel {
 	if ffmpeg.Supported() {
@@ -66,7 +65,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.instagram.capabilities.2026_10_01"
+	base := "fi.mau.instagram.capabilities.2026_11_11"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -93,7 +92,7 @@ var igCaps = &event.RoomFeatures{
 				"image/webp": event.CapLevelFullySupported,
 			},
 			Caption: event.CapLevelDropped,
-			MaxSize: MaxImageSize,
+			MaxSize: MaxFileSize,
 		},
 		event.MsgVideo: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
@@ -119,7 +118,7 @@ var igCaps = &event.RoomFeatures{
 				"image/gif": event.CapLevelFullySupported,
 			},
 			Caption: event.CapLevelDropped,
-			MaxSize: MaxImageSize,
+			MaxSize: MaxFileSize,
 		},
 		event.CapMsgSticker: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
@@ -127,7 +126,7 @@ var igCaps = &event.RoomFeatures{
 				"image/webp": event.CapLevelFullySupported,
 			},
 			Caption: event.CapLevelDropped,
-			MaxSize: MaxImageSize,
+			MaxSize: MaxFileSize,
 		},
 		event.CapMsgVoice: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
