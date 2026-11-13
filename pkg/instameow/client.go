@@ -60,7 +60,6 @@ type Client struct {
 	socketStopped *exsync.Event
 	connected     *exsync.Event
 	socketRetries int
-	webMainStream atomic.Bool
 
 	mqttBypassSocket      *dgw.Socket
 	mqttBypassConnectLock sync.Mutex

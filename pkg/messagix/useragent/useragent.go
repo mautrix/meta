@@ -17,7 +17,8 @@ const SecCHPrefersColorScheme = "light"
 
 const IGAndroidAppVersion = "454.0.0.54.77"
 const IGAndroidBuildNumber = "1105698528"
-const IGAndroidUserAgent = "Instagram " + IGAndroidAppVersion + " Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " + IGAndroidBuildNumber + ")"
+const IGAndroidOSVersion = "14"
+const IGAndroidUserAgent = "Instagram " + IGAndroidAppVersion + " Android (34/" + IGAndroidOSVersion + "; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " + IGAndroidBuildNumber + ")"
 const IGAndroidCapabilities = "3brTv10C"
 const IGAndroidAppID = "567067343352427"
 
