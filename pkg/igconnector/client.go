@@ -420,12 +420,15 @@ func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 
 func (ic *IGClient) LogoutRemote(ctx context.Context) {
 	ic.ensureIGClient()
-	if ic.LoginMeta.InstagramNativeSession != nil && ic.Client != nil {
-		if err := ic.Client.LogoutNative(ctx); err != nil {
+	cli := ic.Client
+	ic.Disconnect()
+	if cli != nil {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		if err := cli.Logout(ctx); err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Instagram")
 		}
 	}
-	ic.Disconnect()
 	ic.LoginMeta.Cookies = nil
 }
 
