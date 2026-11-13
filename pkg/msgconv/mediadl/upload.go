@@ -21,7 +21,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -54,13 +56,21 @@ func ReuploadFileToMeta(
 	}
 	isVoice := content.MSC3245Voice != nil
 	var waveformData *httpclient.WaveformData
-	if isVoice && content.MSC1767Audio != nil {
+	if isVoice && content.MSC1767Audio != nil && len(content.MSC1767Audio.Waveform) > 0 {
+		waveform := content.MSC1767Audio.Waveform
 		waveformData = &httpclient.WaveformData{
-			Amplitudes:        make([]float64, len(content.MSC1767Audio.Waveform)),
+			Amplitudes:        make([]float64, len(waveform)),
 			SamplingFrequency: 9,
 		}
-		for i, amp := range content.MSC1767Audio.Waveform {
-			waveformData.Amplitudes[i] = max(min(float64(amp)/256.0, 1.0), 0.0)
+		if content.MSC1767Audio.Duration > 0 {
+			waveformData.SamplingFrequency = max(int(math.Round(float64(len(waveform))*1000/float64(content.MSC1767Audio.Duration))), 1)
+		}
+		scale := 1024.0
+		if slices.Max(waveform) <= 256 {
+			scale = 256.0
+		}
+		for i, amp := range waveform {
+			waveformData.Amplitudes[i] = max(min(float64(amp)/scale, 1.0), 0.0)
 		}
 	}
 	if client.GetPlatform().IsMessengerLite() && nativeSession != nil {
