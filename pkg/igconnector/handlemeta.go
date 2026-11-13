@@ -125,15 +125,26 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		errCode := DGWConnectionError
 		var retErr error
 		if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
-			// TODO do full reconnect instead of this?
-			stateEvt = status.StateBadCredentials
-			errCode = DGWConnectionUnauthorized
-			if errors.Is(evt.Error, instameow.ErrUserIDMissing) {
-				errCode = NativeIGMissingUserID
-			}
-			retErr = fmt.Errorf("connection unauthorized; stop reconnects")
-			ic.permanentErrored.Store(true)
 			ic.cancelPeriodicReconnect()
+			nativeSession := ic.LoginMeta.InstagramNativeSession != nil
+			minInterval := time.Duration(ic.Main.Config.MinFullReconnectIntervalSeconds) * time.Second
+			if nativeSession && ic.accountStateRechecks.Load() == 0 && time.Since(ic.lastUnauthorizedReconnect) > minInterval {
+				ic.lastUnauthorizedReconnect = time.Now()
+				ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Native connection unauthorized, doing full reconnect to check session")
+				retErr = fmt.Errorf("connection unauthorized; doing full reconnect")
+				go ic.FullReconnect(false, true)
+			} else {
+				stateEvt = status.StateBadCredentials
+				errCode = DGWConnectionUnauthorized
+				if errors.Is(evt.Error, instameow.ErrUserIDMissing) {
+					errCode = NativeIGMissingUserID
+				}
+				retErr = fmt.Errorf("connection unauthorized; stop reconnects")
+				ic.permanentErrored.Store(true)
+				if nativeSession {
+					ic.scheduleAccountStateRecheck()
+				}
+			}
 		} else if evt.FailureCount > 5 && errors.Is(evt.Error, instameow.ErrMainStreamClosed) {
 			stateEvt = status.StateUnknownError
 			errCode = DGWMainStreamClosed
