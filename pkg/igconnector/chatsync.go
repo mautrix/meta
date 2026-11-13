@@ -96,7 +96,8 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 				}
 			} else if ic.Main.Config.ThreadBackfill.Enabled() && ic.LoginMeta.ThreadBackfillCursor == "" {
 				backfilling = true
-				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, time.Time{})
+				ic.LoginMeta.ThreadBackfillCursor = mailbox.ThreadsByFolder.PageInfo.EndCursor
+				go ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{})
 			}
 		}
 		edges := mailbox.ThreadsByFolder.Edges
