@@ -93,6 +93,8 @@ type MetaClient struct {
 	pendingPoll  atomic.Pointer[pendingPollSend]
 
 	pollQueries sync.Map
+
+	requestedThreads *exsync.Set[int64]
 }
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
@@ -118,6 +120,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		parsedTablesWake:   make(chan struct{}, 1),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 		historyReadStates:  exsync.NewMap[int64, historyReadState](),
+		requestedThreads:   exsync.NewSet[int64](),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 

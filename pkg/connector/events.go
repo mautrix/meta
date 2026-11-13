@@ -69,7 +69,31 @@ func (evt *VerifyThreadExistsEvent) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
-	return evt.FolderName != folderSpam
+	if evt.FolderName == folderSpam {
+		return false
+	} else if evt.ThreadType == table.FOLDER {
+		return true
+	}
+	if evt.m.requestedThreads.Add(evt.ThreadKey) {
+		log := evt.m.UserLogin.Log.With().Int64("thread_id", evt.ThreadKey).Logger()
+		log.Debug().Msg("Sending create thread request for unknown thread in verifyThreadExists")
+		resp, err := evt.m.Client.ExecuteTasks(log.WithContext(evt.m.Main.Bridge.BackgroundCtx), &socket.CreateThreadTask{
+			ThreadFBID:                evt.ThreadKey,
+			ForceUpsert:               0,
+			UseOpenMessengerTransport: 0,
+			SyncGroup:                 1,
+			MetadataOnly:              0,
+			PreviewOnly:               0,
+		})
+		if err != nil {
+			log.Err(err).Msg("Failed to request full thread info")
+		} else {
+			log.Trace().Any("response", resp).Msg("Requested full thread info")
+		}
+	}
+	// Minimal info is enough for DMs, but other threads only get members and a name from
+	// the actual thread info, so let the resync caused by the request above create those.
+	return evt.ThreadType.IsOneToOne()
 }
 
 func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {
@@ -92,26 +116,6 @@ func (evt *VerifyThreadExistsEvent) GetSender() bridgev2.EventSender {
 }
 
 func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	if portal.MXID == "" && evt.ThreadType != table.FOLDER {
-		if portal.Metadata.(*metaid.PortalMetadata).FetchAttempted.Swap(true) {
-			zerolog.Ctx(ctx).Warn().Msg("Not resending create request for thread that was already requested")
-			return nil, fmt.Errorf("thread resync was already requested")
-		}
-		zerolog.Ctx(ctx).Debug().Msg("Sending create thread request for unknown thread in verifyThreadExists")
-		resp, err := evt.m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
-			ThreadFBID:                evt.ThreadKey,
-			ForceUpsert:               0,
-			UseOpenMessengerTransport: 0,
-			SyncGroup:                 1,
-			MetadataOnly:              0,
-			PreviewOnly:               0,
-		})
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to request full thread info")
-		} else {
-			zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Requested full thread info")
-		}
-	}
 	chatInfo := evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType, evt.ParentThreadKey)
 	chatInfo.MessageRequest = ptr.Ptr(evt.FolderName == folderPending)
 	return chatInfo, nil
