@@ -690,7 +690,9 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
+	cli := m.Client
 	m.disconnect(false)
+	m.logoutMetaSession(ctx, cli)
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete(ctx)
 		if err != nil {
@@ -702,6 +704,19 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	m.waState = status.BridgeState{}
 	m.LoginMeta.Cookies = nil
 	m.lastFullReconnect = time.Time{}
+}
+
+func (m *MetaClient) logoutMetaSession(ctx context.Context, cli *messagix.Client) {
+	if cli == nil || m.LoginMeta.Platform != types.Messenger {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := cli.Facebook.Logout(ctx); err != nil {
+		m.UserLogin.Log.Err(err).Msg("Failed to log out Messenger web session")
+	} else {
+		m.UserLogin.Log.Debug().Msg("Logged out Messenger web session")
+	}
 }
 
 func (m *MetaClient) canReconnect() bool {
