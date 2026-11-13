@@ -113,8 +113,8 @@ go.mau.fi/libsignal v0.2.3-0.20261103023201-5ce3f7a54370 h1:QSBS5beRnHzCWaNHk/6Z
 go.mau.fi/libsignal v0.2.3-0.20261103023201-5ce3f7a54370/go.mod h1:CRlIQg2J8uYTfDFvNoO8/KcZjs5cey0vbc6oj/bssY0=
 go.mau.fi/util v0.11.1-0.20261026174803-9e6b9c87cfbc h1:jmJTcqqZT1I8DM2ur4uf/XFCqH91EM27gjwhPP5FCrU=
 go.mau.fi/util v0.11.1-0.20261026174803-9e6b9c87cfbc/go.mod h1:04AEFVsc4zNdIkDC1gkdqbg/nZFolHY50pyXh2DSy7s=
-go.mau.fi/whatsmeow v0.0.0-20261027104441-1eec1136a50b h1:8QqQAorhOAU1t2Ii5KWq1Ra7hpRXAdZ0ULX7nkCf9h8=
-go.mau.fi/whatsmeow v0.0.0-20261027104441-1eec1136a50b/go.mod h1:iY4lm61nTLWsNiIE1EmHUZwhKGBeoV4dhnVE2uMtNoQ=
+go.mau.fi/whatsmeow v0.0.0-20261113220833-ecc39170bc14 h1:AVvz9wx0sUeLgltHIlaWwPACrmOaAu2yY2yR5EhJfa8=
+go.mau.fi/whatsmeow v0.0.0-20261113220833-ecc39170bc14/go.mod h1:iY4lm61nTLWsNiIE1EmHUZwhKGBeoV4dhnVE2uMtNoQ=
 go.mau.fi/zeroconfig v0.2.0 h1:e/OGEERqVRRKlgaro7E6bh8xXiKFSXB3eNNIud7FUjU=
 go.mau.fi/zeroconfig v0.2.0/go.mod h1:J0Vn0prHNOm493oZoQ84kq83ZaNCYZnq+noI1b1eN8w=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=
