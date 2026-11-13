@@ -60,7 +60,6 @@ type Client struct {
 	socketStopped *exsync.Event
 	connected     *exsync.Event
 	socketRetries int
-	webMainStream atomic.Bool
 
 	lastMainStreamActivity atomic.Int64
 	mainStreamCheckPending atomic.Bool

@@ -93,6 +93,8 @@ type MetaClient struct {
 	pendingPoll  atomic.Pointer[pendingPollSend]
 
 	pollQueries sync.Map
+
+	requestedThreads *exsync.Set[int64]
 }
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
@@ -118,6 +120,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		parsedTablesWake:   make(chan struct{}, 1),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 		historyReadStates:  exsync.NewMap[int64, historyReadState](),
+		requestedThreads:   exsync.NewSet[int64](),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 
@@ -130,9 +133,8 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 }
 
 var (
-	_ bridgev2.NetworkAPI                    = (*MetaClient)(nil)
-	_ bridgev2.CredentialExportingNetworkAPI = (*MetaClient)(nil)
-	_ status.BridgeStateFiller               = (*MetaClient)(nil)
+	_ bridgev2.NetworkAPI      = (*MetaClient)(nil)
+	_ status.BridgeStateFiller = (*MetaClient)(nil)
 )
 
 var getProxyClient = &http.Client{Timeout: 30 * time.Second}
@@ -187,20 +189,6 @@ func (m *MetaClient) ensureMessagixClient() {
 		)
 		m.Client.SetEventHandler(m.handleMetaEvent)
 		m.Client.MessengerLite.SetNativeSession(m.LoginMeta.NativeSession)
-	}
-}
-
-func (m *MetaClient) ExportCredentials(ctx context.Context) any {
-	if m.Client == nil {
-		return nil
-	}
-	if m.LoginMeta.NativeSession == nil {
-		return m.Client.GetCookies()
-	}
-	return &metaCredentials{
-		Platform:      m.LoginMeta.Platform,
-		Cookies:       m.Client.GetCookies(),
-		NativeSession: m.LoginMeta.NativeSession,
 	}
 }
 

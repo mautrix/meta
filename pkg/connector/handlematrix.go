@@ -766,16 +766,18 @@ func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *
 		Bool("implicit", msg.Content != nil && msg.Content.IsImplicit).
 		Msg("Accepting message request")
 
-	// Message-request threads live in sync group 95, and hybrid (E2EE) threads must be accepted
-	// using their original Facebook thread key rather than the WhatsApp thread JID the portal is
-	// keyed by.
+	// Hybrid (E2EE) threads must be accepted in sync group 95 using their original Facebook thread
+	// key rather than the WhatsApp thread JID the portal is keyed by.
+	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
 	threadKey := threadID
-	if fbKey := msg.Portal.Metadata.(*metaid.PortalMetadata).FBThreadKey; fbKey != 0 {
-		threadKey = fbKey
+	syncGroup := int64(1)
+	if portalMeta.ThreadType.IsWhatsApp() && portalMeta.FBThreadKey != 0 {
+		threadKey = portalMeta.FBThreadKey
+		syncGroup = 95
 	}
 	_, err := m.Client.ExecuteTasks(ctx, &socket.AcceptMessageRequestTask{
 		ThreadKey: threadKey,
-		SyncGroup: 95,
+		SyncGroup: syncGroup,
 	})
 	return wrapMetaError(err)
 }
