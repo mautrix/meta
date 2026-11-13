@@ -24,9 +24,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
@@ -67,7 +69,7 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	}
 
 	switch mediaInfo.Type {
-	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaXMA:
+	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaXMA, metaid.DirectMediaTypeMetaXMACarousel:
 		// ok
 	default:
 		return nil, fmt.Errorf("unknown media type: %v", mediaInfo.Type)
@@ -88,9 +90,14 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 
 	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
 	var dmm json.RawMessage
-	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+	switch mediaInfo.Type {
+	case metaid.DirectMediaTypeMetaXMA:
 		dmm = msgMeta.XMADirectMediaMeta
-	} else {
+	case metaid.DirectMediaTypeMetaXMACarousel:
+		if mediaInfo.CarouselIndex < len(msgMeta.XMACarouselMediaMeta) {
+			dmm = msgMeta.XMACarouselMediaMeta[mediaInfo.CarouselIndex]
+		}
+	default:
 		dmm = msgMeta.DirectMediaMeta
 	}
 	if dmm == nil {
@@ -154,7 +161,9 @@ func (ic *IGConnector) refreshMediaURL(
 	client := ul.Client.(*IGClient)
 
 	// Route to appropriate refresh method based on attachment type
-	if info.IsXMA() {
+	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMACarousel {
+		return ic.refreshXMACarouselMedia(ctx, client, mediaInfo, info.URL)
+	} else if info.IsXMA() {
 		refreshedURL, err := ic.refreshXMAMedia(ctx, client, info)
 		if err != nil {
 			return "", err
@@ -446,10 +455,90 @@ func (ic *IGConnector) refreshXMAMedia(
 		if len(resp.Items) == 0 {
 			return "", fmt.Errorf("empty response from FetchMedia")
 		}
+		if info.CarouselMediaID != "" {
+			for _, child := range resp.Items[0].CarouselMedia {
+				if strings.Contains(child.ID, info.CarouselMediaID) {
+					return extractBestURL(child)
+				}
+			}
+			return "", fmt.Errorf("carousel item not found in FetchMedia response")
+		}
 		return extractBestURL(resp.Items[0])
 	}
 
 	return "", fmt.Errorf("no XMA identifiers available for refresh")
+}
+
+var carouselRefreshLocks = exsync.NewKeyedMutex[networkid.MessageID]()
+
+func (ic *IGConnector) refreshXMACarouselMedia(
+	ctx context.Context,
+	client *IGClient,
+	mediaInfo *metaid.MediaInfo,
+	expiredURL string,
+) (string, error) {
+	ig := client.Client
+	if ig == nil {
+		return "", fmt.Errorf("instagram client not available")
+	}
+	defer carouselRefreshLocks.WithLock(mediaInfo.MessageID)()
+	msg, err := ic.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
+	if err != nil {
+		return "", err
+	} else if msg == nil {
+		return "", fmt.Errorf("message not found")
+	}
+	index := mediaInfo.CarouselIndex
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	if index >= len(msgMeta.XMACarouselMediaMeta) {
+		return "", fmt.Errorf("carousel index out of range")
+	}
+	items := make([]*mediadl.DirectMediaMeta, len(msgMeta.XMACarouselMediaMeta))
+	for i, raw := range msgMeta.XMACarouselMediaMeta {
+		if err := json.Unmarshal(raw, &items[i]); err != nil {
+			return "", err
+		}
+	}
+	target := items[index]
+	if target.URL != expiredURL {
+		return target.URL, nil
+	}
+	zerolog.Ctx(ctx).Debug().
+		Int64("target_id", target.XMATargetID).
+		Str("shortcode", target.XMAShortcode).
+		Int("carousel_index", index).
+		Msg("Refreshing XMA carousel media")
+	resp, err := ig.FetchMedia(ctx, strconv.FormatInt(target.XMATargetID, 10), target.XMAShortcode)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch media: %w", err)
+	} else if len(resp.Items) == 0 {
+		return "", fmt.Errorf("empty response from FetchMedia")
+	}
+	var refreshedURL string
+	for i, item := range items {
+		for _, child := range resp.Items[0].CarouselMedia {
+			if item.CarouselMediaID == "" || !strings.Contains(child.ID, item.CarouselMediaID) {
+				continue
+			}
+			if freshURL, err := extractBestURL(child); err == nil {
+				item.URL = freshURL
+				item.ExpiresAt = jsontime.UM(mediadl.ParseExpiryFromURL(freshURL))
+				if i == index {
+					refreshedURL = freshURL
+				}
+			}
+			break
+		}
+		if msgMeta.XMACarouselMediaMeta[i], err = json.Marshal(item); err != nil {
+			return "", err
+		}
+	}
+	if refreshedURL == "" {
+		return "", fmt.Errorf("carousel item not found in FetchMedia response")
+	} else if err = ic.Bridge.DB.Message.Update(ctx, msg); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to update message in database after refreshing XMA carousel media")
+	}
+	return refreshedURL, nil
 }
 
 func extractBestURL(item *responses.Items) (string, error) {
