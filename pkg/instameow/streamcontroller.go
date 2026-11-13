@@ -173,21 +173,27 @@ func (c *Client) handleStreamControllerFrame(ctx context.Context, frame []byte) 
 	if payload.Response == nil {
 		return nil
 	}
+	var terminated bool
 	for _, delta := range payload.Response.Delta {
 		if delta.GetFlowStatus() == requeststream.FlowStatus_Started {
 			zerolog.Ctx(ctx).Debug().Msg("Successfully connected to stream controller for typing notifications")
 			c.streamControllerConnected.Store(true)
 		}
-		if term := delta.GetTermination(); term != nil || delta.GetFlowStatus() == requeststream.FlowStatus_Stopped {
+		if term := delta.GetTermination(); term != nil {
+			terminated = true
 			evt := zerolog.Ctx(ctx).Warn().
-				Stringer("flow_status", delta.GetFlowStatus()).
+				Stringer("termination_reason", term.GetReason()).
+				Int64("termination_reason_code", int64(term.GetReason())).
+				Str("termination_message", term.GetMessage()).
 				Bool("was_connected", c.streamControllerConnected.Load())
-			if term != nil {
-				evt = evt.
-					Stringer("termination_reason", term.GetReason()).
-					Int64("retry_delay_ms", term.GetRetryDelayMs())
+			if term.IsSetRetryDelayMs() {
+				evt = evt.Int64("retry_delay_ms", term.GetRetryDelayMs())
 			}
-			evt.Msg("Stream controller flow stopped")
+			evt.Msg("Stream controller flow terminated")
+		} else if delta.GetFlowStatus() == requeststream.FlowStatus_Stopped && !terminated {
+			zerolog.Ctx(ctx).Warn().
+				Bool("was_connected", c.streamControllerConnected.Load()).
+				Msg("Stream controller flow stopped")
 		}
 		if delta.Data == nil {
 			continue
