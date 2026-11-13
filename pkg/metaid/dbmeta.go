@@ -4,7 +4,6 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/json"
-	"sync/atomic"
 
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/random"
@@ -112,8 +111,6 @@ type PortalMetadata struct {
 	IGThreadID string `json:"ig_thread_id,omitempty"`
 
 	EphemeralSettingTimestamp int64 `json:"ephemeral_setting_timestamp,omitempty"`
-
-	FetchAttempted atomic.Bool `json:"-"`
 }
 
 func (meta *PortalMetadata) JID(id networkid.PortalID) waTypes.JID {
