@@ -93,6 +93,8 @@ type MetaClient struct {
 	pendingPoll  atomic.Pointer[pendingPollSend]
 
 	pollQueries sync.Map
+
+	lastUnauthorizedReconnect time.Time
 }
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {

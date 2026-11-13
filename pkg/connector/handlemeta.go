@@ -126,8 +126,14 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			m.sendBridgeState(m.metaState)
 		}
 	case *messagix.PermanentErrorEvent:
-		// TODO do full reconnect in some cases?
 		if websocket.CloseStatus(evt.Err) == dgw.CloseStatusUnauthorized {
+			minInterval := time.Duration(m.Main.Config.MinFullReconnectIntervalSeconds) * time.Second
+			if m.LoginMeta.Cookies != nil && time.Since(m.lastUnauthorizedReconnect) > minInterval {
+				m.lastUnauthorizedReconnect = time.Now()
+				log.Debug().Err(evt.Err).Msg("Doing full reconnect after socket was closed as unauthorized")
+				go m.FullReconnect()
+				return
+			}
 			m.permanentErrored.Store(true)
 			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
