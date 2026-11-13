@@ -80,6 +80,7 @@ type UserLoginMetadata struct {
 	BackfillCompleted     bool   `json:"backfill_completed,omitempty"`
 	E2EEBackfillCompleted bool   `json:"e2ee_backfill_completed,omitempty"`
 	ThreadBackfillCursor  string `json:"thread_backfill_cursor,omitempty"`
+	ThreadBackfillFolder  string `json:"thread_backfill_folder,omitempty"`
 }
 
 func (m *UserLoginMetadata) CopyFrom(other any) {
