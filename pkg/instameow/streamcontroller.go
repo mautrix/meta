@@ -178,6 +178,17 @@ func (c *Client) handleStreamControllerFrame(ctx context.Context, frame []byte) 
 			zerolog.Ctx(ctx).Debug().Msg("Successfully connected to stream controller for typing notifications")
 			c.streamControllerConnected.Store(true)
 		}
+		if term := delta.GetTermination(); term != nil || delta.GetFlowStatus() == requeststream.FlowStatus_Stopped {
+			evt := zerolog.Ctx(ctx).Warn().
+				Stringer("flow_status", delta.GetFlowStatus()).
+				Bool("was_connected", c.streamControllerConnected.Load())
+			if term != nil {
+				evt = evt.
+					Stringer("termination_reason", term.GetReason()).
+					Int64("retry_delay_ms", term.GetRetryDelayMs())
+			}
+			evt.Msg("Stream controller flow stopped")
+		}
 		if delta.Data == nil {
 			continue
 		}
