@@ -87,6 +87,7 @@ func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
 		})
 		if err != nil {
 			log.Err(err).Msg("Failed to request full thread info")
+			evt.m.requestedThreads.Remove(evt.ThreadKey)
 		} else {
 			log.Trace().Any("response", resp).Msg("Requested full thread info")
 		}
