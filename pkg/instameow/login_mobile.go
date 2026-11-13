@@ -521,3 +521,30 @@ func rawJSONScalar(value json.RawMessage) string {
 	}
 	return ""
 }
+
+func (c *Client) Logout(ctx context.Context) error {
+	session := c.GetInstagramNativeSession()
+	if session == nil || session.Authorization == "" {
+		return nil
+	}
+	form := url.Values{
+		"device_id":                     {session.Device.AndroidDeviceID},
+		"guid":                          {session.Device.DeviceID},
+		"phone_id":                      {session.Device.PhoneID},
+		"prevent_remove_device_from_wa": {"true"},
+		"_uuid":                         {session.Device.DeviceID},
+	}
+	_, body, err := c.http.MakeRequestOnce(ctx, instagramMobileAPIBase+"accounts/logout/", http.MethodPost, c.instagramAccountManagerHeaders(), []byte(form.Encode()), types.FORM)
+	if err != nil {
+		return fmt.Errorf("failed to send logout request: %w", err)
+	}
+	var result struct {
+		Status string `json:"status"`
+	}
+	if err = json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("failed to decode logout response: %w", err)
+	} else if result.Status != "ok" {
+		return fmt.Errorf("logout rejected: %s", result.Status)
+	}
+	return nil
+}
