@@ -525,6 +525,8 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 			return nil, errCAAClientHTTPFailed
 		} else if errors.Is(err, instameow.ErrInstagramCAAUnsafeAccountStep) {
 			return nil, errInstagramCAAUnsupportedStep
+		} else if errors.Is(err, instameow.ErrInstagramAccountManagerTwoFactorRequired) {
+			return m.start(ctx, "That profile uses two-factor authentication. Log in with its own username and password to continue.")
 		}
 		var responseError bridgev2.RespError
 		if errors.As(err, &responseError) {
