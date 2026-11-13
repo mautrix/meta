@@ -877,7 +877,13 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				newState = StateReCaptchaPage
 			case "com.bloks.www.caa.login.password_as_id_confirmation":
 				newState = StateSuggestedAccountPage
-			case "com.bloks.www.caa.ar.password_form":
+			case "com.bloks.www.caa.assistive_login_confirmation":
+				if page.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Continue")).FindContainingButton() == nil {
+					return fmt.Errorf("unexpected new screen %s", name)
+				}
+				newState = StateSuggestedAccountPage
+			case "com.bloks.www.caa.ar.password_form",
+				"com.bloks.www.caa.login.aymh_password_entry":
 				newState = StatePasswordFormPage
 			default:
 				return fmt.Errorf("unexpected new screen %s", name)
