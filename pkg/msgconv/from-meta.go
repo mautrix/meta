@@ -544,12 +544,27 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 		},
 	)
 	if errors.Is(err, mediadl.ErrURLNotFound) && att.TitleText != "" {
+		// No preview media (e.g. a shared post Meta won't preview, titled
+		// "Attachment unavailable"), but the CTA may still carry the link.
+		content := &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    att.TitleText,
+		}
+		var extra map[string]any
+		if att.CTA != nil && att.CTA.ActionUrl != "" {
+			externalURL := removeLPHP(att.CTA.ActionUrl)
+			content.Body = fmt.Sprintf("%s\n\n%s", att.TitleText, externalURL)
+			content.Format = event.FormatHTML
+			content.FormattedBody = fmt.Sprintf(
+				`%s<br><br><a href="%s">%s</a>`,
+				html.EscapeString(att.TitleText), html.EscapeString(externalURL), html.EscapeString(externalURL),
+			)
+			extra = map[string]any{"external_url": externalURL}
+		}
 		return []*bridgev2.ConvertedMessagePart{{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgText,
-				Body:    att.TitleText,
-			},
+			Type:    event.EventMessage,
+			Content: content,
+			Extra:   extra,
 		}}
 	} else if errors.Is(err, mediadl.ErrURLNotFound) && att.XmaDataclass != "" {
 		if part := mc.xmaBloksTemplateToMatrix(ctx, att.XmaDataclass); part != nil {
