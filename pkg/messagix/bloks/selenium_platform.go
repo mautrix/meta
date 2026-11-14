@@ -234,6 +234,10 @@ func (profile browserPlatformProfile) hasMFAMethodsOnLanding(page *BloksBundle) 
 	return len(foundMethods) > 0
 }
 
+func (profile browserPlatformProfile) hasExpiredMFAPicker(page *BloksBundle) bool {
+	return !profile.isInstagram && page != nil && page.hasSessionExpiredWarning()
+}
+
 func (profile browserPlatformProfile) invalidMFAMethodError(method string) error {
 	if profile.isInstagram {
 		return errors.New("invalid two-factor method")
