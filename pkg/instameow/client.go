@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exhttp"
 	"go.mau.fi/util/exsync"
@@ -54,6 +55,7 @@ type Client struct {
 	mobileSession         atomic.Pointer[instagramMobileSession]
 	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
 	saveNativeSession     func(context.Context, *types.InstagramNativeSession) error
+	pigeonSessionID       string
 
 	socket        atomic.Pointer[dgw.Socket]
 	cancelSocket  atomic.Pointer[context.CancelFunc]
@@ -131,6 +133,7 @@ func NewClient(params ClientParams) *Client {
 
 		saveMobileLoginDevice: params.SaveMobileLoginDevice,
 		saveNativeSession:     params.SaveNativeSession,
+		pigeonSessionID:       "UFS-" + uuid.NewString() + "-1",
 	}
 	if params.MobileLoginDevice != nil {
 		device := *params.MobileLoginDevice

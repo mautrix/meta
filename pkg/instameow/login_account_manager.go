@@ -32,7 +32,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
-	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 const instagramAccountManagerField = "account"
@@ -109,9 +108,8 @@ func newInstagramAccountManagerToken(session *instagramMobileSession) instagramA
 
 func (c *Client) instagramAccountManagerHeaders() http.Header {
 	session := c.mobileSession.Load()
-	headers := http.Header{}
+	headers := c.nativeHeaders(session.Device)
 	headers.Set("authorization", session.Authorization)
-	headers.Set("user-agent", useragent.IGAndroidUserAgent)
 	headers.Set("ig-u-ds-user-id", session.UserID)
 	headers.Set("ig-intended-user-id", session.UserID)
 	headers.Set("ig-u-rur", session.RUR)
@@ -119,11 +117,7 @@ func (c *Client) instagramAccountManagerHeaders() http.Header {
 	headers.Set("ig-u-shbts", session.SHBTS)
 	headers.Set("ig-u-ig-direct-region-hint", session.DirectRegionHint)
 	headers.Set("x-ig-www-claim", session.WWWClaim)
-	headers.Set("x-ig-device-id", session.Device.DeviceID)
-	headers.Set("x-ig-family-device-id", session.Device.PhoneID)
-	headers.Set("x-ig-android-id", session.Device.AndroidDeviceID)
 	headers.Set("x-mid", cmp.Or(session.Device.MachineID, c.cookies.Get(cookies.IGCookieMachineID)))
-	headers.Set("x-ig-app-id", useragent.IGAndroidAppID)
 	return headers
 }
 
