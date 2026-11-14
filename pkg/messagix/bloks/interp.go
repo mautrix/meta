@@ -1097,6 +1097,56 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		default:
 			return nil, fmt.Errorf("expected array or map in array.get, got %T", mapping.Value())
 		}
+	case "bk.action.array.Slice":
+		arr, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "array.slice")
+		if err != nil {
+			return nil, err
+		}
+		length := int64(len(arr))
+		start, err := evalAs[int64](ctx, i, &call.Args[1], "array.slice")
+		if err != nil {
+			return nil, err
+		}
+		end := length
+		if len(call.Args) > 2 {
+			endVal, err := i.Evaluate(ctx, &call.Args[2])
+			if err != nil {
+				return nil, err
+			}
+			if endVal.Value() != nil {
+				var ok bool
+				end, ok = endVal.Value().(int64)
+				if !ok {
+					return nil, fmt.Errorf("expected int64 in array.slice, got %T", endVal.Value())
+				}
+			}
+		}
+		clamp := func(idx int64) int64 {
+			if idx < 0 {
+				idx += length
+			}
+			return min(max(idx, 0), length)
+		}
+		start, end = clamp(start), clamp(end)
+		results := []*BloksScriptLiteral{}
+		if start < end {
+			results = append(results, arr[start:end]...)
+		}
+		return BloksLiteralOf(results), nil
+	case "bk.action.array.Concat":
+		results := []*BloksScriptLiteral{}
+		for _, arg := range call.Args {
+			val, err := i.Evaluate(ctx, &arg)
+			if err != nil {
+				return nil, err
+			}
+			if arr, ok := val.Value().([]*BloksScriptLiteral); ok {
+				results = append(results, arr...)
+			} else {
+				results = append(results, val)
+			}
+		}
+		return BloksLiteralOf(results), nil
 	case "bk.action.array.Map":
 		arr, err := evalAs[[]*BloksScriptLiteral](ctx, i, &call.Args[0], "array.map")
 		if err != nil {
