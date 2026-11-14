@@ -78,7 +78,7 @@ func (ic *IGClient) updateGhostIGID(username, igid string, fbid int64) bridgev2.
 func (ic *IGClient) wrapUserInfo(info *slidetypes.User) *bridgev2.UserInfo {
 	var identifiers []string
 	if info.Username != "" {
-		identifiers = []string{fmt.Sprintf("instagram:%s", info.Username)}
+		identifiers = []string{usernameIdentifier(info.Username)}
 	}
 	return &bridgev2.UserInfo{
 		Identifiers: identifiers,
@@ -96,7 +96,7 @@ func (ic *IGClient) wrapUserInfo(info *slidetypes.User) *bridgev2.UserInfo {
 func (ic *IGClient) wrapSearchResultInfo(info *slidetypes.SearchResult) *bridgev2.UserInfo {
 	var identifiers []string
 	if info.Username != "" {
-		identifiers = []string{fmt.Sprintf("instagram:%s", info.Username)}
+		identifiers = []string{usernameIdentifier(info.Username)}
 	}
 	return &bridgev2.UserInfo{
 		Identifiers: identifiers,

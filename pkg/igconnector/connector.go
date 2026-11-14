@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -32,6 +33,8 @@ type IGConnector struct {
 	Config  Config
 	MsgConv *igconv.MessageConverter
 	DB      *metadb.MetaDB
+
+	publishUsernamesOnce sync.Once
 }
 
 var (

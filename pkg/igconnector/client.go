@@ -160,6 +160,9 @@ func (ic *IGClient) Connect(ctx context.Context) {
 		return
 	}
 	ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
+	go ic.Main.publishUsernamesOnce.Do(func() {
+		ic.Main.publishStoredUsernames(ic.Main.Bridge.Log.WithContext(ic.Main.Bridge.BackgroundCtx))
+	})
 	mailboxCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ic.stopConnectAttempt.Store(&cancel)
