@@ -721,5 +721,61 @@ func (ic *IGClient) handleTyping(ctx context.Context, evt *slidetypes.TypingNoti
 	if !res.Success {
 		return res.Error
 	}
+	if evt.ActivityStatus == 0 && !ic.makeEventSender(userID).IsFromMe {
+		go ic.checkMainStreamAfterTyping(threadKey)
+	}
 	return nil
+}
+
+func (ic *IGClient) checkMainStreamAfterTyping(threadKey int64) {
+	log := ic.UserLogin.Log.With().
+		Str("action", "check main stream after typing").
+		Int64("thread_key", threadKey).
+		Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	cli := ic.Client
+	if cli == nil || !ic.caughtUp.IsSet() {
+		log.Debug().Msg("Not checking main stream after typing, client isn't caught up")
+		return
+	}
+	threadIGID, err := ic.ensureIGIDDirect(ctx, threadKey)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get IGID for thread after typing stopped")
+		return
+	}
+	resp, err := cli.GetThread(ctx, slidetypes.MakeGetThreadInfoRequest(threadIGID))
+	if err != nil {
+		log.Warn().Err(err).Str("thread_igid", threadIGID).Msg("Failed to get thread after typing stopped")
+		return
+	}
+	thread := resp.ThreadInfo.AsIGDirectThread
+	if thread == nil || thread.SlideMessages == nil || len(thread.SlideMessages.Edges) == 0 {
+		log.Warn().Str("thread_igid", threadIGID).Msg("No messages in thread info after typing stopped")
+		return
+	}
+	latest := thread.SlideMessages.Edges[0].Node
+	log = log.With().Str("message_id", latest.ID).Time("message_ts", latest.TimestampMS.Time).Logger()
+	part, err := ic.Main.Bridge.DB.Message.GetFirstPartByID(ctx, ic.UserLogin.ID, metaid.MakeFBMessageID(latest.ID))
+	if err != nil {
+		log.Err(err).Msg("Failed to look up latest message after typing stopped")
+		return
+	} else if part != nil {
+		log.Debug().Msg("Latest message in thread was already bridged after typing stopped")
+		return
+	}
+	resync := ic.wrapChatResync(thread, true, "missing message after typing")
+	resync.CreatePortal = false
+	if res := ic.UserLogin.QueueRemoteEvent(resync); !res.Success {
+		log.Err(res.Error).Msg("Failed to resync thread with missing message")
+	}
+	_, seqTS, err := ic.Main.DB.GetIGSeqID(ctx, ic.UserLogin.ID)
+	if err != nil {
+		log.Err(err).Msg("Failed to get sequence ID timestamp")
+		return
+	} else if seqTS.After(latest.TimestampMS.Time) {
+		log.Debug().Time("last_delta_ts", seqTS).Msg("Main stream delivered deltas after the missing message")
+		return
+	}
+	log.Warn().Time("last_delta_ts", seqTS).Msg("Main stream missed message, resubscribing")
+	cli.ForceReconnect()
 }
