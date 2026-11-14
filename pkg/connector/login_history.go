@@ -56,6 +56,7 @@ func (m *MessengerHistoryLogin) startHistory(ctx context.Context, complete *brid
 	var err error
 	m.historyBackup, err = client.Client.GetSecureHistoryClient().GetBackup(ctx)
 	if errors.Is(err, securehistory.ErrNoPINBackup) {
+		client.UserLogin.Log.Info().Msg("Messenger account has no encrypted history backup")
 		return complete, nil
 	} else if err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to check Messenger encrypted history")
@@ -64,6 +65,7 @@ func (m *MessengerHistoryLogin) startHistory(ctx context.Context, complete *brid
 		}
 		return historyPINStep("Couldn't check your saved history. Enter your PIN to try again, or leave it empty to continue."), nil
 	}
+	client.UserLogin.Log.Info().Msg("Found Messenger encrypted history backup, asking for PIN")
 	return historyPINStep(""), nil
 }
 
@@ -174,6 +176,7 @@ func (m *MessengerHistoryLogin) restoreHistory(ctx context.Context, client *Meta
 		}
 		return err
 	}
+	client.UserLogin.Log.Info().Str("history_device_id", device.ID).Msg("Enrolled Messenger encrypted history device")
 	client.backfillLock.Lock()
 	client.LoginMeta.HistoryDevice = device
 	m.historyRestored = true
