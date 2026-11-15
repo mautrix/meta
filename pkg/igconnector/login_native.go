@@ -539,8 +539,10 @@ func (m *MetaNativeLogin) tryNativeLogin(ctx context.Context) (*bridgev2.LoginSt
 	if m.transport != nil {
 		m.transport.SetFingerprint("chrome")
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, bridgev2.ErrLoginStepCancelled) {
-		return nil, err
+	if errors.Is(err, bridgev2.ErrLoginStepCancelled) {
+		return nil, bridgev2.ErrLoginStepCancelled
+	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, wrapInstagramRespError(err)
 	}
 	stepID := ""
 	if step != nil {
