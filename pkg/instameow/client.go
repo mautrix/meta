@@ -205,8 +205,10 @@ func (c *Client) ReloadIndex(ctx context.Context) (bool, error) {
 	}
 	if s := c.socket.Load(); s != nil {
 		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+		s.UserID = c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid
 		if scs := c.streamControllerSocket.Load(); scs != nil {
 			scs.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+			scs.UserID = c.configs.BrowserConfigTable.PolarisViewer.ID
 		}
 		c.mqttBypassConnectLock.Lock()
 		if mbs := c.mqttBypassSocket; mbs != nil {
