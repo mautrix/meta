@@ -169,8 +169,12 @@ func (c *Client) loadIndex(ctx context.Context) error {
 		}
 		return fmt.Errorf("failed to load inbox: %w", err)
 	}
-	c.configs.Setup(c.IsAuthenticated())
+	authenticated := c.IsAuthenticated()
+	c.configs.Setup(authenticated)
 	c.lastReload = time.Now()
+	if !authenticated && c.cookies.IsLoggedIn() {
+		zerolog.Ctx(ctx).Warn().Msg("Inbox page didn't include the logged-in viewer")
+	}
 
 	state, err := c.DumpState()
 	if err != nil {
