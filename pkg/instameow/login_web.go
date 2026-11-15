@@ -39,6 +39,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
@@ -861,7 +862,7 @@ func (c *Client) sendInstagramWebTwoFactorCode(ctx context.Context, state *insta
 	rq.FbAPIReqFriendlyName = "useTwoStepVerificationSendCodeMutation"
 	rq.DocID = instagramWebTwoFactorSendCodeDocID
 	rq.Variables = string(variables)
-	body, err := c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login_two_step_verification"), state.csrfToken)
+	body, err := c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login_two_step_verification"), state.csrfToken, "")
 	if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
 		state.csrfToken = csrfToken
 	}
@@ -1065,7 +1066,7 @@ func instagramRelaySprinkleToken(token string, config types.SprinkleConfig) stri
 	return result
 }
 
-func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.HTTPQuery, referrer, csrf string) ([]byte, error) {
+func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.HTTPQuery, referrer, csrf, userAgent string) ([]byte, error) {
 	config := c.configs.BrowserConfigTable
 	rq.Av, rq.User, rq.Jssesw = "0", "0", ""
 	rq.FbAPICallerClass, rq.ServerTimestamps = "RelayModern", "true"
@@ -1077,6 +1078,16 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 		return nil, ErrInstagramWebCheckpointRequestFailed
 	}
 	headers := c.http.BuildHeaders(true, false)
+	if userAgent != "" && userAgent != useragent.UserAgent {
+		headers.Set("user-agent", userAgent)
+		if !strings.Contains(userAgent, "Chrome/") {
+			for name := range headers {
+				if strings.HasPrefix(name, "Sec-Ch-") || name == "Dpr" || name == "Viewport-Width" {
+					headers.Del(name)
+				}
+			}
+		}
+	}
 	headers.Set("origin", "https://www.instagram.com")
 	headers.Set("referer", referrer)
 	headers.Set("x-csrftoken", csrf)

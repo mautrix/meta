@@ -459,7 +459,7 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 	if m.client == nil || !m.client.HasInstagramWebCaptcha() {
 		return nil, errInstagramWebCheckpointUnsupported
 	}
-	step, err := m.client.SubmitInstagramWebCaptcha(ctx, input["captcha_token"])
+	step, err := m.client.SubmitInstagramWebCaptcha(ctx, input["captcha_token"], input["captcha_user_agent"])
 	return m.handleWebAuthPlatformResult(ctx, step, err)
 }
 
