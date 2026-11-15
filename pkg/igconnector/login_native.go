@@ -541,8 +541,8 @@ func (m *MetaNativeLogin) tryNativeLogin(ctx context.Context) (*bridgev2.LoginSt
 	}
 	if errors.Is(err, bridgev2.ErrLoginStepCancelled) {
 		return nil, bridgev2.ErrLoginStepCancelled
-	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return nil, wrapInstagramRespError(err)
+	} else if ctx.Err() != nil {
+		return nil, wrapInstagramRespError(ctx.Err())
 	}
 	stepID := ""
 	if step != nil {
