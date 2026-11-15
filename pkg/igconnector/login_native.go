@@ -42,6 +42,7 @@ const (
 	LoginStepIDCredentials  = "fi.mau.meta.instagram.credentials"
 	LoginStepIDWebTwoFactor = "fi.mau.meta.instagram.web_two_factor"
 	LoginStepIDWebChallenge = "fi.mau.meta.instagram.web_challenge"
+	loginStepIDCAAPassword  = "fi.mau.meta.instagram.caa.password"
 	loginStepIDCAADialog    = "fi.mau.meta.instagram.caa.dialog"
 
 	loginFieldIdentifier       = "username"
@@ -512,34 +513,40 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 
 func (m *MetaNativeLogin) tryNativeLogin(ctx context.Context) (*bridgev2.LoginStep, error) {
 	identifier, password := m.webIdentifier, m.webPassword
-	m.webIdentifier, m.webPassword = "", ""
-	client := m.client
-	if client == nil || identifier == "" || password == "" {
+	webClient := m.client
+	if m.webLoginRejections > 0 || webClient == nil || identifier == "" || password == "" {
 		return nil, nil
 	}
-	if m.transport != nil {
-		m.transport.SetFingerprint("instagram-android")
+	m.nativeLogin = true
+	_, err := m.start(ctx, "")
+	var step *bridgev2.LoginStep
+	if err == nil {
+		step, err = m.client.DoInstagramCAALoginSteps(ctx, map[string]string{
+			loginFieldIdentifier: identifier,
+			loginFieldPassword:   password,
+		})
 	}
-	step, err := client.DoInstagramCAALoginSteps(ctx, map[string]string{
-		loginFieldIdentifier: identifier,
-		loginFieldPassword:   password,
-	})
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, bridgev2.ErrLoginStepCancelled) {
-		return nil, err
-	} else if err == nil && (step == nil || step.StepID != loginStepIDCAADialog) {
+	if err == nil && (step == nil || (step.StepID != loginStepIDCAAPassword && step.StepID != loginStepIDCAADialog)) {
 		m.User.Log.Info().Msg("Instagram rejected web login, continuing with native login")
-		m.nativeLogin = true
 		m.caaIdentifier = identifier
 		if step != nil {
 			return step, nil
 		}
 		return m.continueCAAFallback(ctx, nil)
 	}
-	m.User.Log.Info().Err(err).Msg("Instagram rejected native login too")
-	client.ClearInstagramCAALoginState()
+	m.nativeLogin = false
+	m.client = webClient
 	if m.transport != nil {
 		m.transport.SetFingerprint("chrome")
 	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, bridgev2.ErrLoginStepCancelled) {
+		return nil, err
+	}
+	stepID := ""
+	if step != nil {
+		stepID = step.StepID
+	}
+	m.User.Log.Info().Err(err).Str("step_id", stepID).Msg("Instagram rejected native login too, continuing with web login")
 	return nil, nil
 }
 
