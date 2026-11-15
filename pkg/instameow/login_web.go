@@ -39,7 +39,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
-	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 const instagramWebTwoFactorValidateCodeDocID = "26264014419868193"
@@ -1078,13 +1077,11 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 		return nil, ErrInstagramWebCheckpointRequestFailed
 	}
 	headers := c.http.BuildHeaders(true, false)
-	if userAgent != "" && userAgent != useragent.UserAgent {
+	if userAgent != "" && !strings.Contains(userAgent, "Chrome/") {
 		headers.Set("user-agent", userAgent)
-		if !strings.Contains(userAgent, "Chrome/") {
-			for name := range headers {
-				if strings.HasPrefix(name, "Sec-Ch-") || name == "Dpr" || name == "Viewport-Width" {
-					headers.Del(name)
-				}
+		for name := range headers {
+			if strings.HasPrefix(name, "Sec-Ch-") || name == "Dpr" || name == "Viewport-Width" {
+				headers.Del(name)
 			}
 		}
 	}
