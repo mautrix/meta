@@ -232,7 +232,11 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 	headers.Set("origin", c.parent.GetEndpoint("base_url"))
 	headers.Set("referer", c.parent.GetEndpoint("messages")+"/")
 
-	reqUrl := c.parent.GetEndpoint("graphql")
+	endpoint := graphQLDoc.Endpoint
+	if endpoint == "" {
+		endpoint = "graphql"
+	}
+	reqUrl := c.parent.GetEndpoint(endpoint)
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
 	var resp *http.Response
 	var respData []byte

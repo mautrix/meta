@@ -7,6 +7,7 @@ type GraphQLDoc struct {
 	FriendlyName string
 	NoRetry      bool
 	SlowQuery    bool
+	Endpoint     string
 
 	Jsessw string
 }
@@ -173,6 +174,11 @@ var GraphQLDocs = map[string]GraphQLDoc{
 	"useIGDMarkThreadAsReadValidationMutation": {
 		DocID:        "35211594988486314",
 		FriendlyName: "useIGDMarkThreadAsReadValidationMutation",
+	},
+	"PolarisPostActionLoadPostQueryMediaIdQuery": {
+		DocID:        "28459711433641178",
+		FriendlyName: "PolarisPostActionLoadPostQueryMediaIdQuery",
+		Endpoint:     "graphql_query",
 	},
 	"PolarisProfilePageContentQuery": {
 		DocID:        "26672929172408668",
