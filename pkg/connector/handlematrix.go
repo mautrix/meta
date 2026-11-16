@@ -812,16 +812,26 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 			return false, fmt.Errorf("failed to download avatar: %w", err)
 		}
 		mimeType := http.DetectContentType(data)
-		resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
-			Filename:  "avatar.jpg",
-			MimeType:  mimeType,
-			MediaData: data,
-		})
-		if err != nil {
-			return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
+		if nativeSession := m.Client.MessengerLite.GetNativeSession(); m.Client.Platform.IsMessengerLite() && nativeSession != nil {
+			imageID, err = m.Client.GetHTTP().SendRUploadRequest(ctx, nativeSession, &httpclient.RUploadMedia{
+				Filename:  "avatar.jpg",
+				MimeType:  mimeType,
+				MediaData: data,
+			})
+			if err != nil {
+				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
+			}
+		} else {
+			resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
+				Filename:  "avatar.jpg",
+				MimeType:  mimeType,
+				MediaData: data,
+			})
+			if err != nil {
+				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
+			}
+			imageID = resp.Payload.RealMetadata.GetFbId()
 		}
-
-		imageID = resp.Payload.RealMetadata.GetFbId()
 		if imageID == 0 {
 			return false, fmt.Errorf("no image ID received from upload")
 		}
