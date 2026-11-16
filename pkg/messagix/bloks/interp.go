@@ -152,6 +152,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 			return "", nil
 		}
 	}
+	if br.DeviceEmails == nil {
+		br.DeviceEmails = []*BloksScriptLiteral{}
+	}
 	if br.SignRequestData == nil {
 		br.SignRequestData = func(ctx context.Context, data any) (any, error) {
 			return nil, nil
