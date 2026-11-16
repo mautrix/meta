@@ -91,6 +91,10 @@ func (mc *MessageConverter) ToInstagram(
 					return nil, fmt.Errorf("IGID of DM recipient not found")
 				}
 				recipientIGID = resp.Data.ID
+				err = mc.DB.PutFBIDForIGUser(ctx, recipientIGID, threadID)
+				if err != nil {
+					zerolog.Ctx(ctx).Err(err).Msg("Failed to save IGID of DM recipient")
+				}
 			}
 			textReq.RecipientIGIDs = []string{recipientIGID}
 		} else {
