@@ -504,8 +504,11 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 			return nil, errors.New("instagram web login did not return the current profile")
 		}
 		accounts, err := c.getInstagramWebAccountManagerAccounts(ctx, currentUsername)
-		if err != nil {
+		if httpclient.IsPermanentRequestError(err) {
 			return nil, err
+		} else if err != nil {
+			c.log.Warn().Err(err).Msg("Failed to load Instagram web Account Manager profiles, continuing with current account")
+			accounts = []instagramAccountManagerAccount{{Username: currentUsername}}
 		}
 		state = &instagramWebAccountManagerState{
 			Accounts:  accounts,
