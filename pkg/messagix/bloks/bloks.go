@@ -8,8 +8,8 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
-// Messenger iOS 571.0.0.18.106 of 2026-07-22
-const BloksVersionIOS = "e74cbfe42b6152a793f3ee3d81eeba4c48b5c4477b54d05ab8d8bce991f1319d"
+// Messenger iOS 586.0.0.32.108
+const BloksVersionIOS = "a69ac729dd977640534a01bb673d0939aebf53a4edb26ae3f1c13d333c6ae509"
 
 // Messenger Android 584.1.0.61.98
 const BloksVersionAndroid = "d74221353bbda70cea538a0a70883f4024469172593df5e77725adc162af5e6f"
