@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
+
+	"github.com/google/uuid"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -16,6 +19,13 @@ const BloksVersionAndroid = "d74221353bbda70cea538a0a70883f4024469172593df5e7772
 
 // Instagram Android 454.0.0.54.77
 const BloksVersionInstagramAndroid = "8e8a63073c08f2c7e6701e497d777db5d8d7ad32a5788ce6b1094f20cad0c9f1"
+
+func FormatDeviceID(p types.Platform, id uuid.UUID) string {
+	if p == types.MessengerLiteAndroid {
+		return id.String()
+	}
+	return strings.ToUpper(id.String())
+}
 
 func GetBloksVersion(p types.Platform) (string, error) {
 	switch p {

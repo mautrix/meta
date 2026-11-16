@@ -710,8 +710,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 	}
 	attestationKeyHash := sha256.Sum256(attestationPublicKey)
 	b.Bridge = &InterpBridge{
-		DeviceID:       strings.ToUpper(uuid.New().String()),
-		FamilyDeviceID: strings.ToUpper(uuid.New().String()),
+		DeviceID:       FormatDeviceID(cfg.Platform, uuid.New()),
+		FamilyDeviceID: FormatDeviceID(cfg.Platform, uuid.New()),
 		// Note: machine_id is set to an empty string the first time the user ever logs in
 		// to any account on a given physical device. After a successful login, the login
 		// response payload contains a new machine_id that is stored in shady locations that
