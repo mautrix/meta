@@ -324,6 +324,7 @@ type BrowserConfig struct {
 	EncryptPassword  func(context.Context, string) (string, error)
 	MakeBloksRequest func(context.Context, *BloksDoc, string, BloksParamsInner, string, string) (*BloksBundle, error)
 	FetchAsset       func(ctx context.Context, url string) ([]byte, string, error)
+	AttestationKey   *ecdsa.PrivateKey
 }
 
 type Browser struct {
@@ -695,9 +696,13 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 		Config:  cfg,
 		profile: profile,
 	}
-	attestationKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("generate attestation key: %w", err)
+	attestationKey := cfg.AttestationKey
+	if attestationKey == nil {
+		var err error
+		attestationKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, fmt.Errorf("generate attestation key: %w", err)
+		}
 	}
 	attestationPublicKey, err := x509.MarshalPKIXPublicKey(&attestationKey.PublicKey)
 	if err != nil {

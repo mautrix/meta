@@ -3,6 +3,11 @@ package messagix
 import (
 	"cmp"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -31,6 +36,7 @@ type MessengerLiteMethods struct {
 	deviceID       uuid.UUID
 	familyDeviceID uuid.UUID
 	machineID      string
+	attestationKey *ecdsa.PrivateKey
 	nativeSession  *types.NativeSession
 }
 
@@ -57,14 +63,25 @@ func (m *MessengerLiteMethods) SetLoginDevice(device *types.MessengerLoginDevice
 	m.deviceID = device.DeviceID
 	m.familyDeviceID = device.FamilyDeviceID
 	m.machineID = device.MachineID
+	if der, err := base64.StdEncoding.DecodeString(device.AttestationKey); err == nil {
+		if key, err := x509.ParseECPrivateKey(der); err == nil && key.Curve == elliptic.P256() {
+			m.attestationKey = key
+		}
+	}
 }
 
 func (m *MessengerLiteMethods) GetLoginDevice() types.MessengerLoginDevice {
-	return types.MessengerLoginDevice{
+	device := types.MessengerLoginDevice{
 		DeviceID:       m.deviceID,
 		FamilyDeviceID: m.familyDeviceID,
 		MachineID:      m.machineID,
 	}
+	if m.attestationKey != nil {
+		if der, err := x509.MarshalECPrivateKey(m.attestationKey); err == nil {
+			device.AttestationKey = base64.StdEncoding.EncodeToString(der)
+		}
+	}
+	return device
 }
 
 func (fb *MessengerLiteMethods) GetSuggestedDeviceID() uuid.UUID {
@@ -96,6 +113,7 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 		},
 		MakeBloksRequest: fb.client.http.MakeBloksRequest,
 		FetchAsset:       fb.fetchAsset,
+		AttestationKey:   fb.attestationKey,
 	}
 }
 
@@ -399,6 +417,13 @@ func (m *MessengerLiteMethods) SetMachineID(machineID string) {
 
 func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, *cookies.Cookies, error) {
 	if m.browser == nil {
+		if m.attestationKey == nil {
+			key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				return nil, nil, fmt.Errorf("generate attestation key: %w", err)
+			}
+			m.attestationKey = key
+		}
 		b, err := bloks.NewBrowser(m.getBrowserConfig())
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct browser: %w", err)

@@ -14,4 +14,5 @@ type MessengerLoginDevice struct {
 	DeviceID       uuid.UUID
 	FamilyDeviceID uuid.UUID
 	MachineID      string
+	AttestationKey string
 }
