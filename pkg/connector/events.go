@@ -74,7 +74,7 @@ func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
 	} else if evt.ThreadType == table.FOLDER {
 		return true
 	}
-	if evt.m.requestedThreads.Add(evt.ThreadKey) {
+	if _, alreadyRequested := evt.m.requestedThreads.GetOrSet(evt.ThreadKey, evt.LSVerifyThreadExists); !alreadyRequested {
 		log := evt.m.UserLogin.Log.With().Int64("thread_id", evt.ThreadKey).Logger()
 		log.Debug().Msg("Sending create thread request for unknown thread in verifyThreadExists")
 		resp, err := evt.m.Client.ExecuteTasks(log.WithContext(evt.m.Main.Bridge.BackgroundCtx), &socket.CreateThreadTask{
@@ -87,7 +87,7 @@ func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
 		})
 		if err != nil {
 			log.Err(err).Msg("Failed to request full thread info")
-			evt.m.requestedThreads.Remove(evt.ThreadKey)
+			evt.m.requestedThreads.Delete(evt.ThreadKey)
 		} else {
 			log.Trace().Any("response", resp).Msg("Requested full thread info")
 		}
@@ -139,6 +139,8 @@ var (
 	_ bridgev2.RemotePreHandler                       = (*FBMessageEvent)(nil)
 	_ bridgev2.RemotePostHandler                      = (*FBMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithBundledParts            = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteEventThatMayCreatePortal         = (*FBMessageEvent)(nil)
+	_ bridgev2.RemoteChatResyncWithInfo               = (*FBMessageEvent)(nil)
 )
 
 func (evt *FBMessageEvent) GetType() bridgev2.RemoteEventType {
@@ -164,6 +166,29 @@ func (evt *FBMessageEvent) GetSender() bridgev2.EventSender {
 	sender := evt.m.makeEventSender(evt.SenderId)
 	sender.ForceEditOrigSender = evt.PollEventType == table.PollEventAddOption
 	return sender
+}
+
+// Meta doesn't always answer the create thread request sent for verifyThreadExists (e.g. for new
+// marketplace threads), so a message in a verified thread creates the portal with minimal info.
+func (evt *FBMessageEvent) ShouldCreatePortal() bool {
+	_, verified := evt.m.requestedThreads.Get(evt.ThreadKey)
+	return verified
+}
+
+func (evt *FBMessageEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	vte, ok := evt.m.requestedThreads.Get(evt.ThreadKey)
+	if !ok {
+		return nil, nil
+	}
+	info, err := (&VerifyThreadExistsEvent{LSVerifyThreadExists: vte, m: evt.m}).GetChatInfo(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
+	sender := evt.GetSender()
+	if !sender.IsFromMe {
+		info.Members.MemberMap[sender.Sender] = bridgev2.ChatMember{EventSender: sender, Membership: event.MembershipJoin}
+	}
+	return info, nil
 }
 
 func (evt *FBMessageEvent) GetID() networkid.MessageID {

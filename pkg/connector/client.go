@@ -91,7 +91,7 @@ type MetaClient struct {
 
 	pollQueries sync.Map
 
-	requestedThreads *exsync.Set[int64]
+	requestedThreads *exsync.Map[int64, *table.LSVerifyThreadExists]
 }
 
 func (m *MetaConnector) getMessagixConfig() *messagix.Config {
@@ -117,7 +117,7 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		parsedTablesWake:   make(chan struct{}, 1),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 		historyReadStates:  exsync.NewMap[int64, historyReadState](),
-		requestedThreads:   exsync.NewSet[int64](),
+		requestedThreads:   exsync.NewMap[int64, *table.LSVerifyThreadExists](),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
 
