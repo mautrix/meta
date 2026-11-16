@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 var (
@@ -807,30 +807,15 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		// TODO: handle removing avatar. Messenger web doesn't have a remove option?
 		return false, fmt.Errorf("removing avatar not implemented")
 	} else {
-		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
+		var err error
+		imageID, err = mediadl.ReuploadFileToMeta(ctx, m.Client.GetHTTP(), m.Client.MessengerLite.GetNativeSession(), msg.Portal, &event.MessageEventContent{
+			MsgType:  event.MsgImage,
+			URL:      msg.Content.URL,
+			FileName: "avatar.jpg",
+			Info:     &event.FileInfo{},
+		})
 		if err != nil {
-			return false, fmt.Errorf("failed to download avatar: %w", err)
-		}
-		mimeType := http.DetectContentType(data)
-		if nativeSession := m.Client.MessengerLite.GetNativeSession(); m.Client.Platform.IsMessengerLite() && nativeSession != nil {
-			imageID, err = m.Client.GetHTTP().SendRUploadRequest(ctx, nativeSession, &httpclient.RUploadMedia{
-				Filename:  "avatar.jpg",
-				MimeType:  mimeType,
-				MediaData: data,
-			})
-			if err != nil {
-				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
-			}
-		} else {
-			resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
-				Filename:  "avatar.jpg",
-				MimeType:  mimeType,
-				MediaData: data,
-			})
-			if err != nil {
-				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
-			}
-			imageID = resp.Payload.RealMetadata.GetFbId()
+			return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
 		}
 		if imageID == 0 {
 			return false, fmt.Errorf("no image ID received from upload")
