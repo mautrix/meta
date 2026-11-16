@@ -469,7 +469,8 @@ func (ic *IGClient) checkDirectPushSettings() {
 		Bool("messages_disabled", disabled).
 		Msg("Got Instagram direct notification settings")
 	if disabled {
-		if !ic.directPushDisabled.Swap(true) && ic.UserLogin.BridgeState.GetPrevUnsent().StateEvent == status.StateConnected {
+		ic.directPushDisabled.Store(true)
+		if ic.UserLogin.BridgeState.GetPrevUnsent().StateEvent == status.StateConnected {
 			ic.sendDirectPushDisabledState()
 		}
 	} else if ic.directPushDisabled.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGDirectPushDisabled {

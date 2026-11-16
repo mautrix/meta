@@ -1,6 +1,7 @@
 package instameow
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdh"
 	"encoding/base64"
@@ -120,7 +121,7 @@ func (c *Client) GetDirectNotificationSettings(ctx context.Context) (map[string]
 					settings[item.ContentType] = "on"
 				}
 			} else if *item.Checked {
-				settings[item.ContentType] = item.SettingValue
+				settings[item.ContentType] = cmp.Or(item.SettingValue, "off")
 			}
 		}
 	}
