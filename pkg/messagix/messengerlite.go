@@ -77,8 +77,10 @@ func (fb *MessengerLiteMethods) getBrowserConfig() *bloks.BrowserConfig {
 			}
 			return encryptedPW, nil
 		},
-		MakeBloksRequest: fb.client.http.MakeBloksRequest,
-		FetchAsset:       fb.fetchAsset,
+		MakeBloksRequest: func(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID, familyDeviceID string) (*bloks.BloksBundle, error) {
+			return fb.client.http.MakeBloksRequest(ctx, doc, appID, inner, deviceID, familyDeviceID, fb.machineID)
+		},
+		FetchAsset: fb.fetchAsset,
 	}
 }
 

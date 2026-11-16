@@ -208,7 +208,7 @@ func mainE() error {
 		if err != nil {
 			return err
 		}
-		mcl.GetHTTP().MakeBloksRequest(ctx, doc, *doRPC, paramsInner, *deviceID, *familyDeviceID)
+		mcl.GetHTTP().MakeBloksRequest(ctx, doc, *doRPC, paramsInner, *deviceID, *familyDeviceID, *machineID)
 
 		return nil
 	}
