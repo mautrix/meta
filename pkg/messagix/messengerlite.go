@@ -50,6 +50,23 @@ func (m *MessengerLiteMethods) SetNativeSession(session *types.NativeSession) {
 	m.familyDeviceID = session.FamilyDeviceID
 }
 
+func (m *MessengerLiteMethods) SetLoginDevice(device *types.MessengerLoginDevice) {
+	if m == nil || device == nil || device.DeviceID == uuid.Nil || device.FamilyDeviceID == uuid.Nil {
+		return
+	}
+	m.deviceID = device.DeviceID
+	m.familyDeviceID = device.FamilyDeviceID
+	m.machineID = device.MachineID
+}
+
+func (m *MessengerLiteMethods) GetLoginDevice() types.MessengerLoginDevice {
+	return types.MessengerLoginDevice{
+		DeviceID:       m.deviceID,
+		FamilyDeviceID: m.familyDeviceID,
+		MachineID:      m.machineID,
+	}
+}
+
 func (fb *MessengerLiteMethods) GetSuggestedDeviceID() uuid.UUID {
 	if fb == nil {
 		return uuid.Nil
@@ -343,13 +360,14 @@ func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, acces
 	if !newCookies.IsLoggedIn() {
 		return nil, fmt.Errorf("session-for-app response is missing cookies: %v", newCookies.GetMissingCookieNames())
 	}
+	m.machineID = cmp.Or(resp.MachineID, m.machineID)
 	if m.client.Platform == types.MessengerLiteIOS && resp.AccessToken != "" {
 		m.SetNativeSession(&types.NativeSession{
 			AccessToken:    resp.AccessToken,
 			AppID:          useragent.MessengerLiteIOSAppID,
 			DeviceID:       m.deviceID,
 			FamilyDeviceID: m.familyDeviceID,
-			MachineID:      cmp.Or(resp.MachineID, m.machineID),
+			MachineID:      m.machineID,
 		})
 	} else if m.client.Platform == types.MessengerLiteAndroid {
 		uid, err := resp.UID.Int64()
@@ -363,7 +381,7 @@ func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, acces
 			AppID:          useragent.MessengerLiteAndroidAppID,
 			DeviceID:       m.deviceID,
 			FamilyDeviceID: m.familyDeviceID,
-			MachineID:      cmp.Or(resp.MachineID, m.machineID),
+			MachineID:      m.machineID,
 		})
 	}
 	return newCookies, nil
@@ -384,6 +402,11 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		b, err := bloks.NewBrowser(m.getBrowserConfig())
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct browser: %w", err)
+		}
+		if m.deviceID != uuid.Nil && m.familyDeviceID != uuid.Nil {
+			b.Bridge.DeviceID = strings.ToUpper(m.deviceID.String())
+			b.Bridge.FamilyDeviceID = strings.ToUpper(m.familyDeviceID.String())
+			b.Bridge.MachineID = m.machineID
 		}
 		m.browser = b
 
@@ -445,6 +468,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 	if newCookies.GetUserID() <= 0 || (loginRespPayload.UID != 0 && loginRespPayload.UID != newCookies.GetUserID()) {
 		return nil, nil, loginerrors.TokenExchange
 	}
+	m.machineID = cmp.Or(loginRespPayload.MachineID, m.machineID)
 	if m.client.Platform.IsMessengerLite() && loginRespPayload.AccessToken != "" {
 		app, err := m.client.getMessengerLiteApp()
 		if err != nil {
@@ -455,7 +479,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 			AppID:          app.AppID,
 			DeviceID:       m.deviceID,
 			FamilyDeviceID: m.familyDeviceID,
-			MachineID:      loginRespPayload.MachineID,
+			MachineID:      m.machineID,
 		})
 	}
 	return nil, newCookies, nil
