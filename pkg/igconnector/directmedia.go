@@ -258,7 +258,7 @@ func (ic *IGConnector) refreshBlobMedia(
 	var resultURL string
 	var updatedCount int
 	var targetInPage bool
-	var targetContentType string
+	var targetTypeName string
 	var targetAttachmentKeys []string
 
 	// Process ALL fetched messages, updating their URLs in the database
@@ -266,7 +266,7 @@ func (ic *IGConnector) refreshBlobMedia(
 		isTarget := edge.Node.ID == fbMsgID.ID
 		if isTarget {
 			targetInPage = true
-			targetContentType = fmt.Sprintf("%T", edge.Node.Content.Content)
+			targetTypeName = edge.Node.Content.TypeName
 		}
 		// Build attachment URL map: AttachmentFbid -> fresh URL
 		attachmentURLs := make(map[string]string)
@@ -317,7 +317,7 @@ func (ic *IGConnector) refreshBlobMedia(
 			continue
 		}
 		if isTarget {
-			targetAttachmentKeys = slices.Collect(maps.Keys(attachmentURLs))
+			targetAttachmentKeys = slices.Sorted(maps.Keys(attachmentURLs))
 		}
 
 		if len(attachmentURLs) == 0 {
@@ -389,7 +389,7 @@ func (ic *IGConnector) refreshBlobMedia(
 		Int("updated_count", updatedCount).
 		Int("fetched_count", len(messages.Edges)).
 		Bool("target_in_page", targetInPage).
-		Str("target_content_type", targetContentType).
+		Str("target_typename", targetTypeName).
 		Strs("target_attachment_keys", targetAttachmentKeys).
 		Msg("Finished refreshing blob media URLs")
 
