@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -294,9 +295,64 @@ type MetaNativeLogin struct {
 	Main *MetaConnector
 
 	SavedClient *messagix.Client
+	loginDevice types.MessengerLoginDevice
 }
 
 func (m *MetaNativeLogin) Cancel() {}
+
+func (m *MetaNativeLogin) loginDeviceAppID() string {
+	if m.Mode == types.MessengerLiteAndroid {
+		return useragent.MessengerLiteAndroidAppID
+	}
+	return useragent.MessengerLiteIOSAppID
+}
+
+func (m *MetaNativeLogin) loadLoginDevice(ctx context.Context, override *bridgev2.UserLogin) (*types.MessengerLoginDevice, error) {
+	if m.Main.DB == nil {
+		return nil, nil
+	}
+	appID := m.loginDeviceAppID()
+	device, err := m.Main.DB.GetMessengerLoginDevice(ctx, m.User.MXID, appID)
+	if err != nil || device != nil {
+		return device, err
+	}
+	logins := m.User.GetUserLogins()
+	slices.SortFunc(logins, func(a, b *bridgev2.UserLogin) int {
+		return strings.Compare(string(a.ID), string(b.ID))
+	})
+	if override != nil {
+		logins = append([]*bridgev2.UserLogin{override}, logins...)
+	}
+	for _, login := range logins {
+		session := login.Metadata.(*metaid.UserLoginMetadata).NativeSession
+		if session == nil || session.AppID != appID || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil {
+			continue
+		}
+		device = &types.MessengerLoginDevice{
+			DeviceID:       session.DeviceID,
+			FamilyDeviceID: session.FamilyDeviceID,
+			MachineID:      session.MachineID,
+		}
+		if err = m.Main.DB.PutMessengerLoginDevice(ctx, m.User.MXID, appID, *device); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save Messenger login device")
+		}
+		return device, nil
+	}
+	return nil, nil
+}
+
+func (m *MetaNativeLogin) saveLoginDevice(ctx context.Context) {
+	device := m.SavedClient.MessengerLite.GetLoginDevice()
+	if m.Main.DB == nil || device.DeviceID == uuid.Nil || device == m.loginDevice {
+		return
+	}
+	err := m.Main.DB.PutMessengerLoginDevice(ctx, m.User.MXID, m.loginDeviceAppID(), device)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save Messenger login device")
+		return
+	}
+	m.loginDevice = device
+}
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	return m.StartWithParams(ctx, bridgev2.LoginStartParams{})
@@ -304,8 +360,13 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
+	device, err := m.loadLoginDevice(ctx, params.Override)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Messenger login device: %w", err)
+	}
 	log.Debug().
 		Bool("client_http", params.HTTP != nil).
+		Bool("known_device", device != nil).
 		Msg("Starting Messenger Lite login flow")
 
 	fakeCookies := &cookies.Cookies{
@@ -318,6 +379,10 @@ func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.L
 	if params.HTTP != nil {
 		client.GetHTTP().GetNewProxy = nil
 		client.GetHTTP().SetTransportOverride(params.HTTP)
+	}
+	if device != nil {
+		client.MessengerLite.SetLoginDevice(device)
+		m.loginDevice = *device
 	}
 	m.SavedClient = client
 
@@ -353,6 +418,7 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
+	m.saveLoginDevice(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
