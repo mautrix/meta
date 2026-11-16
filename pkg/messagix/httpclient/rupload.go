@@ -104,6 +104,7 @@ func (c *HTTPClient) SendInstagramRUploadRequest(ctx context.Context, media *Mer
 		return 0, fmt.Errorf("client is nil")
 	}
 	namespace := ruploadNamespace(media.MimeType)
+	sessionID := uuid.NewString()
 	queryValues, err := query.Values(c.NewHTTPQuery())
 	if err != nil {
 		return 0, fmt.Errorf("failed to convert HttpQuery into query.Values for rupload: %w", err)
@@ -123,7 +124,7 @@ func (c *HTTPClient) SendInstagramRUploadRequest(ctx context.Context, media *Mer
 	h.Set("ig-u-ds-user-id", c.parent.GetCookies().Get(cookies.IGCookieDSUserID))
 	h.Set("offset", "0")
 	h.Set("x-entity-length", strconv.Itoa(len(media.MediaData)))
-	h.Set("x-entity-name", url.PathEscape(media.Filename))
+	h.Set("x-entity-name", url.PathEscape(cmp.Or(media.Filename, sessionID)))
 	h.Set("x-entity-type", media.MimeType)
 	switch namespace {
 	case "messenger_image", "messenger_gif":
@@ -147,7 +148,7 @@ func (c *HTTPClient) SendInstagramRUploadRequest(ctx context.Context, media *Mer
 		h.Set("file_type", "FILE_ATTACHMENT")
 	}
 
-	reqURL := fmt.Sprintf("%s%s/%s?%s", c.parent.GetEndpoint("rupload"), namespace, uuid.NewString(), queryValues.Encode())
+	reqURL := fmt.Sprintf("%s%s/%s?%s", c.parent.GetEndpoint("rupload"), namespace, sessionID, queryValues.Encode())
 	_, body, err := c.makeRequest(ctx, c.uploadClient, reqURL, http.MethodPost, h, media.MediaData, types.NONE, func(e *zerolog.Event) *zerolog.Event {
 		return e.Str("rupload_namespace", namespace)
 	})
