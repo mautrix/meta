@@ -20,9 +20,8 @@ import (
 )
 
 var (
-	epochMutex    sync.Mutex
-	lastTimestamp int64
-	counter       int64
+	epochMutex  sync.Mutex
+	lastEpochID int64
 )
 var jsObjectRe = regexp.MustCompile(`(?m)(\s*{|\s*,\s*)\s*([a-zA-Z0-9_]+)\s*:`)
 
@@ -30,15 +29,13 @@ func GenerateEpochID() int64 {
 	epochMutex.Lock()
 	defer epochMutex.Unlock()
 
-	timestamp := time.Now().UnixMilli()
-	if timestamp == lastTimestamp {
-		counter++
-	} else {
-		lastTimestamp = timestamp
-		counter = 0
+	for {
+		id := (time.Now().UnixMilli() << 22) | rand.Int63n(131071)
+		if id != lastEpochID {
+			lastEpochID = id
+			return id
+		}
 	}
-	id := (timestamp << 22) | (counter << 12) | 42
-	return id
 }
 
 func GenerateTimestampString() string {
