@@ -30,6 +30,9 @@ func (m *MetaClient) historyDevice() *securehistory.Device {
 }
 
 func (m *MetaClient) canBackfillEncrypted() bool {
+	if !m.Main.Config.E2EEBackfill {
+		return false
+	}
 	device := m.historyDevice()
 	return device != nil && device.ID != ""
 }

@@ -411,6 +411,7 @@ var (
 	ErrResponseReadFailed       = errors.New("failed to read response body")
 	ErrUnexpectedError          = errors.New("server returned unexpected HTTP status")
 	ErrRateLimited              = fmt.Errorf("%w 429", ErrUnexpectedError)
+	ErrPageInternalServerError  = errors.New("page returned internal server error")
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
 	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
@@ -673,6 +674,9 @@ func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, er
 				Str("content_type", response.Header.Get("content-type")).
 				Strs("cookie_names", c.parent.GetCookies().GetNames())
 			AddRedactedResponse(evt, responseBody).Msg("Page request failed")
+		}
+		if errors.Is(err, ErrUnexpectedError) && response.StatusCode == http.StatusInternalServerError {
+			err = fmt.Errorf("%w: %w", ErrPageInternalServerError, err)
 		}
 	}
 	return responseBody, err

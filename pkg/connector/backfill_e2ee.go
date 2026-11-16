@@ -120,7 +120,7 @@ func (m *MetaClient) convertArchiveMessage(ctx context.Context, portal *bridgev2
 			}
 		} else if content.GetPollUpdateMessage() != nil && parent.GetConsumerApplication().GetPayload().GetContent().GetPollCreationMessage() != nil {
 			continue
-		} else if armadillo := decoded.GetArmadillo(); armadillo != nil && armadillo.GetPayload().GetContent() == nil {
+		} else if armadillo := decoded.GetArmadillo(); armadillo != nil && (armadillo.GetPayload().GetContent() == nil || armadillo.GetPayload().GetContent().GetRavenActionNotifMessage() != nil) {
 			continue
 		} else {
 			consumerPayload := decoded.GetConsumerApplication().GetPayload()
