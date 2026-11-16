@@ -149,9 +149,7 @@ func (c *HTTPClient) SendInstagramRUploadRequest(ctx context.Context, media *Mer
 	}
 
 	reqURL := fmt.Sprintf("%s%s/%s?%s", c.parent.GetEndpoint("rupload"), namespace, sessionID, queryValues.Encode())
-	_, body, err := c.makeRequest(ctx, c.uploadClient, reqURL, http.MethodPost, h, media.MediaData, types.NONE, func(e *zerolog.Event) *zerolog.Event {
-		return e.Str("rupload_namespace", namespace)
-	})
+	_, body, err := c.makeRequestOnce(ctx, c.uploadClient(), reqURL, http.MethodPost, h, media.MediaData, types.NONE)
 	return parseRUploadResponse(body, err)
 }
 
