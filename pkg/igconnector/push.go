@@ -102,6 +102,9 @@ func (ic *IGClient) UnregisterPushNotifications(ctx context.Context) error {
 	if ic.webPushStaleReported.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGWebPushStale {
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	}
+	if ic.directPushDisabled.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGDirectPushDisabled {
+		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+	}
 	return nil
 }
 
@@ -136,6 +139,7 @@ func (ic *IGClient) registerNativePush(ctx context.Context, token string) error 
 			return fmt.Errorf("failed to save native push session: %w", err)
 		}
 	}
+	go ic.checkDirectPushSettings()
 	return nil
 }
 
@@ -437,4 +441,46 @@ func (ic *IGClient) confirmWebPushStale() {
 		Str("thread_id", missed.ThreadFBID).
 		Msg("Caught up a message that never got a web push, asking for relogin")
 	ic.sendWebPushStaleState()
+}
+
+const directPushCheckInterval = time.Hour
+
+func (ic *IGClient) checkDirectPushSettings() {
+	session := ic.LoginMeta.InstagramNativeSession
+	cli := ic.Client
+	if cli == nil || ic.Main.Bridge.Background || ic.LoginMeta.NativePushKeys == nil || session == nil || session.Authorization == "" {
+		return
+	}
+	lastChecked := ic.directPushCheckedAt.Load()
+	if time.Since(time.Unix(lastChecked, 0)) < directPushCheckInterval ||
+		!ic.directPushCheckedAt.CompareAndSwap(lastChecked, time.Now().Unix()) {
+		return
+	}
+	log := ic.UserLogin.Log.With().Str("action", "check direct push settings").Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	settings, err := cli.GetDirectNotificationSettings(ctx)
+	if err != nil {
+		log.Err(err).Msg("Failed to get Instagram direct notification settings")
+		return
+	}
+	disabled := settings["direct_share_activity"] == "off" || settings["messages"] == "off"
+	log.Info().
+		Any("settings", settings).
+		Bool("messages_disabled", disabled).
+		Msg("Got Instagram direct notification settings")
+	if disabled {
+		if !ic.directPushDisabled.Swap(true) && ic.UserLogin.BridgeState.GetPrevUnsent().StateEvent == status.StateConnected {
+			ic.sendDirectPushDisabledState()
+		}
+	} else if ic.directPushDisabled.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGDirectPushDisabled {
+		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+	}
+}
+
+func (ic *IGClient) sendDirectPushDisabledState() {
+	ic.UserLogin.BridgeState.Send(status.BridgeState{
+		StateEvent: status.StateBadCredentials,
+		Error:      IGDirectPushDisabled,
+		UserAction: status.UserActionOpenNative,
+	})
 }

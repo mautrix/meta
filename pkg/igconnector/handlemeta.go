@@ -57,6 +57,7 @@ const (
 	MetaProxyUpdateFail       status.BridgeStateErrorCode = "meta-proxy-update-fail"
 	MetaNotInstagram          status.BridgeStateErrorCode = "meta-not-instagram-account"
 	IGWebPushStale            status.BridgeStateErrorCode = "ig-web-push-stale"
+	IGDirectPushDisabled      status.BridgeStateErrorCode = "ig-direct-push-disabled"
 )
 
 func init() {
@@ -78,6 +79,7 @@ func init() {
 		MetaProxyUpdateFail:       "Failed to update proxy",
 		MetaNotInstagram:          "Non-Instagram login present on Instagram-only bridge",
 		IGWebPushStale:            "Instagram stopped sending notifications, please relogin to restore them",
+		IGDirectPushDisabled:      "Message notifications are turned off in Instagram, please turn on Messages in the Instagram app's notification settings",
 	})
 }
 
@@ -103,9 +105,12 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		ic.webPushStaleReported.Store(stale)
 		if stale {
 			ic.sendWebPushStaleState()
+		} else if ic.directPushDisabled.Load() {
+			ic.sendDirectPushDisabledState()
 		} else {
 			ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		}
+		go ic.checkDirectPushSettings()
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
