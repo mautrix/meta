@@ -115,10 +115,10 @@ func (db *MetaDB) PutInstagramLoginDevice(ctx context.Context, userID id.UserID,
 func (db *MetaDB) GetMessengerLoginDevice(ctx context.Context, userID id.UserID, appID string) (*types.MessengerLoginDevice, error) {
 	device := &types.MessengerLoginDevice{}
 	err := db.QueryRow(ctx, `
-		SELECT device_id, family_device_id, machine_id, attestation_key
+		SELECT device_id, family_device_id, machine_id, attestation_key, usdid
 		FROM meta_messenger_login_device
 		WHERE bridge_id = $1 AND user_mxid = $2 AND app_id = $3
-	`, db.BridgeID, userID, appID).Scan(&device.DeviceID, &device.FamilyDeviceID, &device.MachineID, &device.AttestationKey)
+	`, db.BridgeID, userID, appID).Scan(&device.DeviceID, &device.FamilyDeviceID, &device.MachineID, &device.AttestationKey, &device.USDID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -131,14 +131,15 @@ func (db *MetaDB) GetMessengerLoginDevice(ctx context.Context, userID id.UserID,
 func (db *MetaDB) PutMessengerLoginDevice(ctx context.Context, userID id.UserID, appID string, device types.MessengerLoginDevice) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO meta_messenger_login_device (
-			bridge_id, user_mxid, app_id, device_id, family_device_id, machine_id, attestation_key
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			bridge_id, user_mxid, app_id, device_id, family_device_id, machine_id, attestation_key, usdid
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (bridge_id, user_mxid, app_id) DO UPDATE SET
 			device_id = excluded.device_id,
 			family_device_id = excluded.family_device_id,
 			machine_id = excluded.machine_id,
-			attestation_key = excluded.attestation_key
-	`, db.BridgeID, userID, appID, device.DeviceID, device.FamilyDeviceID, device.MachineID, device.AttestationKey)
+			attestation_key = excluded.attestation_key,
+			usdid = excluded.usdid
+	`, db.BridgeID, userID, appID, device.DeviceID, device.FamilyDeviceID, device.MachineID, device.AttestationKey, device.USDID)
 	return err
 }
 

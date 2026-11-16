@@ -37,6 +37,7 @@ type MessengerLiteMethods struct {
 	familyDeviceID uuid.UUID
 	machineID      string
 	attestationKey *ecdsa.PrivateKey
+	usdid          string
 	nativeSession  *types.NativeSession
 }
 
@@ -63,6 +64,7 @@ func (m *MessengerLiteMethods) SetLoginDevice(device *types.MessengerLoginDevice
 	m.deviceID = device.DeviceID
 	m.familyDeviceID = device.FamilyDeviceID
 	m.machineID = device.MachineID
+	m.usdid = device.USDID
 	if der, err := base64.StdEncoding.DecodeString(device.AttestationKey); err == nil {
 		if key, err := x509.ParseECPrivateKey(der); err == nil && key.Curve == elliptic.P256() {
 			m.attestationKey = key
@@ -75,6 +77,7 @@ func (m *MessengerLiteMethods) GetLoginDevice() types.MessengerLoginDevice {
 		DeviceID:       m.deviceID,
 		FamilyDeviceID: m.familyDeviceID,
 		MachineID:      m.machineID,
+		USDID:          m.usdid,
 	}
 	if m.attestationKey != nil {
 		if der, err := x509.MarshalECPrivateKey(m.attestationKey); err == nil {
@@ -424,6 +427,10 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 			}
 			m.attestationKey = key
 		}
+		if m.usdid == "" {
+			m.usdid = strings.ToUpper(uuid.New().String())
+		}
+		m.client.http.USDID = m.usdid
 		b, err := bloks.NewBrowser(m.getBrowserConfig())
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct browser: %w", err)
