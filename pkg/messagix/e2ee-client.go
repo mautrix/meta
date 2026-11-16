@@ -134,9 +134,9 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 		UserAgent: &waWa6.ClientPayload_UserAgent{
 			Device: proto.String(useragent.BrowserName),
 			AppVersion: &waWa6.ClientPayload_UserAgent_AppVersion{
-				Primary:   proto.Uint32(301),
+				Primary:   proto.Uint32(302),
 				Secondary: proto.Uint32(0),
-				Tertiary:  proto.Uint32(2),
+				Tertiary:  proto.Uint32(uint32(cfgs.BrowserConfigTable.SiteData.ClientRevision)),
 			},
 			LocaleCountryIso31661Alpha2: proto.String("en"),
 			LocaleLanguageIso6391:       proto.String("en"),
@@ -150,7 +150,7 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 			//SimMnc: proto.String("000"),
 
 			Platform:       waWa6.ClientPayload_UserAgent_BLUE_WEB.Enum(),
-			ReleaseChannel: waWa6.ClientPayload_UserAgent_DEBUG.Enum(),
+			ReleaseChannel: waWa6.ClientPayload_UserAgent_RELEASE.Enum(),
 		},
 	}
 }
