@@ -153,6 +153,8 @@ CREATE TABLE meta_messenger_login_device (
     device_id        TEXT NOT NULL,
     family_device_id TEXT NOT NULL,
     machine_id       TEXT NOT NULL,
+    attestation_key  TEXT NOT NULL,
+    usdid            TEXT NOT NULL,
 
     PRIMARY KEY (bridge_id, user_mxid, app_id),
     CONSTRAINT meta_messenger_login_device_user_fkey FOREIGN KEY (bridge_id, user_mxid)

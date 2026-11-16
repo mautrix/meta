@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -74,8 +75,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
 		headers.Set("x-graphql-client-library", "pando")
 
-		// Not clear if this needs to be remembered
-		headers.Set("x-meta-usdid-uuid", strings.ToUpper(uuid.New().String()))
+		headers.Set("x-meta-usdid-uuid", cmp.Or(c.USDID, strings.ToUpper(uuid.New().String())))
 
 		// Skip setting encoding headers since it messes up
 		// our own http library
