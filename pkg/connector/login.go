@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -306,7 +307,7 @@ func (m *MetaNativeLogin) loginDeviceAppID() string {
 	return useragent.MessengerLiteIOSAppID
 }
 
-func (m *MetaNativeLogin) loadLoginDevice(ctx context.Context) (*types.MessengerLoginDevice, error) {
+func (m *MetaNativeLogin) loadLoginDevice(ctx context.Context, override *bridgev2.UserLogin) (*types.MessengerLoginDevice, error) {
 	if m.Main.DB == nil {
 		return nil, nil
 	}
@@ -315,7 +316,14 @@ func (m *MetaNativeLogin) loadLoginDevice(ctx context.Context) (*types.Messenger
 	if err != nil || device != nil {
 		return device, err
 	}
-	for _, login := range m.User.GetUserLogins() {
+	logins := m.User.GetUserLogins()
+	slices.SortFunc(logins, func(a, b *bridgev2.UserLogin) int {
+		return strings.Compare(string(a.ID), string(b.ID))
+	})
+	if override != nil {
+		logins = append([]*bridgev2.UserLogin{override}, logins...)
+	}
+	for _, login := range logins {
 		session := login.Metadata.(*metaid.UserLoginMetadata).NativeSession
 		if session == nil || session.AppID != appID || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil {
 			continue
@@ -325,7 +333,10 @@ func (m *MetaNativeLogin) loadLoginDevice(ctx context.Context) (*types.Messenger
 			FamilyDeviceID: session.FamilyDeviceID,
 			MachineID:      session.MachineID,
 		}
-		return device, m.Main.DB.PutMessengerLoginDevice(ctx, m.User.MXID, appID, *device)
+		if err = m.Main.DB.PutMessengerLoginDevice(ctx, m.User.MXID, appID, *device); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save Messenger login device")
+		}
+		return device, nil
 	}
 	return nil, nil
 }
@@ -349,7 +360,7 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
-	device, err := m.loadLoginDevice(ctx)
+	device, err := m.loadLoginDevice(ctx, params.Override)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load Messenger login device: %w", err)
 	}
