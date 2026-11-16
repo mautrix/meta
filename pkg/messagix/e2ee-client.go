@@ -17,6 +17,7 @@
 package messagix
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -136,7 +137,7 @@ func (c *Client) getClientPayload() *waWa6.ClientPayload {
 			AppVersion: &waWa6.ClientPayload_UserAgent_AppVersion{
 				Primary:   proto.Uint32(302),
 				Secondary: proto.Uint32(0),
-				Tertiary:  proto.Uint32(uint32(cfgs.BrowserConfigTable.SiteData.ClientRevision)),
+				Tertiary:  proto.Uint32(uint32(cmp.Or(cfgs.BrowserConfigTable.SiteData.ClientRevision, int64(cfgs.BrowserConfigTable.SiteData.SpinR)))),
 			},
 			LocaleCountryIso31661Alpha2: proto.String("en"),
 			LocaleLanguageIso6391:       proto.String("en"),
