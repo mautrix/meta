@@ -102,9 +102,6 @@ func (ic *IGClient) UnregisterPushNotifications(ctx context.Context) error {
 	if ic.webPushStaleReported.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGWebPushStale {
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	}
-	if ic.directPushDisabled.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGDirectPushDisabled {
-		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
-	}
 	return nil
 }
 
@@ -463,25 +460,8 @@ func (ic *IGClient) checkDirectPushSettings() {
 		log.Err(err).Msg("Failed to get Instagram direct notification settings")
 		return
 	}
-	disabled := settings["direct_share_activity"] == "off" || settings["messages"] == "off"
 	log.Info().
 		Any("settings", settings).
-		Bool("messages_disabled", disabled).
+		Bool("messages_disabled", settings["direct_share_activity"] == "off" || settings["messages"] == "off").
 		Msg("Got Instagram direct notification settings")
-	if disabled {
-		ic.directPushDisabled.Store(true)
-		if ic.UserLogin.BridgeState.GetPrevUnsent().StateEvent == status.StateConnected {
-			ic.sendDirectPushDisabledState()
-		}
-	} else if ic.directPushDisabled.Swap(false) && ic.UserLogin.BridgeState.GetPrevUnsent().Error == IGDirectPushDisabled {
-		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
-	}
-}
-
-func (ic *IGClient) sendDirectPushDisabledState() {
-	ic.UserLogin.BridgeState.Send(status.BridgeState{
-		StateEvent: status.StateBadCredentials,
-		Error:      IGDirectPushDisabled,
-		UserAction: status.UserActionOpenNative,
-	})
 }
