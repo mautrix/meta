@@ -34,7 +34,9 @@ var (
 
 // TO-DO: implement automatic grabbing of pub key from html module config for facebook as insta does
 func EncryptPassword(platform types.Platform, pubKeyId int, pubKey, password string) (string, error) {
-	if platform.IsMessengerLite() {
+	if platform == types.MessengerLiteAndroid {
+		return EncryptMessengerAndroidPassword(pubKeyId, pubKey, password)
+	} else if platform.IsMessengerLite() {
 		return encryptPasswordLightspeed(pubKeyId, pubKey, password)
 	}
 	format := "#PWD_BROWSER:5"
@@ -95,6 +97,14 @@ func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (stri
 	if err != nil {
 		return "", fmt.Errorf("failed to decode Instagram app public key: %w", err)
 	}
+	return encryptPasswordRSA(pubKeyID, publicKeyBytes, password, "#PWD_INSTAGRAM:4")
+}
+
+func EncryptMessengerAndroidPassword(pubKeyID int, publicKey, password string) (string, error) {
+	return encryptPasswordRSA(pubKeyID, []byte(publicKey), password, "#PWD_MSGR:2")
+}
+
+func encryptPasswordRSA(pubKeyID int, publicKeyBytes []byte, password, format string) (string, error) {
 	if block, _ := pem.Decode(publicKeyBytes); block != nil {
 		publicKeyBytes = block.Bytes
 	}
@@ -103,12 +113,12 @@ func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (stri
 		if pkcs1Key, pkcs1Err := x509.ParsePKCS1PublicKey(publicKeyBytes); pkcs1Err == nil {
 			parsedKey = pkcs1Key
 		} else {
-			return "", fmt.Errorf("failed to parse Instagram app public key: %w", err)
+			return "", fmt.Errorf("failed to parse app public key: %w", err)
 		}
 	}
 	rsaKey, ok := parsedKey.(*rsa.PublicKey)
 	if !ok {
-		return "", errors.New("instagram app public key is not RSA")
+		return "", errors.New("app public key is not RSA")
 	}
 
 	sessionKey := random.Bytes(32)
@@ -126,7 +136,7 @@ func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (stri
 	//lint:ignore SA1019 we can't do anything if meta uses deprecated crypto
 	encryptedSessionKey, err := rsa.EncryptPKCS1v15(rand.Reader, rsaKey, sessionKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to encrypt Instagram app session key: %w", err)
+		return "", fmt.Errorf("failed to encrypt app session key: %w", err)
 	}
 	encryptedPassword := aead.Seal(nil, iv, []byte(password), []byte(timestamp))
 	tagOffset := len(encryptedPassword) - aead.Overhead()
@@ -141,7 +151,8 @@ func EncryptInstagramAppPassword(pubKeyID int, publicKey, password string) (stri
 	buf.Write(encryptedPassword[:tagOffset])
 
 	return fmt.Sprintf(
-		"#PWD_INSTAGRAM:4:%s:%s",
+		"%s:%s:%s",
+		format,
 		timestamp,
 		base64.StdEncoding.EncodeToString(buf.Bytes()),
 	), nil
