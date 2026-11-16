@@ -65,6 +65,12 @@ var ErrNotConnected = bridgev2.WrapErrorInStatus(errors.New("not connected")).Wi
 
 const ConnectWaitTimeout = 1 * time.Minute
 
+const webStanzaIDPlatformBits = 0x1f << 17
+
+func makeWAMessageID(otid int64) waTypes.MessageID {
+	return strconv.FormatInt(otid&^webStanzaIDPlatformBits, 10)
+}
+
 func getOTID(inputTxnID networkid.RawTransactionID) int64 {
 	if inputTxnID != "" {
 		otid, err := strconv.ParseInt(string(inputTxnID), 10, 64)
@@ -94,7 +100,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		if err != nil {
 			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		}
-		messageID := strconv.FormatInt(otid, 10)
+		messageID := makeWAMessageID(otid)
 		chatJID := portalMeta.JID(msg.Portal.ID)
 		senderJID := m.WADevice.ID
 		if waMeta == nil {
@@ -333,7 +339,7 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: waTypes.MessageID(msg.InputTransactionID),
+			ID: makeWAMessageID(getOTID(msg.InputTransactionID)),
 		})
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 		return nil, wrapMetaError(err)
@@ -382,7 +388,7 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: waTypes.MessageID(msg.InputTransactionID),
+			ID: makeWAMessageID(getOTID(msg.InputTransactionID)),
 		})
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 		return wrapMetaError(err)
@@ -500,7 +506,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		edit.EditTarget.Metadata.(*metaid.MessageMetadata).EditTimestamp = edit.Event.Timestamp
 		portalJID := edit.Portal.Metadata.(*metaid.PortalMetadata).JID(edit.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: strconv.FormatInt(otid, 10),
+			ID: makeWAMessageID(otid),
 		})
 		log.Trace().Any("response", resp).Msg("WhatsApp edit response")
 		return wrapMetaError(err)
@@ -534,7 +540,7 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 			Key: m.messageIDToWAKey(messageID),
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
-		revokeID := strconv.FormatInt(getOTID(msg.InputTransactionID), 10)
+		revokeID := makeWAMessageID(getOTID(msg.InputTransactionID))
 		waMeta := &waMsgApplication.MessageApplication_Metadata{}
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, waMeta, whatsmeow.SendRequestExtra{
 			ID: revokeID,

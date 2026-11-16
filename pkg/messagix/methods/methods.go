@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,23 +18,10 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 )
 
-var (
-	epochMutex  sync.Mutex
-	lastEpochID int64
-)
 var jsObjectRe = regexp.MustCompile(`(?m)(\s*{|\s*,\s*)\s*([a-zA-Z0-9_]+)\s*:`)
 
 func GenerateEpochID() int64 {
-	epochMutex.Lock()
-	defer epochMutex.Unlock()
-
-	for {
-		id := (time.Now().UnixMilli() << 22) | rand.Int63n(131071)
-		if id != lastEpochID {
-			lastEpochID = id
-			return id
-		}
-	}
+	return (time.Now().UnixMilli() << 22) | rand.Int63n(1<<22)
 }
 
 func GenerateTimestampString() string {
