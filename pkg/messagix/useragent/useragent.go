@@ -28,8 +28,8 @@ const MessengerLiteIOSUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/586
 
 const MessengerLiteAndroidAppID = "256002347743983"
 const MessengerLiteAndroidAccessToken = MessengerLiteAndroidAppID + "|374e60f8b9bb6b8cbb30f78030438895"
-const MessengerLiteAndroidUserAgent = "Dalvik/2.1.0 (Linux; U; Android 16; Pixel 7 Build/BP2A.250805.005) [FBAN/Orca-Android;FBAV/584.1.0.61.98;FBPN/com.facebook.orca;FBLC/en_US;FBBV/1096943644;FBCR/Tello;FBMF/Google;FBBD/google;FBDV/Pixel 7;FBSV/16;FBCA/arm64-v8a:null;FBDM/{density=2.625,width=1080,height=2400};FB_FW/1;]"
-const MessengerLiteAndroidBuild = 346817025
+const MessengerLiteAndroidUserAgent = "Dalvik/2.1.0 (Linux; U; Android 16; Pixel 7 Build/BP2A.250805.005) [FBAN/Orca-Android;FBAV/587.0.0.54.96;FBPN/com.facebook.orca;FBLC/en_US;FBBV/1111334203;FBCR/Tello;FBMF/Google;FBBD/google;FBDV/Pixel 7;FBSV/16;FBCA/arm64-v8a:null;FBDM/{density=2.625,width=1080,height=2400};FB_FW/1;]"
+const MessengerLiteAndroidBuild = 347415355
 
 const IGDUserAgent = "WMI Web"
 
