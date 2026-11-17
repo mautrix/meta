@@ -9,6 +9,7 @@ import (
 	"maps"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1214,7 +1215,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		keys := []*BloksScriptLiteral{}
-		for key := range dict {
+		for _, key := range slices.Sorted(maps.Keys(dict)) {
 			keys = append(keys, BloksLiteralOf(key))
 		}
 		return BloksLiteralOf(keys), nil
@@ -1224,8 +1225,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		vals := []*BloksScriptLiteral{}
-		for _, val := range dict {
-			vals = append(vals, val)
+		for _, key := range slices.Sorted(maps.Keys(dict)) {
+			vals = append(vals, dict[key])
 		}
 		return BloksLiteralOf(vals), nil
 	case "ig.action.IsDarkModeEnabled", "fb.action.IsDarkModeEnabled":

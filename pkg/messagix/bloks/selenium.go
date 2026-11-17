@@ -726,18 +726,22 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 		DeviceNetworkInfo: genericDeviceNetworkInfo,
 		EncryptPassword:   cfg.EncryptPassword,
 		SignRequestData: func(ctx context.Context, data any) (any, error) {
-			payload, err := json.Marshal(data)
-			if err != nil {
-				return nil, fmt.Errorf("marshal request data: %w", err)
+			payload, ok := data.(string)
+			if !ok {
+				payloadBytes, err := json.Marshal(data)
+				if err != nil {
+					return nil, fmt.Errorf("marshal request data: %w", err)
+				}
+				payload = string(payloadBytes)
 			}
-			hash := sha256.Sum256(payload)
+			hash := sha256.Sum256([]byte(payload))
 			sig, err := ecdsa.SignASN1(rand.Reader, attestationKey, hash[:])
 			if err != nil {
 				return nil, fmt.Errorf("sign request data: %w", err)
 			}
 			return map[string]any{
 				"keyHash":   hex.EncodeToString(attestationKeyHash[:]),
-				"data":      base64.StdEncoding.EncodeToString(payload),
+				"data":      base64.StdEncoding.EncodeToString([]byte(payload)),
 				"signature": base64.StdEncoding.EncodeToString(sig),
 			}, nil
 		},
