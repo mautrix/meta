@@ -491,7 +491,7 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 		return RedirectedError{Type: ErrChallengeRequired, URL: req.URL.String()}
 	} else if req.URL.Path == "/accounts/suspended/" {
 		return RedirectedError{Type: ErrAccountSuspended, URL: req.URL.String()}
-	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
+	} else if req.URL.Path == "/consent/" || req.URL.Path == "/terms/unblock/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
 		return RedirectedError{Type: ErrConsentRequired, URL: req.URL.String()}
 	} else if checkpointRedirect {
 		return RedirectedError{Type: ErrCheckpointRequired, URL: req.URL.String()}

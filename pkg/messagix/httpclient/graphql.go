@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -232,11 +233,7 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 	headers.Set("origin", c.parent.GetEndpoint("base_url"))
 	headers.Set("referer", c.parent.GetEndpoint("messages")+"/")
 
-	endpoint := graphQLDoc.Endpoint
-	if endpoint == "" {
-		endpoint = "graphql"
-	}
-	reqUrl := c.parent.GetEndpoint(endpoint)
+	reqUrl := c.parent.GetEndpoint(cmp.Or(graphQLDoc.EndpointName, "graphql"))
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
 	var resp *http.Response
 	var respData []byte

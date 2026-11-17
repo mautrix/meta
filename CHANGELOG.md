@@ -1,3 +1,45 @@
+# v26.11
+
+* Added support for polls on Messenger.
+* Added handling for forced resync events from Messenger.
+* Added config option for enabling/disabling encrypted Messenger backfill.
+* Added support for fetching all encrypted Messenger chats instead of only
+  the most recent page that's pushed automatically.
+* Added support for uploading sent messages to Messenger's encrypted history
+  backup.
+* Added timeout for sending read receipts to avoid blocking on them.
+* Added streaming sidecar and thumbnail to videos sent to encrypted Messenger
+  chats to ensure they render properly on the mobile clients.
+* Added trimming of trailing data in PNGs, as Messenger mobile clients refuse
+  to render such images.
+* Added placeholder bridging for undecryptable messages from Messenger.
+* Added bridging for new type of chat delete in encrypted Messenger chats.
+* Improved Instagram and Messenger mobile login flows.
+* Increased timeout for responses inside the DGW socket.
+* Increased request timeout when uploading attachments to Meta.
+* Disabled bridging empty admin/server notice messages from Meta.
+* Changed Instagram event handling to drop events that repeatedly throw an error.
+* Changed Instagram reel/story/etc handling to unwrap `l.facebook.com` links
+  in captions.
+* Changed GraphQL requests to ignore errors that also include the requested data.
+* Changed encrypted chat backfill to ignore messages that fail to parse instead
+  of failing the entire backfill.
+* Fixed empty portal rooms sometimes being created when Messenger pushes info
+  for an unknown group chat.
+* Fixed accepting unencrypted (group) message requests from Messenger.
+* Fixed media caption edits from Messenger dropping the media.
+* Fixed direct media URLs for Facebook media not being refreshed properly.
+* Fixed Instagram socket reconnect backoff not being capped properly.
+* Fixed potential map write panics in bridge state info and cookie storage.
+* Fixed marking encrypted Messenger as read not working for some accounts.
+* Fixed encrypted Messenger message conversion dropping file names when direct
+  media is enabled.
+* Fixed handling member events from Instagram that don't include thread info.
+* Fixed Instagram chat deletes being marked as failed if the hide request fails
+  after successfully leaving.
+* Fixed Instagram chats sometimes reappearing shortly after being deleted.
+* Fixed bridging stories, which broke after the API endpoint changed.
+
 # v26.10
 
 * Added support for backfilling encrypted Messenger chat history.
