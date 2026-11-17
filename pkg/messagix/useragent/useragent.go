@@ -24,7 +24,7 @@ const IGAndroidAppID = "567067343352427"
 
 const MessengerLiteIOSAppID = "437626316973788"
 const MessengerLiteIOSAccessToken = MessengerLiteIOSAppID + "|3e1a7033ae7883bfb31f35375bad9c7a"
-const MessengerLiteIOSUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/571.0.0.18.106;FBBV/1022444107;FBDV/iPhone10,3;FBMD/iPhone;FBSN/iOS;FBSV/16.7.2;FBSS/3;FBCR/;FBID/phone;FBLC/en_US;FBOP/0]"
+const MessengerLiteIOSUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/586.0.0.32.108;FBBV/1105932679;FBDV/iPhone10,3;FBMD/iPhone;FBSN/iOS;FBSV/16.7.2;FBSS/3;FBCR/;FBID/phone;FBLC/en_US;FBOP/0]"
 
 const MessengerLiteAndroidAppID = "256002347743983"
 const MessengerLiteAndroidAccessToken = MessengerLiteAndroidAppID + "|374e60f8b9bb6b8cbb30f78030438895"
