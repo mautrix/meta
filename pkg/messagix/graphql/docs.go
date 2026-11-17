@@ -175,6 +175,11 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		DocID:        "35211594988486314",
 		FriendlyName: "useIGDMarkThreadAsReadValidationMutation",
 	},
+	"PolarisPostActionLoadPostQueryMediaIdQuery": {
+		DocID:        "28459711433641178",
+		FriendlyName: "PolarisPostActionLoadPostQueryMediaIdQuery",
+		EndpointName: "graphql_query",
+	},
 	"PolarisProfilePageContentQuery": {
 		DocID:        "26672929172408668",
 		FriendlyName: "PolarisProfilePageContentQuery",

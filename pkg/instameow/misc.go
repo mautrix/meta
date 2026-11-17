@@ -3,14 +3,17 @@ package instameow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 
 	"github.com/google/go-querystring/query"
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/jsonbytes"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
@@ -80,6 +83,17 @@ func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string)
 	if c == nil {
 		return nil, ErrClientIsNil
 	}
+	resp, err := makeGraphQLRequest[*responses.MediaWebInfoQueryResponse](ctx, c, "PolarisPostActionLoadPostQueryMediaIdQuery", map[string]any{"mediaId": mediaID}, true)
+	if resp != nil && resp.MediaWebInfo != nil && len(resp.MediaWebInfo.Items) > 0 {
+		return resp.MediaWebInfo, nil
+	} else if ctx.Err() != nil || errors.Is(err, httpclient.ErrMaxRetriesReached) || httpclient.IsPermanentRequestError(err) {
+		return nil, fmt.Errorf("failed to fetch the media by id %s: %w", mediaID, err)
+	}
+	zerolog.Ctx(ctx).Warn().Err(err).Str("media_id", mediaID).Msg("Media info query returned no media, falling back to REST")
+	return c.fetchMediaREST(ctx, mediaID, mediaShortcode)
+}
+
+func (c *Client) fetchMediaREST(ctx context.Context, mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
 	h := c.http.BuildHeaders(true, false)
 	h.Set("x-requested-with", "XMLHttpRequest")
 	referer := c.GetEndpoint("base_url")
