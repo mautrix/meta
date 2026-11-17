@@ -66,7 +66,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.instagram.capabilities.2026_10_01"
+	base := "fi.mau.instagram.capabilities.2026_10_08"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -117,6 +117,7 @@ var igCaps = &event.RoomFeatures{
 		event.CapMsgGIF: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
 				"image/gif": event.CapLevelFullySupported,
+				"video/mp4": event.CapLevelFullySupported,
 			},
 			Caption: event.CapLevelDropped,
 			MaxSize: MaxImageSize,
