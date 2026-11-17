@@ -157,7 +157,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 			hostname = addr[:i]
 		}
 
-		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_120)
+		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build Chrome uTLS spec: %w", err)
 		}
@@ -166,7 +166,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 		exts := spec.Extensions[:0]
 		for _, ext := range spec.Extensions {
 			switch e := ext.(type) {
-			case *utls.ApplicationSettingsExtension:
+			case *utls.ApplicationSettingsExtension, *utls.ApplicationSettingsExtensionNew:
 				continue
 			case *utls.ALPNExtension:
 				e.AlpnProtocols = []string{"http/1.1"}
