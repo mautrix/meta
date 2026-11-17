@@ -24,8 +24,10 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -398,9 +400,7 @@ func (ic *IGConnector) refreshBlobMedia(
 	if targetXMA != nil {
 		logEvt = logEvt.
 			Str("target_xma_typename", targetXMA.Typename).
-			Bool("target_xma_has_target_id", targetXMA.TargetID != "").
-			Bool("target_xma_has_target_url", targetXMA.TargetURL != "").
-			Strs("target_xma_unrecognized_keys", slices.Sorted(maps.Keys(targetXMA.Unrecognized)))
+			Strs("target_xma_set_fields", nonEmptyJSONFields(targetXMA))
 	}
 	if msgMeta, ok := msg.Metadata.(*metaid.MessageMetadata); ok {
 		logEvt = logEvt.Bool("stored_xma_fetched", msgMeta.XMAFetched)
@@ -415,6 +415,18 @@ func (ic *IGConnector) refreshBlobMedia(
 	}
 
 	return "", fmt.Errorf("target attachment not found in re-fetched messages")
+}
+
+func nonEmptyJSONFields(val any) []string {
+	rv := reflect.Indirect(reflect.ValueOf(val))
+	var fields []string
+	for i := range rv.NumField() {
+		name, _, _ := strings.Cut(rv.Type().Field(i).Tag.Get("json"), ",")
+		if name != "" && !rv.Field(i).IsZero() {
+			fields = append(fields, name)
+		}
+	}
+	return fields
 }
 
 // refreshXMAMedia fetches fresh URLs using Instagram API for XMA attachments
