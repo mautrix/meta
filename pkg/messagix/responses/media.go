@@ -2,6 +2,10 @@ package responses
 
 import "encoding/json"
 
+type MediaWebInfoQueryResponse struct {
+	MediaWebInfo *FetchMediaResponse `json:"xdt_api__v1__media__media_id_web_info"`
+}
+
 type FetchMediaResponse struct {
 	Items               []*Items `json:"items,omitempty"`
 	NumResults          int      `json:"num_results,omitempty"`

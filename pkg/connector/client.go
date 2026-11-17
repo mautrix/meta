@@ -40,26 +40,23 @@ type MetaClient struct {
 	UserLogin *bridgev2.UserLogin
 	Ghost     *bridgev2.Ghost
 
-	stopHandlingTables     atomic.Pointer[context.CancelFunc]
-	initialTable           atomic.Pointer[table.LSTable]
-	initialTableHandled    atomic.Bool
-	unhandledTables        atomic.Int32
-	parsedTables           []*parsedTable
-	parsedTablesLock       sync.Mutex
-	parsedTablesWake       chan struct{}
-	tableLoopLock          sync.Mutex
-	backfillCollectors     map[int64]*BackfillCollector
-	historyReadStates      *exsync.Map[int64, historyReadState]
-	historyUploadLock      sync.Mutex
-	historyBackupID        string
-	historyBackupCheckedAt time.Time
-	backfillLock           sync.Mutex
-	mediaRefreshLock       exsync.KeyedMutex[int64]
-	connectLock            sync.Mutex
-	pushRegistrationLock   sync.Mutex
-	stopConnectAttempt     atomic.Pointer[context.CancelFunc]
-	permanentErrored       atomic.Bool
-	reconnecting           atomic.Bool
+	stopHandlingTables   atomic.Pointer[context.CancelFunc]
+	initialTable         atomic.Pointer[table.LSTable]
+	initialTableHandled  atomic.Bool
+	unhandledTables      atomic.Int32
+	parsedTables         []*parsedTable
+	parsedTablesLock     sync.Mutex
+	parsedTablesWake     chan struct{}
+	tableLoopLock        sync.Mutex
+	backfillCollectors   map[int64]*BackfillCollector
+	historyReadStates    *exsync.Map[int64, historyReadState]
+	backfillLock         sync.Mutex
+	mediaRefreshLock     exsync.KeyedMutex[int64]
+	connectLock          sync.Mutex
+	pushRegistrationLock sync.Mutex
+	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
+	permanentErrored     atomic.Bool
+	reconnecting         atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -364,6 +361,15 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 				Error:      MetaConnectError,
 			})
 			m.connectWithRetry(retryCtx, ctx, attempts+1)
+		} else if m.LoginMeta.Platform.IsMessengerLite() && errors.Is(err, httpclient.ErrPageInternalServerError) {
+			m.UserLogin.BridgeState.Send(status.BridgeState{
+				StateEvent:         status.StateUnknownError,
+				Error:              MetaInboxLoadFailed,
+				BlockAutoReconnect: true,
+				Info: map[string]any{
+					"go_error": err.Error(),
+				},
+			})
 		} else {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,

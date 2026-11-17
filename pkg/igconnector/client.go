@@ -143,6 +143,10 @@ func (ic *IGClient) ensureIGClient() {
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
 			NativeSession: ic.LoginMeta.InstagramNativeSession,
+			SaveNativeSession: func(ctx context.Context, session *types.InstagramNativeSession) error {
+				ic.LoginMeta.InstagramNativeSession = session
+				return ic.UserLogin.Save(ctx)
+			},
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})
