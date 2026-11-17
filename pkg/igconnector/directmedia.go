@@ -260,6 +260,7 @@ func (ic *IGConnector) refreshBlobMedia(
 	var targetInPage bool
 	var targetTypeName string
 	var targetAttachmentKeys []string
+	var targetXMA *slidetypes.XMAContent
 
 	// Process ALL fetched messages, updating their URLs in the database
 	for _, edge := range messages.Edges {
@@ -318,6 +319,9 @@ func (ic *IGConnector) refreshBlobMedia(
 		}
 		if isTarget {
 			targetAttachmentKeys = slices.Sorted(maps.Keys(attachmentURLs))
+			if xmaContent, ok := edge.Node.Content.Content.(*slidetypes.MessageContentXMA); ok {
+				targetXMA = xmaContent.XMA
+			}
 		}
 
 		if len(attachmentURLs) == 0 {
@@ -385,13 +389,26 @@ func (ic *IGConnector) refreshBlobMedia(
 		}
 	}
 
-	log.Debug().
+	logEvt := log.Debug().
 		Int("updated_count", updatedCount).
 		Int("fetched_count", len(messages.Edges)).
 		Bool("target_in_page", targetInPage).
 		Str("target_typename", targetTypeName).
-		Strs("target_attachment_keys", targetAttachmentKeys).
-		Msg("Finished refreshing blob media URLs")
+		Strs("target_attachment_keys", targetAttachmentKeys)
+	if targetXMA != nil {
+		logEvt = logEvt.
+			Str("target_xma_typename", targetXMA.Typename).
+			Bool("target_xma_has_target_id", targetXMA.TargetID != "").
+			Bool("target_xma_has_target_url", targetXMA.TargetURL != "").
+			Strs("target_xma_unrecognized_keys", slices.Sorted(maps.Keys(targetXMA.Unrecognized)))
+	}
+	if msgMeta, ok := msg.Metadata.(*metaid.MessageMetadata); ok {
+		logEvt = logEvt.Bool("stored_xma_fetched", msgMeta.XMAFetched)
+		if msgMeta.XMAFetchMeta != nil {
+			logEvt = logEvt.Bool("stored_xma_is_story", msgMeta.XMAFetchMeta.IsStory)
+		}
+	}
+	logEvt.Msg("Finished refreshing blob media URLs")
 
 	if resultURL != "" {
 		return resultURL, nil
