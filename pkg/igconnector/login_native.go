@@ -42,6 +42,8 @@ const (
 	LoginStepIDCredentials  = "fi.mau.meta.instagram.credentials"
 	LoginStepIDWebTwoFactor = "fi.mau.meta.instagram.web_two_factor"
 	LoginStepIDWebChallenge = "fi.mau.meta.instagram.web_challenge"
+	loginStepIDCAAPassword  = "fi.mau.meta.instagram.caa.password"
+	loginStepIDCAADialog    = "fi.mau.meta.instagram.caa.dialog"
 
 	loginFieldIdentifier       = "username"
 	loginFieldPassword         = "password"
@@ -113,6 +115,8 @@ type MetaNativeLogin struct {
 	caaIdentifier          string
 	caaPassword            string
 	caaUserID              string
+	webIdentifier          string
+	webPassword            string
 	webTwoFactor           *instameow.InstagramWebTwoFactorChallenge
 	webSessionReady        bool
 	pendingWebChallengeURL string
@@ -161,6 +165,7 @@ func (m *MetaNativeLogin) StartWithParams(
 func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*bridgev2.LoginStep, error) {
 	m.clearCAAFallback()
 	m.client = nil
+	m.webIdentifier, m.webPassword = "", ""
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
@@ -207,6 +212,7 @@ func (m *MetaNativeLogin) start(ctx context.Context, instructions string) (*brid
 func (m *MetaNativeLogin) Cancel() {
 	m.clearCAAFallback()
 	m.client = nil
+	m.webIdentifier, m.webPassword = "", ""
 	m.webTwoFactor = nil
 	m.webSessionReady = false
 	m.pendingWebChallengeURL = ""
@@ -308,6 +314,7 @@ func (m *MetaNativeLogin) submitWebCredentials(
 	if allowCAAFallback {
 		m.client.SetInstagramNativeSession(nil)
 	}
+	m.webIdentifier, m.webPassword = identifier, password
 	challenge, err := m.client.CreateInstagramWebSession(ctx, identifier, password)
 	if errors.Is(err, instameow.ErrInstagramWebCookieConsentRequired) {
 		challenge, err = m.client.ContinueInstagramWebSessionAfterCookieConsent(ctx, identifier, password)
@@ -322,6 +329,9 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return nil, errInstagramWebCheckpointCAPTCHA
 		} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 			m.clearCAAFallback()
+			if step, err := m.tryNativeLogin(ctx); step != nil || err != nil {
+				return step, err
+			}
 			m.webLoginRejections++
 			if m.webLoginRejections > 1 {
 				m.User.Log.Info().Err(err).Msg("Instagram rejected web login again, handing login to client webview")
@@ -470,6 +480,9 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 	} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
 		m.clearCAAFallback()
 		m.webTwoFactor = nil
+		if step, err := m.tryNativeLogin(ctx); step != nil || err != nil {
+			return step, err
+		}
 		m.webLoginRejections++
 		if m.webLoginRejections > 1 {
 			m.User.Log.Info().Err(err).Msg("Instagram rejected web login after AuthPlatform again, handing login to client webview")
@@ -496,6 +509,47 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 	}
 	m.webTwoFactor, m.webSessionReady = nil, true
 	return m.continueWebAccountManager(ctx, nil)
+}
+
+func (m *MetaNativeLogin) tryNativeLogin(ctx context.Context) (*bridgev2.LoginStep, error) {
+	identifier, password := m.webIdentifier, m.webPassword
+	webClient := m.client
+	if m.webLoginRejections > 0 || webClient == nil || identifier == "" || password == "" {
+		return nil, nil
+	}
+	m.nativeLogin = true
+	_, err := m.start(ctx, "")
+	var step *bridgev2.LoginStep
+	if err == nil {
+		step, err = m.client.DoInstagramCAALoginSteps(ctx, map[string]string{
+			loginFieldIdentifier: identifier,
+			loginFieldPassword:   password,
+		})
+	}
+	if err == nil && (step == nil || (step.StepID != loginStepIDCAAPassword && step.StepID != loginStepIDCAADialog)) {
+		m.User.Log.Info().Msg("Instagram rejected web login, continuing with native login")
+		m.caaIdentifier = identifier
+		if step != nil {
+			return step, nil
+		}
+		return m.continueCAAFallback(ctx, nil)
+	}
+	m.nativeLogin = false
+	m.client = webClient
+	if m.transport != nil {
+		m.transport.SetFingerprint("chrome")
+	}
+	if errors.Is(err, bridgev2.ErrLoginStepCancelled) {
+		return nil, bridgev2.ErrLoginStepCancelled
+	} else if ctx.Err() != nil {
+		return nil, wrapInstagramRespError(ctx.Err())
+	}
+	stepID := ""
+	if step != nil {
+		stepID = step.StepID
+	}
+	m.User.Log.Info().Err(err).Str("step_id", stepID).Msg("Instagram rejected native login too, continuing with web login")
+	return nil, nil
 }
 
 func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
