@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -124,8 +125,11 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		stateEvt := status.StateTransientDisconnect
 		errCode := DGWConnectionError
 		var retErr error
-		if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
-			// TODO do full reconnect instead of this?
+		if websocket.CloseStatus(evt.Error) == dgw.CloseStatusUnauthorized && ic.canReconnect() {
+			ic.UserLogin.Log.Debug().Err(evt.Error).Msg("Doing full reconnect after socket was closed as unauthorized")
+			retErr = fmt.Errorf("connection unauthorized; doing full reconnect")
+			go ic.FullReconnect(false, true)
+		} else if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized
 			if errors.Is(evt.Error, instameow.ErrUserIDMissing) {

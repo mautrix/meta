@@ -91,8 +91,6 @@ type MetaClient struct {
 
 	pollQueries sync.Map
 
-	lastUnauthorizedReconnect time.Time
-
 	requestedThreads *exsync.Set[int64]
 }
 
