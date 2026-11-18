@@ -139,6 +139,7 @@ var errMissingAuth = bridgev2.RespError{ErrCode: "FI.MAU.IG_MISSING_AUTH", Err: 
 var errUnexpectedCheckpoint = bridgev2.RespError{ErrCode: "FI.MAU.IG_CAA_FALLBACK_DISABLED", Err: "Instagram returned an unexpected verification step.", StatusCode: http.StatusBadRequest}
 var errInstagramWebCheckpointUnsupported = bridgev2.RespError{ErrCode: "FI.MAU.META_UNSUPPORTED_WEB_CHECKPOINT", Err: "Instagram returned a verification step this bridge cannot safely complete. Finish it in Instagram, then start a new login.", StatusCode: http.StatusBadRequest}
 var errInstagramRiskyContactPoint = bridgev2.RespError{ErrCode: "FI.MAU.META_RISKY_CONTACT_POINT", Err: "Instagram wants you to add a new email address to your account. Do that in the Instagram app or on instagram.com, then start a new login.", StatusCode: http.StatusBadRequest}
+var errInstagramPasskeyRequired = loginerrors.WithMessage(loginerrors.MandatoryPasskey, "Instagram requires a passkey for this sign-in, which this login can't use. Add another two-factor method in Instagram, or connect from Beeper Desktop with Import Logins.")
 var errInstagramNoChallenge = bridgev2.RespError{ErrCode: "FI.MAU.META_NO_CHALLENGE", Err: "Instagram wants this sign-in approved on a device you've used before and isn't offering a code right now. Wait a few hours, then try once more.", StatusCode: http.StatusBadRequest}
 var errInstagramWebCheckpointCAPTCHA = bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_CAPTCHA", Err: "Instagram requires an interactive CAPTCHA check. This login flow cannot display that check yet.", StatusCode: http.StatusBadRequest}
 
@@ -421,6 +422,8 @@ func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) (*bridg
 			return nil, errInstagramRiskyContactPoint
 		case "auth_platform/no_challenge":
 			return nil, errInstagramNoChallenge
+		case "auth_platform/passkey":
+			return nil, errInstagramPasskeyRequired
 		}
 	}
 	return m.instagramWebviewStep(challengeURL), nil

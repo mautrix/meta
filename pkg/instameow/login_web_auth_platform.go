@@ -37,6 +37,7 @@ var (
 	instagramAPResend                       = instagramAuthPlatformOperation{"useAuthPlatformSendCodeAgainMutation", "29612122925068775", "xfb_auth_platform_send_code_again"}
 	instagramAPApprove                      = instagramAuthPlatformOperation{"AuthPlatformApproveFromAnotherDeviceViewQuery", "27305034922459648", "xfb_auth_platform_afad_content"}
 	instagramAPApprovalState                = instagramAuthPlatformOperation{"AuthPlatformApproveFromAnotherDevicePollingMutation", "24626773746933809", "xfb_auth_platform_afad_approval_state"}
+	instagramAPPasskey                      = instagramAuthPlatformOperation{"AuthPlatformPasskeyViewQuery", "25777997685217823", "xfb_auth_platform_passkey_auth_options"}
 	ErrInstagramWebCheckpointCAPTCHA        = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
 	errInstagramAuthPlatformLoggedOut       = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebLoginRejected)
 	ErrInstagramAuthPlatformApprovalExpired = errors.New("instagram login approval expired")
@@ -112,7 +113,7 @@ func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 		return nil, false
 	}
 	switch target.Path {
-	case "/auth_platform/", "/auth_platform/codeentry/", "/auth_platform/challengepicker/", "/auth_platform/recaptcha/", "/auth_platform/afad/":
+	case "/auth_platform/", "/auth_platform/codeentry/", "/auth_platform/challengepicker/", "/auth_platform/recaptcha/", "/auth_platform/afad/", "/auth_platform/passkey/":
 		if len(params["apc"]) != 1 || params.Get("apc") == "" || len(params["device_id"]) > 1 {
 			return nil, false
 		}
@@ -174,7 +175,7 @@ func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
 	target := mustParseURL(base).ResolveReference(reference)
 	pathKind := map[string]string{
 		"/": "root", "/auth_platform/": "auth_platform", "/auth_platform/codeentry/": "codeentry",
-		"/auth_platform/challengepicker/": "picker", "/auth_platform/recaptcha/": "recaptcha", "/auth_platform/afad/": "afad",
+		"/auth_platform/challengepicker/": "picker", "/auth_platform/recaptcha/": "recaptcha", "/auth_platform/afad/": "afad", "/auth_platform/passkey/": "passkey",
 		"/accounts/onetap/": "onetap", "/accounts/edit/": "edit", "/direct/inbox/": "inbox",
 		"/accounts/login/": "login", "/web/unsupported_version/": "unsupported_version",
 		"/oauth/oidc/": "oidc", "/consent/": "consent", "/privacy/consent/": "privacy_consent",
@@ -225,6 +226,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 	s := c.webAuthPlatform
 	// Redirects keep the initiating document's referrer until a new page loads.
 	s.referrer = s.url.String()
+	triedPasskey := false
 	for range 5 {
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
 		if !ok {
@@ -295,6 +297,8 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			op = instagramAPPicker
 		} else if target.Path == "/auth_platform/afad/" {
 			op = instagramAPApprove
+		} else if target.Path == "/auth_platform/passkey/" {
+			op = instagramAPPasskey
 		} else if target.Path != "/auth_platform/codeentry/" {
 			return ErrInstagramWebCheckpointUnsupported
 		}
@@ -322,6 +326,17 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			s.approving = true
 			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
 			s.approvalCode = data.Get("verification_code").String()
+		} else if op == instagramAPPasskey {
+			if !triedPasskey {
+				triedPasskey = true
+				apc := cmp.Or(data.Get("encrypted_ap_context").String(), target.Query().Get("apc"))
+				if data, err = c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, ""); err != nil {
+					return err
+				} else if rawURL = data.Get("redirect_uri").String(); rawURL != "" {
+					continue
+				}
+			}
+			return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
 		} else {
 			for _, option := range data.Get("challenge_options").Array() {
 				channel, index := instagramAuthPlatformChannel(option.Get("challenge_name").String()), option.Get("index")
@@ -555,7 +570,9 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	if input != nil {
 		s.mutationID++
 		input["actor_id"], input["client_mutation_id"] = "0", strconv.Itoa(s.mutationID)
-		input["encrypted_ap_context"] = params.Get("apc")
+		if input["encrypted_ap_context"] == nil {
+			input["encrypted_ap_context"] = params.Get("apc")
+		}
 		variables = input
 		rq.Crn = "comet.igweb.PolarisAuthPlatformCodeEntryRoute"
 		if op == instagramAPSelect {
