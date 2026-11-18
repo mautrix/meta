@@ -69,6 +69,7 @@ type IGClient struct {
 	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	accountStateRechecks  atomic.Int32
+	mediaRefreshLock      exsync.KeyedMutex[networkid.PortalID]
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {

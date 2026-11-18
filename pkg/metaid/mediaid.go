@@ -19,7 +19,7 @@ const (
 	DirectMediaTypeMetaV2          DirectMediaType = 4
 	DirectMediaTypeWhatsAppV2      DirectMediaType = 5
 	DirectMediaTypeMetaXMA         DirectMediaType = 6
-	DirectMediaTypeMetaXMACarousel DirectMediaType = 7
+	DirectMediaTypeMetaXMACarousel DirectMediaType = 8
 )
 
 func (t DirectMediaType) isSupported() bool {
