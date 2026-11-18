@@ -952,35 +952,50 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 }
 
 func (c *Client) instagramWebTwoFactorNext(rawNext string, hasErrorMessage bool) error {
+	const base = "https://www.instagram.com/"
 	reference, err := url.Parse(strings.TrimSpace(rawNext))
-	if err != nil {
+	if err != nil || strings.TrimSpace(rawNext) == "" {
 		return ErrInstagramWebTwoFactorCodeRejected
 	}
-	target := mustParseURL(c.GetEndpoint("base_url")).ResolveReference(reference)
+	target := mustParseURL(base).ResolveReference(reference)
 	target.Fragment = ""
 	kind := instagramWebCheckpointURLKind(target.String())
-	c.log.Info().
-		Str("next_path", instagramWebURLPathPrefix(target)).
-		Strs("next_query_keys", slices.Sorted(maps.Keys(target.Query()))).
-		Str("checkpoint_url_kind", kind).
-		Bool("has_error_message", hasErrorMessage).
-		Msg("Instagram web two-factor returned a next page instead of accepting the code")
-	if kind == "invalid" || kind == "untrusted" {
+	queryKeys := slices.Sorted(maps.Keys(target.Query()))
+	for i, key := range queryKeys {
+		queryKeys[i] = instagramWebRouteSegment(key)
+	}
+	logEvent := c.log.Info().
+		Fields(instagramAuthPlatformURLDiagnostics(base, rawNext)).
+		Int("next_length", len(rawNext)).
+		Strs("next_query_keys", queryKeys[:min(len(queryKeys), 8)]).
+		Bool("has_error_message", hasErrorMessage)
+	if segments := strings.Split(strings.Trim(target.Path, "/"), "/"); segments[0] == "auth_platform" || segments[0] == "challenge" || segments[0] == "checkpoint" {
+		segments = segments[:min(len(segments), 2)]
+		for i, segment := range segments {
+			segments[i] = instagramWebRouteSegment(segment)
+		}
+		logEvent = logEvent.Str("next_path", "/"+strings.Join(segments, "/"))
+	}
+	logEvent.Msg("Instagram web two-factor returned a next page instead of accepting the code")
+	if target.Scheme != "https" || target.User != nil || (target.Port() != "" && target.Port() != "443") ||
+		!strings.EqualFold(target.Hostname(), "www.instagram.com") || kind == "unsupported_version" {
+		return ErrInstagramWebTwoFactorCodeRejected
+	}
+	if (target.Path == "/" || target.Path == "/accounts/onetap/" || strings.HasPrefix(target.Path, "/direct/")) &&
+		c.cookies.Get(cookies.IGCookieSessionID) == "" {
 		return ErrInstagramWebTwoFactorCodeRejected
 	}
 	c.webTwoFactor = nil
 	return &instagramAuthPlatformWebviewHandoff{url: target.String()}
 }
 
-func instagramWebURLPathPrefix(target *url.URL) string {
-	segments := strings.Split(strings.Trim(target.Path, "/"), "/")
-	segments = segments[:min(len(segments), 2)]
-	for i, segment := range segments {
-		if strings.ContainsFunc(segment, func(r rune) bool { return (r < 'a' || r > 'z') && r != '_' && r != '-' }) {
-			segments[i] = "*"
-		}
+func instagramWebRouteSegment(segment string) string {
+	if segment == "" || len(segment) > 32 || strings.ContainsFunc(segment, func(r rune) bool {
+		return (r < 'a' || r > 'z') && r != '_' && r != '-'
+	}) {
+		return "*"
 	}
-	return "/" + strings.Join(segments, "/")
+	return segment
 }
 
 // CompleteInstagramWebSessionTwoFactor finishes a challenge returned by
