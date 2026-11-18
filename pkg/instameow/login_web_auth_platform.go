@@ -300,7 +300,9 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 				return err
 			}
 			data, err := c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, "")
-			if err != nil && !errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+			if errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
+			} else if err != nil {
 				return err
 			} else if rawURL = data.Get("redirect_uri").String(); rawURL == "" {
 				c.webAuthPlatform = nil
