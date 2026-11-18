@@ -116,10 +116,10 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		} else {
 			ic.catchingUpTo = evt.LatestSeqID
 		}
-		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
+		if !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
 			go func() {
-				if ic.doWaitMailboxProcessed(ctx) == nil && !ic.LoginMeta.BackfillCompleted {
-					ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{})
+				if ic.doWaitMailboxProcessed(ctx) == nil {
+					ic.doChatBackfill(ctx, "", time.Time{})
 				}
 			}()
 		}
