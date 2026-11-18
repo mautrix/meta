@@ -264,6 +264,13 @@ func (m *MetaNativeLogin) SubmitUserInput(
 					m.webTwoFactor,
 					"The request did not complete on this device. Enter a fresh verification code and try again.",
 				), nil
+			} else if nextURL, ok := instameow.InstagramWebChallengeURL(err); ok {
+				m.webTwoFactor = nil
+				step, err := m.instagramWebChallengeStep(nextURL)
+				if step != nil {
+					step.CookiesParams.InitialCookies = m.instagramWebviewLoginCookies()
+				}
+				return step, err
 			} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
 				return nil, errInstagramWebCheckpointUnsupported
 			} else if errors.Is(err, instameow.ErrInstagramWebTwoFactorCodeResent) {
@@ -451,11 +458,18 @@ func (m *MetaNativeLogin) instagramWebviewStep(challengeURL string) *bridgev2.Lo
 }
 
 func (m *MetaNativeLogin) instagramWebviewSessionCookies() []bridgev2.LoginCookie {
+	if m.client == nil || m.client.GetCookies() == nil || m.client.GetCookies().Get(cookies.IGCookieSessionID) == "" {
+		return nil
+	}
+	return m.instagramWebviewLoginCookies()
+}
+
+func (m *MetaNativeLogin) instagramWebviewLoginCookies() []bridgev2.LoginCookie {
 	if m.client == nil {
 		return nil
 	}
 	loginCookies := m.client.GetCookies()
-	if loginCookies == nil || loginCookies.Get(cookies.IGCookieSessionID) == "" {
+	if loginCookies == nil {
 		return nil
 	}
 	names := loginCookies.GetNames()
