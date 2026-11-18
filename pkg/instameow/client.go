@@ -53,6 +53,7 @@ type Client struct {
 	mobileLoginDevice     *types.InstagramLoginDevice
 	mobileSession         atomic.Pointer[instagramMobileSession]
 	saveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
+	saveNativeSession     func(context.Context, *types.InstagramNativeSession) error
 
 	socket        atomic.Pointer[dgw.Socket]
 	cancelSocket  atomic.Pointer[context.CancelFunc]
@@ -60,7 +61,6 @@ type Client struct {
 	socketStopped *exsync.Event
 	connected     *exsync.Event
 	socketRetries int
-	webMainStream atomic.Bool
 
 	mqttBypassSocket      *dgw.Socket
 	mqttBypassConnectLock sync.Mutex
@@ -110,6 +110,7 @@ type ClientParams struct {
 	// identity across login processes for the same bridge user.
 	MobileLoginDevice     *types.InstagramLoginDevice
 	SaveMobileLoginDevice func(context.Context, types.InstagramLoginDevice) error
+	SaveNativeSession     func(context.Context, *types.InstagramNativeSession) error
 }
 
 func NewClient(params ClientParams) *Client {
@@ -129,6 +130,7 @@ func NewClient(params ClientParams) *Client {
 		logRedactedLoginResponses: params.LogRedactedLoginResponses,
 
 		saveMobileLoginDevice: params.SaveMobileLoginDevice,
+		saveNativeSession:     params.SaveNativeSession,
 	}
 	if params.MobileLoginDevice != nil {
 		device := *params.MobileLoginDevice
@@ -146,7 +148,10 @@ func NewClient(params ClientParams) *Client {
 
 func (c *Client) SetEventHandler(handler func(context.Context, slidetypes.ClientEvent) error) {
 	if handler == nil {
-		handler = func(context.Context, slidetypes.ClientEvent) error {
+		handler = func(_ context.Context, evt slidetypes.ClientEvent) error {
+			if _, ok := evt.(*slidetypes.ReconnectionStateUpdate); ok {
+				return nil
+			}
 			return fmt.Errorf("event handler disabled")
 		}
 	}
@@ -167,8 +172,12 @@ func (c *Client) loadIndex(ctx context.Context) error {
 		}
 		return fmt.Errorf("failed to load inbox: %w", err)
 	}
-	c.configs.Setup(c.IsAuthenticated())
+	authenticated := c.IsAuthenticated()
+	c.configs.Setup(authenticated)
 	c.lastReload = time.Now()
+	if !authenticated && c.cookies.IsLoggedIn() {
+		zerolog.Ctx(ctx).Warn().Msg("Inbox page didn't include the logged-in viewer")
+	}
 
 	state, err := c.DumpState()
 	if err != nil {
@@ -199,8 +208,10 @@ func (c *Client) ReloadIndex(ctx context.Context) (bool, error) {
 	}
 	if s := c.socket.Load(); s != nil {
 		s.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+		s.UserID = c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid
 		if scs := c.streamControllerSocket.Load(); scs != nil {
 			scs.DeviceID = c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID
+			scs.UserID = c.configs.BrowserConfigTable.PolarisViewer.ID
 		}
 		c.mqttBypassConnectLock.Lock()
 		if mbs := c.mqttBypassSocket; mbs != nil {

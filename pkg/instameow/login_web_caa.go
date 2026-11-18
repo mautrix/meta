@@ -188,7 +188,7 @@ func (c *Client) instagramCAAWebMutation(ctx context.Context, operation, docID s
 	}
 	// A rejected or lost response is terminal for this submission, never a reason
 	// to try AJAX or the mobile password endpoint with the same credentials.
-	return c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login"), csrf)
+	return c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login"), csrf, "")
 }
 
 // instagramWebChallengeFromRedirect returns a webview challenge for a CAA login
