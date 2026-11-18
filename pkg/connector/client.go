@@ -56,6 +56,7 @@ type MetaClient struct {
 	pushRegistrationLock sync.Mutex
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
 	permanentErrored     atomic.Bool
+	mediaReloginNeeded   atomic.Bool
 	reconnecting         atomic.Bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]

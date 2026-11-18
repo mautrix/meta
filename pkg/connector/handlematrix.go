@@ -801,15 +801,18 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 	return true, nil
 }
 
+var mediaReloginState = status.BridgeState{
+	StateEvent: status.StateBadCredentials,
+	Error:      FBLiteMediaRelogin,
+	UserAction: status.UserActionRelogin,
+}
+
 func (m *MetaClient) sendMediaReloginState() {
+	m.mediaReloginNeeded.Store(true)
 	if m.metaState.StateEvent == status.StateBadCredentials {
 		return
 	}
-	m.metaState = status.BridgeState{
-		StateEvent: status.StateBadCredentials,
-		Error:      FBLiteMediaRelogin,
-		UserAction: status.UserActionRelogin,
-	}
+	m.metaState = mediaReloginState
 	m.sendBridgeState(m.metaState)
 }
 

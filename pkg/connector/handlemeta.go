@@ -90,7 +90,11 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		m.retryPendingPolls(ctx)
 		m.firstE2EEConnectDone = true
 		go m.tryConnectE2EE(false)
-		m.metaState = status.BridgeState{StateEvent: status.StateConnected}
+		if m.mediaReloginNeeded.Load() {
+			m.metaState = mediaReloginState
+		} else {
+			m.metaState = status.BridgeState{StateEvent: status.StateConnected}
+		}
 		m.sendBridgeState(m.metaState)
 		if tbl := m.initialTable.Swap(nil); tbl != nil {
 			log.Debug().Msg("Handling cached initial table")
