@@ -40,7 +40,16 @@ func (c *HTTPClient) GetPlatform() types.Platform {
 	return c.parent.GetPlatform()
 }
 
+type instagramNativeSessionClient interface {
+	GetInstagramNativeSession() *types.InstagramNativeSession
+}
+
 func (c *HTTPClient) GetRUploadToken() string {
+	if native, ok := c.parent.(instagramNativeSessionClient); ok {
+		if session := native.GetInstagramNativeSession(); session != nil && session.Authorization != "" {
+			return session.Authorization
+		}
+	}
 	token, _ := json.Marshal(RUploadToken{
 		DSUserID:  c.parent.GetCookies().Get(cookies.IGCookieDSUserID),
 		SessionID: c.parent.GetCookies().Get(cookies.IGCookieSessionID),
