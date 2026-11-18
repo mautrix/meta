@@ -7,6 +7,7 @@ type GraphQLDoc struct {
 	FriendlyName string
 	NoRetry      bool
 	SlowQuery    bool
+	EndpointName string
 
 	Jsessw string
 }
@@ -99,11 +100,11 @@ var GraphQLDocs = map[string]GraphQLDoc{
 		FriendlyName: "PolarisDirectMessageRequestQuery",
 	},
 	"IGDirectUpdateThreadImageMutation": {
-		ClientDocID:  "5576567352987267181917649770",
+		ClientDocID:  "55765673517595645442718111522",
 		FriendlyName: "IGDirectUpdateThreadImageMutation",
 	},
 	"IGDirectRemoveThreadImageMutation": {
-		ClientDocID:  "50027745118339199321503686240",
+		ClientDocID:  "50027745113490480796280284264",
 		FriendlyName: "IGDirectRemoveThreadImageMutation",
 	},
 	"PolarisDirectInboxQuery": {
@@ -217,10 +218,12 @@ var GraphQLDocs = map[string]GraphQLDoc{
 	"IGDBlockUserDialogOffMsysMutation": {
 		DocID:        "28875204315418002",
 		FriendlyName: "IGDBlockUserDialogOffMsysMutation",
+		EndpointName: "graphql_query",
 	},
 	"IGDBlockUserDialogOffMsysUnblockMutation": {
 		DocID:        "28615617751365746",
 		FriendlyName: "IGDBlockUserDialogOffMsysUnblockMutation",
+		EndpointName: "graphql_query",
 	},
 }
 

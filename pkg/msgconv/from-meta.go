@@ -532,6 +532,9 @@ func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *tabl
 	if att.CTA != nil && att.CTA.Type_ == "xma_live_location_sharing" {
 		return []*bridgev2.ConvertedMessagePart{mc.xmaLocationToMatrix(ctx, att)}
 	}
+	if isXMACallLog(att) {
+		return []*bridgev2.ConvertedMessagePart{xmaCallLogToMatrix(att)}
+	}
 	url := att.PlayableUrl
 	mime := att.PlayableUrlMimeType
 	expiresAt := att.PlayableUrlExpirationTimestampMs
@@ -716,4 +719,39 @@ func (mc *MessageConverter) reuploadAttachment(
 		DirectMedia:    mc.DirectMedia,
 		MaxFileSize:    mc.MaxFileSize,
 	})
+}
+
+func xmaCallLogToMatrix(att *table.WrappedXMA) *bridgev2.ConvertedMessagePart {
+	return CallLogToMatrix(att.TitleText, strings.Contains(att.CTA.Type_, "video"), strings.Contains(att.CTA.Type_, "_missed_"))
+}
+
+func CallLogToMatrix(body string, video, missed bool) *bridgev2.ConvertedMessagePart {
+	callType := event.BeeperActionMessageCallTypeVoice
+	if video {
+		callType = event.BeeperActionMessageCallTypeVideo
+	}
+	if body == "" {
+		body = "Audio call"
+		if video {
+			body = "Video call"
+		}
+		if missed {
+			body = "Missed " + strings.ToLower(body)
+		}
+	}
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    body,
+			BeeperActionMessage: &event.BeeperActionMessage{
+				Type:     event.BeeperActionMessageCall,
+				CallType: callType,
+			},
+		},
+	}
+}
+
+func isXMACallLog(att *table.WrappedXMA) bool {
+	return att.CTA != nil && strings.HasPrefix(att.CTA.Type_, "xma_rtc_")
 }

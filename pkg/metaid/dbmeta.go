@@ -4,7 +4,6 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/json"
-	"sync/atomic"
 
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/random"
@@ -38,6 +37,8 @@ type MessageMetadata struct {
 	PollFetched   bool               `json:"poll_fetched,omitzero"`
 	PollUpdatedMS int64              `json:"poll_updated_ms,omitzero"`
 	PollResponse  bool               `json:"poll_response,omitzero"`
+
+	DecryptionFailed bool `json:"decryption_failed,omitempty"`
 }
 
 type PollVote struct {
@@ -111,8 +112,6 @@ type PortalMetadata struct {
 	IGThreadID string `json:"ig_thread_id,omitempty"`
 
 	EphemeralSettingTimestamp int64 `json:"ephemeral_setting_timestamp,omitempty"`
-
-	FetchAttempted atomic.Bool `json:"-"`
 }
 
 func (meta *PortalMetadata) JID(id networkid.PortalID) waTypes.JID {

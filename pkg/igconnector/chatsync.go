@@ -19,10 +19,12 @@ package igconnector
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -130,6 +132,13 @@ func (ic *IGConnector) waitForChatBackfillSlot(ctx context.Context) (func(), err
 }
 
 func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since time.Time) {
+	defer func() {
+		if v := recover(); v != nil {
+			zerolog.Ctx(ctx).Err(exerrors.RecoverToError(v)).
+				Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+				Msg("Panic in chat backfill")
+		}
+	}()
 	viewerFBID := metaid.ParseUserLoginID(ic.UserLogin.ID)
 	if viewerFBID == 0 {
 		zerolog.Ctx(ctx).Warn().Msg("No viewer FBID for chat backfill")
