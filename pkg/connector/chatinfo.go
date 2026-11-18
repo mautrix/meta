@@ -169,7 +169,7 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 		ParentID:    parentIDPtr,
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
-			if threadType == table.GROUP_THREAD && meta.ThreadType > 15 {
+			if threadType == table.GROUP_THREAD && meta.ThreadType >= 5 {
 				// Don't trust changing more specific group types into the generic type
 				return
 			}

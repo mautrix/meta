@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sync"
@@ -91,10 +92,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 	return nil
 }
 
-var (
-	_ bridgev2.NetworkAPI                    = (*IGClient)(nil)
-	_ bridgev2.CredentialExportingNetworkAPI = (*IGClient)(nil)
-)
+var _ bridgev2.NetworkAPI = (*IGClient)(nil)
 
 var getProxyClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -148,17 +146,14 @@ func (ic *IGClient) ensureIGClient() {
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
 			NativeSession: ic.LoginMeta.InstagramNativeSession,
+			SaveNativeSession: func(ctx context.Context, session *types.InstagramNativeSession) error {
+				ic.LoginMeta.InstagramNativeSession = session
+				return ic.UserLogin.Save(ctx)
+			},
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})
 	}
-}
-
-func (ic *IGClient) ExportCredentials(ctx context.Context) any {
-	if ic.Client == nil {
-		return nil
-	}
-	return ic.Client.GetCookies()
 }
 
 func (ic *IGClient) Connect(ctx context.Context) {
@@ -451,6 +446,7 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		(*oldCancel)()
 	}
 	interval := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	interval -= rand.N(interval / 10)
 	ic.UserLogin.Log.Info().Stringer("interval", interval).Msg("Periodic reconnect scheduled")
 	go func() {
 		defer cancel()
