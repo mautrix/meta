@@ -834,7 +834,7 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
 			if instagramWebTwoFactorSMSWasRejected(result) {
 				return errInstagramWebTwoFactorSMSRejected
-			} else if next := cmp.Or(result.CheckpointURL, result.RedirectURL); next != "" {
+			} else if next := cmp.Or(result.CheckpointURL, result.RedirectURL); next != "" && instagramWebChallengeRequired(result) {
 				return c.instagramWebTwoFactorNext(next, result.errorMessage() != "")
 			}
 			return ErrInstagramWebTwoFactorCodeRejected
