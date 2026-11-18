@@ -424,7 +424,6 @@ func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 }
 
 func (ic *IGClient) LogoutRemote(ctx context.Context) {
-	ic.ensureIGClient()
 	if cli := ic.Client; cli != nil {
 		if err := cli.Logout(ctx); err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Instagram")
