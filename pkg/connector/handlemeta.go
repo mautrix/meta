@@ -44,6 +44,7 @@ const (
 	FBAccountSuspended        status.BridgeStateErrorCode = "fb-account-suspended"
 	FBConsentRequired         status.BridgeStateErrorCode = "fb-consent-required"
 	FBCheckpointRequired      status.BridgeStateErrorCode = "fb-checkpoint-required"
+	FBLiteMediaRelogin        status.BridgeStateErrorCode = "fb-lite-media-relogin"
 	MetaProxyUpdateFail       status.BridgeStateErrorCode = "meta-proxy-update-fail"
 	IGNotSupported            status.BridgeStateErrorCode = "meta-ig-not-supported"
 )
@@ -62,6 +63,7 @@ func init() {
 		FBChallengeRequired:       "Challenge required, please check the Facebook website to continue",
 		FBConsentRequired:         "Consent required, please check the Facebook website to continue",
 		FBCheckpointRequired:      "Checkpoint required, please check the Facebook website to continue",
+		FBLiteMediaRelogin:        "Log in to Facebook again to send photos, videos and files",
 		MetaConnectError:          "Unknown connection error",
 		MetaInboxLoadFailed:       "Facebook keeps failing to load your messages",
 		MetaPermanentError:        "Unknown permanent connection error",

@@ -152,6 +152,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			m.sendBridgeState(m.metaState)
 			return nil, wrapMetaError(err)
 		} else if err != nil {
+			if errors.Is(err, mediadl.ErrNoNativeSession) {
+				m.sendMediaReloginState()
+			}
 			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		}
 
@@ -798,6 +801,18 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 	return true, nil
 }
 
+func (m *MetaClient) sendMediaReloginState() {
+	if m.metaState.StateEvent == status.StateBadCredentials {
+		return
+	}
+	m.metaState = status.BridgeState{
+		StateEvent: status.StateBadCredentials,
+		Error:      FBLiteMediaRelogin,
+		UserAction: status.UserActionRelogin,
+	}
+	m.sendBridgeState(m.metaState)
+}
+
 func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
 	if msg.Portal.RoomType == database.RoomTypeDM {
 		return false, fmt.Errorf("changing avatar not supported in DMs")
@@ -816,6 +831,7 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		if m.Client.GetPlatform().IsMessengerLite() {
 			session := m.Client.MessengerLite.GetNativeSession()
 			if session == nil {
+				m.sendMediaReloginState()
 				return false, mediadl.ErrNoNativeSession
 			}
 			imageID, err = m.Client.GetHTTP().SendRUploadRequest(ctx, session, &httpclient.RUploadMedia{
