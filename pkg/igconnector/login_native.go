@@ -256,7 +256,7 @@ func (m *MetaNativeLogin) SubmitUserInput(
 				"Enter the verification code to continue creating the Instagram messaging session.",
 			), nil
 		}
-		err := m.client.CompleteInstagramWebSessionTwoFactor(ctx, verificationCode)
+		challenge, err := m.client.CompleteInstagramWebSessionTwoFactor(ctx, verificationCode)
 		if err != nil {
 			if httpclient.IsClientHTTPError(err) || errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
 				m.User.Log.Warn().Err(err).Msg("Instagram web two-factor request failed on the client")
@@ -264,13 +264,6 @@ func (m *MetaNativeLogin) SubmitUserInput(
 					m.webTwoFactor,
 					"The request did not complete on this device. Enter a fresh verification code and try again.",
 				), nil
-			} else if nextURL, ok := instameow.InstagramWebChallengeURL(err); ok {
-				m.webTwoFactor = nil
-				step, err := m.instagramWebChallengeStep(nextURL)
-				if step != nil {
-					step.CookiesParams.InitialCookies = m.instagramWebviewLoginCookies()
-				}
-				return step, err
 			} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
 				return nil, errInstagramWebCheckpointUnsupported
 			} else if errors.Is(err, instameow.ErrInstagramWebTwoFactorCodeResent) {
@@ -289,6 +282,8 @@ func (m *MetaNativeLogin) SubmitUserInput(
 				return nil, loginerrors.AccountSuspended
 			}
 			return nil, wrapInstagramRespError(fmt.Errorf("failed to complete Instagram web two-factor login: %w", err))
+		} else if challenge != nil {
+			return m.startWebChallenge(ctx, challenge)
 		}
 		m.webTwoFactor = nil
 		m.webSessionReady = true
@@ -378,17 +373,21 @@ func (m *MetaNativeLogin) submitWebCredentials(
 		return nil, wrapInstagramRespError(fmt.Errorf("failed to create Instagram web session: %w", err))
 	}
 	if challenge != nil {
-		m.webTwoFactor = challenge
-		if challenge.ChallengeURL != "" {
-			return m.instagramWebChallengeStep(challenge.ChallengeURL)
-		}
-		if challenge.AuthPlatform {
-			return m.continueWebAuthPlatform(ctx, nil)
-		}
-		return instagramWebTwoFactorStep(challenge, ""), nil
+		return m.startWebChallenge(ctx, challenge)
 	}
 	m.webSessionReady = true
 	return m.continueWebAccountManager(ctx, map[string]string{})
+}
+
+func (m *MetaNativeLogin) startWebChallenge(ctx context.Context, challenge *instameow.InstagramWebTwoFactorChallenge) (*bridgev2.LoginStep, error) {
+	m.webTwoFactor = challenge
+	if challenge.ChallengeURL != "" {
+		return m.instagramWebChallengeStep(challenge.ChallengeURL)
+	}
+	if challenge.AuthPlatform {
+		return m.continueWebAuthPlatform(ctx, nil)
+	}
+	return instagramWebTwoFactorStep(challenge, ""), nil
 }
 
 func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -458,18 +457,11 @@ func (m *MetaNativeLogin) instagramWebviewStep(challengeURL string) *bridgev2.Lo
 }
 
 func (m *MetaNativeLogin) instagramWebviewSessionCookies() []bridgev2.LoginCookie {
-	if m.client == nil || m.client.GetCookies() == nil || m.client.GetCookies().Get(cookies.IGCookieSessionID) == "" {
-		return nil
-	}
-	return m.instagramWebviewLoginCookies()
-}
-
-func (m *MetaNativeLogin) instagramWebviewLoginCookies() []bridgev2.LoginCookie {
 	if m.client == nil {
 		return nil
 	}
 	loginCookies := m.client.GetCookies()
-	if loginCookies == nil {
+	if loginCookies == nil || loginCookies.Get(cookies.IGCookieSessionID) == "" {
 		return nil
 	}
 	names := loginCookies.GetNames()

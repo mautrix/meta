@@ -24,10 +24,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"net/url"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -655,9 +653,8 @@ type instagramWebTwoFactorGraphQLVariables struct {
 type instagramWebTwoFactorGraphQLResponse struct {
 	Data *struct {
 		ValidateCode *struct {
-			IsCodeValid  bool   `json:"is_code_valid"`
-			ErrorMessage string `json:"error_message"`
-			Next         string `json:"next"`
+			IsCodeValid bool   `json:"is_code_valid"`
+			Next        string `json:"next"`
 		} `json:"xfb_two_factor_login_validate_code"`
 	} `json:"data"`
 }
@@ -786,11 +783,20 @@ func instagramWebTwoFactorSMSWasRejected(result instagramWebLoginResponse) bool 
 	return strings.EqualFold(result.ErrorType, "sms_code_validation_failed") || strings.EqualFold(result.ErrorType, "invalid_verficaition_code")
 }
 
+func (c *Client) rejectedInstagramWebTwoFactor(ctx context.Context, result instagramWebLoginResponse) (*InstagramWebTwoFactorChallenge, error) {
+	if instagramWebTwoFactorSMSWasRejected(result) {
+		return nil, errInstagramWebTwoFactorSMSRejected
+	} else if instagramWebChallengeRequired(result) {
+		return c.startInstagramWebCheckpoint(ctx, result)
+	}
+	return nil, ErrInstagramWebTwoFactorCodeRejected
+}
+
 func (c *Client) completeInstagramWebTwoFactorLegacy(
 	ctx context.Context,
 	state *instagramWebTwoFactorState,
 	verificationCode string,
-) error {
+) (*InstagramWebTwoFactorChallenge, error) {
 	form, err := newInstagramWebTwoFactorForm(
 		state,
 		verificationCode,
@@ -798,11 +804,11 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 		c.configs.BrowserConfigTable.SprinkleConfig,
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	headers, err := c.instagramWebTwoFactorHeaders(c.GetEndpoint("login_two_factor"))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	response, body, requestErr := c.http.MakeRequest(
 		ctx,
@@ -832,25 +838,17 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 			instagramWebLoginResponseClass(result),
 		)
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
-			if instagramWebTwoFactorSMSWasRejected(result) {
-				return errInstagramWebTwoFactorSMSRejected
-			} else if next := cmp.Or(result.CheckpointURL, result.RedirectURL); next != "" && instagramWebChallengeRequired(result) {
-				return c.instagramWebTwoFactorNext(next, result.errorMessage() != "")
-			}
-			return ErrInstagramWebTwoFactorCodeRejected
+			return c.rejectedInstagramWebTwoFactor(ctx, result)
 		}
-		return fmt.Errorf("instagram web two-factor request failed: %w", requestErr)
+		return nil, fmt.Errorf("instagram web two-factor request failed: %w", requestErr)
 	} else if response == nil {
-		return errors.New("instagram web two-factor login returned no response")
+		return nil, errors.New("instagram web two-factor login returned no response")
 	} else if parseErr != nil {
-		return fmt.Errorf("failed to parse Instagram web two-factor login: %w", parseErr)
+		return nil, fmt.Errorf("failed to parse Instagram web two-factor login: %w", parseErr)
 	} else if !result.Authenticated && !strings.EqualFold(result.Status, "ok") {
-		if instagramWebTwoFactorSMSWasRejected(result) {
-			return errInstagramWebTwoFactorSMSRejected
-		}
-		return ErrInstagramWebTwoFactorCodeRejected
+		return c.rejectedInstagramWebTwoFactor(ctx, result)
 	}
-	return nil
+	return nil, nil
 }
 
 func (c *Client) sendInstagramWebTwoFactorCode(ctx context.Context, state *instagramWebTwoFactorState) error {
@@ -889,10 +887,10 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 	ctx context.Context,
 	state *instagramWebTwoFactorState,
 	verificationCode string,
-) error {
+) (*InstagramWebTwoFactorChallenge, error) {
 	form, err := c.newInstagramWebTwoFactorGraphQLForm(state, verificationCode)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	headers := c.http.BuildHeaders(true, false)
 	headers.Set("origin", c.GetEndpoint("base_url"))
@@ -902,7 +900,7 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 	headers.Set("sec-fetch-mode", "cors")
 	headers.Set("sec-fetch-site", "same-origin")
 	if err = c.addInstagramWebLoginHeaders(headers); err != nil {
-		return err
+		return nil, err
 	}
 	response, body, requestErr := c.http.MakeRequest(
 		ctx,
@@ -933,69 +931,19 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 			"two_factor_code_rejected",
 		)
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
-			return ErrInstagramWebTwoFactorCodeRejected
+			return nil, ErrInstagramWebTwoFactorCodeRejected
 		}
-		return fmt.Errorf("instagram encrypted web two-factor request failed: %w", requestErr)
+		return nil, fmt.Errorf("instagram encrypted web two-factor request failed: %w", requestErr)
 	} else if response == nil {
-		return errors.New("instagram encrypted web two-factor login returned no response")
+		return nil, errors.New("instagram encrypted web two-factor login returned no response")
 	} else if parseErr != nil {
-		return fmt.Errorf("failed to parse Instagram encrypted web two-factor login: %w", parseErr)
+		return nil, fmt.Errorf("failed to parse Instagram encrypted web two-factor login: %w", parseErr)
 	} else if result.Data == nil || result.Data.ValidateCode == nil {
-		return ErrInstagramWebTwoFactorCodeRejected
-	} else if validation := result.Data.ValidateCode; !validation.IsCodeValid {
-		if validation.Next != "" && validation.ErrorMessage == "" {
-			return c.instagramWebTwoFactorNext(validation.Next, validation.ErrorMessage != "")
-		}
-		return ErrInstagramWebTwoFactorCodeRejected
+		return nil, ErrInstagramWebTwoFactorCodeRejected
+	} else if !result.Data.ValidateCode.IsCodeValid {
+		return c.rejectedInstagramWebTwoFactor(ctx, instagramWebLoginResponse{RedirectURL: result.Data.ValidateCode.Next})
 	}
-	return nil
-}
-
-func (c *Client) instagramWebTwoFactorNext(rawNext string, hasErrorMessage bool) error {
-	const base = "https://www.instagram.com/"
-	reference, err := url.Parse(strings.TrimSpace(rawNext))
-	if err != nil || strings.TrimSpace(rawNext) == "" {
-		return ErrInstagramWebTwoFactorCodeRejected
-	}
-	target := mustParseURL(base).ResolveReference(reference)
-	target.Fragment = ""
-	kind := instagramWebCheckpointURLKind(target.String())
-	queryKeys := slices.Sorted(maps.Keys(target.Query()))
-	for i, key := range queryKeys {
-		queryKeys[i] = instagramWebRouteSegment(key)
-	}
-	logEvent := c.log.Info().
-		Fields(instagramAuthPlatformURLDiagnostics(base, rawNext)).
-		Int("next_length", len(rawNext)).
-		Strs("next_query_keys", queryKeys[:min(len(queryKeys), 8)]).
-		Bool("has_error_message", hasErrorMessage)
-	if segments := strings.Split(strings.Trim(target.Path, "/"), "/"); segments[0] == "auth_platform" || segments[0] == "challenge" || segments[0] == "checkpoint" {
-		segments = segments[:min(len(segments), 2)]
-		for i, segment := range segments {
-			segments[i] = instagramWebRouteSegment(segment)
-		}
-		logEvent = logEvent.Str("next_path", "/"+strings.Join(segments, "/"))
-	}
-	logEvent.Msg("Instagram web two-factor returned a next page instead of accepting the code")
-	if target.Scheme != "https" || target.User != nil || (target.Port() != "" && target.Port() != "443") ||
-		!strings.EqualFold(target.Hostname(), "www.instagram.com") || kind == "unsupported_version" {
-		return ErrInstagramWebTwoFactorCodeRejected
-	}
-	if (target.Path == "/" || target.Path == "/accounts/onetap/" || strings.HasPrefix(target.Path, "/direct/")) &&
-		c.cookies.Get(cookies.IGCookieSessionID) == "" {
-		return ErrInstagramWebTwoFactorCodeRejected
-	}
-	c.webTwoFactor = nil
-	return &instagramAuthPlatformWebviewHandoff{url: target.String()}
-}
-
-func instagramWebRouteSegment(segment string) string {
-	if segment == "" || len(segment) > 32 || strings.ContainsFunc(segment, func(r rune) bool {
-		return (r < 'a' || r > 'z') && r != '_' && r != '-'
-	}) {
-		return "*"
-	}
-	return segment
+	return nil, nil
 }
 
 // CompleteInstagramWebSessionTwoFactor finishes a challenge returned by
@@ -1004,19 +952,19 @@ func instagramWebRouteSegment(segment string) string {
 func (c *Client) CompleteInstagramWebSessionTwoFactor(
 	ctx context.Context,
 	verificationCode string,
-) error {
+) (*InstagramWebTwoFactorChallenge, error) {
 	if c == nil {
-		return ErrClientIsNil
+		return nil, ErrClientIsNil
 	} else if c.webTwoFactor == nil {
-		return errors.New("instagram web two-factor challenge is not active")
+		return nil, errors.New("instagram web two-factor challenge is not active")
 	}
 	verificationCode = strings.TrimSpace(verificationCode)
 	if verificationCode == "" {
-		return errors.New("instagram web two-factor code is empty")
+		return nil, errors.New("instagram web two-factor code is empty")
 	}
 	state := c.webTwoFactor
 	if state.csrfToken == "" {
-		return errInstagramWebTwoFactorMissingCSRF
+		return nil, errInstagramWebTwoFactorMissingCSRF
 	}
 	c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
 	headers := c.http.BuildHeaders(true, false)
@@ -1025,31 +973,34 @@ func (c *Client) CompleteInstagramWebSessionTwoFactor(
 		Bool("cookie_header_present", headers.Get("cookie") != "").
 		Bool("csrf_header_present", headers.Get("x-csrftoken") != "").
 		Msg("Prepared Instagram web two-factor CSRF state")
+	var challenge *InstagramWebTwoFactorChallenge
 	var err error
 	if state.checkpointURL != "" {
 		err = c.completeInstagramWebCheckpoint(ctx, state, verificationCode)
 	} else if state.encryptedContext == "" {
-		err = c.completeInstagramWebTwoFactorLegacy(ctx, state, verificationCode)
+		challenge, err = c.completeInstagramWebTwoFactorLegacy(ctx, state, verificationCode)
 	} else {
-		err = c.completeInstagramWebTwoFactorEncrypted(ctx, state, verificationCode)
+		challenge, err = c.completeInstagramWebTwoFactorEncrypted(ctx, state, verificationCode)
 	}
 	if err != nil {
 		if errors.Is(err, errInstagramWebTwoFactorSMSRejected) && !state.smsReplacementSent &&
 			state.encryptedContext == "" && state.method == "SMS" {
 			c.cookies.Set(cookies.IGCookieCSRFToken, state.csrfToken)
 			if resendErr := c.resendInstagramWebTwoFactorSMS(ctx, state); resendErr != nil {
-				return fmt.Errorf("failed to request a replacement Instagram SMS code: %w", resendErr)
+				return nil, fmt.Errorf("failed to request a replacement Instagram SMS code: %w", resendErr)
 			}
-			return ErrInstagramWebTwoFactorCodeResent
+			return nil, ErrInstagramWebTwoFactorCodeResent
 		}
-		return err
+		return nil, err
+	} else if challenge != nil {
+		return challenge, nil
 	}
 	c.ensureInstagramWebUserID()
 	if missing := c.cookies.GetMissingCookieNames(); len(missing) > 0 {
-		return fmt.Errorf("instagram web two-factor login succeeded without required cookies: %v", missing)
+		return nil, fmt.Errorf("instagram web two-factor login succeeded without required cookies: %v", missing)
 	}
 	c.webTwoFactor = nil
-	return nil
+	return nil, nil
 }
 
 // ensureInstagramWebUserID derives the ds_user_id cookie from the sessionid when
