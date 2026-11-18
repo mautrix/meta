@@ -832,10 +832,10 @@ func (c *Client) completeInstagramWebTwoFactorLegacy(
 			instagramWebLoginResponseClass(result),
 		)
 		if response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && parseErr == nil {
-			if next := cmp.Or(result.CheckpointURL, result.RedirectURL); next != "" {
-				return c.instagramWebTwoFactorNext(next, result.errorMessage() != "")
-			} else if instagramWebTwoFactorSMSWasRejected(result) {
+			if instagramWebTwoFactorSMSWasRejected(result) {
 				return errInstagramWebTwoFactorSMSRejected
+			} else if next := cmp.Or(result.CheckpointURL, result.RedirectURL); next != "" {
+				return c.instagramWebTwoFactorNext(next, result.errorMessage() != "")
 			}
 			return ErrInstagramWebTwoFactorCodeRejected
 		}
@@ -943,7 +943,7 @@ func (c *Client) completeInstagramWebTwoFactorEncrypted(
 	} else if result.Data == nil || result.Data.ValidateCode == nil {
 		return ErrInstagramWebTwoFactorCodeRejected
 	} else if validation := result.Data.ValidateCode; !validation.IsCodeValid {
-		if validation.Next != "" {
+		if validation.Next != "" && validation.ErrorMessage == "" {
 			return c.instagramWebTwoFactorNext(validation.Next, validation.ErrorMessage != "")
 		}
 		return ErrInstagramWebTwoFactorCodeRejected
