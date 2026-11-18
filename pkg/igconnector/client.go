@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sync"
@@ -143,6 +144,10 @@ func (ic *IGClient) ensureIGClient() {
 			EventHandler:  ic.handleIGEvent,
 			DisableTyping: ic.Main.Config.DisableTyping,
 			NativeSession: ic.LoginMeta.InstagramNativeSession,
+			SaveNativeSession: func(ctx context.Context, session *types.InstagramNativeSession) error {
+				ic.LoginMeta.InstagramNativeSession = session
+				return ic.UserLogin.Save(ctx)
+			},
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})
@@ -439,6 +444,7 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		(*oldCancel)()
 	}
 	interval := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	interval -= rand.N(interval / 10)
 	ic.UserLogin.Log.Info().Stringer("interval", interval).Msg("Periodic reconnect scheduled")
 	go func() {
 		defer cancel()

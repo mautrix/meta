@@ -148,14 +148,6 @@ func (c *Client) Connect(ctx context.Context) {
 				Int("connection_num", c.socketRetries).
 				Int("sequential_failures", sequentialFailures).
 				Msg("Connection failed, reconnecting...")
-			if sequentialFailures >= NativeMainStreamAttempts && errors.Is(err, ErrMainStreamClosed) && c.useNativeMainStream() {
-				sock.Log.Warn().Msg("Native main stream keeps closing before subscribing, switching to web main stream")
-				c.webMainStream.Store(true)
-				if webSock := dgw.NewSocket(c.getSocketOptions()); c.socket.CompareAndSwap(sock, webSock) {
-					sock = webSock
-				}
-				sequentialFailures = 0
-			}
 			select {
 			case <-ctx.Done():
 				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
@@ -184,13 +176,6 @@ func (c *Client) ForceReconnect() {
 
 var ErrMainStreamClosed = errors.New("main stream closed")
 var ErrUserIDMissing = errors.New("native messaging user ID is missing")
-
-// NativeMainStreamAttempts is how many native main stream closes before subscribing trigger the web socket fallback.
-var NativeMainStreamAttempts = 2
-
-func (c *Client) useNativeMainStream() bool {
-	return c.mobileSession.Load() != nil && !c.webMainStream.Load()
-}
 
 func (c *Client) getSocketOptions() dgw.SocketOptions {
 	options := dgw.SocketOptions{
@@ -225,7 +210,7 @@ func (c *Client) getSocketOptions() dgw.SocketOptions {
 			return err
 		},
 	}
-	if c.useNativeMainStream() {
+	if c.mobileSession.Load() != nil {
 		options.HTTPStream = &dgw.HTTPStreamOptions{
 			GetClient: c.http.GetHTTPClient, URL: c.GetEndpoint("dgw_lightspeed_native"), GetHeaders: c.nativeSocketHeaders,
 		}
@@ -253,7 +238,7 @@ type seqIDCursor struct {
 }
 
 func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) {
-	native := c.useNativeMainStream()
+	native := c.mobileSession.Load() != nil
 	params := syncParams{
 		UserAgent:                useragent.IGDUserAgent,
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
@@ -304,7 +289,7 @@ type IGFrame struct {
 func (c *Client) handleDataFrame(ctx context.Context, frame []byte) error {
 	var igFrame IGFrame
 	var err error
-	if c.useNativeMainStream() {
+	if c.mobileSession.Load() != nil {
 		igFrame.Payload = lightspeed.GetRootAsResponse(slices.Clip(frame), 0).PayloadBytes()
 	} else {
 		err = json.Unmarshal(frame, &igFrame)

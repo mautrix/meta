@@ -241,14 +241,14 @@ func (lit *BloksScriptLiteral) Parse(code string, start int) (int, error) {
 		}
 		return idx, fmt.Errorf("unterminated string literal")
 	}
-	if start+4 < len(code) && code[start:start+4] == "null" {
+	if start+4 <= len(code) && code[start:start+4] == "null" {
 		return start + 4, nil
 	}
-	if start+4 < len(code) && code[start:start+4] == "true" {
+	if start+4 <= len(code) && code[start:start+4] == "true" {
 		lit.BloksScriptLiteralValue = true
 		return start + 4, nil
 	}
-	if start+5 < len(code) && code[start:start+5] == "false" {
+	if start+5 <= len(code) && code[start:start+5] == "false" {
 		lit.BloksScriptLiteralValue = false
 		return start + 5, nil
 	}
