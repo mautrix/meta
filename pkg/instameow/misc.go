@@ -81,6 +81,10 @@ func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string)
 		return nil, ErrClientIsNil
 	}
 	h := c.http.BuildHeaders(true, false)
+	// IG web's PolarisInstajax doesn't send these on REST calls (x-mid only before cookie consent)
+	for _, key := range []string{"x-fb-lsd", "x-mid", "dpr", "viewport-width"} {
+		h.Del(key)
+	}
 	h.Set("x-requested-with", "XMLHttpRequest")
 	referer := c.GetEndpoint("base_url")
 	if mediaShortcode != "" {
@@ -90,7 +94,6 @@ func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string)
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin")
-	// TODO the web client seems to change this for media requests?
 	h.Set("X-Web-Session-ID", c.configs.WebSessionID)
 	reqUrl := fmt.Sprintf(c.GetEndpoint("media_info"), mediaID)
 
