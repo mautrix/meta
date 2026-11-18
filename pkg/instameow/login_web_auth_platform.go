@@ -286,6 +286,25 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		}
 		if target.Path == "/auth_platform/recaptcha/" {
 			return c.prepareInstagramAuthPlatformCaptcha(body)
+		} else if target.Path == "/auth_platform/passkey/" {
+			if triedPasskey {
+				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
+			}
+			triedPasskey = true
+			apc := target.Query().Get("apc")
+			if data, err := c.instagramAuthPlatformRequest(ctx, instagramAPPasskey, nil, ""); err == nil {
+				apc = cmp.Or(data.Get("encrypted_ap_context").String(), apc)
+			} else if !errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+				return err
+			}
+			data, err := c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, "")
+			if err != nil && !errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+				return err
+			} else if rawURL = data.Get("redirect_uri").String(); rawURL == "" {
+				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
+			}
+			s.referrer = s.url.String()
+			continue
 		}
 		s.captcha = nil
 		s.channel, s.choices, s.enterCode, s.tryAnotherWay = "", nil, false, false
@@ -297,8 +316,6 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			op = instagramAPPicker
 		} else if target.Path == "/auth_platform/afad/" {
 			op = instagramAPApprove
-		} else if target.Path == "/auth_platform/passkey/" {
-			op = instagramAPPasskey
 		} else if target.Path != "/auth_platform/codeentry/" {
 			return ErrInstagramWebCheckpointUnsupported
 		}
@@ -326,17 +343,6 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			s.approving = true
 			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
 			s.approvalCode = data.Get("verification_code").String()
-		} else if op == instagramAPPasskey {
-			if !triedPasskey {
-				triedPasskey = true
-				apc := cmp.Or(data.Get("encrypted_ap_context").String(), target.Query().Get("apc"))
-				if data, err = c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, ""); err != nil {
-					return err
-				} else if rawURL = data.Get("redirect_uri").String(); rawURL != "" {
-					continue
-				}
-			}
-			return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
 		} else {
 			for _, option := range data.Get("challenge_options").Array() {
 				channel, index := instagramAuthPlatformChannel(option.Get("challenge_name").String()), option.Get("index")
