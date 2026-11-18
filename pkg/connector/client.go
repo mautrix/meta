@@ -700,6 +700,17 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
+	m.ensureMessagixClient()
+	if cli := m.Client; cli != nil && m.LoginMeta.NativeSession != nil {
+		if token := m.LoginMeta.NativePushToken; token != "" {
+			if err := cli.Facebook.UnregisterNativePushNotifications(ctx, m.LoginMeta.NativeSession, token); err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to unregister native push")
+			}
+		}
+		if err := cli.MessengerLite.Logout(ctx); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Messenger app session")
+		}
+	}
 	m.disconnect(false)
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete(ctx)
