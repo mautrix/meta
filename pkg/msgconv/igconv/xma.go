@@ -22,9 +22,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"maps"
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -214,6 +216,13 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 	isStory := strings.HasPrefix(targetURL.Path, "/stories/") && isNumeric(path.Base(targetURL.Path))
 	isMedia := targetID != 0
 	if !isStory && !isMedia {
+		zerolog.Ctx(ctx).Debug().
+			Str("xma_typename", xma.Typename).
+			Str("target_id", xma.TargetID).
+			Str("target_url", xma.TargetURL).
+			Str("preview_layout_type", xma.PreviewLayoutType).
+			Strs("unrecognized_fields", slices.Sorted(maps.Keys(xma.Unrecognized))).
+			Msg("XMA target isn't a fetchable post or story")
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "unrecognized type"
 		return basePart
 	}

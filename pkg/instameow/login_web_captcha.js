@@ -47,7 +47,7 @@ config => {
         window.removeEventListener('message', listener)
         notice.textContent = 'CAPTCHA completed. Returning to your login…'
         retry.disabled = true
-        resolve({ captcha_token: data.token })
+        resolve({ captcha_token: data.token, captcha_user_agent: navigator.userAgent })
       }
     }
     window.addEventListener('message', listener)

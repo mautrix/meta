@@ -159,6 +159,21 @@ func FilterByAttribute(compid BloksComponentID, attr BloksAttributeID, value str
 	}
 }
 
+func FilterByAttributePrefix(compid BloksComponentID, attr BloksAttributeID, prefixes ...string) func(comp *BloksTreeComponent) bool {
+	return func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != compid {
+			return false
+		}
+		value := comp.GetAttribute(attr)
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(value, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 func (comp *BloksTreeComponent) GetAttribute(name BloksAttributeID) string {
 	if comp == nil {
 		return ""
@@ -726,18 +741,22 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 		DeviceNetworkInfo: genericDeviceNetworkInfo,
 		EncryptPassword:   cfg.EncryptPassword,
 		SignRequestData: func(ctx context.Context, data any) (any, error) {
-			payload, err := json.Marshal(data)
-			if err != nil {
-				return nil, fmt.Errorf("marshal request data: %w", err)
+			payload, ok := data.(string)
+			if !ok {
+				payloadBytes, err := json.Marshal(data)
+				if err != nil {
+					return nil, fmt.Errorf("marshal request data: %w", err)
+				}
+				payload = string(payloadBytes)
 			}
-			hash := sha256.Sum256(payload)
+			hash := sha256.Sum256([]byte(payload))
 			sig, err := ecdsa.SignASN1(rand.Reader, attestationKey, hash[:])
 			if err != nil {
 				return nil, fmt.Errorf("sign request data: %w", err)
 			}
 			return map[string]any{
 				"keyHash":   hex.EncodeToString(attestationKeyHash[:]),
-				"data":      base64.StdEncoding.EncodeToString(payload),
+				"data":      base64.StdEncoding.EncodeToString([]byte(payload)),
 				"signature": base64.StdEncoding.EncodeToString(sig),
 			}, nil
 		},
@@ -1057,12 +1076,7 @@ var initiateViewMethods = map[string]string{
 // canonical name, the names in display order, and how many recognised but
 // unsupported methods were skipped.
 func (bb *BloksBundle) FindMFAMethods(log *zerolog.Logger) (map[string]*BloksTreeComponent, []string, int) {
-	if bb.FindDescendant(func(comp *BloksTreeComponent) bool {
-		if comp.ComponentID != "bk.data.TextSpan" {
-			return false
-		}
-		return strings.HasPrefix(comp.GetAttribute("text"), "Your session expired")
-	}) != nil {
+	if bb.hasSessionExpiredWarning() {
 		log.Error().Msg("Got session expired warning on MFA screen")
 	}
 
@@ -1117,6 +1131,15 @@ func (bb *BloksBundle) FindMFAMethods(log *zerolog.Logger) (map[string]*BloksTre
 		methodNames = append(methodNames, method)
 	}
 	return foundMethods, methodNames, numIgnored
+}
+
+func (bb *BloksBundle) hasSessionExpiredWarning() bool {
+	return bb.FindDescendant(func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != "bk.data.TextSpan" {
+			return false
+		}
+		return strings.HasPrefix(comp.GetAttribute("text"), "Your session expired")
+	}) != nil
 }
 
 func (b *Browser) getCodeInstructions() string {
@@ -1937,6 +1960,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateChooseMFAPage:
+		if b.profile.hasExpiredMFAPicker(b.CurrentPage) {
+			return nil, loginerrors.SessionExpired
+		}
 		foundMethods, methodNames, numIgnored := b.profile.findMFAMethods(b.CurrentPage, log)
 		b.MFACanGoBack = false
 
@@ -2061,23 +2087,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		b.profile.finishCodeSubmission(b, StateTOTPPage, actionRPCCountBefore)
 
 	case StateAFADPage:
-		notif := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
-			if comp.ComponentID != "bk.data.TextSpan" {
-				return false
-			}
-			for _, prefix := range []string{
-				// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
-				"We sent a",
-				"Open the notification",
-				"You need to sign in on",
-				"Check your notifications",
-			} {
-				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
-					return true
-				}
-			}
-			return false
-		})
+		notif := b.CurrentPage.FindDescendant(FilterByAttributePrefix(
+			"bk.data.TextSpan", "text",
+			// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
+			"We sent a",
+			"Open the notification",
+			"You need to sign in on",
+		))
+		if notif == nil {
+			notif = b.CurrentPage.FindDescendant(FilterByAttributePrefix("bk.data.TextSpan", "text", "Check your notifications"))
+		}
 		if notif == nil {
 			return nil, fmt.Errorf("couldn't find AFAD notification info")
 		}
