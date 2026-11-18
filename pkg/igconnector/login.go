@@ -170,9 +170,9 @@ func loginWithCookies(
 		} else if errors.Is(err, httpclient.ErrTokenInvalidated) {
 			return nil, loginerrors.TokenInvalidated
 		} else if errors.Is(err, httpclient.ErrUnexpectedError) {
-			return nil, fmt.Errorf("%w: %w", loginerrors.InboxLoadFailed, err)
+			return nil, fmt.Errorf("%w: %w", loginerrors.InboxLoadFailed.WithInternalError(err), err)
 		} else {
-			return nil, fmt.Errorf("%w: %w", loginerrors.Unknown, err)
+			return nil, fmt.Errorf("%w: %w", loginerrors.Unknown.WithInternalError(err), err)
 		}
 	}
 
