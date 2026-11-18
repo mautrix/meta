@@ -93,6 +93,13 @@ func (ic *IGClient) wrapUserInfo(info *slidetypes.User) *bridgev2.UserInfo {
 	}
 }
 
+func (ic *IGClient) wrapViewerInfo(viewer *slidetypes.User) *bridgev2.UserInfo {
+	if viewer.Username == "" && viewer.FullName == "" {
+		return nil
+	}
+	return ic.wrapUserInfo(viewer)
+}
+
 func (ic *IGClient) wrapSearchResultInfo(info *slidetypes.SearchResult) *bridgev2.UserInfo {
 	var identifiers []string
 	if info.Username != "" {
@@ -220,7 +227,7 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 	for _, nick := range info.Nicknames {
 		nickMap[nick.EIMUID] = &nick.Nickname
 	}
-	addMember := func(member *slidetypes.User) {
+	addMember := func(member *slidetypes.User, userInfo *bridgev2.UserInfo) {
 		var powerLevel *int
 		if info.AdminUserIDs != nil {
 			powerLevel = ptr.Ptr(powerDefault)
@@ -233,18 +240,19 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 			Membership:  event.MembershipJoin,
 			Nickname:    nickMap[member.InteropMessagingUserFBID],
 			PowerLevel:  powerLevel,
-			UserInfo:    ic.wrapUserInfo(member),
+			UserInfo:    userInfo,
 		})
 	}
 	for _, member := range info.Users {
-		addMember(member)
+		addMember(member, ic.wrapUserInfo(member))
 	}
-	addMember(info.Viewer)
+	viewerInfo := ic.wrapViewerInfo(info.Viewer)
+	addMember(info.Viewer, viewerInfo)
 	if len(info.Users) == 1 && info.ThreadKey == info.Users[0].InteropMessagingUserFBID {
 		members.OtherUserID = metaid.MakeUserID(info.ThreadKey)
 	} else if len(info.Users) == 0 && info.ThreadKey == info.Viewer.InteropMessagingUserFBID {
 		members.OtherUserID = metaid.MakeUserID(info.ThreadKey)
-		members.MemberMap = makeNoteToSelfMembers(members.OtherUserID, ic.wrapUserInfo(info.Viewer))
+		members.MemberMap = makeNoteToSelfMembers(members.OtherUserID, viewerInfo)
 	}
 	var blocked *bool
 	if roomType == database.RoomTypeDM && len(info.Users) == 1 {

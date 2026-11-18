@@ -157,7 +157,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 			hostname = addr[:i]
 		}
 
-		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_120)
+		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build Chrome uTLS spec: %w", err)
 		}
@@ -166,7 +166,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 		exts := spec.Extensions[:0]
 		for _, ext := range spec.Extensions {
 			switch e := ext.(type) {
-			case *utls.ApplicationSettingsExtension:
+			case *utls.ApplicationSettingsExtension, *utls.ApplicationSettingsExtensionNew:
 				continue
 			case *utls.ALPNExtension:
 				e.AlpnProtocols = []string{"http/1.1"}
@@ -411,6 +411,7 @@ var (
 	ErrResponseReadFailed       = errors.New("failed to read response body")
 	ErrUnexpectedError          = errors.New("server returned unexpected HTTP status")
 	ErrRateLimited              = fmt.Errorf("%w 429", ErrUnexpectedError)
+	ErrPageInternalServerError  = errors.New("page returned internal server error")
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
 	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
@@ -490,7 +491,7 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 		return RedirectedError{Type: ErrChallengeRequired, URL: req.URL.String()}
 	} else if req.URL.Path == "/accounts/suspended/" {
 		return RedirectedError{Type: ErrAccountSuspended, URL: req.URL.String()}
-	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
+	} else if req.URL.Path == "/consent/" || req.URL.Path == "/terms/unblock/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
 		return RedirectedError{Type: ErrConsentRequired, URL: req.URL.String()}
 	} else if checkpointRedirect {
 		return RedirectedError{Type: ErrCheckpointRequired, URL: req.URL.String()}
@@ -673,6 +674,9 @@ func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, er
 				Str("content_type", response.Header.Get("content-type")).
 				Strs("cookie_names", c.parent.GetCookies().GetNames())
 			AddRedactedResponse(evt, responseBody).Msg("Page request failed")
+		}
+		if errors.Is(err, ErrUnexpectedError) && response.StatusCode == http.StatusInternalServerError {
+			err = fmt.Errorf("%w: %w", ErrPageInternalServerError, err)
 		}
 	}
 	return responseBody, err

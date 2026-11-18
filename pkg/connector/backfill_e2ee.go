@@ -120,8 +120,15 @@ func (m *MetaClient) convertArchiveMessage(ctx context.Context, portal *bridgev2
 			}
 		} else if content.GetPollUpdateMessage() != nil && parent.GetConsumerApplication().GetPayload().GetContent().GetPollCreationMessage() != nil {
 			continue
+		} else if armadillo := decoded.GetArmadillo(); armadillo != nil && (armadillo.GetPayload().GetContent() == nil || armadillo.GetPayload().GetContent().GetRavenActionNotifMessage() != nil) {
+			continue
 		} else {
-			return nil, fmt.Errorf("unsupported Messenger archive supplemental %T", content.GetContent())
+			consumerPayload := decoded.GetConsumerApplication().GetPayload()
+			return nil, fmt.Errorf(
+				"unsupported Messenger archive supplemental (message %T, payload %T, content %T, application data %T, armadillo content %T)",
+				decoded.Message, consumerPayload.GetPayload(), content.GetContent(), consumerPayload.GetApplicationData().GetApplicationContent(),
+				decoded.GetArmadillo().GetPayload().GetContent().GetContent(),
+			)
 		}
 	}
 	if latestEdit != nil {

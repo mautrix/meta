@@ -22,9 +22,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"maps"
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -178,6 +180,7 @@ func isNumeric(str string) bool {
 
 type UnresolvedMediaContent struct {
 	Kind      string                     `json:"kind"`
+	MediaType string                     `json:"media_type,omitempty"`
 	Base      *event.MessageEventContent `json:"fi.mau.instagram.base_part,omitempty"`
 	FullTitle string                     `json:"fi.mau.instagram.full_title,omitempty"`
 }
@@ -213,6 +216,13 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 	isStory := strings.HasPrefix(targetURL.Path, "/stories/") && isNumeric(path.Base(targetURL.Path))
 	isMedia := targetID != 0
 	if !isStory && !isMedia {
+		zerolog.Ctx(ctx).Debug().
+			Str("xma_typename", xma.Typename).
+			Str("target_id", xma.TargetID).
+			Str("target_url", xma.TargetURL).
+			Str("preview_layout_type", xma.PreviewLayoutType).
+			Strs("unrecognized_fields", slices.Sorted(maps.Keys(xma.Unrecognized))).
+			Msg("XMA target isn't a fetchable post or story")
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "unrecognized type"
 		return basePart
 	}
@@ -220,9 +230,15 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 		basePart.DBMetadata = &metaid.MessageMetadata{}
 	}
 	if !mediadl.ShouldFetchXMA(ctx) {
+		var mediaType string
+		if (xma.PreviewImage != nil && xma.PreviewImage.PreviewImageDecorationType == "REEL") ||
+			(xma.XMAPreviewImage != nil && xma.XMAPreviewImage.PreviewImageDecorationType == "REEL") {
+			mediaType = "video"
+		}
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "skip"
 		basePart.Extra["com.beeper.unresolved_media"] = &UnresolvedMediaContent{
 			Kind:      "permanent",
+			MediaType: mediaType,
 			Base:      filterUnresolvedMediaContent(basePart.Content),
 			FullTitle: xma.TitleText,
 		}
