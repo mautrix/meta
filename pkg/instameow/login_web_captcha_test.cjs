@@ -21,7 +21,8 @@ async function main() {
     removeEventListener(type, listener) { assert.equal(type, 'message'); listeners.delete(listener) },
   }
   const location = { origin: 'https://www.instagram.com' }
-  const run = vm.runInNewContext('(' + fs.readFileSync(path.join(__dirname, 'login_web_captcha.js'), 'utf8') + ')', { document, window, location })
+  const navigator = { userAgent: 'fixture-agent' }
+  const run = vm.runInNewContext('(' + fs.readFileSync(path.join(__dirname, 'login_web_captcha.js'), 'utf8') + ')', { document, window, location, navigator })
   const config = { instance: 'fixture-1', iframeURL: 'https://www.fbsbx.com/captcha/recaptcha/iframe/?locale=en_US' }
   const promise = run(config)
   assert.equal(run(config), promise, 'navigation reinjection must reuse pending challenge')
@@ -44,7 +45,7 @@ async function main() {
   elements.find(element => element.tag === 'button').onclick()
   assert.equal(frame.src, config.iframeURL)
   send({ type: 'CAPTCHA_SOLVED', token: 'human-solution' })
-  assert.equal(JSON.stringify(await promise), '{"captcha_token":"human-solution"}')
+  assert.equal(JSON.stringify(await promise), '{"captcha_token":"human-solution","captcha_user_agent":"fixture-agent"}')
   assert.equal(listeners.size, 0)
   assert.equal(elements.find(element => element.tag === 'button').disabled, true)
   const oldOverlay = document.body.children[0]

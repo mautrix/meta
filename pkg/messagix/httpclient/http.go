@@ -157,7 +157,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 			hostname = addr[:i]
 		}
 
-		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_120)
+		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build Chrome uTLS spec: %w", err)
 		}
@@ -166,7 +166,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 		exts := spec.Extensions[:0]
 		for _, ext := range spec.Extensions {
 			switch e := ext.(type) {
-			case *utls.ApplicationSettingsExtension:
+			case *utls.ApplicationSettingsExtension, *utls.ApplicationSettingsExtensionNew:
 				continue
 			case *utls.ALPNExtension:
 				e.AlpnProtocols = []string{"http/1.1"}
@@ -491,7 +491,7 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 		return RedirectedError{Type: ErrChallengeRequired, URL: req.URL.String()}
 	} else if req.URL.Path == "/accounts/suspended/" {
 		return RedirectedError{Type: ErrAccountSuspended, URL: req.URL.String()}
-	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
+	} else if req.URL.Path == "/consent/" || req.URL.Path == "/terms/unblock/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
 		return RedirectedError{Type: ErrConsentRequired, URL: req.URL.String()}
 	} else if checkpointRedirect {
 		return RedirectedError{Type: ErrCheckpointRequired, URL: req.URL.String()}

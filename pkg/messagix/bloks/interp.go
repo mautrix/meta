@@ -9,6 +9,7 @@ import (
 	"maps"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -104,7 +105,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 		id := BloksVariableID(item.ID)
 		switch item.Type {
-		case "gs", "bloks_android_system_insets", "bloks_ios_view_insets":
+		case "gs", "bloks_android_system_insets", "bloks_ios_view_insets", "bloks_viewport_dimensions":
 			// Check if global var was already set
 			if globals[id] != nil {
 				break
@@ -151,6 +152,9 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		br.GetEncryptedMSISDN = func(ctx context.Context, name string, flag bool) (string, error) {
 			return "", nil
 		}
+	}
+	if br.DeviceEmails == nil {
+		br.DeviceEmails = []*BloksScriptLiteral{}
 	}
 	if br.SignRequestData == nil {
 		br.SignRequestData = func(ctx context.Context, data any) (any, error) {
@@ -236,7 +240,7 @@ func NewInterpreter(ctx context.Context, b *BloksBundle, br *InterpBridge, old *
 		}
 		id := BloksVariableID(item.ID)
 		switch item.Type {
-		case "gs", "bloks_android_system_insets", "bloks_ios_view_insets":
+		case "gs", "bloks_android_system_insets", "bloks_ios_view_insets", "bloks_viewport_dimensions":
 			if globals[id] != nil {
 				break
 			}
@@ -1211,7 +1215,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		keys := []*BloksScriptLiteral{}
-		for key := range dict {
+		for _, key := range slices.Sorted(maps.Keys(dict)) {
 			keys = append(keys, BloksLiteralOf(key))
 		}
 		return BloksLiteralOf(keys), nil
@@ -1221,8 +1225,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			return nil, err
 		}
 		vals := []*BloksScriptLiteral{}
-		for _, val := range dict {
-			vals = append(vals, val)
+		for _, key := range slices.Sorted(maps.Keys(dict)) {
+			vals = append(vals, dict[key])
 		}
 		return BloksLiteralOf(vals), nil
 	case "ig.action.IsDarkModeEnabled", "fb.action.IsDarkModeEnabled":

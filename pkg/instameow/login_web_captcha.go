@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -125,13 +126,15 @@ func (c *Client) instagramAuthPlatformCaptchaStep(notice string) (*bridgev2.Logi
 			URL:       "https://www.instagram.com/accounts/login/",
 			UserAgent: useragent.UserAgent,
 			ExtractJS: "(" + instagramCaptchaJS + ")(" + string(config) + ")",
-			Fields: []bridgev2.LoginCookieField{{ID: "captcha_token", Required: true,
-				Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_token"}}}},
+			Fields: []bridgev2.LoginCookieField{
+				{ID: "captcha_token", Required: true, Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_token"}}},
+				{ID: "captcha_user_agent", Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_user_agent"}}},
+			},
 		},
 	}, nil
 }
 
-func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token string) (*bridgev2.LoginStep, error) {
+func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token, userAgent string) (*bridgev2.LoginStep, error) {
 	if _, err := c.instagramAuthPlatformCaptchaStep(""); err != nil {
 		return nil, err
 	}
@@ -146,16 +149,20 @@ func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token string) (*
 		return nil, err
 	}
 	pending.lastToken = fingerprint
+	userAgent = strings.TrimSpace(userAgent)
+	if len(userAgent) > 512 || strings.ContainsFunc(userAgent, unicode.IsControl) {
+		userAgent = ""
+	}
 	// Consume before transport: an ambiguous response must not replay a token.
 	s.captcha = nil
 	if pending.instrumented {
-		_, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaRender, map[string]any{})
+		_, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaRender, map[string]any{}, userAgent)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		// The browser treats render-outcome telemetry errors as non-fatal.
 	}
-	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaSubmit, map[string]any{"captcha_response": token})
+	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaSubmit, map[string]any{"captcha_response": token}, userAgent)
 	if err != nil {
 		return nil, err
 	}
