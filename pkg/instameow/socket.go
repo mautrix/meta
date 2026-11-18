@@ -34,6 +34,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
 	"go.mau.fi/mautrix-meta/pkg/messagix/graphql"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -41,21 +42,16 @@ import (
 var MaxConnectionRetryInterval = 60 * time.Second
 
 // MaxDeltaAttempts is how many times the same delta may fail before it's skipped.
-// The server replays from the last saved sequence ID after a reconnect,
-// so a delta that can never be handled would otherwise block the stream forever.
+// The saved sequence ID doesn't move past a failed delta,
+// so one that can never be handled would otherwise hold its thread forever.
 var MaxDeltaAttempts = 5
 
-type deltaHandlingError struct {
+type threadDeltaQueue struct {
+	deltas   []*slidetypes.Delta
 	attempts int
-	err      error
-}
-
-func (e *deltaHandlingError) Error() string {
-	return fmt.Sprintf("failed to handle delta: %v", e.err)
-}
-
-func (e *deltaHandlingError) Unwrap() error {
-	return e.err
+	retry    bool
+	seqID    int64
+	seqIDTS  time.Time
 }
 
 func (c *Client) makeNewSocket() {
@@ -128,21 +124,7 @@ func (c *Client) Connect(ctx context.Context) {
 			return
 		}
 		c.socketRetries++
-		var deltaErr *deltaHandlingError
-		if errors.As(err, &deltaErr) {
-			sequentialFailures = 0
-			sock.Log.Warn().Err(err).
-				Int("connection_num", c.socketRetries).
-				Int("delta_attempts", deltaErr.attempts).
-				Msg("Delta handling failed, reconnecting after backoff")
-			select {
-			case <-ctx.Done():
-				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
-				return
-			case <-time.After(min(time.Duration(1<<deltaErr.attempts)*time.Second, MaxConnectionRetryInterval)):
-				continue
-			}
-		} else if !wasConnected {
+		if !wasConnected {
 			sequentialFailures++
 			sock.Log.Warn().Err(err).
 				Int("connection_num", c.socketRetries).
@@ -324,8 +306,15 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 		})
 		if err != nil {
 			return fmt.Errorf("failed to handle connected event: %w", err)
+		} else if len(c.deltaQueues) == 0 {
+			return nil
 		}
-		return nil
+		for threadID := range c.deltaQueues {
+			if err = c.drainDeltaQueue(ctx, threadID); err != nil {
+				return err
+			}
+		}
+		return c.saveSeqID(ctx)
 	case *mdCoreSync.Operation_Resnapshot:
 		c.log.Info().Any("resnapshot_payload", op.Resnapshot).Msg("Received resnapshot operation")
 		return fmt.Errorf("%w (%d): %s", errResnapshotRequired, op.Resnapshot.GetErrorType(), op.Resnapshot.GetErrorMessage())
@@ -338,11 +327,17 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 		var saveSeqID bool
 		for _, deltas := range deltaWrappers {
 			for _, delta := range deltas.Data.SlideDeltaProcessor {
-				err = c.eventHandler(ctx, delta)
-				if err != nil {
-					attempts, skip := c.trackFailedDelta(ctx, delta, err)
-					if !skip {
-						return &deltaHandlingError{attempts: attempts, err: err}
+				if queue, ok := c.deltaQueues[delta.ThreadIGID]; ok {
+					queue.deltas = append(queue.deltas, delta)
+					queue.retry = true
+				} else {
+					c.deltaQueues[delta.ThreadIGID] = &threadDeltaQueue{
+						deltas:  []*slidetypes.Delta{delta},
+						seqID:   c.seqID,
+						seqIDTS: c.seqIDTS,
+					}
+					if err = c.drainDeltaQueue(ctx, delta.ThreadIGID); err != nil {
+						return err
 					}
 				}
 				if c.seqID < delta.UQSeqID {
@@ -352,14 +347,15 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 				}
 			}
 		}
-		if saveSeqID {
-			err = c.eventHandler(ctx, &slidetypes.SeqIDUpdate{
-				SeqID:     c.seqID,
-				Timestamp: c.seqIDTS,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to save sequence ID: %w", err)
+		for threadID, queue := range c.deltaQueues {
+			if queue.retry {
+				if err = c.drainDeltaQueue(ctx, threadID); err != nil {
+					return err
+				}
 			}
+		}
+		if saveSeqID {
+			return c.saveSeqID(ctx)
 		}
 		return nil
 	case *mdCoreSync.Operation_Noop:
@@ -372,24 +368,58 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 	}
 }
 
-func (c *Client) trackFailedDelta(ctx context.Context, delta *slidetypes.Delta, err error) (attempts int, skip bool) {
-	if ctx.Err() != nil || delta.UQSeqID == 0 {
-		return 1, false
+func (c *Client) drainDeltaQueue(ctx context.Context, threadID string) error {
+	queue := c.deltaQueues[threadID]
+	queue.retry = false
+	for len(queue.deltas) > 0 {
+		delta := queue.deltas[0]
+		err := c.eventHandler(ctx, delta)
+		if err != nil {
+			if ctx.Err() != nil {
+				return err
+			} else if !errors.Is(err, httpclient.ErrRateLimited) {
+				queue.attempts++
+			}
+			if queue.attempts < MaxDeltaAttempts {
+				c.log.Warn().Err(err).
+					Int64("uq_seq_id", delta.UQSeqID).
+					Str("delta_type", delta.TypeName).
+					Str("thread_fbid", threadID).
+					Int("attempts", queue.attempts).
+					Int("queued_deltas", len(queue.deltas)).
+					Msg("Failed to handle delta, holding thread until its next delta or reconnect")
+				return nil
+			}
+			c.log.Err(err).
+				Int64("uq_seq_id", delta.UQSeqID).
+				Str("delta_type", delta.TypeName).
+				Str("thread_fbid", threadID).
+				Int("attempts", queue.attempts).
+				Msg("Skipping delta that failed repeatedly")
+		}
+		queue.deltas = queue.deltas[1:]
+		queue.attempts = 0
 	}
-	if c.failedDeltaSeqID != delta.UQSeqID {
-		c.failedDeltaSeqID = delta.UQSeqID
-		c.failedDeltaCount = 0
+	delete(c.deltaQueues, threadID)
+	return nil
+}
+
+func (c *Client) saveSeqID(ctx context.Context) error {
+	seqID, seqIDTS := c.seqID, c.seqIDTS
+	for _, queue := range c.deltaQueues {
+		if queue.seqID < seqID {
+			seqID, seqIDTS = queue.seqID, queue.seqIDTS
+		}
 	}
-	c.failedDeltaCount++
-	if c.failedDeltaCount < MaxDeltaAttempts {
-		return c.failedDeltaCount, false
+	err := c.eventHandler(ctx, &slidetypes.SeqIDUpdate{
+		SeqID:          seqID,
+		Timestamp:      seqIDTS,
+		ProcessedSeqID: c.seqID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save sequence ID: %w", err)
 	}
-	c.log.Err(err).
-		Int64("uq_seq_id", delta.UQSeqID).
-		Str("delta_type", delta.TypeName).
-		Int("attempts", c.failedDeltaCount).
-		Msg("Skipping delta that failed repeatedly")
-	return c.failedDeltaCount, true
+	return nil
 }
 
 func (c *Client) Disconnect() {

@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exerrors"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -36,7 +35,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
-	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -166,7 +164,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		if err != nil {
 			return err
 		}
-		if c := ic.catchingUpTo; c > 0 && evt.SeqID >= c {
+		if c := ic.catchingUpTo; c > 0 && evt.ProcessedSeqID >= c {
 			ic.caughtUp.Set()
 		}
 		return nil
@@ -238,74 +236,6 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID, source s
 	return evt.PortalKey, nil
 }
 
-var rateLimitedThreadResyncDelays = []time.Duration{
-	30 * time.Second, 1 * time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 15 * time.Minute, 30 * time.Minute,
-}
-
-func (ic *IGClient) resyncRateLimitedThread(d *slidetypes.Delta, source string) {
-	threadIGID := d.ThreadIGID
-	ic.rateLimitedLock.Lock()
-	pending, alreadyQueued := ic.rateLimitedThreads[threadIGID]
-	ic.rateLimitedThreads[threadIGID] = append(pending, d)
-	ic.rateLimitedLock.Unlock()
-	if alreadyQueued {
-		return
-	}
-	go func() {
-		takeDeltas := func() []*slidetypes.Delta {
-			ic.rateLimitedLock.Lock()
-			defer ic.rateLimitedLock.Unlock()
-			deltas := ic.rateLimitedThreads[threadIGID]
-			delete(ic.rateLimitedThreads, threadIGID)
-			return deltas
-		}
-		log := ic.UserLogin.Log.With().
-			Str("action", "resync rate limited thread").
-			Str("thread_fbid", threadIGID).
-			Logger()
-		replaying := false
-		defer func() {
-			if v := recover(); v != nil {
-				log.Err(exerrors.RecoverToError(v)).
-					Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
-					Msg("Panic in rate limited thread resync")
-			}
-			if replaying {
-				return
-			}
-			if deltas := takeDeltas(); len(deltas) > 0 {
-				log.Warn().Int("delta_count", len(deltas)).Msg("Dropping deltas queued for rate limited thread")
-			}
-		}()
-		ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
-		for i, delay := range rateLimitedThreadResyncDelays {
-			select {
-			case <-time.After(delay):
-			case <-ctx.Done():
-				return
-			}
-			if ic.Client == nil {
-				return
-			}
-			_, err := ic.getAndResyncThread(ctx, threadIGID, source)
-			if err != nil {
-				log.Warn().Err(err).Int("attempt", i+1).Msg("Failed to resync thread after rate limit")
-				continue
-			}
-			replaying = true
-			deltas := takeDeltas()
-			log.Info().Int("attempt", i+1).Int("delta_count", len(deltas)).Msg("Resynced thread after rate limit, replaying deltas")
-			for _, delta := range deltas {
-				if err = ic.handleDelta(ctx, delta); err != nil {
-					log.Err(err).Str("delta_type", delta.TypeName).Msg("Failed to replay delta after rate limit")
-				}
-			}
-			return
-		}
-		log.Error().Msg("Giving up resyncing thread after repeated failures")
-	}()
-}
-
 func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool, source string) (networkid.PortalKey, bool, error) {
 	if threadIGID == "" {
 		return networkid.PortalKey{}, false, nil
@@ -372,12 +302,6 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 			Str("ig_inbox_folder", evt.IGInboxFolder).
 			Logger()
 		ctx = log.WithContext(ctx)
-	case *slidetypes.NewMessageEvent:
-		// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
-		// so extract it from the message for finding the portal.
-		if d.ThreadIGID == "" && evt.Message != nil && evt.Message.ThreadFBID != "" {
-			d.ThreadIGID = evt.Message.ThreadFBID
-		}
 	case *slidetypes.AdminMessageEvent:
 		if ic.pendingGroupCreations.Has(evt.Message.OfflineThreadingID) {
 			log.Debug().
@@ -388,21 +312,8 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 		}
 	}
 
-	ic.rateLimitedLock.Lock()
-	if pending, ok := ic.rateLimitedThreads[d.ThreadIGID]; ok {
-		ic.rateLimitedThreads[d.ThreadIGID] = append(pending, d)
-		ic.rateLimitedLock.Unlock()
-		log.Debug().Msg("Thread resync is pending after rate limit, queued delta")
-		return nil
-	}
-	ic.rateLimitedLock.Unlock()
-
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate, fmt.Sprintf("delta %s", d.TypeName))
-	if errors.Is(err, httpclient.ErrRateLimited) {
-		log.Warn().Err(err).Msg("Thread info fetch was rate limited, resyncing thread later")
-		ic.resyncRateLimitedThread(d, fmt.Sprintf("delta %s", d.TypeName))
-		return nil
-	} else if err != nil {
+	if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	} else if portalKey.IsEmpty() {
 		log.Warn().Msg("Ignoring event with no portal")
@@ -454,6 +365,8 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 		res = ic.handleMuteThread(portalKey, evt.IsMutedNow)
 	case *slidetypes.PinMessageEvent:
 		res = ic.handlePinMessages(portalKey, evt)
+	case slidetypes.IgnoredEvent:
+		return nil
 	case slidetypes.UnknownEvent:
 		log.Warn().Msg("Unrecognized event type in socket")
 		return nil

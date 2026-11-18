@@ -263,6 +263,11 @@ func (d *Delta) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse delta data into %T: %w", d.Data, err)
 	}
+	// Some messages (maybe specifically raven messages?) don't have the top-level thread ID set,
+	// so extract it from the message for finding the portal.
+	if evt, ok := d.Data.(*NewMessageEvent); ok && d.ThreadIGID == "" && evt.Message != nil {
+		d.ThreadIGID = evt.Message.ThreadFBID
+	}
 	return nil
 }
 

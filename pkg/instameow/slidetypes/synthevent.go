@@ -51,8 +51,9 @@ type AuthError struct {
 }
 
 type SeqIDUpdate struct {
-	SeqID     int64
-	Timestamp time.Time
+	SeqID          int64
+	Timestamp      time.Time
+	ProcessedSeqID int64
 }
 
 type ReconnectionStateUpdate struct {
