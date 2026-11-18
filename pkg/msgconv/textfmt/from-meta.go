@@ -51,6 +51,7 @@ func MetaToMatrixText(
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to get basic user info for mention")
 			} else {
 				mentionHTML = fmt.Sprintf(`<a href="%s">%s</a>`, mxid.URI().MatrixToURL(), displayname)
+				matrixMentions.Add(mxid)
 			}
 		case socket.MentionTypeThread:
 			matrixMentions.Room = true

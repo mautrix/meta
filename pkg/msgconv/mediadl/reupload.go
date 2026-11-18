@@ -283,8 +283,13 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 			if err != nil {
 				return nil, fmt.Errorf("%w (audio to ogg/opus): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
+			info, err := os.Stat(replPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get info of converted file: %w", err)
+			}
 			params.FileName += ".ogg"
 			params.MimeType = "audio/ogg"
+			content.Info.Size = int(info.Size())
 		} else if needImageSize {
 			destRS := dest.(io.ReadSeeker)
 			_, err = destRS.Seek(0, io.SeekStart)

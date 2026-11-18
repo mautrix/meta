@@ -91,8 +91,8 @@ func (mhp *MatrixHTMLParser) Parse(ctx context.Context, content *event.MessageEv
 
 		socketMentions = append(socketMentions, socket.Mention{
 			ID:     mention.UserID,
-			Offset: mentionIndex,
-			Length: len("@" + mention.Name),
+			Offset: len(NewUTF16String(parsed[:mentionIndex])),
+			Length: len(NewUTF16String("@" + mention.Name)),
 			Type:   socket.MentionTypePerson,
 		})
 	}

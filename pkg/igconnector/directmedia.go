@@ -22,8 +22,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -255,9 +259,18 @@ func (ic *IGConnector) refreshBlobMedia(
 
 	var resultURL string
 	var updatedCount int
+	var targetInPage bool
+	var targetTypeName string
+	var targetAttachmentKeys []string
+	var targetXMA *slidetypes.XMAContent
 
 	// Process ALL fetched messages, updating their URLs in the database
 	for _, edge := range messages.Edges {
+		isTarget := edge.Node.ID == fbMsgID.ID
+		if isTarget {
+			targetInPage = true
+			targetTypeName = edge.Node.Content.TypeName
+		}
 		// Build attachment URL map: AttachmentFbid -> fresh URL
 		attachmentURLs := make(map[string]string)
 		switch content := edge.Node.Content.Content.(type) {
@@ -305,6 +318,12 @@ func (ic *IGConnector) refreshBlobMedia(
 			}
 		default:
 			continue
+		}
+		if isTarget {
+			targetAttachmentKeys = slices.Sorted(maps.Keys(attachmentURLs))
+			if xmaContent, ok := edge.Node.Content.Content.(*slidetypes.MessageContentXMA); ok {
+				targetXMA = xmaContent.XMA
+			}
 		}
 
 		if len(attachmentURLs) == 0 {
@@ -372,13 +391,42 @@ func (ic *IGConnector) refreshBlobMedia(
 		}
 	}
 
-	log.Debug().Int("updated_count", updatedCount).Msg("Finished refreshing blob media URLs")
+	logEvt := log.Debug().
+		Int("updated_count", updatedCount).
+		Int("fetched_count", len(messages.Edges)).
+		Bool("target_in_page", targetInPage).
+		Str("target_typename", targetTypeName).
+		Strs("target_attachment_keys", targetAttachmentKeys)
+	if targetXMA != nil {
+		logEvt = logEvt.
+			Str("target_xma_typename", targetXMA.Typename).
+			Strs("target_xma_set_fields", nonEmptyJSONFields(targetXMA))
+	}
+	if msgMeta, ok := msg.Metadata.(*metaid.MessageMetadata); ok {
+		logEvt = logEvt.Bool("stored_xma_fetched", msgMeta.XMAFetched)
+		if msgMeta.XMAFetchMeta != nil {
+			logEvt = logEvt.Bool("stored_xma_is_story", msgMeta.XMAFetchMeta.IsStory)
+		}
+	}
+	logEvt.Msg("Finished refreshing blob media URLs")
 
 	if resultURL != "" {
 		return resultURL, nil
 	}
 
 	return "", fmt.Errorf("target attachment not found in re-fetched messages")
+}
+
+func nonEmptyJSONFields(val any) []string {
+	rv := reflect.Indirect(reflect.ValueOf(val))
+	var fields []string
+	for i := range rv.NumField() {
+		name, _, _ := strings.Cut(rv.Type().Field(i).Tag.Get("json"), ",")
+		if name != "" && !rv.Field(i).IsZero() {
+			fields = append(fields, name)
+		}
+	}
+	return fields
 }
 
 // refreshXMAMedia fetches fresh URLs using Instagram API for XMA attachments
