@@ -51,9 +51,6 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 		"hpke_pubkey":          {base64.StdEncoding.EncodeToString(private.PublicKey().Bytes())},
 	}
 	headers := c.instagramAccountManagerHeaders()
-	if session.Device.MachineID != "" {
-		headers.Set("x-mid", session.Device.MachineID)
-	}
 	response, body, err := c.http.MakeRequest(ctx, instagramMobileAPIBase+"push/register/", http.MethodPost, headers, []byte(form.Encode()), types.FORM)
 	if err != nil {
 		c.checkResponseError(err)
@@ -70,6 +67,16 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 	if userID := response.Header.Get("ig-set-ig-u-ds-user-id"); userID != "" && userID != session.UserID {
 		return errors.New("native push response belongs to a different account")
 	}
+	c.updateNativeSession(ctx, response)
+	return nil
+}
+
+func (c *Client) updateNativeSession(ctx context.Context, response *http.Response) {
+	session := c.GetInstagramNativeSession()
+	if session == nil || response == nil {
+		return
+	}
+	previous := *session
 	if authorization := response.Header.Get("ig-set-authorization"); authorization != "" {
 		session.Authorization = authorization
 	}
@@ -79,6 +86,13 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 	if mid := response.Header.Get("ig-set-x-mid"); mid != "" {
 		session.Device.MachineID = mid
 	}
+	if *session == previous {
+		return
+	}
 	c.SetInstagramNativeSession(session)
-	return nil
+	if c.saveNativeSession != nil {
+		if err := c.saveNativeSession(ctx, session); err != nil {
+			c.log.Err(err).Msg("Failed to save updated native Instagram session")
+		}
+	}
 }

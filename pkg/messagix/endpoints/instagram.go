@@ -23,6 +23,7 @@ var InstagramEndpoints = map[string]string{
 	"fxcal_sso_login":             instaWebApiV1Url + "/fxcal/ig_sso_login/",
 	"thread":                      instaBaseUrl + "/direct/t/",
 	"graphql":                     instaBaseUrl + "/api/graphql",
+	"graphql_query":               instaBaseUrl + "/graphql/query",
 	"cookie_consent":              "https://graphql.instagram.com/graphql/",
 	"default_graphql":             "https://graphql.instagram.com/graphql/",
 
