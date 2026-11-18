@@ -360,7 +360,11 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			}
 			m.caaIdentifier = identifier
 			m.caaPassword = password
-			m.caaUserID = m.client.GetCookies().Get(cookies.IGCookieDSUserID)
+			loginClient := m.client
+			if loginClient == nil {
+				return nil, bridgev2.ErrLoginStepCancelled
+			}
+			m.caaUserID = loginClient.GetCookies().Get(cookies.IGCookieDSUserID)
 			return m.continueCAAFallback(ctx, map[string]string{
 				loginFieldIdentifier: identifier,
 				loginFieldPassword:   password,
