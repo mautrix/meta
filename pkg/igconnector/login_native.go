@@ -360,7 +360,11 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			}
 			m.caaIdentifier = identifier
 			m.caaPassword = password
-			m.caaUserID = m.client.GetCookies().Get(cookies.IGCookieDSUserID)
+			loginClient := m.client
+			if loginClient == nil {
+				return nil, bridgev2.ErrLoginStepCancelled
+			}
+			m.caaUserID = loginClient.GetCookies().Get(cookies.IGCookieDSUserID)
 			return m.continueCAAFallback(ctx, map[string]string{
 				loginFieldIdentifier: identifier,
 				loginFieldPassword:   password,
@@ -641,8 +645,12 @@ func (m *MetaNativeLogin) continueWebAccountManager(
 }
 
 func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, error) {
+	loginClient := m.client
+	if loginClient == nil {
+		return nil, bridgev2.ErrLoginStepCancelled
+	}
 	log := m.User.Log.With().Str("component", "instameow").Logger()
-	loginCookies := m.client.GetCookies()
+	loginCookies := loginClient.GetCookies()
 	if missingCookies := loginCookies.GetMissingCookieNames(); len(missingCookies) > 0 {
 		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missingCookies)
 	}
@@ -666,7 +674,7 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 	}
 	var nativeSession *types.InstagramNativeSession
 	if m.nativeLogin {
-		nativeSession = m.client.GetInstagramNativeSession()
+		nativeSession = loginClient.GetInstagramNativeSession()
 	}
 	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, loginCookies, nativeSession, m.nativeLogin, restoreTransport)
 	if challengeURL, ok := instameow.InstagramWebRedirectChallengeURL(err); ok {
