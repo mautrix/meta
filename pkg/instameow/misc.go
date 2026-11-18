@@ -85,6 +85,12 @@ func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string)
 	for _, key := range []string{"x-fb-lsd", "x-mid", "dpr", "viewport-width"} {
 		h.Del(key)
 	}
+	if h.Get("x-ig-www-claim") == "" {
+		h.Set("x-ig-www-claim", "0")
+	}
+	if siteData := c.configs.BrowserConfigTable.PolarisSiteData; siteData.SendDeviceIDHeader && siteData.DeviceID != "" {
+		h.Set("x-web-device-id", siteData.DeviceID)
+	}
 	h.Set("x-requested-with", "XMLHttpRequest")
 	referer := c.GetEndpoint("base_url")
 	if mediaShortcode != "" {
