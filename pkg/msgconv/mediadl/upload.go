@@ -37,6 +37,29 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
+func GetAudioInfo(content *event.MessageEventContent) (waveform []byte, duration int) {
+	duration = content.Info.Duration
+	audioInfo := content.MSC1767Audio
+	if audioInfo == nil {
+		return
+	}
+	if duration == 0 {
+		duration = audioInfo.Duration
+	}
+	if len(audioInfo.Waveform) == 0 {
+		return
+	}
+	divisor := 1
+	if slices.Max(audioInfo.Waveform) > 256 {
+		divisor = 4
+	}
+	waveform = make([]byte, len(audioInfo.Waveform))
+	for i, part := range audioInfo.Waveform {
+		waveform[i] = byte(min(max(part/divisor, 0), 255))
+	}
+	return
+}
+
 func ReuploadFileToMeta(
 	ctx context.Context,
 	client *httpclient.HTTPClient,
@@ -55,22 +78,18 @@ func ReuploadFileToMeta(
 		mime = http.DetectContentType(data)
 	}
 	isVoice := content.MSC3245Voice != nil
+	waveform, duration := GetAudioInfo(content)
 	var waveformData *httpclient.WaveformData
-	if isVoice && content.MSC1767Audio != nil && len(content.MSC1767Audio.Waveform) > 0 {
-		waveform := content.MSC1767Audio.Waveform
+	if isVoice && len(waveform) > 0 {
 		waveformData = &httpclient.WaveformData{
 			Amplitudes:        make([]float64, len(waveform)),
 			SamplingFrequency: 9,
 		}
-		if content.MSC1767Audio.Duration > 0 {
-			waveformData.SamplingFrequency = max(int(math.Round(float64(len(waveform))*1000/float64(content.MSC1767Audio.Duration))), 1)
-		}
-		scale := 1024.0
-		if slices.Max(waveform) <= 256 {
-			scale = 256.0
+		if duration > 0 {
+			waveformData.SamplingFrequency = max(int(math.Round(float64(len(waveform))*1000/float64(duration))), 1)
 		}
 		for i, amp := range waveform {
-			waveformData.Amplitudes[i] = max(min(float64(amp)/scale, 1.0), 0.0)
+			waveformData.Amplitudes[i] = float64(amp) / 255
 		}
 	}
 	if client.GetPlatform().IsMessengerLite() && nativeSession != nil {
@@ -79,7 +98,7 @@ func ReuploadFileToMeta(
 			MimeType:    mime,
 			MediaData:   data,
 			IsVoiceClip: isVoice,
-			DurationMS:  content.Info.Duration,
+			DurationMS:  duration,
 		})
 		if err != nil {
 			return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
