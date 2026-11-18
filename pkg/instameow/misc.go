@@ -1,6 +1,7 @@
 package instameow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -54,7 +55,7 @@ func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string,
 	headers.Set("x-requested-with", "XMLHttpRequest")
 	headers.Set("Referer", c.GetEndpoint("base_url"))
 
-	_, body, err := c.http.MakeRequest(
+	resp, body, err := c.http.MakeRequest(
 		ctx, c.GetEndpoint("web_push"), http.MethodPost, headers, []byte(form.Encode()), types.FORM,
 	)
 	if err != nil {
@@ -68,7 +69,8 @@ func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string,
 
 	err = json.Unmarshal(body, resBody)
 	if err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+		return fmt.Errorf("failed to parse response (status %d, content type %q, title %q): %w",
+			resp.StatusCode, resp.Header.Get("Content-Type"), htmlTitle(body), err)
 	} else if resBody.Status != "ok" {
 		return fmt.Errorf("unexpected response status: %s", resBody.Status)
 	}
@@ -146,4 +148,17 @@ func (c *Client) FetchReel(ctx context.Context, reelIDs []string, mediaID string
 	}
 
 	return reelInfo, nil
+}
+
+func htmlTitle(body []byte) string {
+	_, after, found := bytes.Cut(body, []byte("<title"))
+	if !found {
+		return ""
+	}
+	_, after, found = bytes.Cut(after, []byte(">"))
+	if !found {
+		return ""
+	}
+	title, _, _ := bytes.Cut(after, []byte("</title>"))
+	return string(bytes.TrimSpace(title[:min(len(title), 200)]))
 }
