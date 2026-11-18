@@ -326,6 +326,8 @@ func (m *MetaNativeLogin) submitWebCredentials(
 			return m.start(ctx, "The request did not complete on this device. Please try again.")
 		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointUnsupported) {
 			return nil, errInstagramWebCheckpointUnsupported
+		} else if errors.Is(err, instameow.ErrInstagramPasskeyRequired) {
+			return nil, errInstagramPasskeyRequired
 		} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 			return nil, errInstagramWebCheckpointCAPTCHA
 		} else if errors.Is(err, instameow.ErrInstagramWebLoginRejected) {
@@ -422,8 +424,6 @@ func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) (*bridg
 			return nil, errInstagramRiskyContactPoint
 		case "auth_platform/no_challenge":
 			return nil, errInstagramNoChallenge
-		case "auth_platform/passkey":
-			return nil, errInstagramPasskeyRequired
 		}
 	}
 	return m.instagramWebviewStep(challengeURL), nil
@@ -497,6 +497,8 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 		}
 		m.User.Log.Info().Err(err).Msg("Instagram rejected web login after AuthPlatform, asking for credentials again")
 		return instagramCredentialsStep("Instagram couldn't sign you in. Check your account in Instagram before trying again."), nil
+	} else if errors.Is(err, instameow.ErrInstagramPasskeyRequired) {
+		return nil, errInstagramPasskeyRequired
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointCAPTCHA) {
 		return nil, errInstagramWebCheckpointCAPTCHA
 	} else if errors.Is(err, httpclient.ErrRateLimited) {

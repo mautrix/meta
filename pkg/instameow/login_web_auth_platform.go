@@ -39,6 +39,7 @@ var (
 	instagramAPApprovalState                = instagramAuthPlatformOperation{"AuthPlatformApproveFromAnotherDevicePollingMutation", "24626773746933809", "xfb_auth_platform_afad_approval_state"}
 	instagramAPPasskey                      = instagramAuthPlatformOperation{"AuthPlatformPasskeyViewQuery", "25777997685217823", "xfb_auth_platform_passkey_auth_options"}
 	ErrInstagramWebCheckpointCAPTCHA        = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
+	ErrInstagramPasskeyRequired             = errors.New("instagram requires a passkey and offered no other way")
 	errInstagramAuthPlatformLoggedOut       = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebLoginRejected)
 	ErrInstagramAuthPlatformApprovalExpired = errors.New("instagram login approval expired")
 )
@@ -288,7 +289,8 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			return c.prepareInstagramAuthPlatformCaptcha(body)
 		} else if target.Path == "/auth_platform/passkey/" {
 			if triedPasskey {
-				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
+				c.webAuthPlatform = nil
+				return ErrInstagramPasskeyRequired
 			}
 			triedPasskey = true
 			apc := target.Query().Get("apc")
@@ -301,7 +303,8 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			if err != nil && !errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
 				return err
 			} else if rawURL = data.Get("redirect_uri").String(); rawURL == "" {
-				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
+				c.webAuthPlatform = nil
+				return ErrInstagramPasskeyRequired
 			}
 			s.referrer = s.url.String()
 			continue
