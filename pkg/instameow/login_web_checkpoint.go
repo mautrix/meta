@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -475,7 +476,7 @@ func (c *Client) instagramWebCheckpointRequest(
 								errors.Is(requestErr, context.Canceled) || errors.Is(requestErr, context.DeadlineExceeded) {
 								return response, body, requestErr
 							}
-							return response, body, ErrInstagramWebCheckpointRequestFailed
+							return response, body, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, requestErr)
 						}
 						c.log.Debug().Int("status_code", response.StatusCode).Str("redirect_source", "final_url").
 							Fields(instagramAuthPlatformURLDiagnostics(requestURL, response.Request.URL.String())).Msg("Rejected Instagram AuthPlatform redirect")
@@ -494,5 +495,5 @@ func (c *Client) instagramWebCheckpointRequest(
 		errors.Is(requestErr, context.Canceled) || errors.Is(requestErr, context.DeadlineExceeded) {
 		return response, body, requestErr
 	}
-	return response, body, ErrInstagramWebCheckpointRequestFailed
+	return response, body, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, requestErr)
 }
