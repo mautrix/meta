@@ -171,8 +171,11 @@ func (ic *IGConnector) refreshMediaURL(
 	}
 	client := ul.Client.(*IGClient)
 
-	client.mediaRefreshLock.Lock(msg.Room.ID)
-	defer client.mediaRefreshLock.Unlock(msg.Room.ID)
+	if info.IsXMA() {
+		defer client.messageRefreshLock.WithLock(mediaInfo.MessageID)()
+	} else {
+		defer client.mediaRefreshLock.WithLock(msg.Room.ID)()
+	}
 	expiredURL := info.URL
 	msg, info, err := ic.getDirectMediaMeta(ctx, mediaInfo)
 	if err != nil {
@@ -339,8 +342,10 @@ func (ic *IGConnector) refreshBlobMedia(
 
 		// Look up all message parts in the database for this message
 		networkMsgID := metaid.MakeFBMessageID(edge.Node.ID)
+		unlock := client.messageRefreshLock.WithLock(networkMsgID)
 		dbMessages, err := ic.Bridge.DB.Message.GetAllPartsByID(ctx, msg.Room.Receiver, networkMsgID)
 		if err != nil {
+			unlock()
 			log.Warn().Err(err).Str("message_id", edge.Node.ID).Msg("Failed to get message parts from database")
 			continue
 		}
@@ -396,6 +401,7 @@ func (ic *IGConnector) refreshBlobMedia(
 				resultURL = freshURL
 			}
 		}
+		unlock()
 	}
 
 	logEvt := log.Debug().
