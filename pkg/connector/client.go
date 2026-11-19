@@ -186,6 +186,9 @@ func (m *MetaClient) ensureMessagixClient() {
 		)
 		m.Client.SetEventHandler(m.handleMetaEvent)
 		m.Client.MessengerLite.SetNativeSession(m.LoginMeta.NativeSession)
+		if m.Main.Config.ProxyOther && (m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "") {
+			m.Client.GetHTTP().GetNewProxy = m.Main.getProxy
+		}
 	}
 }
 
@@ -262,15 +265,12 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 	} else {
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
-	if m.Main.Config.ProxyOther && (m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "") {
-		cli.GetHTTP().GetNewProxy = m.Main.getProxy
-		if !cli.GetHTTP().UpdateProxy("connect") {
-			m.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateUnknownError,
-				Error:      MetaProxyUpdateFail,
-			})
-			return
-		}
+	if !cli.GetHTTP().UpdateProxy("connect") {
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      MetaProxyUpdateFail,
+		})
+		return
 	}
 	m.initialTableHandled.Store(false)
 	m.permanentErrored.Store(false)
@@ -700,7 +700,14 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
-	if cli := m.Client; cli != nil && m.LoginMeta.NativeSession != nil {
+	cli := m.Client
+	if cli == nil {
+		m.ensureMessagixClient()
+		if cli = m.Client; cli != nil && !cli.GetHTTP().UpdateProxy("logout") {
+			cli = nil
+		}
+	}
+	if cli != nil && m.LoginMeta.NativeSession != nil {
 		if token := m.LoginMeta.NativePushToken; token != "" {
 			if err := cli.Facebook.UnregisterNativePushNotifications(ctx, m.LoginMeta.NativeSession, token); err != nil {
 				zerolog.Ctx(ctx).Err(err).Msg("Failed to unregister native push")
