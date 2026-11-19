@@ -287,6 +287,9 @@ func (c *Client) handleInstagramCAAWebLoginResponse(ctx context.Context, body []
 				c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login"))}
 				if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
 					c.webAuthPlatform = nil
+					if challengeURL, ok := InstagramWebChallengeURL(err); ok {
+						return &InstagramWebTwoFactorChallenge{ChallengeURL: challengeURL}, nil
+					}
 					// An interactive verification the bridge cannot drive itself is handed
 					// to a client webview via the trusted instagram.com URL. Every other
 					// error (credential rejection, rate limits, cancellation) is preserved.
