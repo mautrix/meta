@@ -186,6 +186,7 @@ var ErrSocketAlreadyOpen = errors.New("dgw: socket is already open")
 var ErrDial = errors.New("dgw: failed to dial socket")
 var ErrPongTimeout = errors.New("dgw: pong timeout")
 var ErrUnauthorized = errors.New("dgw: unauthorized")
+var ErrDeauthFrame = errors.New("dgw: received deauth frame")
 
 func IsUnauthorized(err error) bool {
 	return errors.Is(err, ErrUnauthorized) || websocket.CloseStatus(err) == CloseStatusUnauthorized
@@ -400,7 +401,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 		case *DeauthFrame:
 			s.Log.Debug().Msg("Received deauth frame")
 			if conn.extendedData {
-				fatalError(ErrUnauthorized)
+				fatalError(ErrDeauthFrame)
 			}
 		case *UnsupportedFrame:
 			s.Log.Warn().
