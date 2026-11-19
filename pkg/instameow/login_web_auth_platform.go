@@ -146,12 +146,14 @@ func resolveInstagramAuthPlatformWebviewURL(base, raw string) (*url.URL, bool) {
 }
 
 func (c *Client) instagramAuthPlatformUnsupportedRoute(base, raw string) error {
-	target, ok := resolveInstagramAuthPlatformWebviewURL(base, raw)
-	if !ok {
-		return ErrInstagramWebCheckpointUnsupported
+	if target, ok := resolveInstagramAuthPlatformWebviewURL(base, raw); ok {
+		c.webAuthPlatform = nil
+		return &instagramAuthPlatformWebviewHandoff{url: target.String()}
+	} else if checkpointURL, ok := resolveInstagramWebCheckpointURL(base, raw); ok {
+		c.webAuthPlatform = nil
+		return &instagramAuthPlatformWebviewHandoff{url: checkpointURL}
 	}
-	c.webAuthPlatform = nil
-	return &instagramAuthPlatformWebviewHandoff{url: target.String()}
+	return ErrInstagramWebCheckpointUnsupported
 }
 
 func instagramAuthPlatformAccountError(target *url.URL) error {
