@@ -47,11 +47,12 @@ var MaxConnectionRetryInterval = 60 * time.Second
 var MaxDeltaAttempts = 5
 
 type threadDeltaQueue struct {
-	deltas   []*slidetypes.Delta
-	attempts int
-	retry    bool
-	seqID    int64
-	seqIDTS  time.Time
+	deltas      []*slidetypes.Delta
+	attempts    int
+	rateLimited bool
+	retry       bool
+	seqID       int64
+	seqIDTS     time.Time
 }
 
 func (c *Client) makeNewSocket() {
@@ -324,6 +325,15 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal delta: %w", err)
 		}
+		var oldestRateLimited *threadDeltaQueue
+		for _, queue := range c.deltaQueues {
+			if queue.rateLimited && (oldestRateLimited == nil || queue.seqID < oldestRateLimited.seqID) {
+				oldestRateLimited = queue
+			}
+		}
+		if oldestRateLimited != nil {
+			oldestRateLimited.retry = true
+		}
 		var saveSeqID bool
 		for _, deltas := range deltaWrappers {
 			for _, delta := range deltas.Data.SlideDeltaProcessor {
@@ -347,16 +357,13 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 				}
 			}
 		}
-		if oldest := c.oldestDeltaQueue(); oldest != nil {
-			oldest.retry = true
-			for threadID, queue := range c.deltaQueues {
-				if queue.retry {
-					if err = c.drainDeltaQueue(ctx, threadID); err != nil {
-						return err
-					}
+		for threadID, queue := range c.deltaQueues {
+			if queue.retry {
+				if err = c.drainDeltaQueue(ctx, threadID); err != nil {
+					return err
 				}
+				saveSeqID = true
 			}
-			saveSeqID = true
 		}
 		if saveSeqID {
 			return c.saveSeqID(ctx)
@@ -381,7 +388,9 @@ func (c *Client) drainDeltaQueue(ctx context.Context, threadID string) error {
 		if err != nil {
 			if ctx.Err() != nil {
 				return err
-			} else if !errors.Is(err, httpclient.ErrRateLimited) {
+			}
+			queue.rateLimited = errors.Is(err, httpclient.ErrRateLimited)
+			if !queue.rateLimited {
 				queue.attempts++
 			}
 			if queue.attempts < MaxDeltaAttempts {
@@ -408,19 +417,12 @@ func (c *Client) drainDeltaQueue(ctx context.Context, threadID string) error {
 	return nil
 }
 
-func (c *Client) oldestDeltaQueue() (oldest *threadDeltaQueue) {
-	for _, queue := range c.deltaQueues {
-		if oldest == nil || queue.seqID < oldest.seqID {
-			oldest = queue
-		}
-	}
-	return
-}
-
 func (c *Client) saveSeqID(ctx context.Context) error {
 	seqID, seqIDTS := c.seqID, c.seqIDTS
-	if oldest := c.oldestDeltaQueue(); oldest != nil && oldest.seqID < seqID {
-		seqID, seqIDTS = oldest.seqID, oldest.seqIDTS
+	for _, queue := range c.deltaQueues {
+		if queue.seqID < seqID {
+			seqID, seqIDTS = queue.seqID, queue.seqIDTS
+		}
 	}
 	err := c.eventHandler(ctx, &slidetypes.SeqIDUpdate{
 		SeqID:          seqID,
