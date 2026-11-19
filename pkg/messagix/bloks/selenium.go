@@ -842,6 +842,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_step_verification.entrypoint":
 				newState = b.profile.twoStepEntrypointState(page)
 				b.profile.logTwoStepEntrypoint(log, page, newState)
+				b.MFACanGoBack = hasTryAnotherWay(page)
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
 				"com.bloks.www.caa.ar.sms_captcha",
 				"com.bloks.www.ap.anti_scripting.text_captcha":
@@ -2922,6 +2923,13 @@ func (profile browserPlatformProfile) twoStepEntrypointState(page *BloksBundle) 
 		return StatePasskeyPage
 	}
 	return StateMFALandingPage
+}
+
+func hasTryAnotherWay(page *BloksBundle) bool {
+	if page == nil {
+		return false
+	}
+	return page.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).FindContainingButton() != nil
 }
 
 func isPasskeyPrompt(page *BloksBundle) bool {
