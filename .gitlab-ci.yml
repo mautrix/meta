@@ -71,21 +71,11 @@ variables:
   - export CPATH=$(brew --prefix)/include
   script:
   - go build -ldflags "$GO_LDFLAGS" -o $BINARY_NAME ./cmd/$BINARY_NAME
-  - install_name_tool -change $(brew --prefix)/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3.dylib $BINARY_NAME
-  - install_name_tool -add_rpath @executable_path $BINARY_NAME
-  - install_name_tool -add_rpath /opt/homebrew/opt/libolm/lib $BINARY_NAME
-  - install_name_tool -add_rpath /usr/local/opt/libolm/lib $BINARY_NAME
   - go build -ldflags "$GO_LDFLAGS" -o $IG_BINARY_NAME ./cmd/$IG_BINARY_NAME
-  - install_name_tool -change $(brew --prefix)/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3.dylib $IG_BINARY_NAME
-  - install_name_tool -add_rpath @executable_path $IG_BINARY_NAME
-  - install_name_tool -add_rpath /opt/homebrew/opt/libolm/lib $IG_BINARY_NAME
-  - install_name_tool -add_rpath /usr/local/opt/libolm/lib $IG_BINARY_NAME
-  - cp $(brew --prefix)/opt/libolm/lib/libolm.3.dylib .
   artifacts:
     paths:
     - $BINARY_NAME
     - $IG_BINARY_NAME
-    - libolm.3.dylib
 
 build amd64:
   <<: *build
