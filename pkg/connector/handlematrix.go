@@ -29,6 +29,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 var (
@@ -812,18 +813,32 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 			return false, fmt.Errorf("failed to download avatar: %w", err)
 		}
 		mimeType := http.DetectContentType(data)
-		resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
-			Filename:  "avatar.jpg",
-			MimeType:  mimeType,
-			MediaData: data,
-		})
-		if err != nil {
-			return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
-		}
-
-		imageID = resp.Payload.RealMetadata.GetFbId()
-		if imageID == 0 {
-			return false, fmt.Errorf("no image ID received from upload")
+		if m.Client.GetPlatform().IsMessengerLite() {
+			session := m.Client.MessengerLite.GetNativeSession()
+			if session == nil {
+				return false, mediadl.ErrNoNativeSession
+			}
+			imageID, err = m.Client.GetHTTP().SendRUploadRequest(ctx, session, &httpclient.RUploadMedia{
+				Filename:  "avatar.jpg",
+				MimeType:  mimeType,
+				MediaData: data,
+			})
+			if err != nil {
+				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
+			}
+		} else {
+			resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
+				Filename:  "avatar.jpg",
+				MimeType:  mimeType,
+				MediaData: data,
+			})
+			if err != nil {
+				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
+			}
+			imageID = resp.Payload.RealMetadata.GetFbId()
+			if imageID == 0 {
+				return false, fmt.Errorf("no image ID received from upload")
+			}
 		}
 	}
 	_, err := m.Client.ExecuteTasks(ctx, &socket.SetThreadImageTask{

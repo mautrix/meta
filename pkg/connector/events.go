@@ -53,6 +53,8 @@ const (
 	folderMessengerMarketingMessage = "messenger_marketing_message"
 )
 
+const marketplaceFolderThreadKey = -12
+
 type VerifyThreadExistsEvent struct {
 	*table.LSVerifyThreadExists
 	m *MetaClient
@@ -94,7 +96,13 @@ func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
 	}
 	// Minimal info is enough for DMs, but other threads only get members and a name from
 	// the actual thread info, so let the resync caused by the request above create those.
-	return evt.ThreadType.IsOneToOne()
+	// Meta often doesn't answer that request for new marketplace threads, so create them here.
+	return evt.ThreadType.IsOneToOne() || evt.isMarketplace()
+}
+
+func (evt *VerifyThreadExistsEvent) isMarketplace() bool {
+	return evt.ThreadType == table.MARKETPLACE ||
+		(evt.ParentThreadKey == marketplaceFolderThreadKey && evt.ThreadType == table.GROUP_THREAD)
 }
 
 func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {
@@ -117,7 +125,11 @@ func (evt *VerifyThreadExistsEvent) GetSender() bridgev2.EventSender {
 }
 
 func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	chatInfo := evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType, evt.ParentThreadKey)
+	threadType := evt.ThreadType
+	if evt.isMarketplace() {
+		threadType = table.MARKETPLACE
+	}
+	chatInfo := evt.m.makeMinimalChatInfo(evt.ThreadKey, threadType, evt.ParentThreadKey)
 	chatInfo.MessageRequest = ptr.Ptr(evt.FolderName == folderPending)
 	return chatInfo, nil
 }

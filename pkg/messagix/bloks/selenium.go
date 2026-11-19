@@ -16,6 +16,7 @@ import (
 	"image"
 	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -144,9 +145,9 @@ func (comp *BloksTreeComponent) FindContainingButton() *BloksTreeComponent {
 	})
 }
 
-func FilterByComponent(compid BloksComponentID) func(comp *BloksTreeComponent) bool {
+func FilterByComponent(compids ...BloksComponentID) func(comp *BloksTreeComponent) bool {
 	return func(comp *BloksTreeComponent) bool {
-		return comp.ComponentID == compid
+		return slices.Contains(compids, comp.ComponentID)
 	}
 }
 
@@ -156,6 +157,21 @@ func FilterByAttribute(compid BloksComponentID, attr BloksAttributeID, value str
 			return false
 		}
 		return comp.GetAttribute(attr) == value
+	}
+}
+
+func FilterByAttributePrefix(compid BloksComponentID, attr BloksAttributeID, prefixes ...string) func(comp *BloksTreeComponent) bool {
+	return func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != compid {
+			return false
+		}
+		value := comp.GetAttribute(attr)
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(value, prefix) {
+				return true
+			}
+		}
+		return false
 	}
 }
 
@@ -731,18 +747,22 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 		DeviceNetworkInfo: genericDeviceNetworkInfo,
 		EncryptPassword:   cfg.EncryptPassword,
 		SignRequestData: func(ctx context.Context, data any) (any, error) {
-			payload, err := json.Marshal(data)
-			if err != nil {
-				return nil, fmt.Errorf("marshal request data: %w", err)
+			payload, ok := data.(string)
+			if !ok {
+				payloadBytes, err := json.Marshal(data)
+				if err != nil {
+					return nil, fmt.Errorf("marshal request data: %w", err)
+				}
+				payload = string(payloadBytes)
 			}
-			hash := sha256.Sum256(payload)
+			hash := sha256.Sum256([]byte(payload))
 			sig, err := ecdsa.SignASN1(rand.Reader, attestationKey, hash[:])
 			if err != nil {
 				return nil, fmt.Errorf("sign request data: %w", err)
 			}
 			return map[string]any{
 				"keyHash":   hex.EncodeToString(attestationKeyHash[:]),
-				"data":      base64.StdEncoding.EncodeToString(payload),
+				"data":      base64.StdEncoding.EncodeToString([]byte(payload)),
 				"signature": base64.StdEncoding.EncodeToString(sig),
 			}, nil
 		},
@@ -828,6 +848,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_step_verification.entrypoint":
 				newState = b.profile.twoStepEntrypointState(page)
 				b.profile.logTwoStepEntrypoint(log, page, newState)
+				b.MFACanGoBack = hasTryAnotherWay(page)
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
 				"com.bloks.www.caa.ar.sms_captcha",
 				"com.bloks.www.ap.anti_scripting.text_captcha":
@@ -1062,12 +1083,7 @@ var initiateViewMethods = map[string]string{
 // canonical name, the names in display order, and how many recognised but
 // unsupported methods were skipped.
 func (bb *BloksBundle) FindMFAMethods(log *zerolog.Logger) (map[string]*BloksTreeComponent, []string, int) {
-	if bb.FindDescendant(func(comp *BloksTreeComponent) bool {
-		if comp.ComponentID != "bk.data.TextSpan" {
-			return false
-		}
-		return strings.HasPrefix(comp.GetAttribute("text"), "Your session expired")
-	}) != nil {
+	if bb.hasSessionExpiredWarning() {
 		log.Error().Msg("Got session expired warning on MFA screen")
 	}
 
@@ -1122,6 +1138,15 @@ func (bb *BloksBundle) FindMFAMethods(log *zerolog.Logger) (map[string]*BloksTre
 		methodNames = append(methodNames, method)
 	}
 	return foundMethods, methodNames, numIgnored
+}
+
+func (bb *BloksBundle) hasSessionExpiredWarning() bool {
+	return bb.FindDescendant(func(comp *BloksTreeComponent) bool {
+		if comp.ComponentID != "bk.data.TextSpan" {
+			return false
+		}
+		return strings.HasPrefix(comp.GetAttribute("text"), "Your session expired")
+	}) != nil
 }
 
 func (b *Browser) getCodeInstructions() string {
@@ -1875,7 +1900,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateReCaptchaPage:
-		webview := b.CurrentPage.FindDescendantIncludingEmbedded(FilterByComponent("webview"))
+		webview := b.CurrentPage.FindDescendantIncludingEmbedded(FilterByComponent("webview", "iosWebview"))
 		if webview == nil {
 			return nil, fmt.Errorf("can't find reCAPTCHA webview")
 		}
@@ -1942,6 +1967,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateChooseMFAPage:
+		if b.profile.hasExpiredMFAPicker(b.CurrentPage) {
+			return nil, loginerrors.SessionExpired
+		}
 		foundMethods, methodNames, numIgnored := b.profile.findMFAMethods(b.CurrentPage, log)
 		b.MFACanGoBack = false
 
@@ -2066,23 +2094,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		b.profile.finishCodeSubmission(b, StateTOTPPage, actionRPCCountBefore)
 
 	case StateAFADPage:
-		notif := b.CurrentPage.FindDescendant(func(comp *BloksTreeComponent) bool {
-			if comp.ComponentID != "bk.data.TextSpan" {
-				return false
-			}
-			for _, prefix := range []string{
-				// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
-				"We sent a",
-				"Open the notification",
-				"You need to sign in on",
-				"Check your notifications",
-			} {
-				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
-					return true
-				}
-			}
-			return false
-		})
+		notif := b.CurrentPage.FindDescendant(FilterByAttributePrefix(
+			"bk.data.TextSpan", "text",
+			// Covers both "We sent a notification" and "We sent an Instagram notification"/etc
+			"We sent a",
+			"Open the notification",
+			"You need to sign in on",
+		))
+		if notif == nil {
+			notif = b.CurrentPage.FindDescendant(FilterByAttributePrefix("bk.data.TextSpan", "text", "Check your notifications"))
+		}
 		if notif == nil {
 			return nil, fmt.Errorf("couldn't find AFAD notification info")
 		}
@@ -2908,6 +2929,13 @@ func (profile browserPlatformProfile) twoStepEntrypointState(page *BloksBundle) 
 		return StatePasskeyPage
 	}
 	return StateMFALandingPage
+}
+
+func hasTryAnotherWay(page *BloksBundle) bool {
+	if page == nil {
+		return false
+	}
+	return page.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).FindContainingButton() != nil
 }
 
 func isPasskeyPrompt(page *BloksBundle) bool {
