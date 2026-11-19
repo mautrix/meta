@@ -16,6 +16,7 @@ import (
 	"image"
 	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -144,9 +145,9 @@ func (comp *BloksTreeComponent) FindContainingButton() *BloksTreeComponent {
 	})
 }
 
-func FilterByComponent(compid BloksComponentID) func(comp *BloksTreeComponent) bool {
+func FilterByComponent(compids ...BloksComponentID) func(comp *BloksTreeComponent) bool {
 	return func(comp *BloksTreeComponent) bool {
-		return comp.ComponentID == compid
+		return slices.Contains(compids, comp.ComponentID)
 	}
 }
 
@@ -1893,7 +1894,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateReCaptchaPage:
-		webview := b.CurrentPage.FindDescendantIncludingEmbedded(FilterByComponent("webview"))
+		webview := b.CurrentPage.FindDescendantIncludingEmbedded(FilterByComponent("webview", "iosWebview"))
 		if webview == nil {
 			return nil, fmt.Errorf("can't find reCAPTCHA webview")
 		}
