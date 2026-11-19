@@ -49,7 +49,6 @@ var MaxDeltaAttempts = 5
 type threadDeltaQueue struct {
 	deltas   []*slidetypes.Delta
 	attempts int
-	retry    bool
 	seqID    int64
 	seqIDTS  time.Time
 }
@@ -329,7 +328,6 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 			for _, delta := range deltas.Data.SlideDeltaProcessor {
 				if queue, ok := c.deltaQueues[delta.ThreadIGID]; ok {
 					queue.deltas = append(queue.deltas, delta)
-					queue.retry = true
 				} else {
 					c.deltaQueues[delta.ThreadIGID] = &threadDeltaQueue{
 						deltas:  []*slidetypes.Delta{delta},
@@ -347,12 +345,11 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 				}
 			}
 		}
-		for threadID, queue := range c.deltaQueues {
-			if queue.retry {
-				if err = c.drainDeltaQueue(ctx, threadID); err != nil {
-					return err
-				}
+		if threadID, queue := c.oldestDeltaQueue(); queue != nil {
+			if err = c.drainDeltaQueue(ctx, threadID); err != nil {
+				return err
 			}
+			saveSeqID = true
 		}
 		if saveSeqID {
 			return c.saveSeqID(ctx)
@@ -370,7 +367,6 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 
 func (c *Client) drainDeltaQueue(ctx context.Context, threadID string) error {
 	queue := c.deltaQueues[threadID]
-	queue.retry = false
 	for len(queue.deltas) > 0 {
 		delta := queue.deltas[0]
 		err := c.eventHandler(ctx, delta)
@@ -387,7 +383,7 @@ func (c *Client) drainDeltaQueue(ctx context.Context, threadID string) error {
 					Str("thread_fbid", threadID).
 					Int("attempts", queue.attempts).
 					Int("queued_deltas", len(queue.deltas)).
-					Msg("Failed to handle delta, holding thread until its next delta or reconnect")
+					Msg("Failed to handle delta, holding thread until a later delta or reconnect")
 				return nil
 			}
 			c.log.Err(err).
@@ -404,12 +400,19 @@ func (c *Client) drainDeltaQueue(ctx context.Context, threadID string) error {
 	return nil
 }
 
+func (c *Client) oldestDeltaQueue() (oldestID string, oldest *threadDeltaQueue) {
+	for threadID, queue := range c.deltaQueues {
+		if oldest == nil || queue.seqID < oldest.seqID {
+			oldestID, oldest = threadID, queue
+		}
+	}
+	return
+}
+
 func (c *Client) saveSeqID(ctx context.Context) error {
 	seqID, seqIDTS := c.seqID, c.seqIDTS
-	for _, queue := range c.deltaQueues {
-		if queue.seqID < seqID {
-			seqID, seqIDTS = queue.seqID, queue.seqIDTS
-		}
+	if _, oldest := c.oldestDeltaQueue(); oldest != nil && oldest.seqID < seqID {
+		seqID, seqIDTS = oldest.seqID, oldest.seqIDTS
 	}
 	err := c.eventHandler(ctx, &slidetypes.SeqIDUpdate{
 		SeqID:          seqID,
