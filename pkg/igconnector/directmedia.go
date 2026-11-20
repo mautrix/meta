@@ -71,38 +71,13 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	}
 
 	switch mediaInfo.Type {
-	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaXMA:
+	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaXMA, metaid.DirectMediaTypeMetaXMACarousel:
 		// ok
 	default:
 		return nil, fmt.Errorf("unknown media type: %v", mediaInfo.Type)
 	}
 
-	var msg *database.Message
-	if mediaInfo.Type.IncludesPartID() {
-		msg, err = ic.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
-	} else {
-		msg, err = ic.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
-	}
-	if err != nil {
-		return nil, err
-	} else if msg == nil {
-		zerolog.Ctx(ctx).Trace().Any("media_info", mediaInfo).Msg("Message not found in database")
-		return nil, fmt.Errorf("message not found")
-	}
-
-	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
-	var dmm json.RawMessage
-	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
-		dmm = msgMeta.XMADirectMediaMeta
-	} else {
-		dmm = msgMeta.DirectMediaMeta
-	}
-	if dmm == nil {
-		return nil, fmt.Errorf("message does not have direct media metadata")
-	}
-
-	var info *mediadl.DirectMediaMeta
-	err = json.Unmarshal(dmm, &info)
+	msg, info, err := ic.getDirectMediaMeta(ctx, mediaInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +119,45 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 	}, nil
 }
 
+func (ic *IGConnector) getDirectMediaMeta(ctx context.Context, mediaInfo *metaid.MediaInfo) (*database.Message, *mediadl.DirectMediaMeta, error) {
+	var msg *database.Message
+	var err error
+	if mediaInfo.Type.IncludesPartID() {
+		msg, err = ic.Bridge.DB.Message.GetPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID, mediaInfo.PartID)
+	} else {
+		msg, err = ic.Bridge.DB.Message.GetFirstPartByID(ctx, mediaInfo.UserID, mediaInfo.MessageID)
+	}
+	if err != nil {
+		return nil, nil, err
+	} else if msg == nil {
+		zerolog.Ctx(ctx).Trace().Any("media_info", mediaInfo).Msg("Message not found in database")
+		return nil, nil, fmt.Errorf("message not found")
+	}
+
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	var dmm json.RawMessage
+	switch mediaInfo.Type {
+	case metaid.DirectMediaTypeMetaXMA:
+		dmm = msgMeta.XMADirectMediaMeta
+	case metaid.DirectMediaTypeMetaXMACarousel:
+		if mediaInfo.CarouselIndex < len(msgMeta.XMACarouselMediaMeta) {
+			dmm = msgMeta.XMACarouselMediaMeta[mediaInfo.CarouselIndex]
+		}
+	default:
+		dmm = msgMeta.DirectMediaMeta
+	}
+	if dmm == nil {
+		return nil, nil, fmt.Errorf("message does not have direct media metadata")
+	}
+
+	var info *mediadl.DirectMediaMeta
+	err = json.Unmarshal(dmm, &info)
+	if err != nil {
+		return nil, nil, err
+	}
+	return msg, info, nil
+}
+
 // refreshMediaURL routes to the appropriate refresh method based on attachment type
 func (ic *IGConnector) refreshMediaURL(
 	ctx context.Context,
@@ -157,27 +171,23 @@ func (ic *IGConnector) refreshMediaURL(
 	}
 	client := ul.Client.(*IGClient)
 
+	if info.IsXMA() {
+		defer client.messageRefreshLock.WithLock(mediaInfo.MessageID)()
+	} else {
+		defer client.mediaRefreshLock.WithLock(msg.Room.ID)()
+	}
+	expiredURL := info.URL
+	msg, info, err := ic.getDirectMediaMeta(ctx, mediaInfo)
+	if err != nil {
+		return "", err
+	} else if info.URL != expiredURL {
+		return info.URL, nil
+	}
+
 	// Route to appropriate refresh method based on attachment type
 	if info.IsXMA() {
-		refreshedURL, err := ic.refreshXMAMedia(ctx, client, info)
-		if err != nil {
-			return "", err
-		}
-		info.URL = refreshedURL
-		if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
-			msg.Metadata.(*metaid.MessageMetadata).XMADirectMediaMeta, err = json.Marshal(info)
-		} else {
-			msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta, err = json.Marshal(info)
-		}
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to marshal updated direct media metadata")
-		} else if err = ic.Bridge.DB.Message.Update(ctx, msg); err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to update message in database after refreshing XMA media")
-		} else {
-			zerolog.Ctx(ctx).Debug().Msg("Updated message in database with refreshed XMA media URL")
-		}
-		return refreshedURL, nil
-	} else if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+		return ic.refreshXMAMedia(ctx, client, mediaInfo, msg, info)
+	} else if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA || mediaInfo.Type == metaid.DirectMediaTypeMetaXMACarousel {
 		return "", fmt.Errorf("can't refresh blob media for XMA type")
 	}
 	return ic.refreshBlobMedia(ctx, client, msg, info)
@@ -332,8 +342,10 @@ func (ic *IGConnector) refreshBlobMedia(
 
 		// Look up all message parts in the database for this message
 		networkMsgID := metaid.MakeFBMessageID(edge.Node.ID)
+		unlock := client.messageRefreshLock.WithLock(networkMsgID)
 		dbMessages, err := ic.Bridge.DB.Message.GetAllPartsByID(ctx, msg.Room.Receiver, networkMsgID)
 		if err != nil {
+			unlock()
 			log.Warn().Err(err).Str("message_id", edge.Node.ID).Msg("Failed to get message parts from database")
 			continue
 		}
@@ -389,6 +401,7 @@ func (ic *IGConnector) refreshBlobMedia(
 				resultURL = freshURL
 			}
 		}
+		unlock()
 	}
 
 	logEvt := log.Debug().
@@ -429,15 +442,76 @@ func nonEmptyJSONFields(val any) []string {
 	return fields
 }
 
-// refreshXMAMedia fetches fresh URLs using Instagram API for XMA attachments
 func (ic *IGConnector) refreshXMAMedia(
 	ctx context.Context,
 	client *IGClient,
+	mediaInfo *metaid.MediaInfo,
+	msg *database.Message,
 	info *mediadl.DirectMediaMeta,
 ) (string, error) {
+	item, err := ic.fetchXMAItem(ctx, client, info)
+	if err != nil {
+		return "", err
+	}
+	refreshedURL, err := xmaItemURL(item, info.CarouselMediaID)
+	if err != nil {
+		return "", err
+	}
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	switch mediaInfo.Type {
+	case metaid.DirectMediaTypeMetaXMA, metaid.DirectMediaTypeMetaXMACarousel:
+		updateXMAMediaMeta(&msgMeta.XMADirectMediaMeta, item)
+		for i := range msgMeta.XMACarouselMediaMeta {
+			updateXMAMediaMeta(&msgMeta.XMACarouselMediaMeta[i], item)
+		}
+	default:
+		updateXMAMediaMeta(&msgMeta.DirectMediaMeta, item)
+	}
+	if err = ic.Bridge.DB.Message.Update(ctx, msg); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to update message in database after refreshing XMA media")
+	} else {
+		zerolog.Ctx(ctx).Debug().Msg("Updated message in database with refreshed XMA media URL")
+	}
+	return refreshedURL, nil
+}
+
+func updateXMAMediaMeta(dmm *json.RawMessage, item *responses.Items) {
+	var info mediadl.DirectMediaMeta
+	if *dmm == nil || json.Unmarshal(*dmm, &info) != nil {
+		return
+	}
+	freshURL, err := xmaItemURL(item, info.CarouselMediaID)
+	if err != nil {
+		return
+	}
+	info.URL = freshURL
+	info.ExpiresAt = jsontime.UM(mediadl.ParseExpiryFromURL(freshURL))
+	if updated, err := json.Marshal(&info); err == nil {
+		*dmm = updated
+	}
+}
+
+func xmaItemURL(item *responses.Items, carouselMediaID string) (string, error) {
+	if carouselMediaID == "" {
+		return extractBestURL(item)
+	}
+	for _, child := range item.CarouselMedia {
+		if strings.Contains(child.ID, carouselMediaID) {
+			return extractBestURL(child)
+		}
+	}
+	return "", fmt.Errorf("carousel item not found in FetchMedia response")
+}
+
+// fetchXMAItem fetches fresh URLs using Instagram API for XMA attachments
+func (ic *IGConnector) fetchXMAItem(
+	ctx context.Context,
+	client *IGClient,
+	info *mediadl.DirectMediaMeta,
+) (*responses.Items, error) {
 	ig := client.Client
 	if ig == nil {
-		return "", fmt.Errorf("instagram client not available")
+		return nil, fmt.Errorf("instagram client not available")
 	}
 
 	log := zerolog.Ctx(ctx)
@@ -450,20 +524,20 @@ func (ic *IGConnector) refreshXMAMedia(
 			Msg("Refreshing story media (type 1)")
 		resp, err := ig.FetchReel(ctx, []string{info.StoryReelID}, info.StoryMediaID)
 		if err != nil {
-			return "", fmt.Errorf("failed to fetch reel: %w", err)
+			return nil, fmt.Errorf("failed to fetch reel: %w", err)
 		}
 		reel, ok := resp.Reels[info.StoryReelID]
 		if !ok || len(reel.Items) == 0 {
-			return "", fmt.Errorf("reel not found in response")
+			return nil, fmt.Errorf("reel not found in response")
 		}
 		// Find the item matching the media ID
 		for _, item := range reel.Items {
 			if item.Pk.String() == info.StoryMediaID {
-				return extractBestURL(&item.Items)
+				return &item.Items, nil
 			}
 		}
 		// If exact match not found, use first item
-		return extractBestURL(&reel.Items[0].Items)
+		return &reel.Items[0].Items, nil
 	}
 
 	// Handle story refresh (type 2: has StoryMediaID but not StoryReelID)
@@ -473,12 +547,12 @@ func (ic *IGConnector) refreshXMAMedia(
 			Msg("Refreshing story media (type 2)")
 		resp, err := ig.FetchMedia(ctx, info.StoryMediaID, "")
 		if err != nil {
-			return "", fmt.Errorf("failed to fetch media: %w", err)
+			return nil, fmt.Errorf("failed to fetch media: %w", err)
 		}
 		if len(resp.Items) == 0 {
-			return "", fmt.Errorf("empty response from FetchMedia")
+			return nil, fmt.Errorf("empty response from FetchMedia")
 		}
-		return extractBestURL(resp.Items[0])
+		return resp.Items[0], nil
 	}
 
 	// Handle post/reel refresh using TargetId and/or Shortcode
@@ -489,15 +563,15 @@ func (ic *IGConnector) refreshXMAMedia(
 			Msg("Refreshing XMA media")
 		resp, err := ig.FetchMedia(ctx, strconv.FormatInt(info.XMATargetID, 10), info.XMAShortcode)
 		if err != nil {
-			return "", fmt.Errorf("failed to fetch media: %w", err)
+			return nil, fmt.Errorf("failed to fetch media: %w", err)
 		}
 		if len(resp.Items) == 0 {
-			return "", fmt.Errorf("empty response from FetchMedia")
+			return nil, fmt.Errorf("empty response from FetchMedia")
 		}
-		return extractBestURL(resp.Items[0])
+		return resp.Items[0], nil
 	}
 
-	return "", fmt.Errorf("no XMA identifiers available for refresh")
+	return nil, fmt.Errorf("no XMA identifiers available for refresh")
 }
 
 func extractBestURL(item *responses.Items) (string, error) {

@@ -90,7 +90,8 @@ type ReuploadParams struct {
 	PreviewWidth  int
 	PreviewHeight int
 
-	RefreshMeta *MediaRefreshMeta
+	RefreshMeta   *MediaRefreshMeta
+	CarouselIndex *int
 
 	DirectMedia bool
 	MaxFileSize int64
@@ -199,6 +200,9 @@ func ReuploadFileToMatrix(ctx context.Context, params ReuploadParams) (*bridgev2
 			mediaIDType = metaid.DirectMediaTypeMetaXMA
 		}
 		mediaID := metaid.MakeMediaID(mediaIDType, loginID, msgID, partID)
+		if params.CarouselIndex != nil {
+			mediaID = metaid.MakeXMACarouselMediaID(loginID, msgID, partID, *params.CarouselIndex)
+		}
 		var err error
 		content.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, mediaID)
 		if err != nil {
