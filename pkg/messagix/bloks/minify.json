@@ -1707,7 +1707,8 @@
     "㐟": "action",
     "㚮": "buttonExtension",
     "㚱": "accessibilityExtension",
-    "帍": "webview"
+    "帍": "webview",
+    "捽": "iosWebview"
   },
   "properties": {
     "bk.components.FoaTouchExtension": {
@@ -1873,6 +1874,10 @@
     "webview": {
       "3": "callback",
       "4": "url"
+    },
+    "iosWebview": {
+      "3": "callback",
+      "8": "url"
     }
   }
 }
