@@ -510,9 +510,9 @@ func (m *MetaNativeLogin) handleWebAuthPlatformResult(ctx context.Context, step 
 	} else if errors.Is(err, instameow.ErrInstagramAuthPlatformApprovalExpired) {
 		return nil, loginerrors.AFADStopped
 	} else if errors.Is(err, instameow.ErrInstagramWebCheckpointRequestFailed) {
-		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusInternalServerError}
+		return nil, bridgev2.RespError{ErrCode: "FI.MAU.META_WEB_CHECKPOINT_FAILED", Err: "The Instagram verification request did not complete. Start a new login when your connection is stable.", StatusCode: http.StatusInternalServerError}.WithInternalError(err)
 	} else if err != nil {
-		return nil, errInstagramWebCheckpointUnsupported
+		return nil, errInstagramWebCheckpointUnsupported.WithInternalError(err)
 	} else if step != nil {
 		return step, nil
 	}
@@ -581,11 +581,11 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 		} else if errors.Is(err, httpclient.ErrAccountSuspended) {
 			return nil, loginerrors.AccountSuspended
 		} else if httpclient.IsClientHTTPError(err) {
-			m.User.Log.Warn().Msg("Instagram CAA login request failed on the client")
+			m.User.Log.Warn().Err(err).Msg("Instagram CAA login request failed on the client")
 			if !m.webSessionReady {
 				return m.start(ctx, "The request did not complete on this device. Please try again.")
 			}
-			return nil, errCAAClientHTTPFailed
+			return nil, errCAAClientHTTPFailed.WithInternalError(err)
 		} else if errors.Is(err, instameow.ErrInstagramCAAUnsafeAccountStep) {
 			return nil, errInstagramCAAUnsupportedStep
 		} else if errors.Is(err, instameow.ErrInstagramAccountManagerTwoFactorRequired) {
@@ -597,10 +597,10 @@ func (m *MetaNativeLogin) continueCAAFallback(ctx context.Context, input map[str
 		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, wrapInstagramRespError(err)
 		} else if errors.Is(err, httpclient.ErrRequestFailed) {
-			return nil, errCAARequestFailed
+			return nil, errCAARequestFailed.WithInternalError(err)
 		}
 		zerolog.Ctx(ctx).Err(err).Msg("Unexpected error during Instagram CAA login flow")
-		return nil, errCAAFlowFailed
+		return nil, errCAAFlowFailed.WithInternalError(err)
 	} else if step != nil {
 		return step, nil
 	}
