@@ -1376,8 +1376,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername},
-						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername, AutofillDomain: b.profile.autofillDomain},
+						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -1557,7 +1557,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -2039,7 +2039,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
+						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
