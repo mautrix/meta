@@ -86,7 +86,8 @@ type Client struct {
 	seqID   int64
 	seqIDTS time.Time
 
-	deltaQueues map[string]*threadDeltaQueue
+	failedDeltaSeqID int64
+	failedDeltaCount int
 }
 
 type EventHandler func(context.Context, slidetypes.ClientEvent) error
@@ -118,7 +119,6 @@ func NewClient(params ClientParams) *Client {
 		log:           &params.Log,
 		seqID:         params.SeqID,
 		seqIDTS:       params.SeqIDTS,
-		deltaQueues:   make(map[string]*threadDeltaQueue),
 		socketStopped: exsync.NewEvent(),
 		connected:     exsync.NewEvent(),
 
