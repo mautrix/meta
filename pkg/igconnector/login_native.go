@@ -715,16 +715,18 @@ func instagramCredentialsStep(instructions string) *bridgev2.LoginStep {
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: []bridgev2.LoginInputDataField{
 				{
-					Type:        bridgev2.LoginInputFieldTypeUsername,
-					ID:          loginFieldIdentifier,
-					Name:        "Email or username",
-					Description: "The email address or username for your Instagram account.",
+					Type:           bridgev2.LoginInputFieldTypeUsername,
+					ID:             loginFieldIdentifier,
+					Name:           "Email or username",
+					Description:    "The email address or username for your Instagram account.",
+					AutofillDomain: "instagram.com",
 				},
 				{
-					Type:        bridgev2.LoginInputFieldTypePassword,
-					ID:          loginFieldPassword,
-					Name:        "Password",
-					Description: "Your Instagram password.",
+					Type:           bridgev2.LoginInputFieldTypePassword,
+					ID:             loginFieldPassword,
+					Name:           "Password",
+					Description:    "Your Instagram password.",
+					AutofillDomain: "instagram.com",
 				},
 			},
 		},
@@ -751,6 +753,10 @@ func instagramWebTwoFactorStep(
 			instructions = "Enter your Instagram verification code."
 		}
 	}
+	var autofillDomain string
+	if challenge != nil && challenge.TOTP {
+		autofillDomain = "instagram.com"
+	}
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
 		StepID:       LoginStepIDWebTwoFactor,
@@ -758,10 +764,11 @@ func instagramWebTwoFactorStep(
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: []bridgev2.LoginInputDataField{
 				{
-					Type:        bridgev2.LoginInputFieldType2FACode,
-					ID:          loginFieldWebTwoFactorCode,
-					Name:        "Verification code",
-					Description: "The verification code for your Instagram account.",
+					Type:           bridgev2.LoginInputFieldType2FACode,
+					ID:             loginFieldWebTwoFactorCode,
+					Name:           "Verification code",
+					Description:    "The verification code for your Instagram account.",
+					AutofillDomain: autofillDomain,
 				},
 			},
 		},
