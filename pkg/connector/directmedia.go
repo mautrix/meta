@@ -47,13 +47,20 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 		return nil, fmt.Errorf("message not found")
 	}
 
-	dmm := msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	dmm := msgMeta.DirectMediaMeta
+	if mediaInfo.Type == metaid.DirectMediaTypeMetaLinkPreview {
+		if mediaInfo.LinkPreviewIndex >= len(msgMeta.LinkPreviewMediaMeta) {
+			return nil, fmt.Errorf("link preview %d not found", mediaInfo.LinkPreviewIndex)
+		}
+		dmm = msgMeta.LinkPreviewMediaMeta[mediaInfo.LinkPreviewIndex]
+	}
 	if dmm == nil {
 		return nil, fmt.Errorf("message does not have direct media metadata")
 	}
 
 	switch mediaInfo.Type {
-	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2:
+	case metaid.DirectMediaTypeMetaV1, metaid.DirectMediaTypeMetaV2, metaid.DirectMediaTypeMetaLinkPreview:
 		var info *mediadl.DirectMediaMeta
 		err = json.Unmarshal(dmm, &info)
 		if err != nil {

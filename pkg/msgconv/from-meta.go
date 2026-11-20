@@ -184,11 +184,8 @@ func (mc *MessageConverter) ToMatrix(
 			content.BeeperLinkPreviews = make([]*event.BeeperLinkPreview, len(urlPreviews))
 			previewLinks := make([]string, len(urlPreviews))
 			for i, preview := range urlPreviews {
-				partID := networkid.PartID(fmt.Sprintf("beeper_link_preview_%d", i))
-				ctx := context.WithValue(ctx, mediadl.ContextKeyPartID, partID)
-				content.BeeperLinkPreviews[i] = mc.urlPreviewToBeeper(ctx, preview)
+				content.BeeperLinkPreviews[i] = urlPreviewToBeeper(preview)
 				previewLinks[i] = content.BeeperLinkPreviews[i].CanonicalURL
-				importantPartIDs = append(importantPartIDs, partID)
 			}
 			// TODO do more fancy detection of whether the link is in the body?
 			if len(content.Body) == 0 {
@@ -301,6 +298,9 @@ func (mc *MessageConverter) ToMatrix(
 		// slice, so we are safe to assume that if it returns true, then there is
 		// exactly one item in the slice and it is the media part ID.
 		cm.Parts[0].ID = importantPartIDs[0]
+	}
+	if len(urlPreviews) > 0 {
+		mc.reuploadURLPreviewImages(ctx, cm.Parts[len(cm.Parts)-1], urlPreviews)
 	}
 	return cm, nil
 }
@@ -487,31 +487,45 @@ func addExternalURLCaption(content *event.MessageEventContent, externalURL strin
 	}
 }
 
-func (mc *MessageConverter) urlPreviewToBeeper(ctx context.Context, att *table.WrappedXMA) *event.BeeperLinkPreview {
-	preview := &event.BeeperLinkPreview{
+func urlPreviewToBeeper(att *table.WrappedXMA) *event.BeeperLinkPreview {
+	return &event.BeeperLinkPreview{
 		LinkPreview: event.LinkPreview{
 			CanonicalURL: removeLPHP(att.CTA.ActionUrl),
 			Title:        att.TitleText,
 			Description:  att.SubtitleText,
 		},
 	}
-	if att.PreviewUrl != "" {
-		// URL previews don't typically need refresh metadata
+}
+
+func (mc *MessageConverter) reuploadURLPreviewImages(ctx context.Context, part *bridgev2.ConvertedMessagePart, urlPreviews []*table.WrappedXMA) {
+	previews := part.Content.BeeperLinkPreviews[len(part.Content.BeeperLinkPreviews)-len(urlPreviews):]
+	meta := part.DBMetadata.(*metaid.MessageMetadata)
+	ctx = context.WithValue(ctx, mediadl.ContextKeyPartID, part.ID)
+	for i, att := range urlPreviews {
+		if att.PreviewUrl == "" {
+			continue
+		}
+		ctx := context.WithValue(ctx, mediadl.ContextKeyLinkPreviewIndex, i)
 		converted, err := mc.reuploadAttachment(
 			ctx, att.AttachmentType, att.PreviewUrl, "preview", att.PreviewUrlMimeType, 0, int(att.PreviewWidth), int(att.PreviewHeight), 0,
 			nil,
 		)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload URL preview image")
-		} else {
-			preview.ImageEncryption = converted.Content.File
-			preview.ImageURL = converted.Content.URL
-			preview.ImageWidth = event.IntOrString(converted.Content.Info.Width)
-			preview.ImageHeight = event.IntOrString(converted.Content.Info.Height)
-			preview.ImageSize = event.IntOrString(converted.Content.Info.Size)
+			continue
+		}
+		previews[i].ImageEncryption = converted.Content.File
+		previews[i].ImageURL = converted.Content.URL
+		previews[i].ImageWidth = event.IntOrString(converted.Content.Info.Width)
+		previews[i].ImageHeight = event.IntOrString(converted.Content.Info.Height)
+		previews[i].ImageSize = event.IntOrString(converted.Content.Info.Size)
+		if dmm := converted.DBMetadata.(*metaid.MessageMetadata).DirectMediaMeta; dmm != nil {
+			if meta.LinkPreviewMediaMeta == nil {
+				meta.LinkPreviewMediaMeta = make([]json.RawMessage, len(urlPreviews))
+			}
+			meta.LinkPreviewMediaMeta[i] = dmm
 		}
 	}
-	return preview
 }
 
 func (mc *MessageConverter) xmaAttachmentToMatrix(ctx context.Context, att *table.WrappedXMA) []*bridgev2.ConvertedMessagePart {
