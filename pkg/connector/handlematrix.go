@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -801,6 +800,8 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
 	if msg.Portal.RoomType == database.RoomTypeDM {
 		return false, fmt.Errorf("changing avatar not supported in DMs")
+	} else if m.Client == nil {
+		return false, bridgev2.ErrNotLoggedIn
 	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
 	var imageID int64
@@ -808,37 +809,18 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		// TODO: handle removing avatar. Messenger web doesn't have a remove option?
 		return false, fmt.Errorf("removing avatar not implemented")
 	} else {
-		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
+		var err error
+		imageID, err = mediadl.ReuploadFileToMeta(ctx, m.Client.GetHTTP(), m.Client.MessengerLite.GetNativeSession(), msg.Portal, &event.MessageEventContent{
+			MsgType:  event.MsgImage,
+			URL:      msg.Content.URL,
+			FileName: "avatar.jpg",
+			Info:     &event.FileInfo{},
+		})
 		if err != nil {
-			return false, fmt.Errorf("failed to download avatar: %w", err)
+			return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
 		}
-		mimeType := http.DetectContentType(data)
-		if m.Client.GetPlatform().IsMessengerLite() {
-			session := m.Client.MessengerLite.GetNativeSession()
-			if session == nil {
-				return false, mediadl.ErrNoNativeSession
-			}
-			imageID, err = m.Client.GetHTTP().SendRUploadRequest(ctx, session, &httpclient.RUploadMedia{
-				Filename:  "avatar.jpg",
-				MimeType:  mimeType,
-				MediaData: data,
-			})
-			if err != nil {
-				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
-			}
-		} else {
-			resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
-				Filename:  "avatar.jpg",
-				MimeType:  mimeType,
-				MediaData: data,
-			})
-			if err != nil {
-				return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
-			}
-			imageID = resp.Payload.RealMetadata.GetFbId()
-			if imageID == 0 {
-				return false, fmt.Errorf("no image ID received from upload")
-			}
+		if imageID == 0 {
+			return false, fmt.Errorf("no image ID received from upload")
 		}
 	}
 	_, err := m.Client.ExecuteTasks(ctx, &socket.SetThreadImageTask{
