@@ -78,6 +78,52 @@ func (c *Client) RegisterPushNotifications(ctx context.Context, endpoint string,
 	return nil
 }
 
+func (c *Client) Logout(ctx context.Context) error {
+	if c == nil {
+		return ErrClientIsNil
+	}
+	var endpoint string
+	var headers http.Header
+	var form url.Values
+	if session := c.GetInstagramNativeSession(); session != nil && session.Authorization != "" {
+		endpoint = instagramMobileAPIBase + "accounts/logout/"
+		headers = c.instagramAccountManagerHeaders()
+		form = url.Values{
+			"device_id":                     {session.Device.AndroidDeviceID},
+			"guid":                          {session.Device.DeviceID},
+			"phone_id":                      {session.Device.PhoneID},
+			"prevent_remove_device_from_wa": {"true"},
+			"_uuid":                         {session.Device.DeviceID},
+		}
+	} else {
+		endpoint = c.GetEndpoint("logout")
+		headers = c.http.BuildHeaders(true, false)
+		headers.Set("x-csrftoken", c.cookies.Get(cookies.IGCookieCSRFToken))
+		headers.Set("x-requested-with", "XMLHttpRequest")
+		headers.Set("Referer", c.GetEndpoint("base_url")+"/")
+		form = url.Values{
+			"one_tap_app_login": {"0"},
+			"user_id":           {c.cookies.Get(cookies.IGCookieDSUserID)},
+		}
+		if c.configs.Jazoest != "" {
+			form.Set("jazoest", c.configs.Jazoest)
+		}
+	}
+	_, body, err := c.http.MakeRequestOnce(ctx, endpoint, http.MethodPost, headers, []byte(form.Encode()), types.FORM)
+	if err != nil {
+		return err
+	}
+	var resBody struct {
+		Status string `json:"status"`
+	}
+	if err = json.Unmarshal(body, &resBody); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	} else if resBody.Status != "ok" {
+		return fmt.Errorf("unexpected response status: %s", resBody.Status)
+	}
+	return nil
+}
+
 func (c *Client) FetchMedia(ctx context.Context, mediaID, mediaShortcode string) (*responses.FetchMediaResponse, error) {
 	if c == nil {
 		return nil, ErrClientIsNil

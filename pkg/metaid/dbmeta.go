@@ -72,6 +72,7 @@ type UserLoginMetadata struct {
 	IGID                   string                        `json:"igid,omitempty"`
 	NativeSession          *types.NativeSession          `json:"native_session,omitempty"`
 	NativePushKeys         *pushcrypto.NativePushKeys    `json:"native_push_keys,omitempty"`
+	NativePushToken        string                        `json:"native_push_token,omitempty"`
 	InstagramNativeSession *types.InstagramNativeSession `json:"instagram_native_session,omitempty"`
 	HistoryDevice          *securehistory.Device         `json:"history_device,omitempty"`
 
