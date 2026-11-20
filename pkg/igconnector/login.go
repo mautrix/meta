@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -219,6 +220,7 @@ func loginWithCookies(
 	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
 	client.SetLogger(ul.Log.With().Str("component", "instameow").Logger())
 	client.SetEventHandler(igClient.handleIGEvent)
+	igClient.lastFullReconnect = time.Time{}
 	igClient.Client = client
 
 	dumpedState, err := client.DumpState()
