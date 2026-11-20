@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
@@ -73,6 +74,23 @@ func (fb *FacebookMethods) RegisterPushNotifications(ctx context.Context, endpoi
 	}
 
 	return nil
+}
+
+func (fb *FacebookMethods) Logout(ctx context.Context) error {
+	c := fb.client
+	if c.configs == nil || c.configs.BrowserConfigTable.DTSGInitData.Token == "" {
+		return errors.New("no fb_dtsg token loaded")
+	}
+	form := url.Values{
+		"fb_dtsg": {c.configs.BrowserConfigTable.DTSGInitData.Token},
+		"jazoest": {c.configs.Jazoest},
+	}
+	headers := c.http.BuildHeaders(true, true)
+	headers.Set("Referer", c.GetEndpoint("base_url")+"/")
+	headers.Set("Origin", c.GetEndpoint("base_url"))
+	headers.Set("Sec-fetch-site", "same-origin")
+	_, _, err := c.http.MakeRequestOnceNoRedirect(ctx, c.GetEndpoint("logout"), "POST", headers, []byte(form.Encode()), types.FORM)
+	return err
 }
 
 type pushNotificationsResponse struct {

@@ -700,6 +700,17 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
+	if ecli := m.E2EEClient; ecli != nil {
+		ecli.RemoveEventHandlers()
+		if err := ecli.Logout(ctx); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of encrypted chats")
+		}
+	}
+	if cli := m.Client; cli != nil && m.LoginMeta.Platform == types.Messenger {
+		if err := cli.Facebook.Logout(ctx); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Messenger")
+		}
+	}
 	m.disconnect(false)
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete(ctx)
