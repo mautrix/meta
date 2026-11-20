@@ -29,7 +29,7 @@ import (
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID string, familyDeviceID string) (*bloks.BloksBundle, error) {
+func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID, familyDeviceID, machineID string) (*bloks.BloksBundle, error) {
 	c.log.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
 
 	variables := bloks.NewBloksRequest(doc, appID, inner)
@@ -99,8 +99,9 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-fb-net-hni", "310260")
 		headers.Set("x-fb-sim-hni", "310240")
 
-		// This probably needs to come from somewhere
-		headers.Set("x-fb-integrity-machine-id", string(random.StringBytes(24)))
+		if machineID != "" {
+			headers.Set("x-fb-integrity-machine-id", machineID)
+		}
 
 		// Meaning unclear
 		did := uuid.New().String()
