@@ -340,6 +340,7 @@ type BrowserConfig struct {
 	EncryptPassword  func(context.Context, string) (string, error)
 	MakeBloksRequest func(context.Context, *BloksDoc, string, BloksParamsInner, string, string) (*BloksBundle, error)
 	FetchAsset       func(ctx context.Context, url string) ([]byte, string, error)
+	AttestationKey   *ecdsa.PrivateKey
 }
 
 type Browser struct {
@@ -711,9 +712,13 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 		Config:  cfg,
 		profile: profile,
 	}
-	attestationKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("generate attestation key: %w", err)
+	attestationKey := cfg.AttestationKey
+	if attestationKey == nil {
+		var err error
+		attestationKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, fmt.Errorf("generate attestation key: %w", err)
+		}
 	}
 	attestationPublicKey, err := x509.MarshalPKIXPublicKey(&attestationKey.PublicKey)
 	if err != nil {
@@ -721,8 +726,8 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 	}
 	attestationKeyHash := sha256.Sum256(attestationPublicKey)
 	b.Bridge = &InterpBridge{
-		DeviceID:       strings.ToUpper(uuid.New().String()),
-		FamilyDeviceID: strings.ToUpper(uuid.New().String()),
+		DeviceID:       FormatDeviceID(cfg.Platform, uuid.New()),
+		FamilyDeviceID: FormatDeviceID(cfg.Platform, uuid.New()),
 		// Note: machine_id is set to an empty string the first time the user ever logs in
 		// to any account on a given physical device. After a successful login, the login
 		// response payload contains a new machine_id that is stored in shady locations that
