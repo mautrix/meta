@@ -426,7 +426,9 @@ func (m *MetaNativeLogin) instagramWebChallengeStep(challengeURL string) (*bridg
 			return nil, errInstagramNoChallenge
 		}
 	}
-	return m.instagramWebviewStep(challengeURL), nil
+	step := m.instagramWebviewStep(challengeURL)
+	step.CookiesParams.InitialCookies = m.instagramWebviewSessionCookies()
+	return step, nil
 }
 
 // instagramWebviewStep hands a verification the bridge cannot drive itself to
@@ -453,6 +455,28 @@ func (m *MetaNativeLogin) instagramWebviewStep(challengeURL string) *bridgev2.Lo
 			WaitForURLPattern: instagramWebLoggedInURLPattern,
 		},
 	}
+}
+
+func (m *MetaNativeLogin) instagramWebviewSessionCookies() []bridgev2.LoginCookie {
+	if m.client == nil {
+		return nil
+	}
+	loginCookies := m.client.GetCookies()
+	if loginCookies == nil || loginCookies.Get(cookies.IGCookieSessionID) == "" {
+		return nil
+	}
+	names := loginCookies.GetNames()
+	initialCookies := make([]bridgev2.LoginCookie, 0, len(names))
+	for _, name := range names {
+		initialCookies = append(initialCookies, bridgev2.LoginCookie{
+			Name:     name,
+			Value:    loginCookies.Get(cookies.MetaCookieName(name)),
+			Domain:   ".instagram.com",
+			Secure:   true,
+			HTTPOnly: name == string(cookies.IGCookieSessionID),
+		})
+	}
+	return initialCookies
 }
 
 func (m *MetaNativeLogin) instagramWebLoginStep() *bridgev2.LoginStep {
