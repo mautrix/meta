@@ -701,23 +701,32 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
 	cli := m.Client
-	if cli == nil {
+	if cli == nil && m.LoginMeta.Platform != types.Instagram {
 		m.ensureMessagixClient()
-		if cli = m.Client; cli != nil && !cli.GetHTTP().UpdateProxy("logout") {
+		if cli = m.Client; !cli.GetHTTP().UpdateProxy("logout") {
 			cli = nil
 		}
 	}
-	if cli != nil && m.LoginMeta.NativeSession != nil {
-		if token := m.LoginMeta.NativePushToken; token != "" {
-			if err := cli.Facebook.UnregisterNativePushNotifications(ctx, m.LoginMeta.NativeSession, token); err != nil {
-				zerolog.Ctx(ctx).Err(err).Msg("Failed to unregister native push")
+	m.disconnect(false)
+	if cli != nil {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		switch {
+		case m.LoginMeta.NativeSession != nil:
+			if token := m.LoginMeta.NativePushToken; token != "" {
+				if err := cli.Facebook.UnregisterNativePushNotifications(ctx, m.LoginMeta.NativeSession, token); err != nil {
+					zerolog.Ctx(ctx).Err(err).Msg("Failed to unregister native push")
+				}
+			}
+			if err := cli.MessengerLite.Logout(ctx); err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Messenger app session")
+			}
+		case m.LoginMeta.Platform == types.Messenger:
+			if err := cli.Facebook.Logout(ctx); err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Messenger web session")
 			}
 		}
-		if err := cli.MessengerLite.Logout(ctx); err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Messenger app session")
-		}
 	}
-	m.disconnect(false)
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete(ctx)
 		if err != nil {

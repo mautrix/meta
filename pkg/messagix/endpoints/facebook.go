@@ -37,6 +37,7 @@ func makeFacebookEndpoints(host string) map[string]string {
 	if host == messengerHost {
 		urls["messages"] = baseURL + "/"
 		urls["thread"] = baseURL + "/t/"
+		urls["logout"] = baseURL + "/logout/"
 	}
 	return urls
 }
