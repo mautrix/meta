@@ -67,6 +67,7 @@ type IGClient struct {
 	webPushStaleReported  atomic.Bool
 	webPushChecking       atomic.Bool
 	webPushCandidates     *exsync.Set[networkid.PortalID]
+	directPushCheckedAt   atomic.Int64
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	accountStateRechecks  atomic.Int32
 }

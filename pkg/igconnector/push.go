@@ -136,6 +136,7 @@ func (ic *IGClient) registerNativePush(ctx context.Context, token string) error 
 			return fmt.Errorf("failed to save native push session: %w", err)
 		}
 	}
+	go ic.checkDirectPushSettings()
 	return nil
 }
 
@@ -437,4 +438,30 @@ func (ic *IGClient) confirmWebPushStale() {
 		Str("thread_id", missed.ThreadFBID).
 		Msg("Caught up a message that never got a web push, asking for relogin")
 	ic.sendWebPushStaleState()
+}
+
+const directPushCheckInterval = time.Hour
+
+func (ic *IGClient) checkDirectPushSettings() {
+	session := ic.LoginMeta.InstagramNativeSession
+	cli := ic.Client
+	if cli == nil || ic.Main.Bridge.Background || ic.LoginMeta.NativePushKeys == nil || session == nil || session.Authorization == "" {
+		return
+	}
+	lastChecked := ic.directPushCheckedAt.Load()
+	if time.Since(time.Unix(lastChecked, 0)) < directPushCheckInterval ||
+		!ic.directPushCheckedAt.CompareAndSwap(lastChecked, time.Now().Unix()) {
+		return
+	}
+	log := ic.UserLogin.Log.With().Str("action", "check direct push settings").Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	settings, err := cli.GetDirectNotificationSettings(ctx)
+	if err != nil {
+		log.Err(err).Msg("Failed to get Instagram direct notification settings")
+		return
+	}
+	log.Info().
+		Any("settings", settings).
+		Bool("messages_disabled", settings["direct_share_activity"] == "off" || settings["messages"] == "off").
+		Msg("Got Instagram direct notification settings")
 }
