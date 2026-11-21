@@ -794,7 +794,7 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.UserAction = copyFrom.UserAction
 		state.Info = maps.Clone(copyFrom.Info)
 	}
-	if (state.StateEvent == status.StateConnected || state.StateEvent == status.StateConnecting) && m.needsNativeSessionRelogin() {
+	if state.StateEvent == status.StateConnected && m.needsNativeSessionRelogin() {
 		state.StateEvent = status.StateBadCredentials
 		state.Error = MetaNoNativeSession
 		state.Message = ""
