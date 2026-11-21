@@ -18,6 +18,7 @@ package slidetypes
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 type MessageContent interface {
@@ -213,8 +214,59 @@ type CTAButton struct {
 	ActionURL string `json:"action_url"`
 	CTAType   string `json:"cta_type"`
 	Title     string `json:"title"`
+	// The postback payload is only seen on the direct_v2 REST thread response, see
+	// https://github.com/mautrix/meta/issues/338. The issue doesn't name the JSON key used
+	// in that response, so both plausible names are accepted (and Unrecognized is scanned).
+	PostbackPayload string `json:"postback_payload,omitempty"`
+	Payload         string `json:"payload,omitempty"`
 
 	Unrecognized map[string]any `json:",unknown"`
+}
+
+// UnmarshalJSON makes sure Unrecognized is filled even when the `unknown` struct tag option
+// isn't supported by the JSON implementation in use, as Postback() scans it for the payload.
+func (b *CTAButton) UnmarshalJSON(data []byte) error {
+	type plain CTAButton
+	if err := json.Unmarshal(data, (*plain)(b)); err != nil {
+		return err
+	}
+	if len(b.Unrecognized) > 0 {
+		return nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	for _, known := range []string{"action_url", "cta_type", "title", "postback_payload", "payload"} {
+		delete(raw, known)
+	}
+	if len(raw) > 0 {
+		b.Unrecognized = raw
+	}
+	return nil
+}
+
+// PostbackPayloadMarker is a substring of the postback payload values documented in #338
+// (`1:GT-PB:ACT::<hex>`).
+const PostbackPayloadMarker = "GT-PB"
+
+// Postback returns the postback payload of the button, or an empty string if it has none.
+func (b *CTAButton) Postback() string {
+	if b == nil {
+		return ""
+	}
+	if b.PostbackPayload != "" {
+		return b.PostbackPayload
+	}
+	if b.Payload != "" {
+		return b.Payload
+	}
+	for _, key := range sortedKeys(b.Unrecognized) {
+		if str, ok := b.Unrecognized[key].(string); ok && strings.Contains(str, PostbackPayloadMarker) {
+			return str
+		}
+	}
+	return ""
 }
 
 type XMAIcon struct {

@@ -148,7 +148,7 @@ func (mc *MessageConverter) ToMatrix(
 				)
 			}
 			cm.Parts = append(cm.Parts, part)
-		} else if xmaPart := mc.wrapXMA(ctx, content.XMA); xmaPart != nil {
+		} else if xmaPart := mc.wrapXMA(ctx, content.XMA, msg); xmaPart != nil {
 			cm.Parts = append(cm.Parts, xmaPart)
 			if content.XMATextBody != "" {
 				textPart := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)

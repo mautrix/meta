@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/metadb"
@@ -45,6 +46,7 @@ func (ic *IGConnector) Init(bridge *bridgev2.Bridge) {
 	ic.DB = metadb.New(bridge.ID, bridge.DB.Database, ic.Bridge.Log.With().Str("db_section", "meta").Logger())
 	ic.MsgConv = igconv.New(bridge, ic.DB)
 	ic.MsgConv.DisableViewOnce = ic.Config.DisableViewOnce
+	bridge.Commands.(*commands.Processor).AddHandlers(cmdTap)
 }
 
 func (ic *IGConnector) Start(ctx context.Context) error {

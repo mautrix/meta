@@ -27,6 +27,8 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+	// Postback buttons of generic_xma cards (see https://github.com/mautrix/meta/issues/338).
+	PostbackButtons []*PostbackButton `json:"postback_buttons,omitempty"`
 
 	PollID        int64              `json:"poll_id,omitzero"`
 	PollQuestion  string             `json:"poll_question,omitempty"`
@@ -50,6 +52,13 @@ func (m *MessageMetadata) GetFBThreadKey(portalID networkid.PortalID) int64 {
 		return m.FBThreadKey
 	}
 	return ParseFBPortalID(portalID)
+}
+
+// PostbackButton is a tappable generic_xma button whose payload has been recovered.
+type PostbackButton struct {
+	Title   string `json:"title"`
+	Payload string `json:"payload"`
+	CTAType string `json:"cta_type,omitempty"`
 }
 
 type XMAFetchMeta struct {

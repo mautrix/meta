@@ -1,0 +1,176 @@
+// mautrix-meta - A Matrix-Facebook Messenger and Instagram DM puppeting bridge.
+// Copyright (C) 2026 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+package igconv
+
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
+)
+
+func pb(title, payload string) *metaid.PostbackButton {
+	return &metaid.PostbackButton{Title: title, Payload: payload, CTAType: "postback"}
+}
+
+func TestResolvePostbackButton(t *testing.T) {
+	buttons := []*metaid.PostbackButton{pb("Yes", "p1"), pb("No", "p2"), pb("Maybe", "p3"), pb("maybe", "p4"), pb("Later", "p5")}
+	tests := []struct {
+		arg     string
+		want    string
+		wantErr error
+	}{
+		{"1", "p1", nil},
+		{"2", "p2", nil},
+		{"5", "p5", nil},
+		{"0", "", ErrPostbackNotFound},
+		{"6", "", ErrPostbackNotFound},
+		{"No", "p2", nil},
+		{"no", "p2", nil},
+		{"LATER", "p5", nil},
+		{"Maybe", "p3", nil}, // exact match wins over the case-insensitive duplicate
+		{"MAYBE", "", ErrPostbackAmbiguous},
+		{"Nope", "", ErrPostbackNotFound},
+		{"", "", ErrPostbackNotFound},
+		{"  Yes ", "p1", nil},
+	}
+	for _, tt := range tests {
+		got, err := ResolvePostbackButton(buttons, tt.arg)
+		if !errors.Is(err, tt.wantErr) {
+			t.Errorf("%q: error %v, want %v", tt.arg, err, tt.wantErr)
+			continue
+		}
+		if tt.wantErr == nil && got.Payload != tt.want {
+			t.Errorf("%q: got payload %q, want %q", tt.arg, got.Payload, tt.want)
+		}
+	}
+	if _, err := ResolvePostbackButton(nil, "1"); !errors.Is(err, ErrPostbackNotFound) {
+		t.Errorf("no buttons: got %v", err)
+	}
+	dup := []*metaid.PostbackButton{pb("Same", "a"), pb("Same", "b")}
+	if _, err := ResolvePostbackButton(dup, "Same"); !errors.Is(err, ErrPostbackAmbiguous) {
+		t.Errorf("duplicate exact titles: got %v", err)
+	}
+}
+
+func parseCTAs(t *testing.T, raw string) []*slidetypes.CTAButton {
+	t.Helper()
+	var ctas []*slidetypes.CTAButton
+	if err := json.Unmarshal([]byte(raw), &ctas); err != nil {
+		t.Fatal(err)
+	}
+	return ctas
+}
+
+const mixedCTAs = `[
+	{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"Website"},
+	{"cta_type":"postback","action_url":"","title":"Yes <b>","payload":"1:GT-PB:ACT::01"},
+	{"cta_type":"postback","action_url":"","title":"No","postback_payload":"1:GT-PB:ACT::02"}]`
+
+func TestXMACTAButtonsHTML(t *testing.T) {
+	ctas := parseCTAs(t, mixedCTAs)
+
+	t.Run("links and postbacks", func(t *testing.T) {
+		out := xmaCTAButtonsHTML(ctas, PostbackButtonsFromCTAs(ctas))
+		for _, want := range []string{
+			`<a href="https://example.com/a">Website</a>`,
+			`<ol><li>Yes &lt;b&gt;</li><li>No</li></ol>`,
+			"<code>!ig tap N</code>",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("missing %q in %s", want, out)
+			}
+		}
+		if strings.Contains(out, "Use the Instagram app") {
+			t.Errorf("unexpected app warning: %s", out)
+		}
+	})
+
+	t.Run("fallback warning when payload not recovered", func(t *testing.T) {
+		hidden := parseCTAs(t, `[{"cta_type":"postback","action_url":"","title":"Yes"},{"cta_type":"placeholder","title":"No"}]`)
+		out := xmaCTAButtonsHTML(hidden, nil)
+		if want := "<p>Yes - No<br>Use the Instagram app to click buttons</p>"; out != want {
+			t.Errorf("got %q, want %q", out, want)
+		}
+		if strings.Contains(out, "!ig tap") {
+			t.Errorf("tap hint without payloads: %s", out)
+		}
+	})
+
+	t.Run("url only unchanged", func(t *testing.T) {
+		out := xmaCTAButtonsHTML(ctas[:1], nil)
+		if want := `<p><a href="https://example.com/a">Website</a></p>`; out != want {
+			t.Errorf("got %q, want %q", out, want)
+		}
+	})
+
+	t.Run("partially recovered", func(t *testing.T) {
+		out := xmaCTAButtonsHTML(parseCTAs(t, `[{"cta_type":"postback","title":"A"},{"cta_type":"postback","title":"B"}]`), []*metaid.PostbackButton{pb("A", "x")})
+		if !strings.Contains(out, "<li>A</li>") || !strings.Contains(out, "<p>B<br>Use the Instagram app") {
+			t.Errorf("unexpected output %s", out)
+		}
+	})
+}
+
+func TestXMANeedsPostbackFetch(t *testing.T) {
+	tests := []struct {
+		name string
+		xma  *slidetypes.XMAContent
+		want bool
+	}{
+		{"nil", nil, false},
+		{"url only", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"xma_web_url","action_url":"https://example.com","title":"Go"}]`)}, false},
+		{"postback with payload", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"postback","title":"Go","payload":"1:GT-PB:ACT::1"}]`)}, false},
+		{"postback without payload", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"postback","title":"Go"}]`)}, true},
+		{"placeholder", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"placeholder","title":"Go"}]`)}, true},
+		{"empty buttons text card", &slidetypes.XMAContent{TitleText: "Pick one"}, true},
+		{"empty buttons media share", &slidetypes.XMAContent{TitleText: "Reel", TargetID: "123", TargetURL: "https://www.instagram.com/reel/x/"}, false},
+		{"empty everything", &slidetypes.XMAContent{}, false},
+	}
+	for _, tt := range tests {
+		if got := xmaNeedsPostbackFetch(tt.xma); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestPickPostbackButtons(t *testing.T) {
+	var resp slidetypes.ThreadDetailsResponse
+	err := json.Unmarshal([]byte(`{"thread":{"items":[
+		{"item_type":"generic_xma","timestamp":"1700000200000000","cta_buttons":[{"cta_type":"postback","title":"Yes","payload":"new-yes"},{"cta_type":"postback","title":"No","payload":"new-no"}]},
+		{"item_type":"generic_xma","timestamp":"1700000100000000","cta_buttons":[{"cta_type":"postback","title":"Yes","payload":"old-yes"},{"cta_type":"postback","title":"No","payload":"old-no"}]},
+		{"item_type":"generic_xma","timestamp":"1700000050000000","cta_buttons":[{"cta_type":"postback","title":"Other","payload":"other"}]}]}}`), &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := resp.GenericXMAItems()
+	if got := PickPostbackButtons(items, []string{"Yes", "No"}, 1700000100500); got[0].Payload != "old-yes" {
+		t.Errorf("closest timestamp: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, []string{"Yes"}, 0); got[0].Payload != "new-yes" {
+		t.Errorf("no timestamp should pick newest: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, []string{"Other"}, 1700000200000); len(got) != 1 || got[0].Payload != "other" {
+		t.Errorf("title filter: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, []string{"Missing"}, 0); got != nil {
+		t.Errorf("expected nil for unmatched titles, got %+v", got)
+	}
+}

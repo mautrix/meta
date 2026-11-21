@@ -60,7 +60,7 @@ func (mc *MessageConverter) wrapXMAPreviewImage(ctx context.Context, xma *slidet
 	})
 }
 
-func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.XMAContent) *event.MessageEventContent {
+func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.XMAContent, postbacks []*metaid.PostbackButton) *event.MessageEventContent {
 	var captionHTML string
 	if xma.EyebrowText != "" {
 		captionHTML += fmt.Sprintf("<blockquote>%s</blockquote>", html.EscapeString(xma.EyebrowText))
@@ -93,7 +93,7 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	if captionHTML == "" {
 		return nil
 	}
-	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons)
+	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons, postbacks)
 	return ptr.Ptr(format.HTMLToContent(captionHTML))
 }
 
@@ -106,7 +106,10 @@ func unwrapLinkShim(u *url.URL) *url.URL {
 	return u
 }
 
-func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton) string {
+// PostbackTapCommand is the bridge command that taps a postback button.
+const PostbackTapCommand = "!ig tap"
+
+func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.PostbackButton) string {
 	var links, buttons []string
 	for _, cta := range ctas {
 		if cta == nil || cta.Title == "" {
@@ -118,13 +121,23 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton) string {
 		}
 		if err == nil && (actionURL.Scheme == "https" || actionURL.Scheme == "http") {
 			links = append(links, fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
-		} else {
+		} else if !slices.ContainsFunc(postbacks, func(pb *metaid.PostbackButton) bool { return pb.Title == cta.Title }) {
 			buttons = append(buttons, html.EscapeString(cta.Title))
 		}
 	}
 	var out string
 	if len(links) > 0 {
 		out += fmt.Sprintf("<p>%s</p>", strings.Join(links, " - "))
+	}
+	if len(postbacks) > 0 {
+		var list strings.Builder
+		for _, pb := range postbacks {
+			fmt.Fprintf(&list, "<li>%s</li>", html.EscapeString(pb.Title))
+		}
+		out += fmt.Sprintf(
+			"<ol>%s</ol><p>Tap a button with <code>%s N</code> or <code>%s &lt;title&gt;</code></p>",
+			list.String(), PostbackTapCommand, PostbackTapCommand,
+		)
 	}
 	if len(buttons) > 0 {
 		out += fmt.Sprintf("<p>%s<br>Use the Instagram app to click buttons</p>", strings.Join(buttons, " - "))
@@ -136,14 +149,21 @@ func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {
 	return xma != nil && len(xma.CTAButtons) == 1 && strings.HasPrefix(xma.CTAButtons[0].ActionURL, "https://api.whatsapp.com/send")
 }
 
-func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent) *bridgev2.ConvertedMessagePart {
+func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent, msg *slidetypes.Message) *bridgev2.ConvertedMessagePart {
 	if xma == nil {
 		return nil
 	}
+	postbacks := mc.recoverPostbackButtons(ctx, xma, msg)
+	part := mc.wrapXMAWithPostbacks(ctx, xma, postbacks)
+	attachPostbackButtons(part, postbacks)
+	return part
+}
+
+func (mc *MessageConverter) wrapXMAWithPostbacks(ctx context.Context, xma *slidetypes.XMAContent, postbacks []*metaid.PostbackButton) *bridgev2.ConvertedMessagePart {
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
-	captionPart := mc.wrapXMACaption(ctx, xma)
+	captionPart := mc.wrapXMACaption(ctx, xma, postbacks)
 	if previewPart != nil && captionPart == nil {
-		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons); buttonsHTML != "" {
+		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons, postbacks); buttonsHTML != "" {
 			captionPart = ptr.Ptr(format.HTMLToContent(buttonsHTML))
 		}
 	}
