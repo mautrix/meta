@@ -151,6 +151,9 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 			}
 			m.sendBridgeState(m.metaState)
 			return nil, wrapMetaError(err)
+		} else if errors.Is(err, mediadl.ErrNoNativeSession) {
+			m.reportNoNativeSession(ctx)
+			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		} else if err != nil {
 			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		}
@@ -816,6 +819,7 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		if m.Client.GetPlatform().IsMessengerLite() {
 			session := m.Client.MessengerLite.GetNativeSession()
 			if session == nil {
+				m.reportNoNativeSession(ctx)
 				return false, mediadl.ErrNoNativeSession
 			}
 			imageID, err = m.Client.GetHTTP().SendRUploadRequest(ctx, session, &httpclient.RUploadMedia{
