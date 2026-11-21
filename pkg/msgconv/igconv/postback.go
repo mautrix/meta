@@ -169,6 +169,9 @@ func isSubset(want, have []string) bool {
 // PostbackThreadID returns the ID to use for the direct_v2 thread fetch: the long Instagram
 // Direct thread ID, falling back to the short thread_fbid, which the REST endpoint 404s on.
 func PostbackThreadID(meta *metaid.PortalMetadata) string {
+	if meta == nil {
+		return ""
+	}
 	return cmp.Or(meta.IGThreadID, meta.IGID)
 }
 

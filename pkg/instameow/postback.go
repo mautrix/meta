@@ -38,26 +38,33 @@ import (
 	"github.com/rs/zerolog"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
-const threadDetailsBaseURL = "https://www.instagram.com"
+const (
+	threadDetailsBaseURL       = "https://www.instagram.com"
+	mobileThreadDetailsBaseURL = "https://i.instagram.com"
+)
+
+var errThreadNotFound = errors.New("thread not found")
 
 // ThreadDetailsURL returns the URL of the REST thread endpoint (the trailing slash is required).
 func ThreadDetailsURL(base, threadID string) string {
 	return base + "/api/v1/direct_v2/threads/" + url.PathEscape(threadID) + "/"
 }
 
-// threadDetailsHeaders builds the headers for the thread GET. This is a workaround from #338:
-// the web session cookies are used together with the Android app's user agent and app ID.
+// threadDetailsHeaders builds clean Android app headers for the thread GET. Desktop browser
+// headers (sec-ch-ua*, x-fb-lsd, ...) are deliberately not sent next to the Android user agent.
+// Cookie-only logins also send their session cookies.
 func (c *Client) threadDetailsHeaders() http.Header {
-	var h http.Header
-	if c.mobileSession.Load() != nil {
-		h = c.buildAndroidHeaders()
-	} else {
-		h = c.http.BuildHeaders(true, false)
+	h := c.buildAndroidHeaders()
+	if c.mobileSession.Load() == nil && c.cookies != nil {
+		if cookieStr := c.cookies.String(); cookieStr != "" {
+			h.Set("cookie", cookieStr)
+		}
 	}
 	h.Set("user-agent", useragent.IGAndroidUserAgent)
 	h.Set("x-ig-app-id", useragent.IGAndroidAppID)
@@ -65,8 +72,13 @@ func (c *Client) threadDetailsHeaders() http.Header {
 }
 
 // FetchThreadGenericXMAItems fetches the thread over the REST API and returns the generic_xma items.
+// If www.instagram.com answers 404, it retries once on i.instagram.com.
 func (c *Client) FetchThreadGenericXMAItems(ctx context.Context, threadID string) ([]*slidetypes.ThreadItem, error) {
-	return c.fetchThreadGenericXMAItems(ctx, threadDetailsBaseURL, threadID)
+	items, err := c.fetchThreadGenericXMAItems(ctx, threadDetailsBaseURL, threadID)
+	if errors.Is(err, errThreadNotFound) {
+		return c.fetchThreadGenericXMAItems(ctx, mobileThreadDetailsBaseURL, threadID)
+	}
+	return items, err
 }
 
 func (c *Client) fetchThreadGenericXMAItems(ctx context.Context, baseURL, threadID string) ([]*slidetypes.ThreadItem, error) {
@@ -75,9 +87,20 @@ func (c *Client) fetchThreadGenericXMAItems(ctx context.Context, baseURL, thread
 	} else if threadID == "" {
 		return nil, errors.New("thread ID is empty")
 	}
-	resp, body, err := c.http.MakeRequest(ctx, ThreadDetailsURL(baseURL, threadID), http.MethodGet, c.threadDetailsHeaders(), nil, types.NONE)
+	reqURL := ThreadDetailsURL(baseURL, threadID)
+	resp, body, err := c.http.MakeRequest(ctx, reqURL, http.MethodGet, c.threadDetailsHeaders(), nil, types.NONE)
 	if err != nil {
+		if resp != nil {
+			evt := zerolog.Ctx(ctx).Debug().
+				Str("url", ThreadDetailsURL(baseURL, "<id>")).
+				Int("status_code", resp.StatusCode).
+				Str("content_type", resp.Header.Get("Content-Type"))
+			httpclient.AddRedactedResponse(evt, body).Msg("Thread details request failed")
+		}
 		c.checkResponseError(err)
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			err = fmt.Errorf("%w: %w", errThreadNotFound, err)
+		}
 		return nil, fmt.Errorf("failed to fetch thread details: %w", err)
 	}
 	c.updateNativeSession(ctx, resp)

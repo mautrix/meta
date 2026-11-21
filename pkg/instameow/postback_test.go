@@ -19,9 +19,11 @@ package instameow
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -149,5 +151,54 @@ func TestFetchThreadUsesDocumentedHost(t *testing.T) {
 	_, _ = c.FetchThreadGenericXMAItems(context.Background(), "42")
 	if want := "GET https://www.instagram.com/api/v1/direct_v2/threads/42/"; seen != want {
 		t.Fatalf("got %q, want %q", seen, want)
+	}
+}
+
+func TestThreadDetailsHeadersAreCleanAndroid(t *testing.T) {
+	h := newPostbackTestClient().threadDetailsHeaders()
+	for _, name := range []string{"sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "x-fb-lsd", "dpr", "viewport-width"} {
+		if h.Get(name) != "" {
+			t.Errorf("header %s must not be sent", name)
+		}
+	}
+	if got := h.Get("User-Agent"); got != useragent.IGAndroidUserAgent {
+		t.Errorf("unexpected user agent %q", got)
+	}
+	if got := h.Get("X-IG-App-ID"); got != useragent.IGAndroidAppID {
+		t.Errorf("unexpected app ID %q", got)
+	}
+	if len(h.Values("Authorization")) == 0 {
+		t.Errorf("Authorization header missing")
+	}
+	if h.Get("Cookie") == "" {
+		t.Errorf("Cookie header missing")
+	}
+}
+
+func TestFetchThreadFallsBackToMobileHost(t *testing.T) {
+	c := newPostbackTestClient()
+	var seen []string
+	c.http.HTTP.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		seen = append(seen, r.Method+" "+r.URL.String())
+		status, body := 404, `{"message":"nope"}`
+		if r.URL.Host == "i.instagram.com" {
+			status, body = 200, `{"status":"ok","thread":{"items":[]}}`
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    r,
+		}, nil
+	})
+	if _, err := c.FetchThreadGenericXMAItems(context.Background(), "42"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"GET https://www.instagram.com/api/v1/direct_v2/threads/42/",
+		"GET https://i.instagram.com/api/v1/direct_v2/threads/42/",
+	}
+	if !reflect.DeepEqual(seen, want) {
+		t.Fatalf("got %v, want %v", seen, want)
 	}
 }
