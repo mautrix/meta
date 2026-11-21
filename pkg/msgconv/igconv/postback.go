@@ -27,6 +27,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -92,11 +93,40 @@ func ctaTitles(ctas []*slidetypes.CTAButton) []string {
 	return titles
 }
 
+// ItemIDFromMessageID returns the Instagram item ID of a bridged message, or an empty string
+// if the message ID isn't an Instagram one.
+func ItemIDFromMessageID(id networkid.MessageID) string {
+	if parsed, ok := metaid.ParseMessageID(id).(metaid.ParsedFBMessageID); ok {
+		return parsed.ID
+	}
+	return ""
+}
+
 // PickPostbackButtons finds the postback buttons for a message in the generic_xma items of a
-// thread. If wantTitles is not empty, only items with all those button titles are considered.
-// Among the candidates, the one with the timestamp closest to tsMS wins (or the first one,
-// which is the newest, if timestamps are not available).
-func PickPostbackButtons(items []*slidetypes.ThreadItem, wantTitles []string, tsMS int64) []*metaid.PostbackButton {
+// thread.
+//
+// If wantItemID matches exactly one item, only that item is used: its buttons are returned,
+// or nil if it has none (never another card's). Otherwise, wantTitles must be non-empty,
+// and only items with all those button titles are considered; the one with the timestamp
+// closest to tsMS wins (or the first one, which is the newest, if timestamps are missing).
+// With no item ID match and no titles, nothing is returned.
+func PickPostbackButtons(items []*slidetypes.ThreadItem, wantItemID string, wantTitles []string, tsMS int64) []*metaid.PostbackButton {
+	if wantItemID != "" {
+		var matched *slidetypes.ThreadItem
+		matches := 0
+		for _, item := range items {
+			if item.ItemID == wantItemID {
+				matched = item
+				matches++
+			}
+		}
+		if matches == 1 {
+			return PostbackButtonsFromCTAs(matched.AllCTAButtons())
+		}
+	}
+	if len(wantTitles) == 0 {
+		return nil
+	}
 	var best []*metaid.PostbackButton
 	var bestDiff int64 = -1
 	for _, item := range items {
@@ -157,7 +187,7 @@ func (mc *MessageConverter) recoverPostbackButtons(ctx context.Context, xma *sli
 	if msg != nil {
 		tsMS = msg.TimestampMS.UnixMilli()
 	}
-	buttons := PickPostbackButtons(items, ctaTitles(xma.CTAButtons), tsMS)
+	buttons := PickPostbackButtons(items, "", ctaTitles(xma.CTAButtons), tsMS)
 	log.Debug().Int("button_count", len(buttons)).Int("item_count", len(items)).Msg("Recovered XMA postback buttons")
 	return buttons
 }

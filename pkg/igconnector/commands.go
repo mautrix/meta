@@ -137,7 +137,7 @@ func fetchStoredPostbackButtons(ctx context.Context, ce *commands.Event, cli *IG
 	if err != nil {
 		return fmt.Errorf("failed to fetch buttons: %w", err)
 	}
-	buttons := igconv.PickPostbackButtons(items, nil, msg.Timestamp.UnixMilli())
+	buttons := igconv.PickPostbackButtons(items, igconv.ItemIDFromMessageID(msg.ID), nil, 0)
 	if len(buttons) == 0 {
 		return errors.New("the message has no tappable buttons")
 	}

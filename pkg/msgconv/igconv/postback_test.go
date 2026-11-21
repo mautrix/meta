@@ -161,16 +161,52 @@ func TestPickPostbackButtons(t *testing.T) {
 		t.Fatal(err)
 	}
 	items := resp.GenericXMAItems()
-	if got := PickPostbackButtons(items, []string{"Yes", "No"}, 1700000100500); got[0].Payload != "old-yes" {
+	if got := PickPostbackButtons(items, "", []string{"Yes", "No"}, 1700000100500); got[0].Payload != "old-yes" {
 		t.Errorf("closest timestamp: got %+v", got)
 	}
-	if got := PickPostbackButtons(items, []string{"Yes"}, 0); got[0].Payload != "new-yes" {
+	if got := PickPostbackButtons(items, "", []string{"Yes"}, 0); got[0].Payload != "new-yes" {
 		t.Errorf("no timestamp should pick newest: got %+v", got)
 	}
-	if got := PickPostbackButtons(items, []string{"Other"}, 1700000200000); len(got) != 1 || got[0].Payload != "other" {
+	if got := PickPostbackButtons(items, "", []string{"Other"}, 1700000200000); len(got) != 1 || got[0].Payload != "other" {
 		t.Errorf("title filter: got %+v", got)
 	}
-	if got := PickPostbackButtons(items, []string{"Missing"}, 0); got != nil {
+	if got := PickPostbackButtons(items, "", []string{"Missing"}, 0); got != nil {
 		t.Errorf("expected nil for unmatched titles, got %+v", got)
+	}
+}
+
+func TestPickPostbackButtonsByItemID(t *testing.T) {
+	var resp slidetypes.ThreadDetailsResponse
+	err := json.Unmarshal([]byte(`{"thread":{"items":[
+		{"item_id":"B","item_type":"generic_xma","timestamp":"1700000200000000","cta_buttons":[{"cta_type":"postback","title":"Yes","payload":"b-yes"}]},
+		{"item_id":"A","item_type":"generic_xma","timestamp":"1700000100000000","cta_buttons":[{"cta_type":"postback","title":"Yes","payload":"a-yes"}]},
+		{"item_id":"C","item_type":"generic_xma","timestamp":"1700000300000000","cta_buttons":[{"cta_type":"xma_web_url","action_url":"https://example.com","title":"Go"}]}]}}`), &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := resp.GenericXMAItems()
+	if got := PickPostbackButtons(items, "A", nil, 1700000200000); len(got) != 1 || got[0].Payload != "a-yes" {
+		t.Errorf("item ID must beat closer timestamp: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, "A", nil, 0); len(got) != 1 || got[0].Payload != "a-yes" {
+		t.Errorf("item ID without timestamp: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, "", nil, 1700000200000); got != nil {
+		t.Errorf("no ID and no titles must return nothing: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, "plain-text-id", nil, 1700000200000); got != nil {
+		t.Errorf("unrelated item ID must return nothing: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, "C", []string{"Yes"}, 1700000200000); got != nil {
+		t.Errorf("matched item without postbacks must not fall through: got %+v", got)
+	}
+}
+
+func TestItemIDFromMessageID(t *testing.T) {
+	if got := ItemIDFromMessageID(metaid.MakeFBMessageID("abc")); got != "abc" {
+		t.Errorf("got %q", got)
+	}
+	if got := ItemIDFromMessageID("garbage"); got != "" {
+		t.Errorf("got %q", got)
 	}
 }
