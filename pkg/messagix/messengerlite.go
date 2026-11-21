@@ -140,6 +140,11 @@ func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 		"machine_id":   c.MessengerLite.machineID,
 		"version":      "3",
 	}
+	if c.Platform == types.MessengerLiteAndroid {
+		delete(params, "machine_id")
+		params["flow"] = "CONTROLLER_INITIALIZATION"
+		params["version"] = "2"
+	}
 
 	query := url.Values{}
 	for key, value := range params {
