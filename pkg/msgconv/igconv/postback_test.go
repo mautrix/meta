@@ -202,6 +202,32 @@ func TestPickPostbackButtonsByItemID(t *testing.T) {
 	}
 }
 
+func TestPickPostbackButtonsEmptyTitlesRecoverByMessageID(t *testing.T) {
+	var resp slidetypes.ThreadDetailsResponse
+	err := json.Unmarshal([]byte(`{"thread":{"items":[
+		{"item_id":"B","item_type":"generic_xma","timestamp":"1700000200000000","cta_buttons":[{"cta_type":"postback","title":"Yes","payload":"b-yes"}]},
+		{"item_id":"A","item_type":"generic_xma","timestamp":"1700000100000000","cta_buttons":[{"cta_type":"postback","title":"Yes","payload":"a-yes"}]}]}}`), &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := resp.GenericXMAItems()
+	// Placeholder cards have no GraphQL titles; the message's own ID must find the card.
+	if got := PickPostbackButtons(items, "A", ctaTitles(nil), 1700000200000); len(got) != 1 || got[0].Payload != "a-yes" {
+		t.Errorf("empty titles + message ID must recover that card: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, "", ctaTitles(nil), 1700000200000); got != nil {
+		t.Errorf("empty titles + empty ID must return nothing: got %+v", got)
+	}
+	// A plain text message: its ID is not a generic_xma item and there are no titles.
+	if got := PickPostbackButtons(items, "plain-text-id", ctaTitles(nil), 1700000200000); got != nil {
+		t.Errorf("plain text message must get no buttons: got %+v", got)
+	}
+	// Message ID that matches nothing still falls back to titles + timestamp.
+	if got := PickPostbackButtons(items, "other-id", []string{"Yes"}, 1700000100500); len(got) != 1 || got[0].Payload != "a-yes" {
+		t.Errorf("titles fallback: got %+v", got)
+	}
+}
+
 func TestItemIDFromMessageID(t *testing.T) {
 	if got := ItemIDFromMessageID(metaid.MakeFBMessageID("abc")); got != "abc" {
 		t.Errorf("got %q", got)

@@ -184,10 +184,12 @@ func (mc *MessageConverter) recoverPostbackButtons(ctx context.Context, xma *sli
 		return PostbackButtonsFromCTAs(xma.CTAButtons)
 	}
 	var tsMS int64
+	var itemID string
 	if msg != nil {
 		tsMS = msg.TimestampMS.UnixMilli()
+		itemID = msg.MessageID
 	}
-	buttons := PickPostbackButtons(items, "", ctaTitles(xma.CTAButtons), tsMS)
+	buttons := PickPostbackButtons(items, itemID, ctaTitles(xma.CTAButtons), tsMS)
 	log.Debug().Int("button_count", len(buttons)).Int("item_count", len(items)).Msg("Recovered XMA postback buttons")
 	return buttons
 }
