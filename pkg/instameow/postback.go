@@ -35,6 +35,8 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/rs/zerolog"
+
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
@@ -83,7 +85,34 @@ func (c *Client) fetchThreadGenericXMAItems(ctx context.Context, baseURL, thread
 	if err = json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("failed to parse thread details: %w", err)
 	}
+	logThreadDetailsSummary(ctx, threadID, &parsed)
 	return parsed.GenericXMAItems(), nil
+}
+
+// logThreadDetailsSummary logs only key names, counts and IDs, never cookies or message content.
+func logThreadDetailsSummary(ctx context.Context, threadID string, parsed *slidetypes.ThreadDetailsResponse) {
+	log := zerolog.Ctx(ctx)
+	if !log.Debug().Enabled() {
+		return
+	}
+	sum := parsed.DebugSummary()
+	arr := zerolog.Arr()
+	for _, item := range sum.GenericXMAInfo {
+		arr.Dict(zerolog.Dict().
+			Str("item_id", item.ItemID).
+			Int("cta_count", item.CTACount).
+			Bool("has_generic_xma", item.HasGenericXMA).
+			Strs("item_keys", item.ItemKeys))
+	}
+	log.Debug().
+		Str("thread_id", threadID).
+		Str("status", sum.Status).
+		Strs("top_keys", sum.TopKeys).
+		Strs("thread_keys", sum.ThreadKeys).
+		Int("total_items", sum.TotalItems).
+		Int("generic_xma_items", sum.GenericXMA).
+		Array("generic_xma", arr).
+		Msg("Fetched thread details for XMA postbacks")
 }
 
 // sendItemPostback is the /ig_send_message body for tapping a postback button, as documented

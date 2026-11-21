@@ -116,3 +116,44 @@ func (r *ThreadDetailsResponse) GenericXMAItems() []*ThreadItem {
 	}
 	return items
 }
+
+// DebugSummary is a structural summary of the response (key names and counts only, no
+// content) that's safe to log.
+type DebugSummary struct {
+	Status         string
+	TopKeys        []string
+	ThreadKeys     []string
+	TotalItems     int
+	GenericXMA     int
+	GenericXMAInfo []ItemDebugSummary
+}
+
+type ItemDebugSummary struct {
+	ItemID        string
+	CTACount      int
+	HasGenericXMA bool
+	ItemKeys      []string
+}
+
+const maxDebugSummaryItems = 5
+
+func (r *ThreadDetailsResponse) DebugSummary() DebugSummary {
+	s := DebugSummary{Status: r.Status, TopKeys: sortedKeys(r.Unrecognized)}
+	if r.Thread == nil {
+		return s
+	}
+	s.ThreadKeys = sortedKeys(r.Thread.Unrecognized)
+	s.TotalItems = len(r.Thread.Items)
+	for _, item := range r.GenericXMAItems() {
+		s.GenericXMA++
+		if len(s.GenericXMAInfo) < maxDebugSummaryItems {
+			s.GenericXMAInfo = append(s.GenericXMAInfo, ItemDebugSummary{
+				ItemID:        item.ItemID,
+				CTACount:      len(item.AllCTAButtons()),
+				HasGenericXMA: len(item.GenericXMA) > 0,
+				ItemKeys:      sortedKeys(item.Unrecognized),
+			})
+		}
+	}
+	return s
+}

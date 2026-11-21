@@ -236,3 +236,20 @@ func TestItemIDFromMessageID(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestPostbackThreadID(t *testing.T) {
+	for name, tc := range map[string]struct {
+		meta *metaid.PortalMetadata
+		want string
+	}{
+		"prefers ig thread id": {&metaid.PortalMetadata{IGID: "1806437297362083", IGThreadID: "340282366841710301244259981454874449059"}, "340282366841710301244259981454874449059"},
+		"falls back to igid":   {&metaid.PortalMetadata{IGID: "1806437297362083"}, "1806437297362083"},
+		"both empty":           {&metaid.PortalMetadata{}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := PostbackThreadID(tc.meta); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

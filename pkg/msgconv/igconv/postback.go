@@ -17,6 +17,7 @@
 package igconv
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -165,6 +166,12 @@ func isSubset(want, have []string) bool {
 	return true
 }
 
+// PostbackThreadID returns the ID to use for the direct_v2 thread fetch: the long Instagram
+// Direct thread ID, falling back to the short thread_fbid, which the REST endpoint 404s on.
+func PostbackThreadID(meta *metaid.PortalMetadata) string {
+	return cmp.Or(meta.IGThreadID, meta.IGID)
+}
+
 // recoverPostbackButtons returns the postback buttons of an XMA card, either from the
 // GraphQL data or, if that data seems to hide them, with a targeted REST thread fetch.
 func (mc *MessageConverter) recoverPostbackButtons(ctx context.Context, xma *slidetypes.XMAContent, msg *slidetypes.Message) []*metaid.PostbackButton {
@@ -173,12 +180,16 @@ func (mc *MessageConverter) recoverPostbackButtons(ctx context.Context, xma *sli
 	}
 	client, _ := ctx.Value(mediadl.ContextKeyIGClient).(*instameow.Client)
 	portalMeta := portalMetaFromContext(ctx)
-	if client == nil || portalMeta == nil || portalMeta.IGID == "" {
+	if client == nil || portalMeta == nil {
+		return PostbackButtonsFromCTAs(xma.CTAButtons)
+	}
+	threadID := PostbackThreadID(portalMeta)
+	if threadID == "" {
 		return PostbackButtonsFromCTAs(xma.CTAButtons)
 	}
 	log := zerolog.Ctx(ctx)
 	// Workaround from #338: GraphQL doesn't expose the postback payloads.
-	items, err := client.FetchThreadGenericXMAItems(ctx, portalMeta.IGID)
+	items, err := client.FetchThreadGenericXMAItems(ctx, threadID)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to fetch thread to recover XMA postback buttons")
 		return PostbackButtonsFromCTAs(xma.CTAButtons)

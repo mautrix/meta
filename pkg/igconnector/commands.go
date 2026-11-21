@@ -133,7 +133,7 @@ func fetchStoredPostbackButtons(ctx context.Context, ce *commands.Event, cli *IG
 	if err != nil {
 		return fmt.Errorf("failed to find the thread ID: %w", err)
 	}
-	items, err := cli.Client.FetchThreadGenericXMAItems(ctx, portalMeta.IGID)
+	items, err := cli.Client.FetchThreadGenericXMAItems(ctx, igconv.PostbackThreadID(portalMeta))
 	if err != nil {
 		return fmt.Errorf("failed to fetch buttons: %w", err)
 	}
