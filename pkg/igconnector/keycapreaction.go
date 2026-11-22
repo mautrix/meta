@@ -65,7 +65,16 @@ func (ic *IGClient) isKeycapButtonReaction(ctx context.Context, portal *bridgev2
 	target, err := ic.Main.Bridge.DB.Message.GetFirstPartByID(ctx, portal.Receiver, reaction.MessageID)
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to look up reaction target message")
-		return false
 	}
-	return keycapButton(target, reaction.Emoji) != nil
+	return skipInstagramKeycapRemove(err, target, reaction.Emoji)
+}
+
+// skipInstagramKeycapRemove is true when a keycap reaction should not be deleted on Instagram:
+// the target could not be loaded, or the keycap would have activated a button (so the reaction
+// was never sent to Instagram).
+func skipInstagramKeycapRemove(lookupErr error, target *database.Message, emoji string) bool {
+	if lookupErr != nil || target == nil {
+		return true
+	}
+	return keycapButton(target, emoji) != nil
 }

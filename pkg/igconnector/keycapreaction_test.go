@@ -41,3 +41,28 @@ func TestKeycapButton(t *testing.T) {
 		t.Error("message without buttons must not match")
 	}
 }
+
+func TestSkipInstagramKeycapRemove(t *testing.T) {
+	follow := &metaid.PostbackButton{Title: "Following", Payload: "payload-b", CTAType: "postback"}
+	card := &database.Message{Metadata: &metaid.MessageMetadata{PostbackButtons: []*metaid.PostbackButton{follow}}}
+	if !skipInstagramKeycapRemove(assertErr{}, card, "1️⃣") {
+		t.Error("lookup error must skip the Instagram delete")
+	}
+	if !skipInstagramKeycapRemove(nil, nil, "1️⃣") {
+		t.Error("missing target must skip the Instagram delete")
+	}
+	if !skipInstagramKeycapRemove(nil, card, "1️⃣") {
+		t.Error("button keycap must skip the Instagram delete")
+	}
+	if skipInstagramKeycapRemove(nil, card, "3️⃣") {
+		t.Error("keycap past the last button may still be a real Instagram reaction")
+	}
+	plain := &database.Message{Metadata: &metaid.MessageMetadata{}}
+	if skipInstagramKeycapRemove(nil, plain, "1️⃣") {
+		t.Error("keycap on a message without buttons may still be a real Instagram reaction")
+	}
+}
+
+type assertErr struct{}
+
+func (assertErr) Error() string { return "db" }
