@@ -51,15 +51,18 @@ func ButtonPollIndex(answerID string, count int) (int, bool) {
 	return idx, true
 }
 
-// appendButtonPoll adds the Matrix-only poll that mirrors the buttons of the first part that has
-// any. The card parts stay as they are.
-func appendButtonPoll(cm *bridgev2.ConvertedMessage) {
-	for _, part := range cm.Parts {
+// insertButtonPoll adds the Matrix-only poll that mirrors the buttons of the first part that has
+// any, immediately after that part. Parts after the card, like the text of an XMA message, move
+// down behind the poll, so the poll never ends up after text that came later. The card parts
+// stay as they are.
+func insertButtonPoll(cm *bridgev2.ConvertedMessage) {
+	for i, part := range cm.Parts {
 		meta, ok := part.DBMetadata.(*metaid.MessageMetadata)
 		if part.DontBridge || !ok || len(meta.TapButtons()) == 0 {
 			continue
 		}
-		cm.Parts = append(cm.Parts, NewButtonPollPart(buttonPollQuestion(cm.Parts), meta.PostbackButtons, meta.QuickReplies))
+		poll := NewButtonPollPart(buttonPollQuestion(cm.Parts), meta.PostbackButtons, meta.QuickReplies)
+		cm.Parts = slices.Insert(cm.Parts, i+1, poll)
 		return
 	}
 }

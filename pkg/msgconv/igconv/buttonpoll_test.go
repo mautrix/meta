@@ -18,10 +18,12 @@ package igconv
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -89,6 +91,54 @@ func TestButtonPollAfterCard(t *testing.T) {
 	if !meta.ButtonPoll || meta.PollID != 0 || len(meta.PostbackButtons) != 0 || len(meta.QuickReplies) != 2 ||
 		meta.QuickReplies[1].Payload != "payload-Não" {
 		t.Errorf("unexpected poll metadata: %+v", meta)
+	}
+}
+
+func TestButtonPollSitsRightAfterCardBeforeTrailingText(t *testing.T) {
+	msg := &slidetypes.Message{MessageID: "mid.$T"}
+	msg.Content.Content = &slidetypes.MessageContentXMA{
+		XMATextBody: "Texto depois do cartão",
+		XMA: &slidetypes.XMAContent{
+			TitleText: "Quer o guia?", TargetID: "123", TargetURL: "https://www.instagram.com/reel/x/",
+			CTAButtons: parseCTAs(t, `[{"cta_type":"postback","title":"Sim","payload":"payload-a"}]`),
+		},
+	}
+	cm := convertForPollTest(msg)
+	if len(cm.Parts) != 3 {
+		t.Fatalf("expected card, poll and trailing text, got %d parts", len(cm.Parts))
+	}
+	card, poll, text := cm.Parts[0], cm.Parts[1], cm.Parts[2]
+	if len(card.DBMetadata.(*metaid.MessageMetadata).TapButtons()) != 1 || card.Type != event.EventMessage {
+		t.Errorf("part 0 must be the card with the buttons: %+v", card)
+	}
+	if poll.ID != metaid.ButtonPollPartID || poll.Type != event.EventUnstablePollStart {
+		t.Errorf("the poll must sit immediately after the card, got part 1 id=%q type=%v", poll.ID, poll.Type)
+	}
+	if text.ID != "xma-text-body" || !strings.Contains(text.Content.Body, "Texto depois do cartão") {
+		t.Errorf("the trailing text must stay after the poll: id=%q body=%q", text.ID, text.Content.Body)
+	}
+	if start := pollStartOf(t, poll); start.Question.Text != "Quer o guia?" || len(start.Answers) != 1 {
+		t.Errorf("unexpected poll start: %+v", start)
+	}
+}
+
+func TestInsertButtonPollKeepsPartsBeforeTheCardInPlace(t *testing.T) {
+	button := []*metaid.PostbackButton{{Title: "Sim", Payload: "payload-a", CTAType: metaid.CTATypeQuickReply}}
+	text := func(id, body string) *bridgev2.ConvertedMessagePart {
+		return &bridgev2.ConvertedMessagePart{ID: networkid.PartID(id), Type: event.EventMessage, Content: &event.MessageEventContent{Body: body}}
+	}
+	cm := &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{
+		text("before", "Antes"),
+		{ID: "card", Type: event.EventMessage, Content: &event.MessageEventContent{Body: "Cartão"}, DBMetadata: &metaid.MessageMetadata{QuickReplies: button}},
+		text("after", "Depois"),
+	}}
+	insertButtonPoll(cm)
+	var ids []networkid.PartID
+	for _, part := range cm.Parts {
+		ids = append(ids, part.ID)
+	}
+	if want := []networkid.PartID{"before", "card", metaid.ButtonPollPartID, "after"}; !slices.Equal(ids, want) {
+		t.Errorf("part order %v, want %v", ids, want)
 	}
 }
 
