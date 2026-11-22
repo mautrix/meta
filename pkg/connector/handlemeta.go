@@ -67,7 +67,7 @@ func init() {
 		MetaInboxLoadFailed:       "Facebook keeps failing to load your messages",
 		MetaPermanentError:        "Unknown permanent connection error",
 		MetaProxyUpdateFail:       "Failed to update proxy",
-		MetaNoNativeSession:       "Log in to Facebook again to send media",
+		MetaNoNativeSession:       "Please log in to Facebook again to update your connection",
 		IGNotSupported:            "This bridge no longer supports Instagram",
 	})
 }

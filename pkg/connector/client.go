@@ -54,12 +54,9 @@ type MetaClient struct {
 	mediaRefreshLock     exsync.KeyedMutex[int64]
 	connectLock          sync.Mutex
 	pushRegistrationLock sync.Mutex
-	mediaReloginLock     sync.Mutex
 	stopConnectAttempt   atomic.Pointer[context.CancelFunc]
 	permanentErrored     atomic.Bool
 	reconnecting         atomic.Bool
-	mediaRelogin         atomic.Bool
-	mediaReloginSaved    bool
 
 	editChannels *exsync.Map[string, chan *FBEditEvent]
 
@@ -128,8 +125,6 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		e2eeConnectWaiter: exsync.NewEvent(),
 	}
 	c.editChannels = exsync.NewMap[string, chan *FBEditEvent]()
-	c.mediaRelogin.Store(loginMetadata.MediaUploadReloginNeeded)
-	c.mediaReloginSaved = loginMetadata.MediaUploadReloginNeeded
 	login.Client = c
 	return nil
 }
@@ -227,6 +222,14 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      IGNotSupported,
+		})
+		return
+	}
+	if m.LoginMeta.Cookies != nil && m.LoginMeta.Platform.IsMessengerLite() && m.LoginMeta.NativeSession == nil {
+		m.permanentErrored.Store(true)
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      MetaNoNativeSession,
 		})
 		return
 	}
@@ -777,7 +780,6 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 	// as such we need to merge the two states when sending updates and pick the "worst case".
 	// A whatsapp failure only affects encrypted chats, so it's reported on top of a connected meta state
 	// instead of making the whole login look broken.
-	space, hasSpace := state.Info["personal_filtering_space"]
 	waState := m.waState
 	waFailed := waState.StateEvent == status.StateUnknownError
 	if waFailed {
@@ -794,12 +796,7 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 		state.UserAction = copyFrom.UserAction
 		state.Info = maps.Clone(copyFrom.Info)
 	}
-	if state.StateEvent == status.StateConnected && m.needsNativeSessionRelogin() {
-		state.StateEvent = status.StateBadCredentials
-		state.Error = MetaNoNativeSession
-		state.Message = ""
-		state.UserAction = ""
-	} else if waFailed && state.StateEvent == status.StateConnected {
+	if waFailed && state.StateEvent == status.StateConnected {
 		state.Error = waState.Error
 		state.Message = waState.Message
 		state.Info = maps.Clone(waState.Info)
@@ -807,9 +804,6 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 
 	if state.Info == nil {
 		state.Info = make(map[string]any)
-	}
-	if hasSpace {
-		state.Info["personal_filtering_space"] = space
 	}
 	state.Info["mode"] = m.LoginMeta.Platform.String()
 	if m.LoginMeta.LoginUA != "" {
@@ -821,33 +815,6 @@ func (m *MetaClient) FillBridgeState(state status.BridgeState) status.BridgeStat
 func (m *MetaClient) sendBridgeState(state status.BridgeState) {
 	state.Info = maps.Clone(state.Info)
 	m.UserLogin.BridgeState.Send(state)
-}
-
-func (m *MetaClient) needsNativeSessionRelogin() bool {
-	return m.LoginMeta.Platform.IsMessengerLite() && m.LoginMeta.NativeSession == nil && m.mediaRelogin.Load()
-}
-
-func (m *MetaClient) reportNoNativeSession(ctx context.Context) {
-	if !m.LoginMeta.Platform.IsMessengerLite() || m.LoginMeta.NativeSession != nil {
-		return
-	}
-	wasReported := m.mediaRelogin.Swap(true)
-	m.mediaReloginLock.Lock()
-	if !m.mediaReloginSaved {
-		m.LoginMeta.MediaUploadReloginNeeded = true
-		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		err := m.UserLogin.Save(saveCtx)
-		cancel()
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to save media upload relogin state")
-		} else {
-			m.mediaReloginSaved = true
-		}
-	}
-	m.mediaReloginLock.Unlock()
-	if !wasReported {
-		m.sendBridgeState(status.BridgeState{StateEvent: status.StateConnected})
-	}
 }
 
 func (m *MetaClient) pickWorstCaseBridgeState(state status.BridgeState, waState *status.BridgeState) *status.BridgeState {
