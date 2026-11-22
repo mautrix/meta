@@ -183,7 +183,7 @@ func fnRefresh(ce *commands.Event) {
 			ce.Reply("The replied message wasn't found in this chat")
 			return
 		}
-		targets = []*database.Message{msg}
+		targets = []*database.Message{cardOfButtonPoll(ce.Ctx, ce.Bridge.DB.Message, ce.Portal.Receiver, msg)}
 	} else if targets, err = ce.Bridge.DB.Message.IterPortalMessages(ce.Ctx, ce.Portal.PortalKey).AsList(); err != nil {
 		ce.Log.Debug().Str("reason", "message_lookup_failed").Msg("Failed refresh")
 		ce.Reply("Failed to look up messages")
@@ -193,8 +193,22 @@ func fnRefresh(ce *commands.Event) {
 	ce.Reply("Refreshed %d message(s) (including stored buttons), skipped %d, failed %d", counts[refreshUpdated], counts[refreshSkipped], counts[refreshFailed])
 }
 
+// cardOfButtonPoll returns the card that a button poll belongs to, or msg itself if it isn't a
+// button poll or the card can't be found. The poll has no card HTML of its own to refresh.
+func cardOfButtonPoll(ctx context.Context, db *database.MessageQuery, receiver networkid.UserLoginID, msg *database.Message) *database.Message {
+	if !isButtonPoll(msg) {
+		return msg
+	}
+	if card, err := db.GetFirstPartByID(ctx, receiver, msg.ID); err == nil && card != nil && !isButtonPoll(card) {
+		return card
+	}
+	return msg
+}
+
 func refreshPortal(ce *commands.Event, login *bridgev2.UserLogin, targets []*database.Message) [3]int {
 	var counts [3]int
+	// Button polls are Matrix-only. Editing one as if it were a card would corrupt it.
+	targets = slices.DeleteFunc(slices.Clone(targets), isButtonPoll)
 	if len(targets) == 0 {
 		return counts
 	}

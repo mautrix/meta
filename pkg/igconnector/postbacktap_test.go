@@ -205,3 +205,16 @@ func TestRefreshCardSkipPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestNewestPostbackMessageSkipsButtonPoll(t *testing.T) {
+	now := time.Now()
+	buttons := []*metaid.PostbackButton{{Title: "Yes", Payload: "p", CTAType: metaid.CTATypeQuickReply}}
+	card := &database.Message{Timestamp: now.Add(-time.Minute), Metadata: &metaid.MessageMetadata{QuickReplies: buttons}}
+	poll := &database.Message{PartID: metaid.ButtonPollPartID, Timestamp: now, Metadata: &metaid.MessageMetadata{QuickReplies: buttons, ButtonPoll: true}}
+	if got := newestPostbackMessage([]*database.Message{poll, card}); got != card {
+		t.Errorf("the card must be tapped, got %+v", got)
+	}
+	if got := newestPostbackMessage([]*database.Message{poll}); got != nil {
+		t.Errorf("a lone poll row is not a card: %+v", got)
+	}
+}

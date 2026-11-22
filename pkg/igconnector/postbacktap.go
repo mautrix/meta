@@ -36,13 +36,20 @@ import (
 // pendingPostbackTTL is how long a tap OTID is remembered if no echo arrives.
 const pendingPostbackTTL = 2 * time.Minute
 
+// isButtonPoll reports whether the message is the Matrix-only poll that mirrors the buttons of
+// a card. It stores the same buttons as the card but isn't the card.
+func isButtonPoll(msg *database.Message) bool {
+	meta, ok := msg.Metadata.(*metaid.MessageMetadata)
+	return ok && meta != nil && meta.ButtonPoll
+}
+
 // newestPostbackMessage returns the newest of the given messages that has stored postback or
-// quick reply buttons.
+// quick reply buttons. Button polls are skipped: their card is the message to tap.
 func newestPostbackMessage(msgs []*database.Message) *database.Message {
 	var newest *database.Message
 	for _, msg := range msgs {
 		meta, ok := msg.Metadata.(*metaid.MessageMetadata)
-		if !ok || len(meta.TapButtons()) == 0 {
+		if !ok || len(meta.TapButtons()) == 0 || meta.ButtonPoll {
 			continue
 		}
 		if newest == nil || msg.Timestamp.After(newest.Timestamp) {

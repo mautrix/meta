@@ -32,6 +32,9 @@ type MessageMetadata struct {
 	// Quick replies of text or XMA messages. Tapping one posts its title as text. Kept apart
 	// from PostbackButtons, which are sent with cta_type=postback.
 	QuickReplies []*PostbackButton `json:"quick_replies,omitempty"`
+	// ButtonPoll marks the Matrix-only poll that mirrors the buttons of a card. Voting in it taps
+	// the button. It is unrelated to PollID, which belongs to real Instagram and Messenger polls.
+	ButtonPoll bool `json:"button_poll,omitempty"`
 
 	PollID        int64              `json:"poll_id,omitzero"`
 	PollQuestion  string             `json:"poll_question,omitempty"`
@@ -71,6 +74,9 @@ const CTATypeQuickReply = "quick_reply"
 func (b *PostbackButton) IsQuickReply() bool {
 	return b != nil && b.CTAType == CTATypeQuickReply
 }
+
+// ButtonPollPartID is the part ID of the button poll that follows a card with tappable buttons.
+const ButtonPollPartID networkid.PartID = "buttonpoll"
 
 // TapButtons returns the tappable buttons in display order: postbacks, then quick replies.
 // The numbers in the rendered list, reactions, replies and `!ig tap N` all index this list.

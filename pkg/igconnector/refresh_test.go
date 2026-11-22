@@ -153,6 +153,28 @@ func TestRefreshAllStoredMessagesWithoutDecrypting(t *testing.T) {
 		}
 	})
 
+	t.Run("button polls are never refreshed as cards", func(t *testing.T) {
+		poll := *stored
+		poll.PartID = metaid.ButtonPollPartID
+		poll.MXID = "$poll"
+		poll.Metadata = &metaid.MessageMetadata{ButtonPoll: true, QuickReplies: stored.Metadata.(*metaid.MessageMetadata).QuickReplies}
+		if err := bridge.DB.Message.Insert(ctx, &poll); err != nil {
+			t.Fatal(err)
+		}
+		beforeEdits, beforeGets := len(matrix.edits), gets
+		if counts := refreshPortal(ce, login, []*database.Message{&poll}); counts != [3]int{} || len(matrix.edits) != beforeEdits || gets != beforeGets {
+			t.Fatalf("poll row was refreshed: counts %v, edits %d, GETs %d", counts, len(matrix.edits)-beforeEdits, gets-beforeGets)
+		}
+		if got := cardOfButtonPoll(ctx, bridge.DB.Message, portal.Receiver, &poll); got.PartID != "" || got.ID != stored.ID {
+			t.Fatalf("reply to the poll must refresh the card, got part %q", got.PartID)
+		}
+		if got := cardOfButtonPoll(ctx, bridge.DB.Message, portal.Receiver, stored); got != stored {
+			t.Fatal("a card must refresh itself")
+		}
+		if err := bridge.DB.Message.Delete(ctx, poll.RowID); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("missing stored and fetched buttons are counted", func(t *testing.T) {
 		missing := *targets[0]
 		missing.Metadata = &metaid.MessageMetadata{}
