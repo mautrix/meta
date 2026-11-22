@@ -209,6 +209,9 @@ func (ic *IGClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	if err != nil {
 		return nil, err
 	}
+	if button := keycapButton(msg.TargetMessage, msg.Content.RelatesTo.Key); button != nil {
+		return ic.handleKeycapReaction(ctx, msg, meta, button)
+	}
 	msgID, ok := metaid.ParseMessageID(msg.TargetMessage.ID).(metaid.ParsedFBMessageID)
 	if !ok {
 		return nil, fmt.Errorf("unexpected parsed message ID type")
@@ -243,6 +246,10 @@ func (ic *IGClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	if meta.IGID == "" {
 		// TODO fetch?
 		return fmt.Errorf("portal metadata missing IGID")
+	}
+	if ic.isKeycapButtonReaction(ctx, msg.Portal, msg.TargetReaction) {
+		// The keycap only activated a button and was never sent to Instagram as a reaction.
+		return nil
 	}
 	msgID, ok := metaid.ParseMessageID(msg.TargetReaction.MessageID).(metaid.ParsedFBMessageID)
 	if !ok {
