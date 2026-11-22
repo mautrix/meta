@@ -105,7 +105,9 @@ func (r *ThreadDetailsResponse) UnmarshalJSON(data []byte) error {
 }
 
 type ThreadDetails struct {
-	Items []*ThreadItem `json:"items"`
+	Items        []*ThreadItem `json:"items"`
+	HasOlder     bool          `json:"has_older"`
+	OldestCursor string        `json:"oldest_cursor"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
@@ -118,7 +120,7 @@ func (d *ThreadDetails) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if len(d.Unrecognized) == 0 {
-		d.Unrecognized = unrecognizedKeys(data, "items")
+		d.Unrecognized = unrecognizedKeys(data, "items", "has_older", "oldest_cursor")
 	}
 	return nil
 }
@@ -129,6 +131,7 @@ type ThreadItem struct {
 	// 35-digit decimal ItemID.
 	MessageID string `json:"message_id"`
 	ItemType  string `json:"item_type"`
+	Text      string `json:"text"`
 	// Timestamp is in microseconds on the REST API (assumed, not documented in #338).
 	// It may be encoded as either a number or a string.
 	Timestamp  json.RawMessage `json:"timestamp"`
@@ -171,7 +174,7 @@ func (item *ThreadItem) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if len(item.Unrecognized) == 0 {
-		item.Unrecognized = unrecognizedKeys(data, "item_id", "message_id", "item_type", "timestamp", "cta_buttons", "generic_xma", "quick_replies")
+		item.Unrecognized = unrecognizedKeys(data, "item_id", "message_id", "item_type", "timestamp", "cta_buttons", "generic_xma", "quick_replies", "text")
 	}
 	return nil
 }

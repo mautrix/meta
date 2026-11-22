@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
@@ -32,6 +34,8 @@ func loadTapSigner(ctx context.Context, configured string, store tapKeyStore) (*
 	if configured != "" {
 		return igconv.NewTapSigner([]byte(configured)), nil
 	}
+	// Database trace logs include bound parameters. A disabled logger would fall back to the database logger.
+	ctx = zerolog.New(io.Discard).Level(zerolog.InfoLevel).WithContext(ctx)
 	stored, err := store.GetWithError(ctx, tapSecretKey)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("failed to read tap signing key")
@@ -117,7 +121,7 @@ func (ic *IGConnector) Stop() {
 
 type tapAction struct {
 	button *metaid.PostbackButton
-	send   func(context.Context) error
+	send   func(context.Context, *metaid.PostbackButton) error
 }
 
 type tapHandler struct {
@@ -158,7 +162,7 @@ func (h *tapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load button", http.StatusBadGateway)
 		return
 	}
-	if err = action.send(ctx); err != nil {
+	if err = action.send(ctx, action.button); err != nil {
 		http.Error(w, "Could not send button", http.StatusBadGateway)
 		return
 	}
@@ -210,13 +214,15 @@ func (ic *IGConnector) resolveTap(ctx context.Context, target igconv.TapTarget) 
 	if !ok || meta == nil {
 		return nil, errTapNotFound
 	}
-	if len(meta.TapButtons()) == 0 {
-		items, err := cli.Client.FetchThreadButtonItems(ctx, igconv.PostbackThreadID(portalMeta))
+	button := igconv.ButtonAtIndex(meta.TapButtons(), target.Index)
+	if button == nil || igconv.ButtonKind(button) != target.Kind {
+		items, err := cli.Client.FetchAllThreadButtonItems(ctx, igconv.PostbackThreadID(portalMeta))
 		if err != nil {
 			return nil, err
 		}
 		buttons := igconv.PickButtons(items, igconv.ItemIDFromMessageID(msg.ID), nil, 0)
-		if buttons.Empty() {
+		button = igconv.ButtonAtIndex(buttons.All(), target.Index)
+		if button == nil || igconv.ButtonKind(button) != target.Kind {
 			return nil, errTapNotFound
 		}
 		meta.PostbackButtons, meta.QuickReplies = buttons.Postbacks, buttons.QuickReplies
@@ -224,11 +230,7 @@ func (ic *IGConnector) resolveTap(ctx context.Context, target igconv.TapTarget) 
 			return nil, err
 		}
 	}
-	button := igconv.ButtonAtIndex(meta.TapButtons(), target.Index)
-	if button == nil || igconv.ButtonKind(button) != target.Kind {
-		return nil, errTapNotFound
-	}
-	return &tapAction{button: button, send: func(ctx context.Context) error {
+	return &tapAction{button: button, send: func(ctx context.Context, button *metaid.PostbackButton) error {
 		_, err := cli.sendButtonTap(ctx, portalMeta.IGID, button, "")
 		return err
 	}}, nil

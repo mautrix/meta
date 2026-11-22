@@ -102,9 +102,9 @@ func TestTapHTTPHandler(t *testing.T) {
 				if resolveErr != nil {
 					return nil, resolveErr
 				}
-				return &tapAction{button: button, send: func(context.Context) error {
+				return &tapAction{button: button, send: func(_ context.Context, sent *metaid.PostbackButton) error {
 					calls++
-					if button.Title != "Choose <this>" || igconv.ButtonKind(button) != kind {
+					if sent.Title != "Choose <this>" || igconv.ButtonKind(sent) != kind {
 						t.Fatal("wrong title or kind sent")
 					}
 					return sendErr

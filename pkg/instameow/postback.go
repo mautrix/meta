@@ -76,20 +76,68 @@ func (c *Client) threadDetailsHeaders() http.Header {
 // It tries i.instagram.com first (www.instagram.com answers 404 HTML for this endpoint) and
 // retries once on www.instagram.com if the thread isn't found.
 func (c *Client) FetchThreadButtonItems(ctx context.Context, threadID string) ([]*slidetypes.ThreadItem, error) {
-	items, err := c.fetchThreadButtonItems(ctx, mobileThreadDetailsBaseURL, threadID)
-	if errors.Is(err, errThreadNotFound) {
-		return c.fetchThreadButtonItems(ctx, threadDetailsBaseURL, threadID)
+	return c.fetchThreadButtons(ctx, threadID, false)
+}
+
+// FetchAllThreadButtonItems follows older history pages for existing-card refresh and tap recovery.
+// Arrival recovery uses FetchThreadButtonItems to avoid scanning history for each new card.
+func (c *Client) FetchAllThreadButtonItems(ctx context.Context, threadID string) ([]*slidetypes.ThreadItem, error) {
+	return c.fetchThreadButtons(ctx, threadID, true)
+}
+
+func (c *Client) fetchThreadButtons(ctx context.Context, threadID string, allHistory bool) ([]*slidetypes.ThreadItem, error) {
+	items, err := c.fetchThreadButtonItems(ctx, mobileThreadDetailsBaseURL, threadID, allHistory)
+	if errors.Is(err, errThreadNotFound) && len(items) == 0 {
+		return c.fetchThreadButtonItems(ctx, threadDetailsBaseURL, threadID, allHistory)
 	}
 	return items, err
 }
 
-func (c *Client) fetchThreadButtonItems(ctx context.Context, baseURL, threadID string) ([]*slidetypes.ThreadItem, error) {
+func (c *Client) fetchThreadButtonItems(ctx context.Context, baseURL, threadID string, allHistory bool) ([]*slidetypes.ThreadItem, error) {
+	var items []*slidetypes.ThreadItem
+	cursor := ""
+	seen := make(map[string]bool)
+	seenItems := make(map[string]bool)
+	for {
+		page, err := c.fetchThreadButtonPage(ctx, baseURL, threadID, cursor)
+		if err != nil {
+			return items, err
+		}
+		for _, item := range page.ButtonItems() {
+			itemKey := item.ItemID
+			if itemKey == "" {
+				itemKey = item.MessageID
+			}
+			if itemKey != "" && seenItems[itemKey] {
+				continue
+			}
+			if itemKey != "" {
+				seenItems[itemKey] = true
+			}
+			items = append(items, item)
+		}
+		if !allHistory || page.Thread == nil || !page.Thread.HasOlder {
+			return items, nil
+		}
+		cursor = page.Thread.OldestCursor
+		if cursor == "" || seen[cursor] {
+			return items, errors.New("thread history has a missing or repeated older cursor")
+		}
+		seen[cursor] = true
+	}
+}
+
+func (c *Client) fetchThreadButtonPage(ctx context.Context, baseURL, threadID, cursor string) (*slidetypes.ThreadDetailsResponse, error) {
 	if c == nil {
 		return nil, ErrClientIsNil
-	} else if threadID == "" {
+	}
+	if threadID == "" {
 		return nil, errors.New("thread ID is empty")
 	}
 	reqURL := ThreadDetailsURL(baseURL, threadID)
+	if cursor != "" {
+		reqURL += "?" + url.Values{"cursor": {cursor}, "direction": {"older"}}.Encode()
+	}
 	resp, body, err := c.http.MakeRequest(ctx, reqURL, http.MethodGet, c.threadDetailsHeaders(), nil, types.NONE)
 	if err != nil {
 		if resp != nil {
@@ -110,8 +158,11 @@ func (c *Client) fetchThreadButtonItems(ctx context.Context, baseURL, threadID s
 	if err = json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("failed to parse thread details: %w", err)
 	}
+	if parsed.Thread == nil {
+		return nil, errors.New("thread details response has no thread")
+	}
 	logThreadDetailsSummary(ctx, threadID, &parsed)
-	return parsed.ButtonItems(), nil
+	return &parsed, nil
 }
 
 // logThreadDetailsSummary logs only structure (key names, counts, shapes, booleans) and IDs,

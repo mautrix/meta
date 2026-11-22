@@ -101,7 +101,7 @@ func TestFetchThreadButtonItems(t *testing.T) {
 	defer srv.Close()
 
 	c := newPostbackTestClient()
-	items, err := c.fetchThreadButtonItems(context.Background(), srv.URL, "98765")
+	items, err := c.fetchThreadButtonItems(context.Background(), srv.URL, "98765", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestFetchThreadKeepsTextItemWithOnlyQuickReplies(t *testing.T) {
 			{"item_id":"4","item_type":"text","cta_buttons":[{"cta_type":"text","title":"Tap"}]}]}}`))
 	}))
 	defer srv.Close()
-	items, err := newPostbackTestClient().fetchThreadButtonItems(context.Background(), srv.URL, "98765")
+	items, err := newPostbackTestClient().fetchThreadButtonItems(context.Background(), srv.URL, "98765", false)
 	if err != nil {
 		t.Fatal(err)
 	}

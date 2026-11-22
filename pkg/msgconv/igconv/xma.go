@@ -128,9 +128,17 @@ func XMAFromThreadItem(item *slidetypes.ThreadItem) *slidetypes.XMAContent {
 // CardHTMLFromThreadItem rebuilds the formatted body of a card (caption plus CTA buttons) from a
 // REST thread item alone, without the original Matrix event. It returns "" if there is nothing to render.
 func CardHTMLFromThreadItem(item *slidetypes.ThreadItem, opts CTAOptions) string {
+	if item == nil {
+		return ""
+	}
 	xma := XMAFromThreadItem(item)
 	if xma == nil {
-		return ""
+		buttons := ButtonsFromItem(item)
+		ctaHTML := xmaCTAButtonsHTML(item.AllCTAButtons(), buttons.Postbacks, buttons.QuickReplies, opts)
+		if ctaHTML != "" && item.Text != "" {
+			return "<p>" + event.TextToHTML(item.Text) + "</p>" + ctaHTML
+		}
+		return ctaHTML
 	}
 	if ctas := item.AllCTAButtons(); len(ctas) > 0 {
 		xma.CTAButtons = ctas

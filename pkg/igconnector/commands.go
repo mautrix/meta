@@ -170,51 +170,136 @@ func fnRefresh(ce *commands.Event) {
 	login, _, err := ce.Portal.FindPreferredLogin(ce.Ctx, ce.User, false)
 	if err != nil || login == nil {
 		ce.Reply("Failed to find login for room")
-		ce.Log.Err(err).Msg("Failed to find login for room")
-		return
-	}
-	cli, ok := login.Client.(*IGClient)
-	if !ok || cli.Client == nil {
-		ce.Reply("Instagram client is not available")
+		ce.Log.Debug().Str("reason", "login_unavailable").Msg("Failed refresh")
 		return
 	}
 	var targets []*database.Message
 	if ce.ReplyTo != "" {
 		msg, err := ce.Bridge.DB.Message.GetPartByMXID(ce.Ctx, ce.ReplyTo)
 		if err != nil {
-			ce.Reply("Failed to look up the replied message: %v", err)
+			ce.Reply("Failed to look up the replied message")
 			return
 		} else if msg == nil || msg.Room != ce.Portal.PortalKey {
 			ce.Reply("The replied message wasn't found in this chat")
 			return
 		}
 		targets = []*database.Message{msg}
-	} else if targets, err = ce.Bridge.DB.Message.GetLastNInPortal(ce.Ctx, ce.Portal.PortalKey, tapSearchMessageCount); err != nil {
-		ce.Reply("Failed to look up recent messages: %v", err)
+	} else if targets, err = ce.Bridge.DB.Message.IterPortalMessages(ce.Ctx, ce.Portal.PortalKey).AsList(); err != nil {
+		ce.Log.Debug().Str("reason", "message_lookup_failed").Msg("Failed refresh")
+		ce.Reply("Failed to look up messages")
 		return
 	}
-	portalMeta, err := cli.ensureIGID(ce.Ctx, ce.Portal)
-	if err != nil {
-		ce.Reply("Failed to refresh: %v", err)
-		return
-	}
-	items, err := cli.Client.FetchThreadButtonItems(ce.Ctx, igconv.PostbackThreadID(portalMeta))
-	if err != nil {
-		ce.Log.Warn().Err(err).Msg("Failed to fetch thread items for refresh")
-		ce.Reply("Failed to fetch buttons from Instagram: %v", err)
-		return
-	}
-	var counts [3]int
-	for _, msg := range targets {
-		res := refreshCard(ce, login, items, msg)
-		counts[res]++
-	}
-	ce.Log.Info().
-		Int("updated", counts[refreshUpdated]).
-		Int("skipped", counts[refreshSkipped]).
-		Int("failed", counts[refreshFailed]).
-		Msg("Refreshed CTA buttons")
+	counts := refreshPortal(ce, login, targets)
 	ce.Reply("Refreshed %d message(s) (including stored buttons), skipped %d, failed %d", counts[refreshUpdated], counts[refreshSkipped], counts[refreshFailed])
+}
+
+func refreshPortal(ce *commands.Event, login *bridgev2.UserLogin, targets []*database.Message) [3]int {
+	var counts [3]int
+	if len(targets) == 0 {
+		return counts
+	}
+	cli, ok := login.Client.(*IGClient)
+	if !ok || cli.Client == nil {
+		ce.Log.Debug().Str("reason", "client_unavailable").Msg("Failed refresh")
+		counts[refreshFailed] = len(targets)
+		return counts
+	}
+	portalMeta, _ := ce.Portal.Metadata.(*metaid.PortalMetadata)
+	var items []*slidetypes.ThreadItem
+	var fetchErr error
+	if threadID := igconv.PostbackThreadID(portalMeta); threadID != "" {
+		items, fetchErr = cli.Client.FetchAllThreadButtonItems(ce.Ctx, threadID)
+		if fetchErr != nil {
+			ce.Log.Debug().Str("reason", "thread_history_fetch_failed").Msg("Refresh will use available items and stored buttons")
+		}
+	} else {
+		fetchErr = errors.New("thread ID unavailable")
+		ce.Log.Debug().Str("reason", "thread_id_unavailable").Msg("Refresh will use stored buttons without fetching Instagram IDs")
+	}
+	for _, msg := range targets {
+		if ce.Ctx.Err() != nil {
+			ce.Log.Debug().Str("reason", "refresh_cancelled").Msg("Failed refresh")
+			counts[refreshFailed]++
+			continue
+		}
+		result := refreshCard(ce, login, items, msg)
+		if result == refreshSkipped && fetchErr != nil {
+			ce.Log.Debug().Str("message_id", string(msg.ID)).Str("reason", "history_unavailable_for_skipped_message").Msg("Failed refresh")
+			result = refreshFailed
+		}
+		counts[result]++
+	}
+	return counts
+}
+
+var cmdRefreshAll = &commands.FullHandler{
+	Func: fnRefreshAll,
+	Name: "refresh-all",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionChats,
+		Description: "Refresh cards in every portal of your login. Run in the management room. Only reads Instagram history",
+		Args:        "[_login ID_]",
+	},
+	RequiresLogin: true,
+}
+
+func fnRefreshAll(ce *commands.Event) {
+	if ce.RoomID != ce.User.ManagementRoom {
+		ce.Reply("Run `$cmdprefix refresh-all` in your management room")
+		return
+	}
+	login := ce.User.GetDefaultLogin()
+	if len(ce.Args) > 1 {
+		ce.Reply("Usage: `$cmdprefix refresh-all [login ID]`")
+		return
+	}
+	if len(ce.Args) == 1 {
+		login = nil
+		for _, candidate := range ce.User.GetUserLogins() {
+			if string(candidate.ID) == ce.Args[0] {
+				login = candidate
+				break
+			}
+		}
+	}
+	if login == nil {
+		ce.Reply("No matching Instagram login found")
+		return
+	}
+	memberships, err := ce.Bridge.DB.UserPortal.GetAllForLogin(ce.Ctx, login.UserLogin)
+	if err != nil {
+		ce.Log.Debug().Str("reason", "portal_lookup_failed").Msg("Failed refresh-all")
+		ce.Reply("Failed to look up portals")
+		return
+	}
+	var totals [3]int
+	for _, membership := range memberships {
+		var counts [3]int
+		portal, err := ce.Bridge.GetExistingPortalByKey(ce.Ctx, membership.Portal)
+		switch {
+		case err != nil:
+			ce.Log.Debug().Str("portal_id", string(membership.Portal.ID)).Str("reason", "portal_load_failed").Msg("Failed refresh-all portal")
+			counts[refreshFailed]++
+		case portal == nil || portal.MXID == "":
+			ce.Log.Debug().Str("portal_id", string(membership.Portal.ID)).Str("reason", "portal_has_no_matrix_room").Msg("Skipping refresh-all portal")
+			counts[refreshSkipped]++
+		default:
+			targets, err := ce.Bridge.DB.Message.IterPortalMessages(ce.Ctx, portal.PortalKey).AsList()
+			if err != nil {
+				ce.Log.Debug().Str("portal_id", string(membership.Portal.ID)).Str("reason", "message_lookup_failed").Msg("Failed refresh-all portal")
+				counts[refreshFailed]++
+			} else {
+				portalEvent := *ce
+				portalEvent.Portal = portal
+				counts = refreshPortal(&portalEvent, login, targets)
+			}
+		}
+		for result, count := range counts {
+			totals[result] += count
+		}
+		ce.Reply("Portal %s: updated %d, skipped %d, failed %d", membership.Portal.ID, counts[refreshUpdated], counts[refreshSkipped], counts[refreshFailed])
+	}
+	ce.Reply("Totals across %d portal(s): updated %d, skipped %d, failed %d", len(memberships), totals[refreshUpdated], totals[refreshSkipped], totals[refreshFailed])
 }
 
 func sameButtons(a, b []*metaid.PostbackButton) bool {
@@ -247,12 +332,22 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 			item = candidate
 		}
 	}
-	if item == nil {
-		log.Debug().Str("reason", "no_matching_thread_item").Msg("Skipping refresh")
+	var ctas []*slidetypes.CTAButton
+	var buttons igconv.Buttons
+	if item != nil {
+		ctas = item.AllCTAButtons()
+		buttons = igconv.ButtonsFromItem(item)
+	}
+	if len(buttons.Postbacks) == 0 {
+		buttons.Postbacks = meta.PostbackButtons
+	}
+	if len(buttons.QuickReplies) == 0 {
+		buttons.QuickReplies = meta.QuickReplies
+	}
+	if item == nil && buttons.Empty() {
+		log.Debug().Str("reason", "no_stored_buttons_or_matching_history_item").Msg("Skipping refresh")
 		return refreshSkipped
 	}
-	ctas := item.AllCTAButtons()
-	buttons := igconv.ButtonsFromItem(item)
 	opts := ce.Bridge.Network.(*IGConnector).tapOptions(msg)
 	ctaHTML := igconv.BuildCTAButtonsHTML(ctas, buttons.Postbacks, buttons.QuickReplies, opts)
 	if ctaHTML == "" {
@@ -265,7 +360,7 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		meta.PostbackButtons = buttons.Postbacks
 		meta.QuickReplies = buttons.QuickReplies
 		if err := ce.Bridge.DB.Message.Update(ce.Ctx, msg); err != nil {
-			log.Warn().Err(err).Msg("Failed to save refreshed buttons")
+			log.Debug().Str("reason", "metadata_save_failed").Msg("Failed to save refreshed buttons")
 			metaSaveFailed = true
 		}
 	}
@@ -280,14 +375,9 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		}
 		return refreshSkipped
 	}
-	sender := bridgev2.EventSender{
-		IsFromMe:    networkid.UserLoginID(msg.SenderID) == login.ID,
-		Sender:      msg.SenderID,
-		SenderLogin: networkid.UserLoginID(msg.SenderID),
-	}
-	intent, ok := ce.Portal.GetIntentFor(ce.Ctx, sender, login, bridgev2.RemoteEventEdit)
-	if !ok {
-		log.Warn().Msg("Failed to get intent for refresh edit")
+	intent, intentErr := refreshIntent(ce, login, msg)
+	if intentErr != nil || intent == nil {
+		log.Debug().Str("reason", "matrix_intent_unavailable").Msg("Failed to get intent for refresh edit")
 		return refreshFailed
 	}
 	// The old event is optional: it may be encrypted in a way the puppet can't read.
@@ -295,7 +385,14 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 	if getErr != nil {
 		log.Debug().Err(getErr).Msg("Couldn't read the old Matrix event, rebuilding the card from the Instagram item")
 	}
-	newContent, send := planRefreshEdit(igconv.CardHTMLFromThreadItem(item, opts), ctaHTML, evt, getErr)
+	cardHTML := igconv.CardHTMLFromThreadItem(item, opts)
+	if cardHTML != "" {
+		cardHTML = igconv.ReplaceOrAppendCTAButtonsHTML(cardHTML, ctaHTML)
+	} else if getErr != nil || evt == nil {
+		log.Debug().Str("reason", "rebuilding_from_stored_buttons_only").Msg("Refreshing CTA-only card")
+		cardHTML = ctaHTML
+	}
+	newContent, send := planRefreshEdit(cardHTML, ctaHTML, evt, getErr)
 	if !send {
 		return noEdit("matrix_content_unchanged_or_unknown")
 	}
@@ -305,10 +402,29 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		Raw:    map[string]any{"com.beeper.dont_render_edited": true},
 	}, &bridgev2.MatrixSendExtra{MessageMeta: msg})
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to send refresh edit")
+		log.Debug().Str("reason", "matrix_edit_failed").Msg("Failed to send refresh edit")
+		return refreshFailed
+	}
+	if metaSaveFailed {
 		return refreshFailed
 	}
 	return refreshUpdated
+}
+
+// GetIntentFor also refreshes Instagram profiles. Refresh must only GET thread history.
+func refreshIntent(ce *commands.Event, login *bridgev2.UserLogin, msg *database.Message) (bridgev2.MatrixAPI, error) {
+	if msg.SenderMXID != "" {
+		return ce.Portal.Internal().GetIntentForMXID(ce.Ctx, msg.SenderMXID)
+	}
+	if msg.SenderID == "" {
+		return ce.Bridge.Bot, nil
+	}
+	if senderLogin := ce.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(msg.SenderID)); senderLogin != nil && (senderLogin.ID == login.ID || ce.Portal.Receiver == "") {
+		if intent := senderLogin.User.DoublePuppet(ce.Ctx); intent != nil {
+			return intent, nil
+		}
+	}
+	return ce.Bridge.Matrix.GhostIntent(msg.SenderID), nil
 }
 
 // planRefreshEdit decides the content of the refresh edit. cardHTML is the card rebuilt from the
