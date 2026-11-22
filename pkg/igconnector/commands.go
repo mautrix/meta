@@ -253,14 +253,19 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		return refreshSkipped
 	}
 	metaChanged := !samePostbacks(meta.PostbackButtons, postbacks)
+	metaSaveFailed := false
 	if metaChanged {
 		meta.PostbackButtons = postbacks
 		if err := ce.Bridge.DB.Message.Update(ce.Ctx, msg); err != nil {
 			log.Warn().Err(err).Msg("Failed to save refreshed postback buttons")
+			metaSaveFailed = true
 		}
 	}
 	// Nothing to edit in Matrix: count as updated only if the stored buttons were rewritten.
 	noEdit := func() refreshResult {
+		if metaSaveFailed {
+			return refreshFailed
+		}
 		if metaChanged {
 			return refreshUpdated
 		}

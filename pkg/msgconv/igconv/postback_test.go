@@ -359,7 +359,7 @@ func TestPickPostbackButtonsByMessageID(t *testing.T) {
 }
 
 func TestHasKnownCTAFooter(t *testing.T) {
-	for _, html := range []string{``, `<p>Just a caption - with a dash</p>`, `<p><a href="https://a.example">only one</a></p>`} {
+	for _, html := range []string{``, `<p>Just a caption - with a dash</p>`, `<p><a href="https://a.example">only one</a></p>`, `<p>He said Use the Instagram app to click buttons in a guide</p>`} {
 		if HasKnownCTAFooter(html) {
 			t.Errorf("%q: not a footer", html)
 		}

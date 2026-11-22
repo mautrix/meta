@@ -170,7 +170,7 @@ func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.Postb
 // ReplaceOrAppendCTAButtonsHTML would replace or strip.
 func HasKnownCTAFooter(formattedBody string) bool {
 	return strings.Contains(formattedBody, ctaBlockOpen) ||
-		strings.Contains(formattedBody, appFallbackSnippet) ||
+		oldAppFallbackRegex.MatchString(formattedBody) ||
 		oldTapListRegex.MatchString(formattedBody) ||
 		oldLinkRunRegex.MatchString(formattedBody)
 }
