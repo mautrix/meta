@@ -98,11 +98,18 @@ func (c *Client) fetchThreadButtonItems(ctx context.Context, baseURL, threadID s
 	cursor := ""
 	seen := make(map[string]bool)
 	seenItems := make(map[string]bool)
+	const maxHistoryPages = 50
+	pagesFetched := 0
 	for {
+		if pagesFetched >= maxHistoryPages {
+			return items, nil
+		}
 		page, err := c.fetchThreadButtonPage(ctx, baseURL, threadID, cursor)
 		if err != nil {
 			return items, err
 		}
+		pagesFetched++
+		addedItem := false
 		for _, item := range page.ButtonItems() {
 			itemKey := item.ItemID
 			if itemKey == "" {
@@ -113,10 +120,11 @@ func (c *Client) fetchThreadButtonItems(ctx context.Context, baseURL, threadID s
 			}
 			if itemKey != "" {
 				seenItems[itemKey] = true
+				addedItem = true
 			}
 			items = append(items, item)
 		}
-		if !allHistory || page.Thread == nil || !page.Thread.HasOlder {
+		if !allHistory || !addedItem || page.Thread == nil || !page.Thread.HasOlder {
 			return items, nil
 		}
 		cursor = page.Thread.OldestCursor

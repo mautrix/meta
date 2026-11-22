@@ -55,6 +55,77 @@ func TestThreadButtonHistoryPagination(t *testing.T) {
 	}
 }
 
+func TestThreadButtonHistoryStopsWhenPageAddsNoItems(t *testing.T) {
+	for _, initialItems := range [][]string{{"first"}, {"first", "second", "third"}} {
+		t.Run(fmt.Sprint(len(initialItems)), func(t *testing.T) {
+			calls := 0
+			itemsByPage := make([][]string, 0, len(initialItems)+1)
+			for _, id := range initialItems {
+				itemsByPage = append(itemsByPage, []string{id})
+			}
+			itemsByPage = append(itemsByPage, []string{initialItems[len(initialItems)-1]})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != http.MethodGet {
+					t.Errorf("history request method = %s, want GET", r.Method)
+				}
+				page := calls - 1
+				if page >= len(itemsByPage) {
+					page = len(itemsByPage) - 1
+				}
+				itemJSON := ""
+				for i, id := range itemsByPage[page] {
+					if i > 0 {
+						itemJSON += ","
+					}
+					itemJSON += fmt.Sprintf(`{"item_id":%q,"item_type":"generic_xma"}`, id)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				hasOlder := calls <= 50
+				fmt.Fprintf(w, `{"status":"ok","thread":{"has_older":%t,"oldest_cursor":"cursor-%d","items":[%s]}}`, hasOlder, calls, itemJSON)
+			}))
+			defer srv.Close()
+
+			items, err := newPostbackTestClient().fetchThreadButtonItems(context.Background(), srv.URL, "thread", true)
+			if err != nil {
+				t.Fatalf("history fetch failed: %v", err)
+			}
+			if calls != len(initialItems)+1 {
+				t.Fatalf("got %d page requests, want %d", calls, len(initialItems)+1)
+			}
+			if len(items) != len(initialItems) {
+				t.Fatalf("got %d items, want %d", len(items), len(initialItems))
+			}
+			for i, item := range items {
+				if item.ItemID != initialItems[i] {
+					t.Errorf("item %d ID = %q, want %q", i, item.ItemID, initialItems[i])
+				}
+			}
+		})
+	}
+}
+
+func TestThreadButtonHistoryStopsAtPageLimit(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != http.MethodGet {
+			t.Errorf("history request method = %s, want GET", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","thread":{"has_older":true,"oldest_cursor":"cursor-%d","items":[{"item_id":"item-%d","item_type":"generic_xma"}]}}`, calls, calls)
+	}))
+	defer srv.Close()
+
+	items, err := newPostbackTestClient().fetchThreadButtonItems(context.Background(), srv.URL, "thread", true)
+	if err != nil {
+		t.Fatalf("history fetch failed: %v", err)
+	}
+	if calls != 50 || len(items) != 50 {
+		t.Fatalf("got %d page requests and %d items, want 50 each", calls, len(items))
+	}
+}
+
 func TestThreadHistoryRejectsBrokenCursor(t *testing.T) {
 	for _, cursor := range []string{"", "repeated"} {
 		t.Run(cursor, func(t *testing.T) {
@@ -67,12 +138,20 @@ func TestThreadHistoryRejectsBrokenCursor(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprintf(w, `{"status":"ok","thread":{"has_older":true,"oldest_cursor":%q,"items":[{"item_id":"available","item_type":"generic_xma"}]}}`, cursor)
+				itemID := "available"
+				if cursor == "repeated" && calls == 2 {
+					itemID = "another"
+				}
+				fmt.Fprintf(w, `{"status":"ok","thread":{"has_older":true,"oldest_cursor":%q,"items":[{"item_id":%q,"item_type":"generic_xma"}]}}`, cursor, itemID)
 			}))
 			defer srv.Close()
 			items, err := newPostbackTestClient().fetchThreadButtonItems(context.Background(), srv.URL, "thread", true)
-			if err == nil || len(items) != 1 {
-				t.Fatal("broken cursor must report error and preserve partial history")
+			wantItems := 1
+			if cursor == "repeated" {
+				wantItems = 2
+			}
+			if err == nil || len(items) != wantItems {
+				t.Fatalf("broken cursor must report error and preserve %d items, got %d", wantItems, len(items))
 			}
 		})
 	}
