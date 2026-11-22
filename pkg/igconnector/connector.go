@@ -35,6 +35,8 @@ type IGConnector struct {
 	MsgConv   *igconv.MessageConverter
 	DB        *metadb.MetaDB
 	tapServer *http.Server
+	// tapOnce makes a button send at most once whether it came from a signed link or a poll vote.
+	tapOnce tapOnce
 }
 
 var (

@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
@@ -93,7 +95,7 @@ func (ic *IGConnector) startTapListener(ctx context.Context) error {
 	ic.MsgConv.TapSigner = signer
 	ic.MsgConv.TapPublicAddress = public
 	ic.tapServer = &http.Server{
-		Handler:           &tapHandler{signer: signer, resolve: ic.resolveTap, log: ic.Bridge.Log, once: newTapOnce()},
+		Handler:           &tapHandler{signer: signer, resolve: ic.resolveTap, log: ic.Bridge.Log, once: &ic.tapOnce},
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      90 * time.Second,
@@ -133,9 +135,10 @@ type tapHandler struct {
 
 var errTapNotFound = errors.New("tap message or button not found")
 
-// tapOnce makes a successful send for a token happen at most once in this
+// tapOnce makes a successful send for a key happen at most once in this
 // process. A failed send can be retried. Concurrent requests for the same
-// token share a single in-flight send, so a double click cannot fire twice.
+// key share a single in-flight send, so a double click cannot fire twice.
+// The zero value is ready to use.
 // The record is in-memory: a bridge restart allows one more send. That is
 // deliberate (no durable one-shot store); preview user-agents and prefetch
 // headers are blocked first so a link preview should never consume the slot.
@@ -155,11 +158,22 @@ func newTapOnce() *tapOnce {
 	return &tapOnce{done: make(map[string]struct{}), inflight: make(map[string]*tapFlight)}
 }
 
+// tapKey identifies one button of one message. Signed links and poll votes share it, so
+// whichever activates the button first is the only one that sends. The kind is part of the
+// key because a link whose kind doesn't match the stored button must still be rejected, not
+// reported as sent. Index 0 is not a button (they are 1-based) and keys the card's poll as a whole.
+func tapKey(portal networkid.PortalKey, messageID networkid.MessageID, index int, kind igconv.TapKind) string {
+	return strings.Join([]string{string(portal.ID), string(portal.Receiver), string(messageID), strconv.Itoa(index), string(kind)}, "\x00")
+}
+
 // do runs fn at most once per token on success. already is true when this
 // call did not invoke fn because a previous send already succeeded (or it
 // waited for an in-flight success).
 func (o *tapOnce) do(token string, fn func() error) (already bool, err error) {
 	o.mu.Lock()
+	if o.done == nil {
+		o.done, o.inflight = make(map[string]struct{}), make(map[string]*tapFlight)
+	}
 	if _, ok := o.done[token]; ok {
 		o.mu.Unlock()
 		return true, nil
@@ -264,7 +278,7 @@ func (h *tapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.once == nil {
 		h.once = newTapOnce()
 	}
-	already, err := h.once.do(token, func() error {
+	already, err := h.once.do(tapKey(target.Portal, target.MessageID, target.Index, target.Kind), func() error {
 		ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
 		defer cancel()
 		action, err := h.resolve(ctx, target)

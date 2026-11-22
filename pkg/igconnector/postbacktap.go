@@ -158,6 +158,9 @@ func (ic *IGClient) addPendingTapOTID(otid string) {
 // sendButtonTap activates a button: postbacks are sent as postbacks, quick replies as text
 // with the title. An empty clientContext generates one.
 func (ic *IGClient) sendButtonTap(ctx context.Context, threadID string, button *metaid.PostbackButton, clientContext string) (string, error) {
+	if ic.sendTap != nil {
+		return ic.sendTap(ctx, threadID, button, clientContext)
+	}
 	if button.IsQuickReply() {
 		return ic.Client.SendQuickReplyWithContext(ctx, threadID, button.Title, button.Payload, clientContext)
 	}

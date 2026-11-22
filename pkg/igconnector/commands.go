@@ -389,7 +389,7 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		}
 		return refreshSkipped
 	}
-	intent, intentErr := refreshIntent(ce, login, msg)
+	intent, intentErr := messageSenderIntent(ce.Ctx, ce.Bridge, ce.Portal, login, msg)
 	if intentErr != nil || intent == nil {
 		log.Debug().Str("reason", "matrix_intent_unavailable").Msg("Failed to get intent for refresh edit")
 		return refreshFailed
@@ -423,22 +423,6 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		return refreshFailed
 	}
 	return refreshUpdated
-}
-
-// GetIntentFor also refreshes Instagram profiles. Refresh must only GET thread history.
-func refreshIntent(ce *commands.Event, login *bridgev2.UserLogin, msg *database.Message) (bridgev2.MatrixAPI, error) {
-	if msg.SenderMXID != "" {
-		return ce.Portal.Internal().GetIntentForMXID(ce.Ctx, msg.SenderMXID)
-	}
-	if msg.SenderID == "" {
-		return ce.Bridge.Bot, nil
-	}
-	if senderLogin := ce.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(msg.SenderID)); senderLogin != nil && (senderLogin.ID == login.ID || ce.Portal.Receiver == "") {
-		if intent := senderLogin.User.DoublePuppet(ce.Ctx); intent != nil {
-			return intent, nil
-		}
-	}
-	return ce.Bridge.Matrix.GhostIntent(msg.SenderID), nil
 }
 
 // planRefreshEdit decides the content of the refresh edit. cardHTML is the card rebuilt from the

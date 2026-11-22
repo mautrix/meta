@@ -56,7 +56,9 @@ type IGClient struct {
 	pendingGroupCreations *exsync.Set[string]
 	// pendingPostbackOTIDs holds offline threading IDs of postback taps sent from Matrix,
 	// so the echo can be matched to the Matrix event by transaction ID.
-	pendingPostbackOTIDs  *exsync.Set[string]
+	pendingPostbackOTIDs *exsync.Set[string]
+	// sendTap replaces the real Instagram send of a button tap in tests.
+	sendTap               func(ctx context.Context, threadID string, button *metaid.PostbackButton, clientContext string) (string, error)
 	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
 	stopChatBackfill      atomic.Pointer[context.CancelFunc]
 	chatBackfillLock      sync.Mutex

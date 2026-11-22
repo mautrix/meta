@@ -294,6 +294,10 @@ func (ic *IGClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 }
 
 func (ic *IGClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	if isMatrixOnlyButtonPart(msg.TargetMessage) {
+		// Button polls and votes only exist in Matrix, but share the ID of the card.
+		return nil
+	}
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
