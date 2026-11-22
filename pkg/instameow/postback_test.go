@@ -19,6 +19,7 @@ package instameow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -85,7 +86,7 @@ func newPostbackTestClient() *Client {
 	return NewClient(ClientParams{Cookies: c, Log: zerolog.Nop()})
 }
 
-func TestFetchThreadGenericXMAItems(t *testing.T) {
+func TestFetchThreadButtonItems(t *testing.T) {
 	var lock sync.Mutex
 	var requests []*http.Request
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +101,7 @@ func TestFetchThreadGenericXMAItems(t *testing.T) {
 	defer srv.Close()
 
 	c := newPostbackTestClient()
-	items, err := c.fetchThreadGenericXMAItems(context.Background(), srv.URL, "98765")
+	items, err := c.fetchThreadButtonItems(context.Background(), srv.URL, "98765")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestFetchThreadTriesMobileHostFirst(t *testing.T) {
 			Request:    r,
 		}, nil
 	})
-	_, _ = c.FetchThreadGenericXMAItems(context.Background(), "42")
+	_, _ = c.FetchThreadButtonItems(context.Background(), "42")
 	if want := "GET https://i.instagram.com/api/v1/direct_v2/threads/42/"; seen != want {
 		t.Fatalf("got %q, want %q", seen, want)
 	}
@@ -191,7 +192,7 @@ func TestFetchThreadFallsBackToWebHost(t *testing.T) {
 			Request:    r,
 		}, nil
 	})
-	if _, err := c.FetchThreadGenericXMAItems(context.Background(), "42"); err != nil {
+	if _, err := c.FetchThreadButtonItems(context.Background(), "42"); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
@@ -200,5 +201,65 @@ func TestFetchThreadFallsBackToWebHost(t *testing.T) {
 	}
 	if !reflect.DeepEqual(seen, want) {
 		t.Fatalf("got %v, want %v", seen, want)
+	}
+}
+
+func TestSendQuickReplyBody(t *testing.T) {
+	var got map[string]any
+	marshal := func(payload string) map[string]any {
+		raw, err := json.Marshal(newSendItemQuickReply("thread-1", "Maybe later", payload, "ctx-1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = nil
+		if err = json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	titleOnly := marshal("")
+	want := map[string]any{"action": "send_item", "item_type": "text", "text": "Maybe later", "thread_id": "thread-1", "client_context": "ctx-1"}
+	if !reflect.DeepEqual(titleOnly, want) {
+		t.Errorf("title-only body = %v, want %v", titleOnly, want)
+	}
+	withPayload := marshal("payload-qr-1")
+	if withPayload["cta_type"] != "quick_reply" || withPayload["quick_reply_payload"] != "payload-qr-1" || withPayload["text"] != "Maybe later" {
+		t.Errorf("payload body = %v", withPayload)
+	}
+	for _, body := range []map[string]any{titleOnly, withPayload} {
+		if _, ok := body["postback_payload"]; ok || body["cta_type"] == "postback" {
+			t.Errorf("quick reply must never look like a postback: %v", body)
+		}
+	}
+}
+
+func TestSendQuickReplyValidatesInput(t *testing.T) {
+	c := newPostbackTestClient()
+	for _, args := range [][2]string{{"", "t"}, {"id", ""}} {
+		if _, err := c.SendQuickReply(context.Background(), args[0], args[1], "p", ""); err == nil {
+			t.Errorf("expected error for %v", args)
+		}
+	}
+	if _, err := (*Client)(nil).SendQuickReply(context.Background(), "id", "t", "", ""); !errors.Is(err, ErrClientIsNil) {
+		t.Errorf("nil client: %v", err)
+	}
+}
+
+func TestFetchThreadKeepsTextItemWithOnlyQuickReplies(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","thread":{"items":[
+			{"item_id":"1","item_type":"text"},
+			{"item_id":"2","item_type":"text","quick_replies":[{"title":"Yes","payload":"payload-qr-1"}]},
+			{"item_id":"3","item_type":"text","cta_buttons":[{"cta_type":"xma_web_url","action_url":"https://example.com","title":"Site"}]},
+			{"item_id":"4","item_type":"text","cta_buttons":[{"cta_type":"text","title":"Tap"}]}]}}`))
+	}))
+	defer srv.Close()
+	items, err := newPostbackTestClient().fetchThreadButtonItems(context.Background(), srv.URL, "98765")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].ItemID != "2" || items[0].AllQuickReplies()[0].PayloadValue() != "payload-qr-1" || items[1].ItemID != "4" {
+		t.Fatalf("unexpected items: %+v", items)
 	}
 }

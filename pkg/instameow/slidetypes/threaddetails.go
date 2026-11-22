@@ -136,8 +136,31 @@ type ThreadItem struct {
 	// GenericXMA is kept raw because the issue doesn't say whether cta_buttons live directly
 	// on the item or inside a nested generic_xma object (or a list of them).
 	GenericXMA json.RawMessage `json:"generic_xma"`
+	// QuickReplies are the quick reply chips of text (or XMA) items. Tapping one posts its
+	// title as a text message.
+	QuickReplies []*QuickReply `json:"quick_replies"`
 
 	Unrecognized map[string]any `json:",unknown"`
+}
+
+// QuickReply is one entry of the REST `quick_replies` array. The payload key name isn't
+// verified: the official webhook calls it quick_reply.payload / quick_reply_payload.
+type QuickReply struct {
+	Title             string `json:"title"`
+	Payload           string `json:"payload,omitempty"`
+	QuickReplyPayload string `json:"quick_reply_payload,omitempty"`
+	ContentType       string `json:"content_type,omitempty"`
+}
+
+// PayloadValue returns the payload of the quick reply, or an empty string if it has none.
+func (q *QuickReply) PayloadValue() string {
+	if q == nil {
+		return ""
+	}
+	if q.QuickReplyPayload != "" {
+		return q.QuickReplyPayload
+	}
+	return q.Payload
 }
 
 // UnmarshalJSON fills Unrecognized with the unknown keys.
@@ -148,7 +171,7 @@ func (item *ThreadItem) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if len(item.Unrecognized) == 0 {
-		item.Unrecognized = unrecognizedKeys(data, "item_id", "message_id", "item_type", "timestamp", "cta_buttons", "generic_xma")
+		item.Unrecognized = unrecognizedKeys(data, "item_id", "message_id", "item_type", "timestamp", "cta_buttons", "generic_xma", "quick_replies")
 	}
 	return nil
 }
@@ -203,6 +226,88 @@ func (item *ThreadItem) AllCTAButtons() []*CTAButton {
 		}
 	}
 	return nil
+}
+
+// AllQuickReplies returns the titled quick replies of the item, looking at the item itself
+// first and then at the nested generic_xma object(s).
+func (item *ThreadItem) AllQuickReplies() []*QuickReply {
+	titled := func(in []*QuickReply) []*QuickReply {
+		var out []*QuickReply
+		for _, qr := range in {
+			if qr != nil && qr.Title != "" {
+				out = append(out, qr)
+			}
+		}
+		return out
+	}
+	if out := titled(item.QuickReplies); len(out) > 0 {
+		return out
+	}
+	if len(item.GenericXMA) == 0 {
+		return nil
+	}
+	var nested struct {
+		QuickReplies []*QuickReply `json:"quick_replies"`
+	}
+	if json.Unmarshal(item.GenericXMA, &nested) == nil {
+		if out := titled(nested.QuickReplies); len(out) > 0 {
+			return out
+		}
+	}
+	var nestedList []struct {
+		QuickReplies []*QuickReply `json:"quick_replies"`
+	}
+	if json.Unmarshal(item.GenericXMA, &nestedList) == nil {
+		for _, n := range nestedList {
+			if out := titled(n.QuickReplies); len(out) > 0 {
+				return out
+			}
+		}
+	}
+	return nil
+}
+
+// QuickRepliesFromAny converts an unrecognized `quick_replies` JSON value into quick replies.
+// Entries that aren't objects or have no title are dropped.
+func QuickRepliesFromAny(v any) []*QuickReply {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var qrs []*QuickReply
+	if json.Unmarshal(raw, &qrs) != nil {
+		return nil
+	}
+	return qrs
+}
+
+// HasButtons reports whether the item may carry tappable buttons: it's a generic_xma, or has
+// quick replies, or has a CTA that isn't a link.
+func (item *ThreadItem) HasButtons() bool {
+	if item.ItemType == "generic_xma" || len(item.AllQuickReplies()) > 0 {
+		return true
+	}
+	for _, cta := range item.AllCTAButtons() {
+		if cta != nil && !cta.IsLink() {
+			return true
+		}
+	}
+	return false
+}
+
+// ButtonItems returns the thread items that may carry tappable buttons (see HasButtons),
+// including text items that only have quick replies.
+func (r *ThreadDetailsResponse) ButtonItems() []*ThreadItem {
+	if r == nil || r.Thread == nil {
+		return nil
+	}
+	var items []*ThreadItem
+	for _, item := range r.Thread.Items {
+		if item != nil && item.HasButtons() {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 // GenericXMAItems returns the generic_xma items of the thread.

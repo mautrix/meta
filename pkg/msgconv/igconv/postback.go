@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +28,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/format"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -44,26 +44,91 @@ var (
 )
 
 func isURLCTA(cta *slidetypes.CTAButton) bool {
-	actionURL, err := url.Parse(cta.ActionURL)
-	if err != nil {
-		return false
-	}
-	actionURL = unwrapLinkShim(actionURL)
-	return actionURL.Scheme == "https" || actionURL.Scheme == "http"
+	return cta.IsLink()
 }
 
-// PostbackButtonsFromCTAs extracts the non-URL buttons that have a payload.
-func PostbackButtonsFromCTAs(ctas []*slidetypes.CTAButton) []*metaid.PostbackButton {
-	var buttons []*metaid.PostbackButton
+// Buttons are the tappable buttons recovered for a message. Postbacks are sent with
+// cta_type=postback, quick replies as plain text.
+type Buttons struct {
+	Postbacks    []*metaid.PostbackButton
+	QuickReplies []*metaid.PostbackButton
+}
+
+// Empty reports whether there are no tappable buttons.
+func (b Buttons) Empty() bool {
+	return len(b.Postbacks) == 0 && len(b.QuickReplies) == 0
+}
+
+// All returns the combined list in display order (postbacks first), the one numbers refer to.
+func (b Buttons) All() []*metaid.PostbackButton {
+	return metaid.TapButtons(b.Postbacks, b.QuickReplies)
+}
+
+func (b *Buttons) add(other Buttons) {
+	b.Postbacks = append(b.Postbacks, other.Postbacks...)
+	b.QuickReplies = append(b.QuickReplies, other.QuickReplies...)
+}
+
+// ButtonsFromCTAs classifies the non-link CTAs: postbacks (cta_type postback, GT-PB payload or
+// platform_token.postback, with a recovered payload) and quick replies (any other titled non-link
+// button, with or without a payload). Links are skipped.
+func ButtonsFromCTAs(ctas []*slidetypes.CTAButton) Buttons {
+	var out Buttons
 	for _, cta := range ctas {
 		if cta == nil || cta.Title == "" || isURLCTA(cta) {
 			continue
 		}
-		if payload := cta.Postback(); payload != "" {
-			buttons = append(buttons, &metaid.PostbackButton{Title: cta.Title, Payload: payload, CTAType: cta.CTAType})
+		if cta.IsPostback() {
+			if payload := cta.Postback(); payload != "" {
+				out.Postbacks = append(out.Postbacks, &metaid.PostbackButton{Title: cta.Title, Payload: payload, CTAType: cta.CTAType})
+			}
+			continue
+		}
+		out.QuickReplies = append(out.QuickReplies, &metaid.PostbackButton{Title: cta.Title, Payload: cta.Postback(), CTAType: metaid.CTATypeQuickReply})
+	}
+	return out
+}
+
+// PostbackButtonsFromCTAs extracts only the postback buttons of the CTAs.
+func PostbackButtonsFromCTAs(ctas []*slidetypes.CTAButton) []*metaid.PostbackButton {
+	return ButtonsFromCTAs(ctas).Postbacks
+}
+
+// ButtonsFromQuickReplies converts REST quick_replies entries. An entry whose payload carries
+// the GT-PB marker is a postback; everything else is a quick reply.
+func ButtonsFromQuickReplies(qrs []*slidetypes.QuickReply) Buttons {
+	var out Buttons
+	for _, qr := range qrs {
+		if qr == nil || qr.Title == "" {
+			continue
+		}
+		payload := qr.PayloadValue()
+		if strings.Contains(payload, slidetypes.PostbackPayloadMarker) {
+			out.Postbacks = append(out.Postbacks, &metaid.PostbackButton{Title: qr.Title, Payload: payload, CTAType: "postback"})
+		} else {
+			out.QuickReplies = append(out.QuickReplies, &metaid.PostbackButton{Title: qr.Title, Payload: payload, CTAType: metaid.CTATypeQuickReply})
 		}
 	}
-	return buttons
+	return out
+}
+
+// ButtonsFromItem returns the buttons of a REST thread item: its CTAs, then its quick replies.
+func ButtonsFromItem(item *slidetypes.ThreadItem) Buttons {
+	out := ButtonsFromCTAs(item.AllCTAButtons())
+	out.add(ButtonsFromQuickReplies(item.AllQuickReplies()))
+	return out
+}
+
+func itemTitles(item *slidetypes.ThreadItem) []string {
+	titles := ctaTitles(item.AllCTAButtons())
+	for _, qr := range item.AllQuickReplies() {
+		titles = append(titles, qr.Title)
+	}
+	return titles
+}
+
+func isQuickReplyCTAType(ctaType string) bool {
+	return strings.EqualFold(ctaType, "quick_reply") || strings.EqualFold(ctaType, "quick_replies")
 }
 
 // xmaNeedsPostbackFetch returns true if the GraphQL data seems to be hiding postback payloads:
@@ -77,7 +142,7 @@ func xmaNeedsPostbackFetch(xma *slidetypes.XMAContent) bool {
 		return xma.TargetID == "" && xma.TargetURL == "" && (xma.TitleText != "" || xma.SubtitleText != "" || xma.CaptionBodyText != "")
 	}
 	for _, cta := range xma.CTAButtons {
-		if cta != nil && !isURLCTA(cta) && cta.Postback() == "" {
+		if cta != nil && !isURLCTA(cta) && cta.Postback() == "" && !isQuickReplyCTAType(cta.CTAType) {
 			return true
 		}
 	}
@@ -103,15 +168,20 @@ func ItemIDFromMessageID(id networkid.MessageID) string {
 	return ""
 }
 
-// PickPostbackButtons finds the postback buttons for a message in the generic_xma items of a
-// thread.
+// PickPostbackButtons is PickButtons restricted to the postback buttons.
+func PickPostbackButtons(items []*slidetypes.ThreadItem, wantItemID string, wantTitles []string, tsMS int64) []*metaid.PostbackButton {
+	return PickButtons(items, wantItemID, wantTitles, tsMS).Postbacks
+}
+
+// PickButtons finds the buttons (postbacks and quick replies) for a message in the button items
+// of a thread.
 //
 // If wantItemID matches exactly one item, only that item is used: its buttons are returned,
-// or nil if it has none (never another card's). Otherwise, wantTitles must be non-empty,
+// or none if it has none (never another card's). Otherwise, wantTitles must be non-empty,
 // and only items with all those button titles are considered; the one with the timestamp
 // closest to tsMS wins (or the first one, which is the newest, if timestamps are missing).
 // With no item ID match and no titles, nothing is returned.
-func PickPostbackButtons(items []*slidetypes.ThreadItem, wantItemID string, wantTitles []string, tsMS int64) []*metaid.PostbackButton {
+func PickButtons(items []*slidetypes.ThreadItem, wantItemID string, wantTitles []string, tsMS int64) Buttons {
 	if wantItemID != "" {
 		var matched *slidetypes.ThreadItem
 		matches := 0
@@ -122,27 +192,23 @@ func PickPostbackButtons(items []*slidetypes.ThreadItem, wantItemID string, want
 			}
 		}
 		if matches == 1 {
-			return PostbackButtonsFromCTAs(matched.AllCTAButtons())
+			return ButtonsFromItem(matched)
 		}
 	}
 	if len(wantTitles) == 0 {
-		return nil
+		return Buttons{}
 	}
-	var best []*metaid.PostbackButton
+	var best Buttons
+	found := false
 	var bestDiff int64 = -1
 	for _, item := range items {
-		ctas := item.AllCTAButtons()
-		buttons := PostbackButtonsFromCTAs(ctas)
-		if len(buttons) == 0 {
-			continue
-		}
-		itemTitles := ctaTitles(ctas)
-		if !isSubset(wantTitles, itemTitles) {
+		buttons := ButtonsFromItem(item)
+		if buttons.Empty() || !isSubset(wantTitles, itemTitles(item)) {
 			continue
 		}
 		if tsMS == 0 || item.TimestampMS() == 0 {
-			if best == nil {
-				best = buttons
+			if !found {
+				best, found = buttons, true
 			}
 			continue
 		}
@@ -151,7 +217,7 @@ func PickPostbackButtons(items []*slidetypes.ThreadItem, wantItemID string, want
 			diff = -diff
 		}
 		if bestDiff < 0 || diff < bestDiff {
-			best, bestDiff = buttons, diff
+			best, bestDiff, found = buttons, diff, true
 		}
 	}
 	return best
@@ -175,27 +241,40 @@ func PostbackThreadID(meta *metaid.PortalMetadata) string {
 	return cmp.Or(meta.IGThreadID, meta.IGID)
 }
 
-// recoverPostbackButtons returns the postback buttons of an XMA card, either from the
-// GraphQL data or, if that data seems to hide them, with a targeted REST thread fetch.
-func (mc *MessageConverter) recoverPostbackButtons(ctx context.Context, xma *slidetypes.XMAContent, msg *slidetypes.Message) []*metaid.PostbackButton {
-	if !xmaNeedsPostbackFetch(xma) || !mediadl.ShouldFetchXMA(ctx) {
-		return PostbackButtonsFromCTAs(xma.CTAButtons)
+// fetchButtonItems fetches the thread's button items for recovering payloads. It returns false
+// if fetching isn't allowed or possible here.
+func (mc *MessageConverter) fetchButtonItems(ctx context.Context) ([]*slidetypes.ThreadItem, bool) {
+	if !mediadl.ShouldFetchXMA(ctx) {
+		return nil, false
 	}
 	client, _ := ctx.Value(mediadl.ContextKeyIGClient).(*instameow.Client)
 	portalMeta := portalMetaFromContext(ctx)
 	if client == nil || portalMeta == nil {
-		return PostbackButtonsFromCTAs(xma.CTAButtons)
+		return nil, false
 	}
 	threadID := PostbackThreadID(portalMeta)
 	if threadID == "" {
-		return PostbackButtonsFromCTAs(xma.CTAButtons)
+		return nil, false
 	}
-	log := zerolog.Ctx(ctx)
 	// Workaround from #338: GraphQL doesn't expose the postback payloads.
-	items, err := client.FetchThreadGenericXMAItems(ctx, threadID)
+	items, err := client.FetchThreadButtonItems(ctx, threadID)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to fetch thread to recover XMA postback buttons")
-		return PostbackButtonsFromCTAs(xma.CTAButtons)
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to fetch thread to recover buttons")
+		return nil, false
+	}
+	return items, true
+}
+
+// recoverButtons returns the buttons of an XMA card, either from the GraphQL data or, if that
+// data seems to hide them, with a targeted REST thread fetch.
+func (mc *MessageConverter) recoverButtons(ctx context.Context, xma *slidetypes.XMAContent, msg *slidetypes.Message) Buttons {
+	fromGraphQL := ButtonsFromCTAs(xma.CTAButtons)
+	if !xmaNeedsPostbackFetch(xma) {
+		return fromGraphQL
+	}
+	items, ok := mc.fetchButtonItems(ctx)
+	if !ok {
+		return fromGraphQL
 	}
 	var tsMS int64
 	var itemID string
@@ -203,9 +282,41 @@ func (mc *MessageConverter) recoverPostbackButtons(ctx context.Context, xma *sli
 		tsMS = msg.TimestampMS.UnixMilli()
 		itemID = msg.MessageID
 	}
-	buttons := PickPostbackButtons(items, itemID, ctaTitles(xma.CTAButtons), tsMS)
-	log.Debug().Int("button_count", len(buttons)).Int("item_count", len(items)).Msg("Recovered XMA postback buttons")
+	buttons := PickButtons(items, itemID, ctaTitles(xma.CTAButtons), tsMS)
+	zerolog.Ctx(ctx).Debug().
+		Int("postback_count", len(buttons.Postbacks)).
+		Int("quick_reply_count", len(buttons.QuickReplies)).
+		Int("item_count", len(items)).
+		Msg("Recovered XMA buttons")
 	return buttons
+}
+
+// recoverTextQuickReplies returns the quick replies of a text message. GraphQL has no
+// first-class field for them, so they're read from quick_replies in the unrecognized keys of the
+// message or its content; if only has_quick_replies is present, the thread is fetched.
+func (mc *MessageConverter) recoverTextQuickReplies(ctx context.Context, msg *slidetypes.Message, contentUnrecognized map[string]any) Buttons {
+	if msg == nil {
+		return Buttons{}
+	}
+	var out Buttons
+	hint := false
+	for _, m := range []map[string]any{msg.Unrecognized, contentUnrecognized} {
+		if raw, ok := m["quick_replies"]; ok {
+			hint = true
+			out.add(ButtonsFromQuickReplies(slidetypes.QuickRepliesFromAny(raw)))
+		}
+		if has, _ := m["has_quick_replies"].(bool); has {
+			hint = true
+		}
+	}
+	if !out.Empty() || !hint {
+		return out
+	}
+	items, ok := mc.fetchButtonItems(ctx)
+	if !ok {
+		return out
+	}
+	return PickButtons(items, msg.MessageID, nil, 0)
 }
 
 // ResolvePostbackButton finds a button by 1-based index or by title (exact, then case-insensitive).
@@ -248,9 +359,9 @@ func portalMetaFromContext(ctx context.Context) *metaid.PortalMetadata {
 	return meta
 }
 
-// attachPostbackButtons stores the recovered buttons in the database metadata of the part.
-func attachPostbackButtons(part *bridgev2.ConvertedMessagePart, buttons []*metaid.PostbackButton) {
-	if part == nil || len(buttons) == 0 {
+// attachButtons stores the recovered buttons in the database metadata of the part.
+func attachButtons(part *bridgev2.ConvertedMessagePart, buttons Buttons) {
+	if part == nil || buttons.Empty() {
 		return
 	}
 	meta, ok := part.DBMetadata.(*metaid.MessageMetadata)
@@ -258,7 +369,23 @@ func attachPostbackButtons(part *bridgev2.ConvertedMessagePart, buttons []*metai
 		meta = &metaid.MessageMetadata{}
 		part.DBMetadata = meta
 	}
-	meta.PostbackButtons = buttons
+	meta.PostbackButtons = buttons.Postbacks
+	meta.QuickReplies = buttons.QuickReplies
+}
+
+// appendButtonsToText appends the button list to a text part and stores the buttons.
+func appendButtonsToText(part *bridgev2.ConvertedMessagePart, buttons Buttons) {
+	if part == nil || part.Content == nil || buttons.Empty() {
+		return
+	}
+	buttonsHTML := xmaCTAButtonsHTML(nil, buttons.Postbacks, buttons.QuickReplies)
+	if buttonsHTML == "" {
+		return
+	}
+	part.Content.EnsureHasHTML()
+	part.Content.Body += "\n\n" + format.HTMLToContent(buttonsHTML).Body
+	part.Content.FormattedBody += buttonsHTML
+	attachButtons(part, buttons)
 }
 
 // MatchUserPostback checks whether a message from the user should be a button tap instead of text.

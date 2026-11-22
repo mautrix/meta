@@ -18,6 +18,7 @@ package slidetypes
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 )
 
@@ -248,6 +249,41 @@ func (b *CTAButton) UnmarshalJSON(data []byte) error {
 		b.Unrecognized = raw
 	}
 	return nil
+}
+
+// CTATypeXMAWebURL is the cta_type of link buttons.
+const CTATypeXMAWebURL = "xma_web_url"
+
+// IsLink reports whether the button opens a web link: an http(s) action URL (possibly wrapped
+// in an l.facebook.com shim) or the xma_web_url type.
+func (b *CTAButton) IsLink() bool {
+	if b == nil {
+		return false
+	}
+	if strings.EqualFold(b.CTAType, CTATypeXMAWebURL) {
+		return true
+	}
+	u, err := url.Parse(b.ActionURL)
+	if err != nil {
+		return false
+	}
+	if u.Host == "l.facebook.com" {
+		if real, err := url.Parse(u.Query().Get("u")); err == nil && real.String() != "" {
+			u = real
+		}
+	}
+	return u.Scheme == "https" || u.Scheme == "http"
+}
+
+// IsPostback reports whether the button is a postback: cta_type postback (any case), a
+// recovered payload with the GT-PB marker, or a platform_token.postback value.
+func (b *CTAButton) IsPostback() bool {
+	if b == nil {
+		return false
+	}
+	return strings.EqualFold(b.CTAType, "postback") ||
+		strings.Contains(b.Postback(), PostbackPayloadMarker) ||
+		extractPlatformTokenPostback(b.PlatformToken) != ""
 }
 
 // PostbackPayloadMarker is a substring of the postback payload values documented in #338

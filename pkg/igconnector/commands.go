@@ -41,7 +41,7 @@ var cmdTap = &commands.FullHandler{
 	Name: "tap",
 	Help: commands.HelpMeta{
 		Section:     commands.HelpSectionChats,
-		Description: "Tap a button (e.g. from a ManyChat bot) on an Instagram message",
+		Description: "Tap a postback or quick reply button (e.g. from a ManyChat bot) on an Instagram message",
 		Args:        "<_button number or title_>",
 	},
 	RequiresPortal: true,
@@ -74,7 +74,7 @@ func fnTap(ce *commands.Event) {
 		return
 	}
 	meta := target.Metadata.(*metaid.MessageMetadata)
-	button, err := igconv.ResolvePostbackButton(meta.PostbackButtons, arg)
+	button, err := igconv.ResolvePostbackButton(meta.TapButtons(), arg)
 	if err != nil {
 		ce.Reply("Couldn't tap button: %v", err)
 		return
@@ -84,9 +84,9 @@ func fnTap(ce *commands.Event) {
 		ce.Reply("Failed to tap button: %v", err)
 		return
 	}
-	_, err = cli.Client.SendPostback(ce.Ctx, portalMeta.IGID, button.Title, button.Payload)
+	_, err = cli.sendButtonTap(ce.Ctx, portalMeta.IGID, button, "")
 	if err != nil {
-		ce.Log.Err(err).Str("button_title", button.Title).Msg("Failed to send postback")
+		ce.Log.Err(err).Bool("quick_reply", button.IsQuickReply()).Msg("Failed to send button tap")
 		ce.Reply("Failed to tap button %q: %v", button.Title, err)
 		return
 	}
@@ -107,7 +107,7 @@ func findPostbackMessage(ce *commands.Event, cli *IGClient) (*database.Message, 
 		if !ok {
 			return nil, errors.New("the replied message has no buttons")
 		}
-		if len(meta.PostbackButtons) == 0 {
+		if len(meta.TapButtons()) == 0 {
 			// Metadata is missing, so a targeted fetch is allowed (see #338)
 			if err = fetchStoredPostbackButtons(ce.Ctx, ce, cli, msg, meta); err != nil {
 				return nil, err
@@ -131,15 +131,16 @@ func fetchStoredPostbackButtons(ctx context.Context, ce *commands.Event, cli *IG
 	if err != nil {
 		return fmt.Errorf("failed to find the thread ID: %w", err)
 	}
-	items, err := cli.Client.FetchThreadGenericXMAItems(ctx, igconv.PostbackThreadID(portalMeta))
+	items, err := cli.Client.FetchThreadButtonItems(ctx, igconv.PostbackThreadID(portalMeta))
 	if err != nil {
 		return fmt.Errorf("failed to fetch buttons: %w", err)
 	}
-	buttons := igconv.PickPostbackButtons(items, igconv.ItemIDFromMessageID(msg.ID), nil, 0)
-	if len(buttons) == 0 {
+	buttons := igconv.PickButtons(items, igconv.ItemIDFromMessageID(msg.ID), nil, 0)
+	if buttons.Empty() {
 		return errors.New("the message has no tappable buttons")
 	}
-	meta.PostbackButtons = buttons
+	meta.PostbackButtons = buttons.Postbacks
+	meta.QuickReplies = buttons.QuickReplies
 	if err = ce.Bridge.DB.Message.Update(ctx, msg); err != nil {
 		ce.Log.Warn().Err(err).Msg("Failed to save recovered postback buttons")
 	}
@@ -197,7 +198,7 @@ func fnRefresh(ce *commands.Event) {
 		ce.Reply("Failed to refresh: %v", err)
 		return
 	}
-	items, err := cli.Client.FetchThreadGenericXMAItems(ce.Ctx, igconv.PostbackThreadID(portalMeta))
+	items, err := cli.Client.FetchThreadButtonItems(ce.Ctx, igconv.PostbackThreadID(portalMeta))
 	if err != nil {
 		ce.Log.Warn().Err(err).Msg("Failed to fetch thread items for refresh")
 		ce.Reply("Failed to fetch buttons from Instagram: %v", err)
@@ -216,7 +217,7 @@ func fnRefresh(ce *commands.Event) {
 	ce.Reply("Refreshed %d message(s) (including stored buttons), skipped %d, failed %d", counts[refreshUpdated], counts[refreshSkipped], counts[refreshFailed])
 }
 
-func samePostbacks(a, b []*metaid.PostbackButton) bool {
+func sameButtons(a, b []*metaid.PostbackButton) bool {
 	return slices.EqualFunc(a, b, func(x, y *metaid.PostbackButton) bool {
 		return x.Title == y.Title && x.Payload == y.Payload && x.CTAType == y.CTAType
 	})
@@ -247,17 +248,18 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		return refreshSkipped
 	}
 	ctas := item.AllCTAButtons()
-	postbacks := igconv.PostbackButtonsFromCTAs(ctas)
-	ctaHTML := igconv.BuildCTAButtonsHTML(ctas, postbacks)
+	buttons := igconv.ButtonsFromItem(item)
+	ctaHTML := igconv.BuildCTAButtonsHTML(ctas, buttons.Postbacks, buttons.QuickReplies)
 	if ctaHTML == "" {
 		return refreshSkipped
 	}
-	metaChanged := !samePostbacks(meta.PostbackButtons, postbacks)
+	metaChanged := !sameButtons(meta.PostbackButtons, buttons.Postbacks) || !sameButtons(meta.QuickReplies, buttons.QuickReplies)
 	metaSaveFailed := false
 	if metaChanged {
-		meta.PostbackButtons = postbacks
+		meta.PostbackButtons = buttons.Postbacks
+		meta.QuickReplies = buttons.QuickReplies
 		if err := ce.Bridge.DB.Message.Update(ce.Ctx, msg); err != nil {
-			log.Warn().Err(err).Msg("Failed to save refreshed postback buttons")
+			log.Warn().Err(err).Msg("Failed to save refreshed buttons")
 			metaSaveFailed = true
 		}
 	}

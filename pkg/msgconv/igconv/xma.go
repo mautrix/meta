@@ -60,7 +60,7 @@ func (mc *MessageConverter) wrapXMAPreviewImage(ctx context.Context, xma *slidet
 	})
 }
 
-func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.XMAContent, postbacks []*metaid.PostbackButton) *event.MessageEventContent {
+func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.XMAContent, buttons Buttons) *event.MessageEventContent {
 	var captionHTML string
 	if xma.EyebrowText != "" {
 		captionHTML += fmt.Sprintf("<blockquote>%s</blockquote>", html.EscapeString(xma.EyebrowText))
@@ -93,7 +93,7 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	if captionHTML == "" {
 		return nil
 	}
-	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons, postbacks)
+	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies)
 	return ptr.Ptr(format.HTMLToContent(captionHTML))
 }
 
@@ -106,7 +106,7 @@ func unwrapLinkShim(u *url.URL) *url.URL {
 	return u
 }
 
-// PostbackTapCommand is the bridge command that taps a postback button.
+// PostbackTapCommand is the bridge command that taps a postback or quick reply button.
 const PostbackTapCommand = "!ig tap"
 
 const (
@@ -121,39 +121,96 @@ var (
 	oldLinkRunRegex     = regexp.MustCompile(`<p><a [^>]*>[^<]*</a>(?: - <a [^>]*>[^<]*</a>)+</p>`)
 )
 
-// xmaCTAButtonsHTML renders the CTA buttons of a card: URL buttons as a list of links, recovered
-// postback buttons as a numbered list with tap instructions, and other titled buttons with a
-// note that they can only be used in the Instagram app. The block is wrapped in a marked div so
+// keycapDigits are the reaction emojis that activate buttons 1-9 (digit + VS16 + keycap).
+const keycapSuffix = "\ufe0f\u20e3"
+const keycapTen = "\U0001F51F"
+
+// KeycapEmoji returns the keycap emoji for a 1-based button index, or "" above 10.
+func KeycapEmoji(n int) string {
+	switch {
+	case n >= 1 && n <= 9:
+		return strconv.Itoa(n) + keycapSuffix
+	case n == 10:
+		return keycapTen
+	}
+	return ""
+}
+
+// KeycapReactionIndex parses a keycap reaction (1️⃣-9️⃣, with or without VS16, or 🔟) into a
+// 1-based button index. Other emojis, including 0️⃣ and ❤, aren't button triggers.
+func KeycapReactionIndex(emoji string) (int, bool) {
+	emoji = strings.TrimSpace(emoji)
+	if emoji == keycapTen {
+		return 10, true
+	}
+	digits, ok := strings.CutSuffix(emoji, "\u20e3")
+	if !ok {
+		return 0, false
+	}
+	digits = strings.TrimSuffix(digits, "\ufe0f")
+	if len(digits) != 1 || digits[0] < '1' || digits[0] > '9' {
+		return 0, false
+	}
+	return int(digits[0] - '0'), true
+}
+
+// ButtonAtIndex returns the 1-based button of the list, or nil if the index is out of range.
+func ButtonAtIndex(buttons []*metaid.PostbackButton, idx int) *metaid.PostbackButton {
+	if idx < 1 || idx > len(buttons) {
+		return nil
+	}
+	return buttons[idx-1]
+}
+
+// buttonLineHTML renders one tappable button as a single line: title, type and how to activate.
+func buttonLineHTML(idx int, button *metaid.PostbackButton) string {
+	kind := "postback"
+	if button.IsQuickReply() {
+		kind = "quick reply"
+	}
+	activate := fmt.Sprintf("reply with %d or the title", idx)
+	if keycap := KeycapEmoji(idx); keycap != "" {
+		activate = fmt.Sprintf("react with %s, or %s", keycap, activate)
+	}
+	return fmt.Sprintf("<li>%s — %s · %s</li>", html.EscapeString(button.Title), kind, activate)
+}
+
+// xmaCTAButtonsHTML renders the CTA buttons of a card: URL buttons as a list of links, and the
+// recovered postback and quick reply buttons as one numbered list, a line each with its type and
+// how to activate it. Non-URL buttons that weren't recovered get a note that they only work in
+// the Instagram app, unless some button was recovered. The block is wrapped in a marked div so
 // it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
-func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.PostbackButton) string {
-	var links, buttons []string
+func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton) string {
+	tap := metaid.TapButtons(postbacks, quickReplies)
+	var links, unrecovered []string
 	for _, cta := range ctas {
 		if cta == nil || cta.Title == "" {
 			continue
 		}
-		actionURL, err := url.Parse(cta.ActionURL)
-		if err == nil {
-			actionURL = unwrapLinkShim(actionURL)
-		}
-		if err == nil && (actionURL.Scheme == "https" || actionURL.Scheme == "http") {
-			links = append(links, fmt.Sprintf(`<li><a href="%s">%s</a></li>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
-		} else if !slices.ContainsFunc(postbacks, func(pb *metaid.PostbackButton) bool { return pb.Title == cta.Title }) {
-			buttons = append(buttons, html.EscapeString(cta.Title))
+		if cta.IsLink() {
+			actionURL, err := url.Parse(cta.ActionURL)
+			if err == nil {
+				actionURL = unwrapLinkShim(actionURL)
+				if actionURL.Scheme == "https" || actionURL.Scheme == "http" {
+					links = append(links, fmt.Sprintf(`<li><a href="%s">%s</a></li>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
+				}
+			}
+		} else if !slices.ContainsFunc(tap, func(b *metaid.PostbackButton) bool { return b.Title == cta.Title }) {
+			unrecovered = append(unrecovered, html.EscapeString(cta.Title))
 		}
 	}
 	var out strings.Builder
 	if len(links) > 0 {
 		fmt.Fprintf(&out, "<ul>%s</ul>", strings.Join(links, ""))
 	}
-	if len(postbacks) > 0 {
+	if len(tap) > 0 {
 		out.WriteString("<ol>")
-		for _, pb := range postbacks {
-			fmt.Fprintf(&out, "<li>%s</li>", html.EscapeString(pb.Title))
+		for i, button := range tap {
+			out.WriteString(buttonLineHTML(i+1, button))
 		}
-		fmt.Fprintf(&out, "</ol><p>To tap a button, reply with its number or title, or send <code>%s N</code>.</p>", PostbackTapCommand)
-	}
-	if len(buttons) > 0 {
-		fmt.Fprintf(&out, "<p>%s<br>%s</p>", strings.Join(buttons, ", "), appFallbackSnippet)
+		fmt.Fprintf(&out, "</ol><p>Or send <code>%s N</code>.</p>", PostbackTapCommand)
+	} else if len(unrecovered) > 0 {
+		fmt.Fprintf(&out, "<p>%s<br>%s</p>", strings.Join(unrecovered, ", "), appFallbackSnippet)
 	}
 	if out.Len() == 0 {
 		return ""
@@ -162,8 +219,8 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.Postbac
 }
 
 // BuildCTAButtonsHTML is the exported form of xmaCTAButtonsHTML, used when refreshing old cards.
-func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.PostbackButton) string {
-	return xmaCTAButtonsHTML(ctas, postbacks)
+func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton) string {
+	return xmaCTAButtonsHTML(ctas, postbacks, quickReplies)
 }
 
 // HasKnownCTAFooter reports whether a formatted body already contains a CTA footer that
@@ -200,17 +257,17 @@ func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMACont
 	if xma == nil {
 		return nil
 	}
-	postbacks := mc.recoverPostbackButtons(ctx, xma, msg)
-	part := mc.wrapXMAWithPostbacks(ctx, xma, postbacks)
-	attachPostbackButtons(part, postbacks)
+	buttons := mc.recoverButtons(ctx, xma, msg)
+	part := mc.wrapXMAWithButtons(ctx, xma, buttons)
+	attachButtons(part, buttons)
 	return part
 }
 
-func (mc *MessageConverter) wrapXMAWithPostbacks(ctx context.Context, xma *slidetypes.XMAContent, postbacks []*metaid.PostbackButton) *bridgev2.ConvertedMessagePart {
+func (mc *MessageConverter) wrapXMAWithButtons(ctx context.Context, xma *slidetypes.XMAContent, buttons Buttons) *bridgev2.ConvertedMessagePart {
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
-	captionPart := mc.wrapXMACaption(ctx, xma, postbacks)
+	captionPart := mc.wrapXMACaption(ctx, xma, buttons)
 	if previewPart != nil && captionPart == nil {
-		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons, postbacks); buttonsHTML != "" {
+		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies); buttonsHTML != "" {
 			captionPart = ptr.Ptr(format.HTMLToContent(buttonsHTML))
 		}
 	}

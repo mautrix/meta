@@ -71,18 +71,19 @@ func (c *Client) threadDetailsHeaders() http.Header {
 	return h
 }
 
-// FetchThreadGenericXMAItems fetches the thread over the REST API and returns the generic_xma items.
+// FetchThreadButtonItems fetches the thread over the REST API and returns the items that may
+// carry buttons: generic_xma items, items with quick replies and items with non-link CTAs.
 // It tries i.instagram.com first (www.instagram.com answers 404 HTML for this endpoint) and
 // retries once on www.instagram.com if the thread isn't found.
-func (c *Client) FetchThreadGenericXMAItems(ctx context.Context, threadID string) ([]*slidetypes.ThreadItem, error) {
-	items, err := c.fetchThreadGenericXMAItems(ctx, mobileThreadDetailsBaseURL, threadID)
+func (c *Client) FetchThreadButtonItems(ctx context.Context, threadID string) ([]*slidetypes.ThreadItem, error) {
+	items, err := c.fetchThreadButtonItems(ctx, mobileThreadDetailsBaseURL, threadID)
 	if errors.Is(err, errThreadNotFound) {
-		return c.fetchThreadGenericXMAItems(ctx, threadDetailsBaseURL, threadID)
+		return c.fetchThreadButtonItems(ctx, threadDetailsBaseURL, threadID)
 	}
 	return items, err
 }
 
-func (c *Client) fetchThreadGenericXMAItems(ctx context.Context, baseURL, threadID string) ([]*slidetypes.ThreadItem, error) {
+func (c *Client) fetchThreadButtonItems(ctx context.Context, baseURL, threadID string) ([]*slidetypes.ThreadItem, error) {
 	if c == nil {
 		return nil, ErrClientIsNil
 	} else if threadID == "" {
@@ -110,7 +111,7 @@ func (c *Client) fetchThreadGenericXMAItems(ctx context.Context, baseURL, thread
 		return nil, fmt.Errorf("failed to parse thread details: %w", err)
 	}
 	logThreadDetailsSummary(ctx, threadID, &parsed)
-	return parsed.GenericXMAItems(), nil
+	return parsed.ButtonItems(), nil
 }
 
 // logThreadDetailsSummary logs only structure (key names, counts, shapes, booleans) and IDs,
@@ -207,6 +208,65 @@ func (c *Client) SendPostbackWithContext(ctx context.Context, threadID, title, p
 	body, err := json.Marshal(newSendItemPostback(threadID, title, payload, clientContext))
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal postback request: %w", err)
+	}
+	if err = c.publishMQTTBypass(ctx, body); err != nil {
+		return "", err
+	}
+	return clientContext, nil
+}
+
+// sendItemQuickReply is the /ig_send_message body for tapping a quick reply. Per the official
+// Instagram Messaging docs a tap posts the button title as a text message, so the required part
+// is action/item_type/text. cta_type and quick_reply_payload (the name of the inbound webhook
+// field) are best-effort: the private MQTT key for the payload is unverified. It deliberately
+// has no postback_payload field.
+type sendItemQuickReply struct {
+	Action            string `json:"action"`
+	ItemType          string `json:"item_type"`
+	Text              string `json:"text"`
+	SendAttribution   string `json:"send_attribution,omitempty"`
+	CTAType           string `json:"cta_type,omitempty"`
+	QuickReplyPayload string `json:"quick_reply_payload,omitempty"`
+	ThreadID          string `json:"thread_id"`
+	ClientContext     string `json:"client_context"`
+}
+
+func newSendItemQuickReply(threadID, title, payload, clientContext string) *sendItemQuickReply {
+	body := &sendItemQuickReply{
+		Action:        "send_item",
+		ItemType:      "text",
+		Text:          title,
+		ThreadID:      threadID,
+		ClientContext: clientContext,
+	}
+	if payload != "" {
+		body.SendAttribution = "quick_reply"
+		body.CTAType = "quick_reply"
+		body.QuickReplyPayload = payload
+	}
+	return body
+}
+
+// SendQuickReply taps a quick reply by publishing a text send_item request over the mqttbypass
+// socket. It doesn't wait for a response from the server.
+func (c *Client) SendQuickReply(ctx context.Context, threadID, title, payload, clientContext string) (string, error) {
+	return c.SendQuickReplyWithContext(ctx, threadID, title, payload, clientContext)
+}
+
+// SendQuickReplyWithContext sends the quick reply title as text, with the payload fields only if
+// the payload is non-empty. An empty clientContext generates one. It never uses broadcast/text.
+func (c *Client) SendQuickReplyWithContext(ctx context.Context, threadID, title, payload, clientContext string) (string, error) {
+	if c == nil {
+		return "", ErrClientIsNil
+	} else if threadID == "" || title == "" {
+		return "", errors.New("thread ID and quick reply title are required")
+	}
+	if clientContext == "" {
+		clientContext = strconv.FormatInt(methods.GenerateEpochID(), 10)
+	}
+	body, err := json.Marshal(newSendItemQuickReply(threadID, title, payload, clientContext))
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal quick reply request: %w", err)
 	}
 	if err = c.publishMQTTBypass(ctx, body); err != nil {
 		return "", err

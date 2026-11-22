@@ -36,12 +36,13 @@ import (
 // pendingPostbackTTL is how long a tap OTID is remembered if no echo arrives.
 const pendingPostbackTTL = 2 * time.Minute
 
-// newestPostbackMessage returns the newest of the given messages that has stored postback buttons.
+// newestPostbackMessage returns the newest of the given messages that has stored postback or
+// quick reply buttons.
 func newestPostbackMessage(msgs []*database.Message) *database.Message {
 	var newest *database.Message
 	for _, msg := range msgs {
 		meta, ok := msg.Metadata.(*metaid.MessageMetadata)
-		if !ok || len(meta.PostbackButtons) == 0 {
+		if !ok || len(meta.TapButtons()) == 0 {
 			continue
 		}
 		if newest == nil || msg.Timestamp.After(newest.Timestamp) {
@@ -63,8 +64,8 @@ func selectPostbackForText(
 		return nil
 	}
 	if replyTo != nil {
-		if meta, ok := replyTo.Metadata.(*metaid.MessageMetadata); ok && len(meta.PostbackButtons) > 0 {
-			button, err := igconv.MatchUserPostback(meta.PostbackButtons, text, true)
+		if meta, ok := replyTo.Metadata.(*metaid.MessageMetadata); ok && len(meta.TapButtons()) > 0 {
+			button, err := igconv.MatchUserPostback(meta.TapButtons(), text, true)
 			if err != nil {
 				return nil
 			}
@@ -79,7 +80,7 @@ func selectPostbackForText(
 	if target == nil {
 		return nil
 	}
-	button, err := igconv.MatchUserPostback(target.Metadata.(*metaid.MessageMetadata).PostbackButtons, text, false)
+	button, err := igconv.MatchUserPostback(target.Metadata.(*metaid.MessageMetadata).TapButtons(), text, false)
 	if err != nil {
 		return nil
 	}
@@ -110,17 +111,16 @@ func (ic *IGClient) handleMatrixPostbackTap(ctx context.Context, msg *bridgev2.M
 	}
 	otid := strconv.FormatInt(getOTID(msg.InputTransactionID), 10)
 	txnID := networkid.TransactionID(otid)
-	ic.pendingPostbackOTIDs.Add(otid)
-	time.AfterFunc(pendingPostbackTTL, func() { ic.pendingPostbackOTIDs.Remove(otid) })
+	ic.addPendingTapOTID(otid)
 	// Instagram's message ID isn't known until the echo arrives, so save nothing now and let
 	// the framework save the Matrix event under the real ID when the echo with this transaction ID shows up.
 	msg.AddPendingToSave(nil, txnID, nil)
-	if _, err = ic.Client.SendPostbackWithContext(ctx, portalMeta.IGID, button.Title, button.Payload, otid); err != nil {
+	if _, err = ic.sendButtonTap(ctx, portalMeta.IGID, button, otid); err != nil {
 		msg.RemovePending(txnID)
 		ic.pendingPostbackOTIDs.Remove(otid)
 		return nil, true, wrapInstagramError(err)
 	}
-	zerolog.Ctx(ctx).Debug().Msg("Sent Matrix message as a postback button tap")
+	zerolog.Ctx(ctx).Debug().Msg("Sent Matrix message as a button tap")
 	return &bridgev2.MatrixMessageResponse{Pending: true}, true, nil
 }
 
@@ -140,4 +140,19 @@ func (ic *IGClient) takePendingPostbackOTID(otid string) bool {
 	}
 	ic.pendingPostbackOTIDs.Remove(otid)
 	return true
+}
+
+// addPendingTapOTID remembers the OTID of a tap sent from Matrix so its echo can be correlated.
+func (ic *IGClient) addPendingTapOTID(otid string) {
+	ic.pendingPostbackOTIDs.Add(otid)
+	time.AfterFunc(pendingPostbackTTL, func() { ic.pendingPostbackOTIDs.Remove(otid) })
+}
+
+// sendButtonTap activates a button: postbacks are sent as postbacks, quick replies as text
+// with the title. An empty clientContext generates one.
+func (ic *IGClient) sendButtonTap(ctx context.Context, threadID string, button *metaid.PostbackButton, clientContext string) (string, error) {
+	if button.IsQuickReply() {
+		return ic.Client.SendQuickReplyWithContext(ctx, threadID, button.Title, button.Payload, clientContext)
+	}
+	return ic.Client.SendPostbackWithContext(ctx, threadID, button.Title, button.Payload, clientContext)
 }

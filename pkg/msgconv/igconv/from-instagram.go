@@ -85,7 +85,9 @@ func (mc *MessageConverter) ToMatrix(
 	}
 	switch content := msg.Content.Content.(type) {
 	case *slidetypes.MessageContentText:
-		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.TextBody, msg.Mentions))
+		textPart := mc.wrapText(ctx, content.TextBody, msg.Mentions)
+		appendButtonsToText(textPart, mc.recoverTextQuickReplies(ctx, msg, content.Unrecognized))
+		cm.Parts = append(cm.Parts, textPart)
 	case *slidetypes.MessageContentAdminText:
 		adminText := mc.wrapAdminText(content.TextFragments, msg.IGDSnippet)
 		mc.mutateWrappedAdminText(ctx, adminText, msg, content)
@@ -147,6 +149,7 @@ func (mc *MessageConverter) ToMatrix(
 					part.Content.FormattedBody,
 				)
 			}
+			appendButtonsToText(part, mc.recoverTextQuickReplies(ctx, msg, content.Unrecognized))
 			cm.Parts = append(cm.Parts, part)
 		} else if xmaPart := mc.wrapXMA(ctx, content.XMA, msg); xmaPart != nil {
 			cm.Parts = append(cm.Parts, xmaPart)
