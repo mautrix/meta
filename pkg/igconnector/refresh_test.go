@@ -38,6 +38,7 @@ type refreshMatrixStub struct {
 	bridgev2.MatrixAPI
 	edits   []*event.MessageEventContent
 	replies []string
+	polls   []*event.Content
 }
 
 func (m *refreshMatrixStub) Init(*bridgev2.Bridge)                           {}
@@ -47,7 +48,14 @@ func (m *refreshMatrixStub) GetMXID() id.UserID                              { r
 func (m *refreshMatrixStub) GetEvent(context.Context, id.RoomID, id.EventID) (*event.Event, error) {
 	return nil, errors.New("can't decrypt the event")
 }
-func (m *refreshMatrixStub) SendMessage(_ context.Context, _ id.RoomID, _ event.Type, content *event.Content, _ *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+func (m *refreshMatrixStub) SendMessage(_ context.Context, _ id.RoomID, typ event.Type, content *event.Content, _ *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+	if typ == event.EventUnstablePollStart {
+		m.polls = append(m.polls, content)
+		return &mautrix.RespSendEvent{EventID: id.EventID(fmt.Sprintf("$poll%d", len(m.polls)))}, nil
+	}
+	if typ != event.EventMessage {
+		return nil, fmt.Errorf("refresh sent a %s event", typ.Type)
+	}
 	if content.AsMessage().NewContent != nil {
 		m.edits = append(m.edits, content.AsMessage())
 	} else {
@@ -138,6 +146,28 @@ func TestRefreshAllStoredMessagesWithoutDecrypting(t *testing.T) {
 	if err != nil || len(stored.Metadata.(*metaid.MessageMetadata).QuickReplies) != 1 {
 		t.Fatal("refreshed button not persisted")
 	}
+	if len(matrix.polls) != 125 {
+		t.Fatalf("expected one button poll per card, got %d", len(matrix.polls))
+	}
+	for _, poll := range matrix.polls {
+		start, ok := poll.Raw["org.matrix.msc3381.poll.start"].(event.PollStart)
+		if !ok || start.Question.Text != "Card" || start.MaxSelections != 1 || len(start.Answers) != 1 || start.Answers[0].Text != "Reply" {
+			t.Fatalf("unexpected poll: %+v", poll.Raw)
+		}
+	}
+	for _, target := range targets {
+		parts, err := bridge.DB.Message.GetAllPartsByID(ctx, "", target.ID)
+		if err != nil || len(parts) != 2 || parts[1].PartID != metaid.ButtonPollPartID || !isButtonPoll(parts[1]) || parts[1].MXID == "" {
+			t.Fatalf("card %s has parts %+v, %v", target.ID, parts, err)
+		}
+	}
+	t.Run("refreshing again never adds a second poll", func(t *testing.T) {
+		before := len(matrix.polls)
+		counts := refreshPortal(ce, login, targets)
+		if counts[refreshFailed] != 0 || len(matrix.polls) != before {
+			t.Fatalf("counts %v, polls %d -> %d", counts, before, len(matrix.polls))
+		}
+	})
 	t.Run("stored buttons survive missing history", func(t *testing.T) {
 		if result := refreshCard(ce, login, nil, stored); result != refreshUpdated {
 			t.Fatal("stored card not rebuilt")
@@ -154,25 +184,20 @@ func TestRefreshAllStoredMessagesWithoutDecrypting(t *testing.T) {
 	})
 
 	t.Run("button polls are never refreshed as cards", func(t *testing.T) {
-		poll := *stored
-		poll.PartID = metaid.ButtonPollPartID
-		poll.MXID = "$poll"
-		poll.Metadata = &metaid.MessageMetadata{ButtonPoll: true, QuickReplies: stored.Metadata.(*metaid.MessageMetadata).QuickReplies}
-		if err := bridge.DB.Message.Insert(ctx, &poll); err != nil {
-			t.Fatal(err)
+		parts, err := bridge.DB.Message.GetAllPartsByID(ctx, "", stored.ID)
+		if err != nil || len(parts) != 2 || !isButtonPoll(parts[1]) {
+			t.Fatalf("the card has no stored poll: %+v, %v", parts, err)
 		}
+		poll := parts[1]
 		beforeEdits, beforeGets := len(matrix.edits), gets
-		if counts := refreshPortal(ce, login, []*database.Message{&poll}); counts != [3]int{} || len(matrix.edits) != beforeEdits || gets != beforeGets {
+		if counts := refreshPortal(ce, login, []*database.Message{poll}); counts != [3]int{} || len(matrix.edits) != beforeEdits || gets != beforeGets {
 			t.Fatalf("poll row was refreshed: counts %v, edits %d, GETs %d", counts, len(matrix.edits)-beforeEdits, gets-beforeGets)
 		}
-		if got := cardOfButtonPoll(ctx, bridge.DB.Message, portal.Receiver, &poll); got.PartID != "" || got.ID != stored.ID {
+		if got := cardOfButtonPoll(ctx, bridge.DB.Message, portal.Receiver, poll); got.PartID != "" || got.ID != stored.ID {
 			t.Fatalf("reply to the poll must refresh the card, got part %q", got.PartID)
 		}
 		if got := cardOfButtonPoll(ctx, bridge.DB.Message, portal.Receiver, stored); got != stored {
 			t.Fatal("a card must refresh itself")
-		}
-		if err := bridge.DB.Message.Delete(ctx, poll.RowID); err != nil {
-			t.Fatal(err)
 		}
 	})
 	t.Run("missing stored and fetched buttons are counted", func(t *testing.T) {

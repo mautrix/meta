@@ -152,7 +152,7 @@ var cmdRefresh = &commands.FullHandler{
 	Name: "refresh",
 	Help: commands.HelpMeta{
 		Section:     commands.HelpSectionChats,
-		Description: "Refresh CTA buttons and links on existing Instagram cards in this room (or the replied-to message). Doesn't send anything to Instagram",
+		Description: "Refresh CTA buttons and links on existing Instagram cards in this room (or the replied-to message) and add the button poll to cards that lack one. Doesn't send anything to Instagram",
 	},
 	RequiresPortal: true,
 	RequiresLogin:  true,
@@ -237,7 +237,14 @@ func refreshPortal(ce *commands.Event, login *bridgev2.UserLogin, targets []*dat
 			continue
 		}
 		result := refreshCard(ce, login, items, msg)
-		if result == refreshSkipped && fetchErr != nil {
+		attached, attachErr := ce.Bridge.Network.(*IGConnector).attachButtonPoll(ce.Ctx, ce.Portal, login, items, msg)
+		switch {
+		case attachErr != nil:
+			ce.Log.Debug().Str("message_id", string(msg.ID)).Str("reason", "button_poll_attach_failed").Msg("Failed refresh")
+			result = refreshFailed
+		case attached && result == refreshSkipped:
+			result = refreshUpdated
+		case result == refreshSkipped && fetchErr != nil:
 			ce.Log.Debug().Str("message_id", string(msg.ID)).Str("reason", "history_unavailable_for_skipped_message").Msg("Failed refresh")
 			result = refreshFailed
 		}
@@ -251,7 +258,7 @@ var cmdRefreshAll = &commands.FullHandler{
 	Name: "refresh-all",
 	Help: commands.HelpMeta{
 		Section:     commands.HelpSectionChats,
-		Description: "Refresh cards in every portal of your login. Run in the management room. Only reads Instagram history",
+		Description: "Refresh cards, and add missing button polls, in every portal of your login. Run in the management room. Only reads Instagram history",
 		Args:        "[_login ID_]",
 	},
 	RequiresLogin: true,
@@ -324,6 +331,7 @@ func sameButtons(a, b []*metaid.PostbackButton) bool {
 
 // refreshCard updates the stored buttons and the Matrix event of one bridged card.
 // It never sends anything to Instagram, and never needs to decrypt the old Matrix event.
+// The button poll is attached separately, see attachButtonPoll.
 func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidetypes.ThreadItem, msg *database.Message) refreshResult {
 	log := ce.Log.With().Str("message_id", string(msg.ID)).Logger()
 	meta, ok := msg.Metadata.(*metaid.MessageMetadata)

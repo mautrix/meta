@@ -111,6 +111,11 @@ func NewButtonPollPart(question string, postbacks, quickReplies []*metaid.Postba
 	}
 }
 
+// ButtonPollQuestion is the poll question for a card whose plain text is body.
+func ButtonPollQuestion(body string) string {
+	return buttonPollQuestion([]*bridgev2.ConvertedMessagePart{{Type: event.EventMessage, Content: &event.MessageEventContent{Body: body}}})
+}
+
 // buttonPollQuestion is the first line of card text that is not a button, quote or media file name.
 func buttonPollQuestion(parts []*bridgev2.ConvertedMessagePart) string {
 	for _, part := range parts {

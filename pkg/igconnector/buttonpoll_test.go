@@ -22,9 +22,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
@@ -45,7 +47,9 @@ type pollSend struct {
 	sender networkid.UserID
 	room   id.RoomID
 	typ    event.Type
+	parsed *event.MessageEventContent
 	raw    map[string]any
+	ts     time.Time
 }
 
 type pollMatrixStub struct {
@@ -53,6 +57,8 @@ type pollMatrixStub struct {
 	bridgev2.MatrixAPI
 	mu    sync.Mutex
 	sends []pollSend
+	// sendErr is returned instead of sending while set.
+	sendErr error
 }
 
 func (m *pollMatrixStub) Init(*bridgev2.Bridge)         {}
@@ -66,24 +72,34 @@ type pollIntentStub struct {
 	sender networkid.UserID
 }
 
-func (i *pollIntentStub) SendMessage(_ context.Context, room id.RoomID, typ event.Type, content *event.Content, _ *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+func (i *pollIntentStub) SendMessage(_ context.Context, room id.RoomID, typ event.Type, content *event.Content, extra *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	i.sends = append(i.sends, pollSend{sender: i.sender, room: room, typ: typ, raw: content.Raw})
-	return &mautrix.RespSendEvent{EventID: "$end"}, nil
+	if i.sendErr != nil {
+		return nil, i.sendErr
+	}
+	send := pollSend{sender: i.sender, room: room, typ: typ, raw: content.Raw}
+	send.parsed, _ = content.Parsed.(*event.MessageEventContent)
+	if extra != nil {
+		send.ts = extra.Timestamp
+	}
+	i.sends = append(i.sends, send)
+	return &mautrix.RespSendEvent{EventID: id.EventID("$sent" + strconv.Itoa(len(i.sends)))}, nil
 }
 
-func (m *pollMatrixStub) ends() []pollSend {
+func (m *pollMatrixStub) sendsOf(typ event.Type) []pollSend {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []pollSend
 	for _, send := range m.sends {
-		if send.typ == event.EventUnstablePollEnd {
+		if send.typ == typ {
 			out = append(out, send)
 		}
 	}
 	return out
 }
+
+func (m *pollMatrixStub) ends() []pollSend { return m.sendsOf(event.EventUnstablePollEnd) }
 
 type buttonPollFixture struct {
 	ic        *IGClient

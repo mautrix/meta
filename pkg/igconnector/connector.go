@@ -19,6 +19,7 @@ package igconnector
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -37,6 +38,10 @@ type IGConnector struct {
 	tapServer *http.Server
 	// tapOnce makes a button send at most once whether it came from a signed link or a poll vote.
 	tapOnce tapOnce
+	// pollAttachLock serializes attaching button polls to old cards, and pollAttached remembers
+	// the cards that got one in this process, so two refreshes can't send two polls.
+	pollAttachLock sync.Mutex
+	pollAttached   map[string]struct{}
 }
 
 var (
