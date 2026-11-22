@@ -81,8 +81,8 @@ func parseCTAs(t *testing.T, raw string) []*slidetypes.CTAButton {
 
 const mixedCTAs = `[
 	{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"Website"},
-	{"cta_type":"postback","action_url":"","title":"Yes <b>","payload":"1:GT-PB:ACT::01"},
-	{"cta_type":"postback","action_url":"","title":"No","postback_payload":"1:GT-PB:ACT::02"}]`
+	{"cta_type":"postback","action_url":"","title":"Yes <b>","payload":"payload-a"},
+	{"cta_type":"postback","action_url":"","title":"No","postback_payload":"payload-b"}]`
 
 func TestXMACTAButtonsHTML(t *testing.T) {
 	ctas := parseCTAs(t, mixedCTAs)
@@ -90,9 +90,10 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 	t.Run("links and postbacks", func(t *testing.T) {
 		out := xmaCTAButtonsHTML(ctas, PostbackButtonsFromCTAs(ctas))
 		for _, want := range []string{
-			`<a href="https://example.com/a">Website</a>`,
+			`<div data-ig-cta="">`,
+			`<ul><li><a href="https://example.com/a">Website</a></li></ul>`,
 			`<ol><li>Yes &lt;b&gt;</li><li>No</li></ol>`,
-			"<code>!ig tap N</code>",
+			"To tap a button, reply with its number or title, or send <code>!ig tap N</code>.",
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %q in %s", want, out)
@@ -103,21 +104,41 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 		}
 	})
 
-	t.Run("fallback warning when payload not recovered", func(t *testing.T) {
-		hidden := parseCTAs(t, `[{"cta_type":"postback","action_url":"","title":"Yes"},{"cta_type":"placeholder","title":"No"}]`)
-		out := xmaCTAButtonsHTML(hidden, nil)
-		if want := "<p>Yes - No<br>Use the Instagram app to click buttons</p>"; out != want {
-			t.Errorf("got %q, want %q", out, want)
+	t.Run("three links are a list", func(t *testing.T) {
+		three := parseCTAs(t, `[
+			{"cta_type":"xma_web_url","action_url":"https://example.com/1","title":"Guide"},
+			{"cta_type":"xma_web_url","action_url":"https://example.com/2","title":"Following"},
+			{"cta_type":"xma_web_url","action_url":"https://example.com/3","title":"Docs"}]`)
+		out := xmaCTAButtonsHTML(three, nil)
+		if got := strings.Count(out, "<li><a href="); got != 3 || !strings.Contains(out, "<ul>") {
+			t.Errorf("expected a list of 3 links, got %s", out)
 		}
-		if strings.Contains(out, "!ig tap") {
-			t.Errorf("tap hint without payloads: %s", out)
+		if strings.Contains(out, " - ") {
+			t.Errorf("links are still joined with a dash: %s", out)
 		}
 	})
 
-	t.Run("url only unchanged", func(t *testing.T) {
-		out := xmaCTAButtonsHTML(ctas[:1], nil)
-		if want := `<p><a href="https://example.com/a">Website</a></p>`; out != want {
+	t.Run("fallback warning when payload not recovered", func(t *testing.T) {
+		hidden := parseCTAs(t, `[{"cta_type":"postback","action_url":"","title":"Yes"},{"cta_type":"placeholder","title":"No"}]`)
+		out := xmaCTAButtonsHTML(hidden, nil)
+		if want := `<div data-ig-cta=""><p>Yes, No<br>Use the Instagram app to click buttons</p></div>`; out != want {
 			t.Errorf("got %q, want %q", out, want)
+		}
+		if strings.Contains(out, "!ig tap") || strings.Contains(out, " - ") {
+			t.Errorf("unexpected output: %s", out)
+		}
+	})
+
+	t.Run("url only", func(t *testing.T) {
+		out := xmaCTAButtonsHTML(ctas[:1], nil)
+		if want := `<div data-ig-cta=""><ul><li><a href="https://example.com/a">Website</a></li></ul></div>`; out != want {
+			t.Errorf("got %q, want %q", out, want)
+		}
+	})
+
+	t.Run("no buttons", func(t *testing.T) {
+		if out := xmaCTAButtonsHTML(nil, nil); out != "" {
+			t.Errorf("got %q", out)
 		}
 	})
 
@@ -129,6 +150,68 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 	})
 }
 
+func TestReplaceOrAppendCTAButtonsHTML(t *testing.T) {
+	newCTA := `<div data-ig-cta=""><ul><li><a href="https://example.com/n">New</a></li></ul></div>`
+
+	t.Run("replaces marked block", func(t *testing.T) {
+		old := `<p>Caption</p><div data-ig-cta=""><ul><li>old</li></ul></div><p>After</p>`
+		want := `<p>Caption</p>` + newCTA + `<p>After</p>`
+		if got := ReplaceOrAppendCTAButtonsHTML(old, newCTA); got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("strips old app sentence and appends", func(t *testing.T) {
+		old := `<p>Caption</p><p>Yes - No<br>Use the Instagram app to click buttons</p>`
+		got := ReplaceOrAppendCTAButtonsHTML(old, newCTA)
+		if want := `<p>Caption</p>` + newCTA; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+		if strings.Contains(got, "Instagram app") {
+			t.Errorf("old sentence kept: %s", got)
+		}
+	})
+
+	t.Run("strips old link run and tap list", func(t *testing.T) {
+		old := `<p>Caption</p><p><a href="https://example.com/1">Guide</a> - <a href="https://example.com/2">Following</a></p>` +
+			`<ol><li>Yes</li></ol><p>Tap a button with <code>!ig tap N</code> or <code>!ig tap &lt;title&gt;</code></p>`
+		if got, want := ReplaceOrAppendCTAButtonsHTML(old, newCTA), `<p>Caption</p>`+newCTA; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("keeps lone target link and caption", func(t *testing.T) {
+		old := `<p>Caption</p><p><a href="https://example.com/post">https://example.com/post</a></p>`
+		if got, want := ReplaceOrAppendCTAButtonsHTML(old, newCTA), old+newCTA; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+}
+
+func TestMatchUserPostback(t *testing.T) {
+	buttons := []*metaid.PostbackButton{pb("Guide", "payload-a"), pb("Following", "payload-b")}
+
+	if got, err := MatchUserPostback(buttons, " 1 ", true); err != nil || got.Payload != "payload-a" {
+		t.Errorf("reply+1: got %v, %v", got, err)
+	}
+	if _, err := MatchUserPostback(buttons, "1", false); !errors.Is(err, ErrPostbackNotFound) {
+		t.Errorf("non-reply 1 must not match, got %v", err)
+	}
+	if got, err := MatchUserPostback(buttons, "following", false); err != nil || got.Payload != "payload-b" {
+		t.Errorf("non-reply title: got %v, %v", got, err)
+	}
+	if _, err := MatchUserPostback(buttons, "hello there", false); !errors.Is(err, ErrPostbackNotFound) {
+		t.Errorf("unknown text: got %v", err)
+	}
+	if _, err := MatchUserPostback(buttons, "  ", true); !errors.Is(err, ErrPostbackNotFound) {
+		t.Errorf("empty text: got %v", err)
+	}
+	dup := []*metaid.PostbackButton{pb("Same", "payload-a"), pb("same", "payload-b")}
+	if _, err := MatchUserPostback(dup, "SAME", false); !errors.Is(err, ErrPostbackAmbiguous) {
+		t.Errorf("ambiguous: got %v", err)
+	}
+}
+
 func TestXMANeedsPostbackFetch(t *testing.T) {
 	tests := []struct {
 		name string
@@ -137,7 +220,7 @@ func TestXMANeedsPostbackFetch(t *testing.T) {
 	}{
 		{"nil", nil, false},
 		{"url only", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"xma_web_url","action_url":"https://example.com","title":"Go"}]`)}, false},
-		{"postback with payload", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"postback","title":"Go","payload":"1:GT-PB:ACT::1"}]`)}, false},
+		{"postback with payload", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"postback","title":"Go","payload":"payload-a"}]`)}, false},
 		{"postback without payload", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"postback","title":"Go"}]`)}, true},
 		{"placeholder", &slidetypes.XMAContent{CTAButtons: parseCTAs(t, `[{"cta_type":"placeholder","title":"Go"}]`)}, true},
 		{"empty buttons text card", &slidetypes.XMAContent{TitleText: "Pick one"}, true},

@@ -109,6 +109,22 @@ func unwrapLinkShim(u *url.URL) *url.URL {
 // PostbackTapCommand is the bridge command that taps a postback button.
 const PostbackTapCommand = "!ig tap"
 
+const (
+	ctaBlockOpen       = `<div data-ig-cta="">`
+	ctaBlockClose      = "</div>"
+	appFallbackSnippet = "Use the Instagram app to click buttons"
+)
+
+var (
+	oldAppFallbackRegex = regexp.MustCompile(`<p>[^<]*(?:<br\s*/?>)?` + appFallbackSnippet + `</p>`)
+	oldTapListRegex     = regexp.MustCompile(`<ol>(?:<li>[^<]*</li>)*</ol><p>Tap a button with <code>` + PostbackTapCommand + `[^<]*</code>[^<]*(?:<code>[^<]*</code>)?</p>`)
+	oldLinkRunRegex     = regexp.MustCompile(`<p><a [^>]*>[^<]*</a>(?: - <a [^>]*>[^<]*</a>)+</p>`)
+)
+
+// xmaCTAButtonsHTML renders the CTA buttons of a card: URL buttons as a list of links, recovered
+// postback buttons as a numbered list with tap instructions, and other titled buttons with a
+// note that they can only be used in the Instagram app. The block is wrapped in a marked div so
+// it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
 func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.PostbackButton) string {
 	var links, buttons []string
 	for _, cta := range ctas {
@@ -120,29 +136,51 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.Postbac
 			actionURL = unwrapLinkShim(actionURL)
 		}
 		if err == nil && (actionURL.Scheme == "https" || actionURL.Scheme == "http") {
-			links = append(links, fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
+			links = append(links, fmt.Sprintf(`<li><a href="%s">%s</a></li>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
 		} else if !slices.ContainsFunc(postbacks, func(pb *metaid.PostbackButton) bool { return pb.Title == cta.Title }) {
 			buttons = append(buttons, html.EscapeString(cta.Title))
 		}
 	}
-	var out string
+	var out strings.Builder
 	if len(links) > 0 {
-		out += fmt.Sprintf("<p>%s</p>", strings.Join(links, " - "))
+		fmt.Fprintf(&out, "<ul>%s</ul>", strings.Join(links, ""))
 	}
 	if len(postbacks) > 0 {
-		var list strings.Builder
+		out.WriteString("<ol>")
 		for _, pb := range postbacks {
-			fmt.Fprintf(&list, "<li>%s</li>", html.EscapeString(pb.Title))
+			fmt.Fprintf(&out, "<li>%s</li>", html.EscapeString(pb.Title))
 		}
-		out += fmt.Sprintf(
-			"<ol>%s</ol><p>Tap a button with <code>%s N</code> or <code>%s &lt;title&gt;</code></p>",
-			list.String(), PostbackTapCommand, PostbackTapCommand,
-		)
+		fmt.Fprintf(&out, "</ol><p>To tap a button, reply with its number or title, or send <code>%s N</code>.</p>", PostbackTapCommand)
 	}
 	if len(buttons) > 0 {
-		out += fmt.Sprintf("<p>%s<br>Use the Instagram app to click buttons</p>", strings.Join(buttons, " - "))
+		fmt.Fprintf(&out, "<p>%s<br>%s</p>", strings.Join(buttons, ", "), appFallbackSnippet)
 	}
-	return out
+	if out.Len() == 0 {
+		return ""
+	}
+	return ctaBlockOpen + out.String() + ctaBlockClose
+}
+
+// BuildCTAButtonsHTML is the exported form of xmaCTAButtonsHTML, used when refreshing old cards.
+func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.PostbackButton) string {
+	return xmaCTAButtonsHTML(ctas, postbacks)
+}
+
+// ReplaceOrAppendCTAButtonsHTML puts ctaHTML into a formatted body: it replaces an existing
+// marked CTA block, or otherwise strips the known old CTA footers and appends the new block.
+// Everything else (caption, media description) is kept.
+func ReplaceOrAppendCTAButtonsHTML(formattedBody, ctaHTML string) string {
+	if start := strings.Index(formattedBody, ctaBlockOpen); start >= 0 {
+		if end := strings.Index(formattedBody[start:], ctaBlockClose); end >= 0 {
+			end += start + len(ctaBlockClose)
+			return formattedBody[:start] + ctaHTML + formattedBody[end:]
+		}
+	}
+	formattedBody = oldAppFallbackRegex.ReplaceAllString(formattedBody, "")
+	formattedBody = strings.ReplaceAll(formattedBody, appFallbackSnippet, "")
+	formattedBody = oldTapListRegex.ReplaceAllString(formattedBody, "")
+	formattedBody = oldLinkRunRegex.ReplaceAllString(formattedBody, "")
+	return formattedBody + ctaHTML
 }
 
 func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {

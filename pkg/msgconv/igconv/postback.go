@@ -260,3 +260,21 @@ func attachPostbackButtons(part *bridgev2.ConvertedMessagePart, buttons []*metai
 	}
 	meta.PostbackButtons = buttons
 }
+
+// MatchUserPostback checks whether a message from the user should be a button tap instead of text.
+// For replies, the text can be a 1-based number or a title. Otherwise only a unique title matches,
+// so that a plain "1" in normal chat is still sent as text. Callers must send the text normally
+// when an error is returned.
+func MatchUserPostback(buttons []*metaid.PostbackButton, text string, isReply bool) (*metaid.PostbackButton, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, fmt.Errorf("%w: empty text", ErrPostbackNotFound)
+	}
+	if isReply {
+		return ResolvePostbackButton(buttons, text)
+	}
+	if isNumeric(text) {
+		return nil, fmt.Errorf("%w: %q", ErrPostbackNotFound, text)
+	}
+	return ResolvePostbackButton(buttons, text)
+}
