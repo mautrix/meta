@@ -224,7 +224,7 @@ func scrubProbeBundle(raw []byte) []byte {
 }
 
 func (c *HTTPClient) probeFacebookIOSThirdPartyBundle(ctx context.Context, appID string, inner bloks.BloksParamsInner, deviceID, familyDeviceID string) {
-	if !c.fbIOSThirdPartyProbed.CompareAndSwap(false, true) {
+	if c.HTTP == nil || !c.fbIOSThirdPartyProbed.CompareAndSwap(false, true) {
 		return
 	}
 	probeDoc := bloks.BloksAppDocIOS
@@ -278,6 +278,11 @@ func (c *HTTPClient) probeFacebookIOSThirdPartyBundle(ctx context.Context, appID
 		headers.Set("x-fb-request-analytics-tags", analyticsTags)
 	}
 
+	probeClient := *c.HTTP
+	probeClient.Timeout = 5 * time.Second
+	probeClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	go func() {
 		defer cancel()
@@ -287,7 +292,7 @@ func (c *HTTPClient) probeFacebookIOSThirdPartyBundle(ctx context.Context, appID
 			return
 		}
 		req.Header = headers
-		resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+		resp, err := probeClient.Do(req)
 		if err != nil {
 			c.log.Debug().Err(err).Str("bloks_app", appID+"#fbios").Msg("Facebook iOS third-party probe request failed")
 			return
@@ -310,7 +315,7 @@ func (c *HTTPClient) probeFacebookIOSThirdPartyBundle(ctx context.Context, appID
 			innerData = respOuter.Data.BloksAppFB.RootComponent.Bundle.Tree
 		}
 		if innerData == "" {
-			c.log.Debug().Str("bloks_app", appID+"#fbios").Int("errors", len(respOuter.Errors)).Msg("Facebook iOS third-party probe returned empty bundle")
+			c.log.Debug().Str("bloks_app", appID+"#fbios").Int("status_code", resp.StatusCode).Int("errors", len(respOuter.Errors)).Msg("Facebook iOS third-party probe returned empty bundle")
 			return
 		}
 		if err = bloks.LogRedactedBundle(c.log, appID+"#fbios", scrubProbeBundle([]byte(innerData))); err != nil {
