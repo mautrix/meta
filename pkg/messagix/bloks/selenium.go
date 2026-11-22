@@ -2195,7 +2195,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			query := parsed.Query()
 			contextData := query.Get("context_data")
 			if parsed.Scheme != "fb" || !strings.EqualFold(parsed.Host, "auth-platform-continue") || contextData == "" {
-				if oauthErr := query.Get("error"); oauthErr != "" {
+				oauthErr := query.Get("error")
+				if oauthErr == "" && parsed.Fragment != "" {
+					if frag, fragErr := url.ParseQuery(parsed.Fragment); fragErr == nil {
+						oauthErr = frag.Get("error")
+					}
+				}
+				if oauthErr != "" {
 					if oauthErr == "access_denied" {
 						b.LastError = "Google verification was cancelled"
 					} else {
@@ -2249,16 +2255,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						},
 					},
 				}},
-				ExtractJS: `new Promise((resolve, reject) => {
+				ExtractJS: `new Promise((resolve) => {
 					const url = new URL(window.location.href);
 					const isMetaHost = ["m.facebook.com", "www.facebook.com", "web.facebook.com"].includes(url.hostname);
 					if (!isMetaHost || url.pathname !== "/oauth2/redirect/") {
-						return;
-					}
-					const fragment = new URLSearchParams(url.hash.slice(1));
-					const error = url.searchParams.get("error") || fragment.get("error");
-					if (error) {
-						reject(new Error("Google OAuth failed: " + error));
 						return;
 					}
 					resolve({oauth_token: window.location.href});
