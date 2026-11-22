@@ -248,16 +248,20 @@ func TestRefreshAllStoredMessagesWithoutDecrypting(t *testing.T) {
 				t.Fatal("missing metadata was not recovered by POST before sending once")
 			}
 			beforeGets = gets
-			if request(target) != 200 || sends != 2 || gets != beforeGets {
+			if request(target) != 200 || sends != 1 || gets != beforeGets {
+				t.Fatal("second tap must be idempotent and not fetch again")
+			}
+			beforeGets = gets
+			if _, err := connector.resolveTap(ctx, target); err != nil || gets != beforeGets {
 				t.Fatal("stored metadata was not reused")
 			}
 			target.Kind = igconv.TapPostback
-			if request(target) != 404 || sends != 2 {
+			if request(target) != 404 || sends != 1 {
 				t.Fatal("kind mismatch sent a button")
 			}
 			target.Kind = igconv.TapQuickReply
 			target.Portal = second.PortalKey
-			if request(target) != 404 || sends != 2 {
+			if request(target) != 404 || sends != 1 {
 				t.Fatal("cross-portal message sent a button")
 			}
 		})

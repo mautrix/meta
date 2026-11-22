@@ -7,12 +7,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -93,7 +93,7 @@ func (ic *IGConnector) startTapListener(ctx context.Context) error {
 	ic.MsgConv.TapSigner = signer
 	ic.MsgConv.TapPublicAddress = public
 	ic.tapServer = &http.Server{
-		Handler:           &tapHandler{signer: signer, resolve: ic.resolveTap},
+		Handler:           &tapHandler{signer: signer, resolve: ic.resolveTap, log: ic.Bridge.Log, once: newTapOnce()},
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      90 * time.Second,
@@ -127,16 +127,106 @@ type tapAction struct {
 type tapHandler struct {
 	signer  *igconv.TapSigner
 	resolve func(context.Context, igconv.TapTarget) (*tapAction, error)
+	log     zerolog.Logger
+	once    *tapOnce
 }
 
 var errTapNotFound = errors.New("tap message or button not found")
 
+// tapOnce makes a successful send for a token happen at most once in this
+// process. A failed send can be retried. Concurrent requests for the same
+// token share a single in-flight send, so a double click cannot fire twice.
+// The record is in-memory: a bridge restart allows one more send. That is
+// deliberate (no durable one-shot store); preview user-agents and prefetch
+// headers are blocked first so a link preview should never consume the slot.
+type tapOnce struct {
+	mu       sync.Mutex
+	done     map[string]struct{}
+	inflight map[string]*tapFlight
+}
+
+type tapFlight struct {
+	done chan struct{}
+	err  error
+}
+
+func newTapOnce() *tapOnce {
+	return &tapOnce{done: make(map[string]struct{}), inflight: make(map[string]*tapFlight)}
+}
+
+// do runs fn at most once per token on success. already is true when this
+// call did not invoke fn because a previous send already succeeded (or it
+// waited for an in-flight success).
+func (o *tapOnce) do(token string, fn func() error) (already bool, err error) {
+	o.mu.Lock()
+	if _, ok := o.done[token]; ok {
+		o.mu.Unlock()
+		return true, nil
+	}
+	if f, ok := o.inflight[token]; ok {
+		o.mu.Unlock()
+		<-f.done
+		if f.err != nil {
+			return false, f.err
+		}
+		return true, nil
+	}
+	f := &tapFlight{done: make(chan struct{})}
+	o.inflight[token] = f
+	o.mu.Unlock()
+
+	err = fn()
+
+	o.mu.Lock()
+	delete(o.inflight, token)
+	f.err = err
+	if err == nil {
+		o.done[token] = struct{}{}
+	}
+	close(f.done)
+	o.mu.Unlock()
+	return false, err
+}
+
+var previewUserAgents = []string{
+	"slackbot", "facebookexternalhit", "whatsapp", "telegrambot",
+	"twitterbot", "discordbot", "googlebot", "curl",
+}
+
+func isTapPreview(r *http.Request) bool {
+	if r.Method == http.MethodHead {
+		return true
+	}
+	purpose := strings.ToLower(strings.TrimSpace(r.Header.Get("Purpose")))
+	if purpose == "prefetch" || strings.HasPrefix(purpose, "prefetch;") {
+		return true
+	}
+	if strings.TrimSpace(r.Header.Get("Sec-Purpose")) != "" {
+		return true
+	}
+	ua := strings.ToLower(r.UserAgent())
+	for _, bot := range previewUserAgents {
+		if strings.Contains(ua, bot) {
+			return true
+		}
+	}
+	return false
+}
+
+const tapSentHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Enviado ✓</title><script>window.close()</script></head><body><p>Enviado ✓</p></body></html>`
+
+func writeTapSent(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, tapSentHTML)
+}
+
 func (h *tapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; frame-ancestors 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -146,33 +236,69 @@ func (h *tapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if isTapPreview(r) {
+		h.log.Info().
+			Str("method", r.Method).
+			Str("user_agent", r.UserAgent()).
+			Str("purpose", r.Header.Get("Purpose")).
+			Str("sec_purpose", r.Header.Get("Sec-Purpose")).
+			Msg("Ignored Instagram button tap preview")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	target, err := h.signer.Verify(token)
 	if err != nil {
 		http.Error(w, "Invalid tap link", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
-	defer cancel()
-	action, err := h.resolve(ctx, target)
+	if h.once == nil {
+		h.once = newTapOnce()
+	}
+	already, err := h.once.do(token, func() error {
+		ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+		defer cancel()
+		action, err := h.resolve(ctx, target)
+		if err != nil {
+			return err
+		}
+		if err = action.send(ctx, action.button); err != nil {
+			return err
+		}
+		h.log.Info().
+			Str("portal_id", string(target.Portal.ID)).
+			Str("message_id", string(target.MessageID)).
+			Int("index", target.Index).
+			Str("kind", string(target.Kind)).
+			Str("title", action.button.Title).
+			Msg("Instagram button tap sent")
+		return nil
+	})
+	if already && err == nil {
+		h.log.Info().
+			Str("portal_id", string(target.Portal.ID)).
+			Int("index", target.Index).
+			Str("kind", string(target.Kind)).
+			Msg("Instagram button tap already sent")
+		writeTapSent(w)
+		return
+	}
 	if errors.Is(err, errTapNotFound) {
 		http.Error(w, "Message or button not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		http.Error(w, "Could not load button", http.StatusBadGateway)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if r.Method == http.MethodGet {
-		// Link previews fetch GET URLs, so only an explicit POST may send.
-		fmt.Fprintf(w, "<!doctype html><html><head><title>Confirm button</title></head><body><p>%s</p><form method=\"post\"><button type=\"submit\">Send</button></form></body></html>", html.EscapeString(action.button.Title))
-		return
-	}
-	if err = action.send(ctx, action.button); err != nil {
+		// resolve failures and send failures both surface as 502 except not-found.
+		// Distinguish resolve vs send? Keep 502 for both after a failed do().
+		// But previously resolve not-found is 404 (above), resolve other is 502, send is 502.
 		http.Error(w, "Could not send button", http.StatusBadGateway)
 		return
 	}
-	fmt.Fprintf(w, "<!doctype html><html><head><title>Button sent</title></head><body><p>Sent: %s</p></body></html>", html.EscapeString(action.button.Title))
+	writeTapSent(w)
 }
 
 func (ic *IGConnector) resolveTap(ctx context.Context, target igconv.TapTarget) (*tapAction, error) {
