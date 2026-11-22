@@ -254,3 +254,23 @@ func TestPostbackThreadID(t *testing.T) {
 		})
 	}
 }
+
+func TestPickPostbackButtonsByMessageID(t *testing.T) {
+	var resp slidetypes.ThreadDetailsResponse
+	err := json.Unmarshal([]byte(`{"thread":{"items":[
+		{"item_id":"33107782603843137058094129889673216","message_id":"mid.$AAA","item_type":"generic_xma","cta_buttons":[{"cta_type":"postback","title":"Yes","platform_token":{"postback":"a-yes"}}]},
+		{"item_id":"2","message_id":"mid.$BBB","item_type":"generic_xma","cta_buttons":[{"cta_type":"postback","title":"Yes","payload":"b-yes"}]}]}}`), &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := resp.GenericXMAItems()
+	if got := PickPostbackButtons(items, "mid.$AAA", nil, 0); len(got) != 1 || got[0].Payload != "a-yes" {
+		t.Errorf("message_id match: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, "2", nil, 0); len(got) != 1 || got[0].Payload != "b-yes" {
+		t.Errorf("item_id match: got %+v", got)
+	}
+	if got := PickPostbackButtons(items, "plain-text-id", nil, 0); got != nil {
+		t.Errorf("unrelated ID must not match: got %+v", got)
+	}
+}

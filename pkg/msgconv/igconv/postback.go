@@ -116,7 +116,7 @@ func PickPostbackButtons(items []*slidetypes.ThreadItem, wantItemID string, want
 		var matched *slidetypes.ThreadItem
 		matches := 0
 		for _, item := range items {
-			if item.ItemID == wantItemID {
+			if item.MatchesID(wantItemID) {
 				matched = item
 				matches++
 			}
