@@ -186,6 +186,8 @@ func loginWithCookies(
 ) (*bridgev2.LoginStep, error) {
 	if missing := c.GetMissingCookieNames(); len(missing) > 0 {
 		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missing)
+	} else if c.Platform.IsMessengerLite() && nativeSession == nil {
+		return nil, loginerrors.TokenExchange
 	} else if err := validateNativeSession(nativeSession); err != nil {
 		return nil, err
 	}
