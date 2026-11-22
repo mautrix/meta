@@ -88,13 +88,12 @@ func TestQuickReplyHTML(t *testing.T) {
 		`<div data-ig-cta="">`,
 		`[` + " " + `Following` + " " + `]`,
 		`[` + " " + `Maybe later` + " " + `]`,
-		"<p>React with 1️⃣–🔟, reply with the title, or send <code>!ig tap N</code>.</p>",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in %s", want, out)
 		}
 	}
-	if strings.Contains(out, " - ") || strings.Contains(out, "Use the Instagram app") {
+	if strings.Contains(out, " - ") || strings.Contains(out, "Use the Instagram app") || strings.Contains(out, "↗") || strings.Contains(out, "React with") {
 		t.Errorf("unexpected output: %s", out)
 	}
 	many := make([]*metaid.PostbackButton, 11)
@@ -107,7 +106,7 @@ func TestQuickReplyHTML(t *testing.T) {
 	}
 	links := parseCTAs(t, `[{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"Website"}]`)
 	out = xmaCTAButtonsHTML(links, buttons.Postbacks, buttons.QuickReplies, CTAOptions{})
-	if !strings.Contains(out, `<a href="https://example.com/a">[`+" "+`Website`+" ↗ "+`]</a>`) || !strings.Contains(out, `<br>[`+" "+`Following`) || strings.Contains(out, "<ul>") || strings.Contains(out, "<ol>") {
+	if !strings.Contains(out, `<a href="https://example.com/a">[`+" "+`Website`+" "+`]</a>`) || !strings.Contains(out, `<br>[`+" "+`Following`) || strings.Contains(out, "<ul>") || strings.Contains(out, "<ol>") {
 		t.Errorf("links and taps must be pseudo-buttons, got %s", out)
 	}
 	if !HasKnownCTAFooter(out) {

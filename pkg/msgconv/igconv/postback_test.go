@@ -93,9 +93,8 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 		out := xmaCTAButtonsHTML(ctas, PostbackButtonsFromCTAs(ctas), nil, CTAOptions{})
 		for _, want := range []string{
 			`<div data-ig-cta="">`,
-			`<a href="https://example.com/a">[` + " " + `Website` + " ↗ " + `]</a>`,
+			`<a href="https://example.com/a">[` + " " + `Website` + " " + `]</a>`,
 			`<br>[` + " " + `Yes &lt;b&gt;` + " " + `]<br>[` + " " + `No` + " " + `]`,
-			"<p>React with 1️⃣–🔟, reply with the title, or send <code>!ig tap N</code>.</p>",
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %q in %s", want, out)
@@ -115,8 +114,8 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 		if got := strings.Count(out, "<a href="); got != 3 || strings.Contains(out, "<ul>") || strings.Contains(out, "<li>") || strings.Count(out, "<br>") != 2 {
 			t.Errorf("expected 3 pseudo-buttons joined by <br>, got %s", out)
 		}
-		if !strings.Contains(out, "↗") {
-			t.Errorf("external links must include a glued ↗: %s", out)
+		if strings.Contains(out, "↗") || strings.Contains(out, "React with") {
+			t.Errorf("bridge must not add ↗ or a footer: %s", out)
 		}
 		if strings.Contains(out, " - ") {
 			t.Errorf("links are still joined with a dash: %s", out)
@@ -136,7 +135,7 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 
 	t.Run("url only", func(t *testing.T) {
 		out := xmaCTAButtonsHTML(ctas[:1], nil, nil, CTAOptions{})
-		if want := `<div data-ig-cta=""><a href="https://example.com/a">[` + "\u00a0" + `Website` + "\u00a0↗\u00a0" + `]</a></div>`; out != want {
+		if want := `<div data-ig-cta=""><a href="https://example.com/a">[` + "\u00a0" + `Website` + "\u00a0" + `]</a></div>`; out != want {
 			t.Errorf("got %q, want %q", out, want)
 		}
 	})
@@ -384,21 +383,21 @@ func TestHasKnownCTAFooter(t *testing.T) {
 func TestPseudoButtonLayout(t *testing.T) {
 	const nbsp = "\u00a0"
 	urlOnly := xmaCTAButtonsHTML(parseCTAs(t, `[{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"grab the skill"}]`), nil, nil, CTAOptions{})
-	if strings.Contains(urlOnly, "<ul>") || strings.Contains(urlOnly, "<ol>") || strings.Contains(urlOnly, "<li>") || strings.Contains(urlOnly, "React with") {
+	if strings.Contains(urlOnly, "<ul>") || strings.Contains(urlOnly, "<ol>") || strings.Contains(urlOnly, "<li>") || strings.Contains(urlOnly, "React with") || strings.Contains(urlOnly, "↗") {
 		t.Fatalf("url-only must be a single pseudo-button with no footer: %s", urlOnly)
 	}
-	wantURL := `<a href="https://example.com/a">[` + nbsp + `grab the skill` + nbsp + `↗` + nbsp + `]</a>`
+	wantURL := `<a href="https://example.com/a">[` + nbsp + `grab the skill` + nbsp + `]</a>`
 	if !strings.Contains(urlOnly, wantURL) {
 		t.Fatalf("missing glued external label in %s", urlOnly)
 	}
 	plain := format.HTMLToContent(urlOnly).Body
-	if !strings.Contains(plain, "["+nbsp+"grab the skill"+nbsp+"↗"+nbsp+"]") {
+	if !strings.Contains(plain, "["+nbsp+"grab the skill"+nbsp+"]") || strings.Contains(plain, "↗") {
 		t.Fatalf("plain body must keep the bracketed label, got %q", plain)
 	}
 
 	taps := xmaCTAButtonsHTML(nil, []*metaid.PostbackButton{pb("Send me the link", "x"), pb("Book a call", "y")}, []*metaid.PostbackButton{{Title: "Yes", Payload: "z", CTAType: "quick_reply"}}, CTAOptions{})
-	if strings.Contains(taps, "↗") {
-		t.Fatalf("tappable buttons must not get ↗: %s", taps)
+	if strings.Contains(taps, "↗") || strings.Contains(taps, "React with") || strings.Contains(taps, "<p>") {
+		t.Fatalf("tappable buttons must not get ↗ or a footer: %s", taps)
 	}
 	for _, title := range []string{"Send me the link", "Book a call", "Yes"} {
 		if !strings.Contains(taps, "["+nbsp+title+nbsp+"]") {
@@ -408,14 +407,11 @@ func TestPseudoButtonLayout(t *testing.T) {
 	if strings.Count(taps, "<br>") != 2 || strings.Contains(taps, "<ul>") || strings.Contains(taps, "<li>") {
 		t.Fatalf("taps must be one pseudo-button per line: %s", taps)
 	}
-	if !strings.Contains(taps, "React with 1️⃣–🔟, reply with the title, or send <code>!ig tap N</code>.") {
-		t.Fatalf("missing single footer: %s", taps)
-	}
 	if strings.Contains(taps, " — postback") || strings.Contains(taps, " — quick reply") || strings.Contains(taps, "react with 1️⃣, or reply") {
 		t.Fatalf("per-button instructions must not appear: %s", taps)
 	}
 	plainTaps := format.HTMLToContent(taps).Body
-	if strings.Count(plainTaps, "\n") < 3 || !strings.Contains(plainTaps, "["+nbsp+"Yes"+nbsp+"]") {
+	if strings.Count(plainTaps, "\n") < 2 || !strings.Contains(plainTaps, "["+nbsp+"Yes"+nbsp+"]") || strings.Contains(plainTaps, "React with") {
 		t.Fatalf("plain body must list one label per line, got %q", plainTaps)
 	}
 }

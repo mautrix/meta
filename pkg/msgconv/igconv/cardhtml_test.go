@@ -62,7 +62,7 @@ func TestCardHTMLFromThreadItem(t *testing.T) {
 			`{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"A"},`+
 			`{"cta_type":"xma_web_url","action_url":"https://example.com/b","title":"B"}]}`)
 		out := CardHTMLFromThreadItem(item, CTAOptions{})
-		want := `<a href="https://example.com/a">[` + " " + `A` + " ↗ " + `]</a><br><a href="https://example.com/b">[` + " " + `B` + " ↗ " + `]</a>`
+		want := `<a href="https://example.com/a">[` + " " + `A` + " " + `]</a><br><a href="https://example.com/b">[` + " " + `B` + " " + `]</a>`
 		if !strings.Contains(out, want) || strings.Contains(out, " - ") || strings.Contains(out, "<ul>") {
 			t.Errorf("unexpected %s", out)
 		}
@@ -79,7 +79,7 @@ func TestCardHTMLFromThreadItem(t *testing.T) {
 	t.Run("CTA-only URLs", func(t *testing.T) {
 		item := itemWithXMA(t, `{"cta_buttons":[{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"A"}]}`)
 		out := CardHTMLFromThreadItem(item, CTAOptions{})
-		if want := `<a href="https://example.com/a">[` + "\u00a0" + `A` + "\u00a0↗ " + `]</a>`; !strings.Contains(out, want) || strings.Contains(out, " - ") || strings.Contains(out, "<ul>") {
+		if want := `<a href="https://example.com/a">[` + "\u00a0" + `A` + "\u00a0" + `]</a>`; !strings.Contains(out, want) || strings.Contains(out, " - ") || strings.Contains(out, "<ul>") {
 			t.Errorf("unexpected %s", out)
 		}
 	})

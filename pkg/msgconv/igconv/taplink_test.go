@@ -62,7 +62,7 @@ func TestTapLinksOnCardsAndArrival(t *testing.T) {
 		if !strings.Contains(body, `[`+" "+`Choose`+" "+`]</a>`) || !strings.Contains(body, `[`+" "+`Reply`+" "+`]</a>`) {
 			t.Fatal("missing linked pseudo-button titles")
 		}
-		if !strings.Contains(body, `<a href="https://example.com/">[`+" "+`Open site`+" ↗ "+`]</a>`) || strings.Contains(body, " - ") || strings.Contains(body, "<ul>") {
+		if !strings.Contains(body, `<a href="https://example.com/">[`+" "+`Open site`+" "+`]</a>`) || strings.Contains(body, " - ") || strings.Contains(body, "<ul>") {
 			t.Fatal("URL CTA layout changed")
 		}
 		if strings.Contains(body, " — postback") || strings.Contains(body, " — quick reply") {

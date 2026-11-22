@@ -216,23 +216,17 @@ func ButtonAtIndex(buttons []*metaid.PostbackButton, idx int) *metaid.PostbackBu
 	return buttons[idx-1]
 }
 
-const (
-	nbsp              = "\u00a0"
-	externalLinkMark  = "↗"
-	tapFooterHTMLText = "React with 1️⃣–🔟, reply with the title, or send <code>" + PostbackTapCommand + " N</code>."
-)
+const nbsp = "\u00a0"
 
 // pseudoButtonLabel is the visible bracketed control ("[ Título ]"). NBSPs keep
-// the brackets, and the ↗ of an external link, from wrapping onto their own line.
-func pseudoButtonLabel(title string, external bool) string {
-	if external {
-		return "[" + nbsp + title + nbsp + externalLinkMark + nbsp + "]"
-	}
+// the brackets from wrapping onto their own line. The bridge never adds a ↗;
+// Beeper already appends one after external links.
+func pseudoButtonLabel(title string) string {
 	return "[" + nbsp + title + nbsp + "]"
 }
 
-func pseudoButtonHTML(href, title string, external bool) string {
-	label := html.EscapeString(pseudoButtonLabel(title, external))
+func pseudoButtonHTML(href, title string) string {
+	label := html.EscapeString(pseudoButtonLabel(title))
 	if href == "" {
 		return label
 	}
@@ -241,14 +235,12 @@ func pseudoButtonHTML(href, title string, external bool) string {
 
 // buttonLineHTML renders one tappable button as a bracketed pseudo-button.
 func buttonLineHTML(idx int, button *metaid.PostbackButton, opts CTAOptions) string {
-	return pseudoButtonHTML(opts.ButtonURL(idx, button), button.Title, false)
+	return pseudoButtonHTML(opts.ButtonURL(idx, button), button.Title)
 }
 
 // xmaCTAButtonsHTML renders each CTA as a bracketed pseudo-button, one per line,
-// joined by <br>, with no lists. External URL buttons include a glued ↗ inside
-// the brackets. A single discreet footer with the other ways to activate appears
-// only when the card has a quick reply or a postback. The block is wrapped in a
-// marked div so it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
+// joined by <br>, with no lists and no footer. The block is wrapped in a marked
+// div so it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
 func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton, opts CTAOptions) string {
 	tap := metaid.TapButtons(postbacks, quickReplies)
 	var lines, unrecovered []string
@@ -261,7 +253,7 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*
 			if err == nil {
 				actionURL = unwrapLinkShim(actionURL)
 				if actionURL.Scheme == "https" || actionURL.Scheme == "http" {
-					lines = append(lines, pseudoButtonHTML(actionURL.String(), cta.Title, true))
+					lines = append(lines, pseudoButtonHTML(actionURL.String(), cta.Title))
 				}
 			}
 		} else if !slices.ContainsFunc(tap, func(b *metaid.PostbackButton) bool { return b.Title == cta.Title }) {
@@ -275,9 +267,7 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*
 	if len(lines) > 0 {
 		out.WriteString(strings.Join(lines, "<br>"))
 	}
-	if len(tap) > 0 {
-		fmt.Fprintf(&out, "<p>%s</p>", tapFooterHTMLText)
-	} else if len(unrecovered) > 0 {
+	if len(unrecovered) > 0 && len(tap) == 0 {
 		fmt.Fprintf(&out, "<p>%s<br>%s</p>", strings.Join(unrecovered, ", "), appFallbackSnippet)
 	}
 	if out.Len() == 0 {
