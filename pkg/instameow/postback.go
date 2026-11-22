@@ -72,11 +72,12 @@ func (c *Client) threadDetailsHeaders() http.Header {
 }
 
 // FetchThreadGenericXMAItems fetches the thread over the REST API and returns the generic_xma items.
-// If www.instagram.com answers 404, it retries once on i.instagram.com.
+// It tries i.instagram.com first (www.instagram.com answers 404 HTML for this endpoint) and
+// retries once on www.instagram.com if the thread isn't found.
 func (c *Client) FetchThreadGenericXMAItems(ctx context.Context, threadID string) ([]*slidetypes.ThreadItem, error) {
-	items, err := c.fetchThreadGenericXMAItems(ctx, threadDetailsBaseURL, threadID)
+	items, err := c.fetchThreadGenericXMAItems(ctx, mobileThreadDetailsBaseURL, threadID)
 	if errors.Is(err, errThreadNotFound) {
-		return c.fetchThreadGenericXMAItems(ctx, mobileThreadDetailsBaseURL, threadID)
+		return c.fetchThreadGenericXMAItems(ctx, threadDetailsBaseURL, threadID)
 	}
 	return items, err
 }
@@ -112,7 +113,8 @@ func (c *Client) fetchThreadGenericXMAItems(ctx context.Context, baseURL, thread
 	return parsed.GenericXMAItems(), nil
 }
 
-// logThreadDetailsSummary logs only key names, counts and IDs, never cookies or message content.
+// logThreadDetailsSummary logs only structure (key names, counts, shapes, booleans) and IDs,
+// never cookies, message text, button titles, payload values or URLs.
 func logThreadDetailsSummary(ctx context.Context, threadID string, parsed *slidetypes.ThreadDetailsResponse) {
 	log := zerolog.Ctx(ctx)
 	if !log.Debug().Enabled() {
@@ -121,11 +123,31 @@ func logThreadDetailsSummary(ctx context.Context, threadID string, parsed *slide
 	sum := parsed.DebugSummary()
 	arr := zerolog.Arr()
 	for _, item := range sum.GenericXMAInfo {
+		ctas := zerolog.Arr()
+		for _, cta := range item.CTAs {
+			shapes := zerolog.Dict()
+			for key, shape := range cta.UnrecognizedShapes {
+				shapes.Str(key, shape)
+			}
+			ctas.Dict(zerolog.Dict().
+				Bool("has_title", cta.HasTitle).
+				Str("cta_type", cta.CTAType).
+				Str("action_url_scheme", cta.ActionURLScheme).
+				Bool("has_postback_payload", cta.HasPostbackPayload).
+				Bool("has_payload", cta.HasPayload).
+				Bool("has_postback", cta.HasPostback).
+				Dict("unrecognized_shapes", shapes))
+		}
 		arr.Dict(zerolog.Dict().
 			Str("item_id", item.ItemID).
+			Bool("has_message_id", item.HasMessageID).
 			Int("cta_count", item.CTACount).
 			Bool("has_generic_xma", item.HasGenericXMA).
-			Strs("item_keys", item.ItemKeys))
+			Strs("item_keys", item.ItemKeys).
+			Int64("timestamp_ms", item.TimestampMS).
+			Str("generic_xma_shape", item.GenericXMAShape).
+			Strs("generic_xma_keys", item.GenericXMAKeys).
+			Array("ctas", ctas))
 	}
 	log.Debug().
 		Str("thread_id", threadID).

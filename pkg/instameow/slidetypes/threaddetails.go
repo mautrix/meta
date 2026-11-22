@@ -18,13 +18,68 @@ package slidetypes
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 func sortedKeys(m map[string]any) []string {
 	return slices.Sorted(maps.Keys(m))
+}
+
+// unrecognizedKeys returns the top-level keys of data that aren't in known. encoding/json
+// ignores the `unknown` struct tag option, so the types below fill Unrecognized themselves.
+func unrecognizedKeys(data []byte, known ...string) map[string]any {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	for _, key := range known {
+		delete(raw, key)
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	return raw
+}
+
+// valueShape describes the shape of a decoded JSON value without exposing its content.
+func valueShape(v any) string {
+	switch val := v.(type) {
+	case nil:
+		return "null"
+	case string:
+		return fmt.Sprintf("string(len=%d)", len(val))
+	case bool:
+		return "bool"
+	case float64, json.Number:
+		return "number"
+	case []any:
+		return fmt.Sprintf("array(len=%d)", len(val))
+	case map[string]any:
+		return "object(" + strings.Join(childShapes(val), ",") + ")"
+	default:
+		return fmt.Sprintf("%T", v)
+	}
+}
+
+// childShapes returns "key=shape" for each key of m, one level deep: nested objects are
+// reduced to their key names and nested arrays to their length.
+func childShapes(m map[string]any) []string {
+	parts := make([]string, 0, len(m))
+	for _, key := range sortedKeys(m) {
+		shape := ""
+		if nested, ok := m[key].(map[string]any); ok {
+			shape = "object(keys=" + strings.Join(sortedKeys(nested), ",") + ")"
+		} else {
+			shape = valueShape(m[key])
+		}
+		parts = append(parts, key+"="+shape)
+	}
+	return parts
 }
 
 // ThreadDetailsResponse is the response of GET /api/v1/direct_v2/threads/{thread_id}/.
@@ -36,15 +91,44 @@ type ThreadDetailsResponse struct {
 	Unrecognized map[string]any `json:",unknown"`
 }
 
+// UnmarshalJSON fills Unrecognized with the unknown keys.
+func (r *ThreadDetailsResponse) UnmarshalJSON(data []byte) error {
+	type plain ThreadDetailsResponse
+	*r = ThreadDetailsResponse{}
+	if err := json.Unmarshal(data, (*plain)(r)); err != nil {
+		return err
+	}
+	if len(r.Unrecognized) == 0 {
+		r.Unrecognized = unrecognizedKeys(data, "thread", "status")
+	}
+	return nil
+}
+
 type ThreadDetails struct {
 	Items []*ThreadItem `json:"items"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
 
+// UnmarshalJSON fills Unrecognized with the unknown keys.
+func (d *ThreadDetails) UnmarshalJSON(data []byte) error {
+	type plain ThreadDetails
+	*d = ThreadDetails{}
+	if err := json.Unmarshal(data, (*plain)(d)); err != nil {
+		return err
+	}
+	if len(d.Unrecognized) == 0 {
+		d.Unrecognized = unrecognizedKeys(data, "items")
+	}
+	return nil
+}
+
 type ThreadItem struct {
-	ItemID   string `json:"item_id"`
-	ItemType string `json:"item_type"`
+	ItemID string `json:"item_id"`
+	// MessageID is the `mid.$...` ID shared with the GraphQL/MQTT message ID, unlike the
+	// 35-digit decimal ItemID.
+	MessageID string `json:"message_id"`
+	ItemType  string `json:"item_type"`
 	// Timestamp is in microseconds on the REST API (assumed, not documented in #338).
 	// It may be encoded as either a number or a string.
 	Timestamp  json.RawMessage `json:"timestamp"`
@@ -54,6 +138,24 @@ type ThreadItem struct {
 	GenericXMA json.RawMessage `json:"generic_xma"`
 
 	Unrecognized map[string]any `json:",unknown"`
+}
+
+// UnmarshalJSON fills Unrecognized with the unknown keys.
+func (item *ThreadItem) UnmarshalJSON(data []byte) error {
+	type plain ThreadItem
+	*item = ThreadItem{}
+	if err := json.Unmarshal(data, (*plain)(item)); err != nil {
+		return err
+	}
+	if len(item.Unrecognized) == 0 {
+		item.Unrecognized = unrecognizedKeys(data, "item_id", "message_id", "item_type", "timestamp", "cta_buttons", "generic_xma")
+	}
+	return nil
+}
+
+// MatchesID reports whether id is the item's item_id or message_id.
+func (item *ThreadItem) MatchesID(id string) bool {
+	return id != "" && (item.ItemID == id || item.MessageID == id)
 }
 
 // TimestampMS returns the item timestamp converted to milliseconds, or 0 if unknown.
@@ -117,8 +219,9 @@ func (r *ThreadDetailsResponse) GenericXMAItems() []*ThreadItem {
 	return items
 }
 
-// DebugSummary is a structural summary of the response (key names and counts only, no
-// content) that's safe to log.
+// DebugSummary is a content-free structural summary of the response that's safe to log.
+// It holds only key names, counts, IDs, timestamps, CTA type, URL scheme, booleans and
+// value shapes. It never holds message text, titles, payload values, full URLs or cookies.
 type DebugSummary struct {
 	Status         string
 	TopKeys        []string
@@ -130,9 +233,74 @@ type DebugSummary struct {
 
 type ItemDebugSummary struct {
 	ItemID        string
+	HasMessageID  bool
 	CTACount      int
 	HasGenericXMA bool
 	ItemKeys      []string
+	TimestampMS   int64
+	// GenericXMAShape is the JSON type of generic_xma ("array(len=N)" for arrays).
+	GenericXMAShape string
+	// GenericXMAKeys are the sorted keys of the generic_xma object (or of its first array element).
+	GenericXMAKeys []string
+	CTAs           []CTADebugSummary
+}
+
+// CTADebugSummary is a content-free description of a CTA button: only booleans, the cta_type,
+// the URL scheme and the shapes of unrecognized fields, never titles, payloads or URLs.
+type CTADebugSummary struct {
+	HasTitle           bool
+	CTAType            string
+	ActionURLScheme    string
+	HasPostbackPayload bool
+	HasPayload         bool
+	HasPostback        bool
+	UnrecognizedShapes map[string]string
+}
+
+func newCTADebugSummary(cta *CTAButton) CTADebugSummary {
+	s := CTADebugSummary{
+		HasTitle:           cta.Title != "",
+		CTAType:            cta.CTAType,
+		HasPostbackPayload: cta.PostbackPayload != "",
+		HasPayload:         cta.Payload != "",
+		HasPostback:        cta.Postback() != "",
+	}
+	if u, err := url.Parse(cta.ActionURL); err == nil {
+		s.ActionURLScheme = u.Scheme
+	}
+	if len(cta.Unrecognized) > 0 {
+		s.UnrecognizedShapes = make(map[string]string, len(cta.Unrecognized))
+		for key, val := range cta.Unrecognized {
+			s.UnrecognizedShapes[key] = valueShape(val)
+		}
+	}
+	return s
+}
+
+// genericXMAShape describes the raw generic_xma value: the sorted keys of an object, or
+// "array(len=N)" plus the keys of the first element for an array.
+func genericXMAShape(raw json.RawMessage) (string, []string) {
+	if len(raw) == 0 {
+		return "", nil
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return "invalid", nil
+	}
+	switch val := v.(type) {
+	case map[string]any:
+		return "object", sortedKeys(val)
+	case []any:
+		shape := fmt.Sprintf("array(len=%d)", len(val))
+		if len(val) > 0 {
+			if first, ok := val[0].(map[string]any); ok {
+				return shape, sortedKeys(first)
+			}
+		}
+		return shape, nil
+	default:
+		return valueShape(v), nil
+	}
 }
 
 const maxDebugSummaryItems = 5
@@ -147,12 +315,21 @@ func (r *ThreadDetailsResponse) DebugSummary() DebugSummary {
 	for _, item := range r.GenericXMAItems() {
 		s.GenericXMA++
 		if len(s.GenericXMAInfo) < maxDebugSummaryItems {
-			s.GenericXMAInfo = append(s.GenericXMAInfo, ItemDebugSummary{
+			info := ItemDebugSummary{
 				ItemID:        item.ItemID,
+				HasMessageID:  item.MessageID != "",
 				CTACount:      len(item.AllCTAButtons()),
 				HasGenericXMA: len(item.GenericXMA) > 0,
 				ItemKeys:      sortedKeys(item.Unrecognized),
-			})
+				TimestampMS:   item.TimestampMS(),
+			}
+			info.GenericXMAShape, info.GenericXMAKeys = genericXMAShape(item.GenericXMA)
+			for _, cta := range item.AllCTAButtons() {
+				if cta != nil {
+					info.CTAs = append(info.CTAs, newCTADebugSummary(cta))
+				}
+			}
+			s.GenericXMAInfo = append(s.GenericXMAInfo, info)
 		}
 	}
 	return s
