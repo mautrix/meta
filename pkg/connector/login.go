@@ -43,10 +43,7 @@ func (m *MetaConnector) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 	var plat types.Platform
 	switch flowID {
 	case FlowIDFacebookCookies:
-		plat = types.Facebook
-		if m.Config.Tor {
-			plat = types.FacebookTor
-		}
+		plat = m.facebookCookiePlatform()
 	case FlowIDMessengerCookies:
 		plat = types.Messenger
 	case FlowIDMessengerLiteIOS:
@@ -104,6 +101,13 @@ var (
 	}
 )
 
+func (m *MetaConnector) facebookCookiePlatform() types.Platform {
+	if m.Config.Tor {
+		return types.FacebookTor
+	}
+	return types.Facebook
+}
+
 func (m *MetaConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	return []bridgev2.LoginFlow{loginFlowFacebook, loginFlowMessenger, loginFlowMessengerLiteIOS, loginFlowMessengerLiteAndroid}
 }
@@ -139,6 +143,10 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 }
 
 func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	return cookieLoginStep(m.Mode)
+}
+
+func cookieLoginStep(mode types.Platform) (*bridgev2.LoginStep, error) {
 	step := &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
 		StepID:       LoginStepIDCookies,
@@ -147,7 +155,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 			UserAgent: useragent.UserAgent,
 		},
 	}
-	switch m.Mode {
+	switch mode {
 	case types.Facebook, types.FacebookTor:
 		step.CookiesParams.URL = "https://www.facebook.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "facebook.com")
@@ -157,7 +165,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
 		step.CookiesParams.WaitForURLPattern = "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?(?:\\?.*)?$"
 	default:
-		return nil, fmt.Errorf("unknown mode %s", m.Mode)
+		return nil, fmt.Errorf("unknown mode %s", mode)
 	}
 	return step, nil
 }
@@ -262,7 +270,15 @@ func loginWithCookies(
 }
 
 func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	c := &cookies.Cookies{Platform: m.Mode}
+	step, err := submitCookies(ctx, m.Main, m.User, m.Mode, strCookies)
+	if err != nil {
+		return nil, err
+	}
+	return m.startHistory(ctx, step)
+}
+
+func submitCookies(ctx context.Context, conn *MetaConnector, user *bridgev2.User, mode types.Platform, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+	c := &cookies.Cookies{Platform: mode}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
 		strCookiesCopy[cookies.MetaCookieName(key)] = val
@@ -275,15 +291,11 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	}
 
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
-	client, err := getMessagixClient(log, m.Main, c, m.Main.Config.ProxyOther)
+	client, err := getMessagixClient(log, conn, c, conn.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
-	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
-	if err != nil {
-		return nil, err
-	}
-	return m.startHistory(ctx, step)
+	return loginWithCookies(ctx, log, client, user, conn, c, nil)
 }
 
 type MetaNativeLogin struct {
@@ -293,6 +305,7 @@ type MetaNativeLogin struct {
 	User *bridgev2.User
 	Main *MetaConnector
 
+	webLogin    bool
 	SavedClient *messagix.Client
 }
 
@@ -328,10 +341,18 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 	if m.historyComplete != nil {
 		return m.MessengerHistoryLogin.SubmitUserInput(ctx, input)
 	}
+	m.webLogin = false
 	return m.proceed(ctx, input)
 }
 
 func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	if m.webLogin {
+		step, err := submitCookies(ctx, m.Main, m.User, m.Main.facebookCookiePlatform(), input)
+		if err != nil {
+			return nil, err
+		}
+		return m.startHistory(ctx, step)
+	}
 	return m.proceed(ctx, input)
 }
 
@@ -349,11 +370,25 @@ func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, 
 	return m.proceed(ctx, nil)
 }
 
+func (m *MetaNativeLogin) facebookWebLoginStep() (*bridgev2.LoginStep, error) {
+	step, err := cookieLoginStep(m.Main.facebookCookiePlatform())
+	if err != nil {
+		return nil, err
+	}
+	m.webLogin = true
+	step.Instructions = "Phone number login isn't available here. Sign in on Facebook's page instead, then your login will continue here."
+	return step, nil
+}
+
 func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
+		if errors.Is(err, loginerrors.PhoneNumber) {
+			log.Debug().Msg("Handing phone number login to facebook.com")
+			return m.facebookWebLoginStep()
+		}
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
 			err = loginerrors.Checkpoint
