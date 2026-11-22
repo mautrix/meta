@@ -32,6 +32,18 @@ disable_view_once: false
 # Log raw Bloks payloads and login responses even at debug level, with any user identifiers or credentials redacted.
 log_redacted_login_responses: false
 
+# Dedicated HTTP listener for button taps (independent of the appservice listener).
+tap_listen: 127.0.0.1:29330
+# Use an HTTPS reverse proxy address for access from other devices.
+# If empty, links use http://127.0.0.1:<tap_listen port>.
+tap_public_address: http://127.0.0.1:29330
+# Empty generates a key once and saves it in the bridge KV store.
+# Changing this key invalidates old links. Never share the key.
+tap_hmac_secret:
+# Tap links do not expire. Anyone with a link can send its button, repeatedly.
+# GET requests send immediately, including requests from link-preview services.
+# Do not log tap request URLs at the reverse proxy.
+
 # Thread backfill settings for syncing older conversations
 thread_backfill:
   # Number of batches (pages) to backfill (-1 for unlimited, 0 to disable)

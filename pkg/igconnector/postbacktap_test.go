@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
@@ -178,7 +179,7 @@ func TestPlanRefreshEdit(t *testing.T) {
 
 func TestRefreshCardSkipPaths(t *testing.T) {
 	logger := zerolog.Nop()
-	ce := &commands.Event{Log: &logger}
+	ce := &commands.Event{Log: &logger, Bridge: &bridgev2.Bridge{Network: &IGConnector{MsgConv: &igconv.MessageConverter{}}}}
 	meta := &metaid.MessageMetadata{}
 	var withCTA slidetypes.ThreadItem
 	if err := json.Unmarshal([]byte(`{"item_id":"42","cta_buttons":[{"cta_type":"postback","title":"Go","postback_payload":"pb"}]}`), &withCTA); err != nil {

@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"net/http"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
@@ -29,10 +30,11 @@ import (
 )
 
 type IGConnector struct {
-	Bridge  *bridgev2.Bridge
-	Config  Config
-	MsgConv *igconv.MessageConverter
-	DB      *metadb.MetaDB
+	Bridge    *bridgev2.Bridge
+	Config    Config
+	MsgConv   *igconv.MessageConverter
+	DB        *metadb.MetaDB
+	tapServer *http.Server
 }
 
 var (
@@ -55,7 +57,7 @@ func (ic *IGConnector) Start(ctx context.Context) error {
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "meta"}
 	}
-	return nil
+	return ic.startTapListener(ctx)
 }
 
 func (ic *IGConnector) SetMaxFileSize(maxSize int64) {
