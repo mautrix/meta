@@ -224,33 +224,38 @@ func sameButtons(a, b []*metaid.PostbackButton) bool {
 }
 
 // refreshCard updates the stored buttons and the Matrix event of one bridged card.
-// It never sends anything to Instagram.
+// It never sends anything to Instagram, and never needs to decrypt the old Matrix event.
 func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidetypes.ThreadItem, msg *database.Message) refreshResult {
 	log := ce.Log.With().Str("message_id", string(msg.ID)).Logger()
 	meta, ok := msg.Metadata.(*metaid.MessageMetadata)
 	if !ok || msg.MXID == "" {
+		log.Debug().Str("reason", "no_metadata_or_mxid").Msg("Skipping refresh")
 		return refreshSkipped
 	}
 	itemID := igconv.ItemIDFromMessageID(msg.ID)
 	if itemID == "" {
+		log.Debug().Str("reason", "no_item_id").Msg("Skipping refresh")
 		return refreshSkipped
 	}
 	var item *slidetypes.ThreadItem
 	for _, candidate := range items {
 		if candidate.MatchesID(itemID) {
 			if item != nil {
+				log.Debug().Str("reason", "ambiguous_thread_item").Msg("Skipping refresh")
 				return refreshSkipped
 			}
 			item = candidate
 		}
 	}
 	if item == nil {
+		log.Debug().Str("reason", "no_matching_thread_item").Msg("Skipping refresh")
 		return refreshSkipped
 	}
 	ctas := item.AllCTAButtons()
 	buttons := igconv.ButtonsFromItem(item)
 	ctaHTML := igconv.BuildCTAButtonsHTML(ctas, buttons.Postbacks, buttons.QuickReplies)
 	if ctaHTML == "" {
+		log.Debug().Str("reason", "no_cta_html").Msg("Skipping refresh")
 		return refreshSkipped
 	}
 	metaChanged := !sameButtons(meta.PostbackButtons, buttons.Postbacks) || !sameButtons(meta.QuickReplies, buttons.QuickReplies)
@@ -264,7 +269,8 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		}
 	}
 	// Nothing to edit in Matrix: count as updated only if the stored buttons were rewritten.
-	noEdit := func() refreshResult {
+	noEdit := func(reason string) refreshResult {
+		log.Debug().Str("reason", reason).Bool("metadata_changed", metaChanged).Msg("No Matrix edit needed for refresh")
 		if metaSaveFailed {
 			return refreshFailed
 		}
@@ -283,40 +289,18 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		log.Warn().Msg("Failed to get intent for refresh edit")
 		return refreshFailed
 	}
-	evt, err := intent.GetEvent(ce.Ctx, ce.Portal.MXID, msg.MXID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get Matrix event for refresh")
-		return refreshFailed
+	// The old event is optional: it may be encrypted in a way the puppet can't read.
+	evt, getErr := intent.GetEvent(ce.Ctx, ce.Portal.MXID, msg.MXID)
+	if getErr != nil {
+		log.Debug().Err(getErr).Msg("Couldn't read the old Matrix event, rebuilding the card from the Instagram item")
 	}
-	content, bundledEdit := currentMessageContent(evt)
-	if content == nil {
-		return refreshFailed
+	newContent, send := planRefreshEdit(igconv.CardHTMLFromThreadItem(item), ctaHTML, evt, getErr)
+	if !send {
+		return noEdit("matrix_content_unchanged_or_unknown")
 	}
-	oldHTML := content.FormattedBody
-	if oldHTML == "" {
-		if content.MsgType != event.MsgText && content.MsgType != event.MsgNotice {
-			return noEdit()
-		}
-		oldHTML = event.TextToHTML(content.Body)
-	}
-	if !shouldEditRefreshedCard(bundledEdit, oldHTML) {
-		log.Debug().Msg("Skipping refresh edit: latest content unknown and no CTA footer to replace")
-		return noEdit()
-	}
-	newHTML := igconv.ReplaceOrAppendCTAButtonsHTML(oldHTML, ctaHTML)
-	if newHTML == content.FormattedBody {
-		return noEdit()
-	}
-	newContent := *content
-	converted := format.HTMLToContent(newHTML)
-	newContent.Body = converted.Body
-	newContent.Format = event.FormatHTML
-	newContent.FormattedBody = newHTML
-	newContent.NewContent = nil
-	newContent.RelatesTo = nil
 	newContent.SetEdit(msg.MXID)
-	_, err = intent.SendMessage(ce.Ctx, ce.Portal.MXID, event.EventMessage, &event.Content{
-		Parsed: &newContent,
+	_, err := intent.SendMessage(ce.Ctx, ce.Portal.MXID, event.EventMessage, &event.Content{
+		Parsed: newContent,
 		Raw:    map[string]any{"com.beeper.dont_render_edited": true},
 	}, &bridgev2.MatrixSendExtra{MessageMeta: msg})
 	if err != nil {
@@ -324,6 +308,52 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		return refreshFailed
 	}
 	return refreshUpdated
+}
+
+// planRefreshEdit decides the content of the refresh edit. cardHTML is the card rebuilt from the
+// fresh Instagram item and is the source of truth when set. If the old event couldn't be read
+// (getErr) it is sent as plain text. If it could, media msgtypes are kept, and an identical latest
+// body means no edit. Without cardHTML the old body is patched with ctaHTML, but only if that body
+// is known to be current (see shouldEditRefreshedCard).
+func planRefreshEdit(cardHTML, ctaHTML string, evt *event.Event, getErr error) (*event.MessageEventContent, bool) {
+	var content *event.MessageEventContent
+	bundledEdit := false
+	if getErr == nil && evt != nil {
+		content, bundledEdit = currentMessageContent(evt)
+	}
+	newHTML := cardHTML
+	if newHTML == "" {
+		if content == nil {
+			return nil, false
+		}
+		oldHTML := content.FormattedBody
+		if oldHTML == "" {
+			if content.MsgType != event.MsgText && content.MsgType != event.MsgNotice {
+				return nil, false
+			}
+			oldHTML = event.TextToHTML(content.Body)
+		}
+		if !shouldEditRefreshedCard(bundledEdit, oldHTML) {
+			return nil, false
+		}
+		newHTML = igconv.ReplaceOrAppendCTAButtonsHTML(oldHTML, ctaHTML)
+	}
+	if content != nil && newHTML == content.FormattedBody {
+		return nil, false
+	}
+	var newContent event.MessageEventContent
+	if content != nil {
+		newContent = *content
+	} else {
+		newContent.MsgType = event.MsgText
+	}
+	converted := format.HTMLToContent(newHTML)
+	newContent.Body = converted.Body
+	newContent.Format = event.FormatHTML
+	newContent.FormattedBody = newHTML
+	newContent.NewContent = nil
+	newContent.RelatesTo = nil
+	return &newContent, true
 }
 
 // shouldEditRefreshedCard decides whether a refresh may send a Matrix edit. Without a bundled

@@ -1,12 +1,16 @@
 package igconnector
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
+	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
@@ -106,5 +110,79 @@ func TestSelectButtonForTextQuickReply(t *testing.T) {
 	}
 	if newestPostbackMessage([]*database.Message{qrOnly}) != qrOnly {
 		t.Error("quick-reply-only message must count as a button message")
+	}
+}
+
+func TestPlanRefreshEdit(t *testing.T) {
+	const card = `<strong>Card</strong><div data-ig-cta=""><ul></ul></div>`
+	const cta = `<div data-ig-cta=""><ol></ol></div>`
+	evtWith := func(content *event.MessageEventContent) *event.Event {
+		return &event.Event{Content: event.Content{Parsed: content}}
+	}
+	t.Run("get error still sends", func(t *testing.T) {
+		got, send := planRefreshEdit(card, cta, nil, errors.New("can't decrypt the event"))
+		if !send || got.FormattedBody != card || got.MsgType != event.MsgText {
+			t.Fatalf("send=%v got=%+v", send, got)
+		}
+	})
+	t.Run("identical html is a no-op", func(t *testing.T) {
+		evt := evtWith(&event.MessageEventContent{MsgType: event.MsgText, Body: "Card", Format: event.FormatHTML, FormattedBody: card})
+		if _, send := planRefreshEdit(card, cta, evt, nil); send {
+			t.Fatal("expected no edit")
+		}
+	})
+	t.Run("image keeps msgtype", func(t *testing.T) {
+		evt := evtWith(&event.MessageEventContent{MsgType: event.MsgImage, Body: "pic.png", URL: "mxc://example.org/abc"})
+		got, send := planRefreshEdit(card, cta, evt, nil)
+		if !send || got.MsgType != event.MsgImage || got.URL != "mxc://example.org/abc" || got.FormattedBody != card || got.Body != "**Card**" {
+			t.Fatalf("send=%v got=%+v", send, got)
+		}
+	})
+	t.Run("no card html and unknown event is skipped", func(t *testing.T) {
+		if _, send := planRefreshEdit("", cta, nil, errors.New("boom")); send {
+			t.Fatal("expected no edit")
+		}
+	})
+	t.Run("no card html patches footer", func(t *testing.T) {
+		evt := evtWith(&event.MessageEventContent{MsgType: event.MsgText, Body: "x", Format: event.FormatHTML, FormattedBody: `<p>Cap</p><div data-ig-cta=""><ul></ul></div>`})
+		got, send := planRefreshEdit("", cta, evt, nil)
+		if !send || got.FormattedBody != `<p>Cap</p>`+cta {
+			t.Fatalf("send=%v got=%+v", send, got)
+		}
+	})
+	t.Run("no card html and caption-only original is skipped", func(t *testing.T) {
+		evt := evtWith(&event.MessageEventContent{MsgType: event.MsgText, Body: "x", Format: event.FormatHTML, FormattedBody: `<p>Cap</p>`})
+		if _, send := planRefreshEdit("", cta, evt, nil); send {
+			t.Fatal("expected no edit")
+		}
+	})
+}
+
+func TestRefreshCardSkipPaths(t *testing.T) {
+	logger := zerolog.Nop()
+	ce := &commands.Event{Log: &logger}
+	meta := &metaid.MessageMetadata{}
+	var withCTA slidetypes.ThreadItem
+	if err := json.Unmarshal([]byte(`{"item_id":"42","cta_buttons":[{"cta_type":"postback","title":"Go","postback_payload":"pb"}]}`), &withCTA); err != nil {
+		t.Fatal(err)
+	}
+	var noCTA slidetypes.ThreadItem
+	if err := json.Unmarshal([]byte(`{"item_id":"42"}`), &noCTA); err != nil {
+		t.Fatal(err)
+	}
+	id := metaid.MakeFBMessageID("42")
+	for name, tc := range map[string]struct {
+		msg   *database.Message
+		items []*slidetypes.ThreadItem
+	}{
+		"no mxid":     {&database.Message{ID: id, MXID: "", Metadata: meta}, []*slidetypes.ThreadItem{&withCTA}},
+		"no metadata": {&database.Message{ID: id, MXID: "$a"}, []*slidetypes.ThreadItem{&withCTA}},
+		"no match":    {&database.Message{ID: id, MXID: "$a", Metadata: meta}, nil},
+		"no cta html": {&database.Message{ID: id, MXID: "$a", Metadata: meta}, []*slidetypes.ThreadItem{&noCTA}},
+		"no item id":  {&database.Message{ID: "", MXID: "$a", Metadata: meta}, []*slidetypes.ThreadItem{&withCTA}},
+	} {
+		if got := refreshCard(ce, nil, tc.items, tc.msg); got != refreshSkipped {
+			t.Errorf("%s: got %v, want skipped", name, got)
+		}
 	}
 }
