@@ -134,10 +134,10 @@ var errTapNotFound = errors.New("tap message or button not found")
 func (h *tapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; frame-ancestors 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -162,11 +162,16 @@ func (h *tapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load button", http.StatusBadGateway)
 		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if r.Method == http.MethodGet {
+		// Link previews fetch GET URLs, so only an explicit POST may send.
+		fmt.Fprintf(w, "<!doctype html><html><head><title>Confirm button</title></head><body><p>%s</p><form method=\"post\"><button type=\"submit\">Send</button></form></body></html>", html.EscapeString(action.button.Title))
+		return
+	}
 	if err = action.send(ctx, action.button); err != nil {
 		http.Error(w, "Could not send button", http.StatusBadGateway)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, "<!doctype html><html><head><title>Button sent</title></head><body><p>Sent: %s</p></body></html>", html.EscapeString(action.button.Title))
 }
 

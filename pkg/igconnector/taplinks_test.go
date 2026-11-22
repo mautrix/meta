@@ -125,6 +125,16 @@ func TestTapHTTPHandler(t *testing.T) {
 				t.Fatal("HEAD must not send")
 			}
 			w := request(http.MethodGet, token)
+			if w.Code != 200 || calls != 0 || !strings.Contains(w.Body.String(), "Choose &lt;this&gt;") || !strings.Contains(w.Body.String(), `method="post"`) || strings.Contains(w.Body.String(), token) {
+				t.Fatal("GET must show confirmation without sending")
+			}
+			if w := request(http.MethodPut, token); w.Code != 405 || w.Header().Get("Allow") != "GET, POST" || calls != 0 {
+				t.Fatal("other methods must be rejected")
+			}
+			if w := request(http.MethodPost, "bad"); w.Code != 400 || calls != 0 {
+				t.Fatal("invalid POST sent")
+			}
+			w = request(http.MethodPost, token)
 			if w.Code != 200 || calls != 1 || !strings.Contains(w.Body.String(), "Sent: Choose &lt;this&gt;") || strings.Contains(w.Body.String(), token) {
 				t.Fatal("valid tap response failed")
 			}
@@ -133,15 +143,18 @@ func TestTapHTTPHandler(t *testing.T) {
 			}
 			resolveErr = errTapNotFound
 			if w := request(http.MethodGet, token); w.Code != 404 || calls != 1 {
+				t.Fatal("missing button confirmed")
+			}
+			if w := request(http.MethodPost, token); w.Code != 404 || calls != 1 {
 				t.Fatal("missing button sent")
 			}
 			resolveErr = errors.New("upstream unavailable")
-			if w := request(http.MethodGet, token); w.Code != 502 || calls != 1 {
+			if w := request(http.MethodPost, token); w.Code != 502 || calls != 1 {
 				t.Fatal("failed recovery sent")
 			}
 			resolveErr = nil
 			sendErr = errors.New("send unavailable")
-			if w := request(http.MethodGet, token); w.Code != 502 || calls != 2 {
+			if w := request(http.MethodPost, token); w.Code != 502 || calls != 2 {
 				t.Fatal("send failure retried or returned wrong status")
 			}
 		})

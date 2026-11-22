@@ -240,12 +240,12 @@ func TestRefreshAllStoredMessagesWithoutDecrypting(t *testing.T) {
 			}}
 			request := func(target igconv.TapTarget) int {
 				w := httptest.NewRecorder()
-				handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://example.com/_ig/tap/"+connector.MsgConv.TapSigner.Sign(target), nil))
+				handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "http://example.com/_ig/tap/"+connector.MsgConv.TapSigner.Sign(target), nil))
 				return w.Code
 			}
 			beforeGets := gets
 			if request(target) != 200 || sends != 1 || gets != beforeGets+1 {
-				t.Fatal("missing metadata was not recovered by GET before sending once")
+				t.Fatal("missing metadata was not recovered by POST before sending once")
 			}
 			beforeGets = gets
 			if request(target) != 200 || sends != 2 || gets != beforeGets {
