@@ -120,8 +120,8 @@ func TestPlanRefreshEditCTAOnlyCard(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &item); err != nil {
 		t.Fatal(err)
 	}
-	card := igconv.CardHTMLFromThreadItem(&item)
-	cta := igconv.BuildCTAButtonsHTML(item.AllCTAButtons(), igconv.ButtonsFromItem(&item).Postbacks, nil)
+	card := igconv.CardHTMLFromThreadItem(&item, igconv.CTAOptions{})
+	cta := igconv.BuildCTAButtonsHTML(item.AllCTAButtons(), igconv.ButtonsFromItem(&item).Postbacks, nil, igconv.CTAOptions{})
 	if card == "" || cta == "" {
 		t.Fatalf("card=%q cta=%q", card, cta)
 	}

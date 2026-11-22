@@ -88,7 +88,7 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 	ctas := parseCTAs(t, mixedCTAs)
 
 	t.Run("links and postbacks", func(t *testing.T) {
-		out := xmaCTAButtonsHTML(ctas, PostbackButtonsFromCTAs(ctas), nil)
+		out := xmaCTAButtonsHTML(ctas, PostbackButtonsFromCTAs(ctas), nil, CTAOptions{})
 		for _, want := range []string{
 			`<div data-ig-cta="">`,
 			`<ul><li><a href="https://example.com/a">Website</a></li></ul>`,
@@ -110,7 +110,7 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 			{"cta_type":"xma_web_url","action_url":"https://example.com/1","title":"Guide"},
 			{"cta_type":"xma_web_url","action_url":"https://example.com/2","title":"Following"},
 			{"cta_type":"xma_web_url","action_url":"https://example.com/3","title":"Docs"}]`)
-		out := xmaCTAButtonsHTML(three, nil, nil)
+		out := xmaCTAButtonsHTML(three, nil, nil, CTAOptions{})
 		if got := strings.Count(out, "<li><a href="); got != 3 || !strings.Contains(out, "<ul>") {
 			t.Errorf("expected a list of 3 links, got %s", out)
 		}
@@ -121,7 +121,7 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 
 	t.Run("fallback warning when payload not recovered", func(t *testing.T) {
 		hidden := parseCTAs(t, `[{"cta_type":"postback","action_url":"","title":"Yes"},{"cta_type":"placeholder","title":"No"}]`)
-		out := xmaCTAButtonsHTML(hidden, nil, nil)
+		out := xmaCTAButtonsHTML(hidden, nil, nil, CTAOptions{})
 		if want := `<div data-ig-cta=""><p>Yes, No<br>Use the Instagram app to click buttons</p></div>`; out != want {
 			t.Errorf("got %q, want %q", out, want)
 		}
@@ -131,20 +131,20 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 	})
 
 	t.Run("url only", func(t *testing.T) {
-		out := xmaCTAButtonsHTML(ctas[:1], nil, nil)
+		out := xmaCTAButtonsHTML(ctas[:1], nil, nil, CTAOptions{})
 		if want := `<div data-ig-cta=""><ul><li><a href="https://example.com/a">Website</a></li></ul></div>`; out != want {
 			t.Errorf("got %q, want %q", out, want)
 		}
 	})
 
 	t.Run("no buttons", func(t *testing.T) {
-		if out := xmaCTAButtonsHTML(nil, nil, nil); out != "" {
+		if out := xmaCTAButtonsHTML(nil, nil, nil, CTAOptions{}); out != "" {
 			t.Errorf("got %q", out)
 		}
 	})
 
 	t.Run("partially recovered", func(t *testing.T) {
-		out := xmaCTAButtonsHTML(parseCTAs(t, `[{"cta_type":"postback","title":"A"},{"cta_type":"postback","title":"B"}]`), []*metaid.PostbackButton{pb("A", "x")}, nil)
+		out := xmaCTAButtonsHTML(parseCTAs(t, `[{"cta_type":"postback","title":"A"},{"cta_type":"postback","title":"B"}]`), []*metaid.PostbackButton{pb("A", "x")}, nil, CTAOptions{})
 		if !strings.Contains(out, "<li>A — postback") || strings.Contains(out, "Use the Instagram app") {
 			t.Errorf("unexpected output %s", out)
 		}

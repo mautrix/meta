@@ -41,7 +41,7 @@ func TestCardHTMLFromThreadItem(t *testing.T) {
 		if xma := XMAFromThreadItem(item); xma == nil || xma.TitleText != "Hello card" {
 			t.Fatalf("bad xma: %+v", xma)
 		}
-		out := CardHTMLFromThreadItem(item)
+		out := CardHTMLFromThreadItem(item, CTAOptions{})
 		for _, want := range []string{"<strong>Hello card</strong>", `<div data-ig-cta="">`, "<li>Go — postback"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %q in %s", want, out)
@@ -53,7 +53,7 @@ func TestCardHTMLFromThreadItem(t *testing.T) {
 		if xma := XMAFromThreadItem(item); xma == nil || xma.TitleText != "Hello card" {
 			t.Fatalf("bad xma: %+v", xma)
 		}
-		if out := CardHTMLFromThreadItem(item); !strings.Contains(out, "<strong>Hello card</strong>") || !strings.Contains(out, "<li>Go") {
+		if out := CardHTMLFromThreadItem(item, CTAOptions{}); !strings.Contains(out, "<strong>Hello card</strong>") || !strings.Contains(out, "<li>Go") {
 			t.Errorf("unexpected %s", out)
 		}
 	})
@@ -61,7 +61,7 @@ func TestCardHTMLFromThreadItem(t *testing.T) {
 		item := itemWithXMA(t, `{"title_text":"Links","cta_buttons":[`+
 			`{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"A"},`+
 			`{"cta_type":"xma_web_url","action_url":"https://example.com/b","title":"B"}]}`)
-		out := CardHTMLFromThreadItem(item)
+		out := CardHTMLFromThreadItem(item, CTAOptions{})
 		want := `<ul><li><a href="https://example.com/a">A</a></li><li><a href="https://example.com/b">B</a></li></ul>`
 		if !strings.Contains(out, want) || strings.Contains(out, " - ") {
 			t.Errorf("unexpected %s", out)
@@ -69,7 +69,7 @@ func TestCardHTMLFromThreadItem(t *testing.T) {
 	})
 	t.Run("CTA-only postback", func(t *testing.T) {
 		item := itemWithXMA(t, `{"cta_buttons":[{"cta_type":"postback","title":"Go","postback_payload":"pb-1"}]}`)
-		out := CardHTMLFromThreadItem(item)
+		out := CardHTMLFromThreadItem(item, CTAOptions{})
 		for _, want := range []string{`<div data-ig-cta="">`, "<li>Go — postback"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %q in %s", want, out)
@@ -78,13 +78,13 @@ func TestCardHTMLFromThreadItem(t *testing.T) {
 	})
 	t.Run("CTA-only URLs", func(t *testing.T) {
 		item := itemWithXMA(t, `{"cta_buttons":[{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"A"}]}`)
-		out := CardHTMLFromThreadItem(item)
+		out := CardHTMLFromThreadItem(item, CTAOptions{})
 		if want := `<ul><li><a href="https://example.com/a">A</a></li></ul>`; !strings.Contains(out, want) || strings.Contains(out, " - ") {
 			t.Errorf("unexpected %s", out)
 		}
 	})
 	t.Run("empty", func(t *testing.T) {
-		if out := CardHTMLFromThreadItem(&slidetypes.ThreadItem{}); out != "" {
+		if out := CardHTMLFromThreadItem(&slidetypes.ThreadItem{}, CTAOptions{}); out != "" {
 			t.Errorf("got %q", out)
 		}
 		if XMAFromThreadItem(nil) != nil {

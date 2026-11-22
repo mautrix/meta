@@ -83,7 +83,7 @@ func TestQuickReplyHTML(t *testing.T) {
 		Postbacks:    []*metaid.PostbackButton{pb("Following", "payload-a")},
 		QuickReplies: []*metaid.PostbackButton{{Title: "Maybe later", Payload: "payload-qr-1", CTAType: "quick_reply"}},
 	}
-	out := xmaCTAButtonsHTML(nil, buttons.Postbacks, buttons.QuickReplies)
+	out := xmaCTAButtonsHTML(nil, buttons.Postbacks, buttons.QuickReplies, CTAOptions{})
 	for _, want := range []string{
 		`<div data-ig-cta="">`,
 		"<li>Following — postback · react with 1️⃣, or reply with 1 or the title</li>",
@@ -101,12 +101,12 @@ func TestQuickReplyHTML(t *testing.T) {
 	for i := range many {
 		many[i] = &metaid.PostbackButton{Title: "Q", CTAType: "quick_reply"}
 	}
-	out = xmaCTAButtonsHTML(nil, nil, many)
+	out = xmaCTAButtonsHTML(nil, nil, many, CTAOptions{})
 	if !strings.Contains(out, "react with 🔟, or reply with 10") || !strings.Contains(out, "<li>Q — quick reply · reply with 11 or the title</li>") {
 		t.Errorf("unexpected 10+/11 lines: %s", out)
 	}
 	links := parseCTAs(t, `[{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"Website"}]`)
-	out = xmaCTAButtonsHTML(links, buttons.Postbacks, buttons.QuickReplies)
+	out = xmaCTAButtonsHTML(links, buttons.Postbacks, buttons.QuickReplies, CTAOptions{})
 	if !strings.Contains(out, "<ul><li><a href=\"https://example.com/a\">Website</a></li></ul><ol>") {
 		t.Errorf("links must stay a separate list: %s", out)
 	}
@@ -180,7 +180,7 @@ func TestPickButtonsTextQuickReplies(t *testing.T) {
 
 func TestAppendButtonsToText(t *testing.T) {
 	part := &bridgev2.ConvertedMessagePart{Type: event.EventMessage, Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Pick one"}}
-	appendButtonsToText(part, Buttons{QuickReplies: []*metaid.PostbackButton{{Title: "Yes", Payload: "payload-qr-1", CTAType: "quick_reply"}}})
+	appendButtonsToText(part, Buttons{QuickReplies: []*metaid.PostbackButton{{Title: "Yes", Payload: "payload-qr-1", CTAType: "quick_reply"}}}, CTAOptions{})
 	if !strings.Contains(part.Content.FormattedBody, "<li>Yes — quick reply · react with 1️⃣") || !strings.Contains(part.Content.Body, "Pick one") {
 		t.Errorf("unexpected content: %+v", part.Content)
 	}
@@ -189,7 +189,7 @@ func TestAppendButtonsToText(t *testing.T) {
 		t.Errorf("unexpected metadata: %+v", part.DBMetadata)
 	}
 	plain := &bridgev2.ConvertedMessagePart{Content: &event.MessageEventContent{Body: "Hi"}}
-	appendButtonsToText(plain, Buttons{})
+	appendButtonsToText(plain, Buttons{}, CTAOptions{})
 	if plain.Content.FormattedBody != "" || plain.DBMetadata != nil {
 		t.Errorf("text without buttons must stay untouched")
 	}

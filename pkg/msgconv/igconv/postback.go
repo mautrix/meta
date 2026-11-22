@@ -374,11 +374,11 @@ func attachButtons(part *bridgev2.ConvertedMessagePart, buttons Buttons) {
 }
 
 // appendButtonsToText appends the button list to a text part and stores the buttons.
-func appendButtonsToText(part *bridgev2.ConvertedMessagePart, buttons Buttons) {
+func appendButtonsToText(part *bridgev2.ConvertedMessagePart, buttons Buttons, opts CTAOptions) {
 	if part == nil || part.Content == nil || buttons.Empty() {
 		return
 	}
-	buttonsHTML := xmaCTAButtonsHTML(nil, buttons.Postbacks, buttons.QuickReplies)
+	buttonsHTML := xmaCTAButtonsHTML(nil, buttons.Postbacks, buttons.QuickReplies, opts)
 	if buttonsHTML == "" {
 		return
 	}

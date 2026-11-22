@@ -253,7 +253,7 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 	}
 	ctas := item.AllCTAButtons()
 	buttons := igconv.ButtonsFromItem(item)
-	ctaHTML := igconv.BuildCTAButtonsHTML(ctas, buttons.Postbacks, buttons.QuickReplies)
+	ctaHTML := igconv.BuildCTAButtonsHTML(ctas, buttons.Postbacks, buttons.QuickReplies, igconv.CTAOptions{})
 	if ctaHTML == "" {
 		log.Debug().Str("reason", "no_cta_html").Msg("Skipping refresh")
 		return refreshSkipped
@@ -294,7 +294,7 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 	if getErr != nil {
 		log.Debug().Err(getErr).Msg("Couldn't read the old Matrix event, rebuilding the card from the Instagram item")
 	}
-	newContent, send := planRefreshEdit(igconv.CardHTMLFromThreadItem(item), ctaHTML, evt, getErr)
+	newContent, send := planRefreshEdit(igconv.CardHTMLFromThreadItem(item, igconv.CTAOptions{}), ctaHTML, evt, getErr)
 	if !send {
 		return noEdit("matrix_content_unchanged_or_unknown")
 	}

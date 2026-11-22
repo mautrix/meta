@@ -64,7 +64,7 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	if _, err := url.Parse(xma.TargetURL); err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
 	}
-	captionHTML := CaptionHTML(xma, buttons)
+	captionHTML := CaptionHTML(xma, buttons, mc.ctaOptions(ctx))
 	if captionHTML == "" {
 		return nil
 	}
@@ -73,7 +73,7 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 
 // CaptionHTML builds the formatted caption of an XMA card: eyebrow, title, subtitle, body, target
 // link and then the CTA buttons block. It returns "" if the card has no caption text or link.
-func CaptionHTML(xma *slidetypes.XMAContent, buttons Buttons) string {
+func CaptionHTML(xma *slidetypes.XMAContent, buttons Buttons, opts CTAOptions) string {
 	if xma == nil {
 		return ""
 	}
@@ -105,7 +105,7 @@ func CaptionHTML(xma *slidetypes.XMAContent, buttons Buttons) string {
 	if captionHTML == "" {
 		return ""
 	}
-	return captionHTML + xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies)
+	return captionHTML + xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies, opts)
 }
 
 // XMAFromThreadItem decodes the generic_xma of a REST thread item, which is either an object or
@@ -127,7 +127,7 @@ func XMAFromThreadItem(item *slidetypes.ThreadItem) *slidetypes.XMAContent {
 
 // CardHTMLFromThreadItem rebuilds the formatted body of a card (caption plus CTA buttons) from a
 // REST thread item alone, without the original Matrix event. It returns "" if there is nothing to render.
-func CardHTMLFromThreadItem(item *slidetypes.ThreadItem) string {
+func CardHTMLFromThreadItem(item *slidetypes.ThreadItem, opts CTAOptions) string {
 	xma := XMAFromThreadItem(item)
 	if xma == nil {
 		return ""
@@ -136,11 +136,11 @@ func CardHTMLFromThreadItem(item *slidetypes.ThreadItem) string {
 		xma.CTAButtons = ctas
 	}
 	buttons := ButtonsFromItem(item)
-	if cardHTML := CaptionHTML(xma, buttons); cardHTML != "" {
+	if cardHTML := CaptionHTML(xma, buttons, opts); cardHTML != "" {
 		return cardHTML
 	}
 	// CTA-only card: no caption text, but the buttons still need refreshing.
-	return xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies)
+	return xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies, opts)
 }
 
 func unwrapLinkShim(u *url.URL) *url.URL {
@@ -209,7 +209,7 @@ func ButtonAtIndex(buttons []*metaid.PostbackButton, idx int) *metaid.PostbackBu
 }
 
 // buttonLineHTML renders one tappable button as a single line: title, type and how to activate.
-func buttonLineHTML(idx int, button *metaid.PostbackButton) string {
+func buttonLineHTML(idx int, button *metaid.PostbackButton, opts CTAOptions) string {
 	kind := "postback"
 	if button.IsQuickReply() {
 		kind = "quick reply"
@@ -218,7 +218,11 @@ func buttonLineHTML(idx int, button *metaid.PostbackButton) string {
 	if keycap := KeycapEmoji(idx); keycap != "" {
 		activate = fmt.Sprintf("react with %s, or %s", keycap, activate)
 	}
-	return fmt.Sprintf("<li>%s — %s · %s</li>", html.EscapeString(button.Title), kind, activate)
+	title := html.EscapeString(button.Title)
+	if link := opts.ButtonURL(idx, button); link != "" {
+		title = fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(link), title)
+	}
+	return fmt.Sprintf("<li>%s — %s · %s</li>", title, kind, activate)
 }
 
 // xmaCTAButtonsHTML renders the CTA buttons of a card: URL buttons as a list of links, and the
@@ -226,7 +230,7 @@ func buttonLineHTML(idx int, button *metaid.PostbackButton) string {
 // how to activate it. Non-URL buttons that weren't recovered get a note that they only work in
 // the Instagram app, unless some button was recovered. The block is wrapped in a marked div so
 // it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
-func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton) string {
+func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton, opts CTAOptions) string {
 	tap := metaid.TapButtons(postbacks, quickReplies)
 	var links, unrecovered []string
 	for _, cta := range ctas {
@@ -252,7 +256,7 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*
 	if len(tap) > 0 {
 		out.WriteString("<ol>")
 		for i, button := range tap {
-			out.WriteString(buttonLineHTML(i+1, button))
+			out.WriteString(buttonLineHTML(i+1, button, opts))
 		}
 		fmt.Fprintf(&out, "</ol><p>Or send <code>%s N</code>.</p>", PostbackTapCommand)
 	} else if len(unrecovered) > 0 {
@@ -265,8 +269,8 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*
 }
 
 // BuildCTAButtonsHTML is the exported form of xmaCTAButtonsHTML, used when refreshing old cards.
-func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton) string {
-	return xmaCTAButtonsHTML(ctas, postbacks, quickReplies)
+func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton, opts CTAOptions) string {
+	return xmaCTAButtonsHTML(ctas, postbacks, quickReplies, opts)
 }
 
 // HasKnownCTAFooter reports whether a formatted body already contains a CTA footer that
@@ -312,8 +316,9 @@ func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMACont
 func (mc *MessageConverter) wrapXMAWithButtons(ctx context.Context, xma *slidetypes.XMAContent, buttons Buttons) *bridgev2.ConvertedMessagePart {
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
 	captionPart := mc.wrapXMACaption(ctx, xma, buttons)
-	if previewPart != nil && captionPart == nil {
-		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies); buttonsHTML != "" {
+	opts := mc.ctaOptions(ctx)
+	if captionPart == nil {
+		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies, opts); buttonsHTML != "" {
 			captionPart = ptr.Ptr(format.HTMLToContent(buttonsHTML))
 		}
 	}
