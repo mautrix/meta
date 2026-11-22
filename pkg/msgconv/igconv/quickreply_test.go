@@ -86,9 +86,9 @@ func TestQuickReplyHTML(t *testing.T) {
 	out := xmaCTAButtonsHTML(nil, buttons.Postbacks, buttons.QuickReplies, CTAOptions{})
 	for _, want := range []string{
 		`<div data-ig-cta="">`,
-		"<li>Following — postback · react with 1️⃣, or reply with 1 or the title</li>",
-		"<li>Maybe later — quick reply · react with 2️⃣, or reply with 2 or the title</li>",
-		"<p>Or send <code>!ig tap N</code>.</p>",
+		`[` + " " + `Following` + " " + `]`,
+		`[` + " " + `Maybe later` + " " + `]`,
+		"<p>React with 1️⃣–🔟, reply with the title, or send <code>!ig tap N</code>.</p>",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in %s", want, out)
@@ -102,13 +102,13 @@ func TestQuickReplyHTML(t *testing.T) {
 		many[i] = &metaid.PostbackButton{Title: "Q", CTAType: "quick_reply"}
 	}
 	out = xmaCTAButtonsHTML(nil, nil, many, CTAOptions{})
-	if !strings.Contains(out, "react with 🔟, or reply with 10") || !strings.Contains(out, "<li>Q — quick reply · reply with 11 or the title</li>") {
-		t.Errorf("unexpected 10+/11 lines: %s", out)
+	if strings.Count(out, `[`+" "+`Q`+" "+`]`) != 11 || strings.Count(out, "<br>") != 10 || strings.Contains(out, "<li>") {
+		t.Errorf("expected 11 pseudo-buttons, got %s", out)
 	}
 	links := parseCTAs(t, `[{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"Website"}]`)
 	out = xmaCTAButtonsHTML(links, buttons.Postbacks, buttons.QuickReplies, CTAOptions{})
-	if !strings.Contains(out, "<ul><li><a href=\"https://example.com/a\">Website</a></li></ul><ol>") {
-		t.Errorf("links must stay a separate list: %s", out)
+	if !strings.Contains(out, `<a href="https://example.com/a">[`+" "+`Website`+" ↗ "+`]</a>`) || !strings.Contains(out, `<br>[`+" "+`Following`) || strings.Contains(out, "<ul>") || strings.Contains(out, "<ol>") {
+		t.Errorf("links and taps must be pseudo-buttons, got %s", out)
 	}
 	if !HasKnownCTAFooter(out) {
 		t.Errorf("footer not detected")
@@ -181,7 +181,7 @@ func TestPickButtonsTextQuickReplies(t *testing.T) {
 func TestAppendButtonsToText(t *testing.T) {
 	part := &bridgev2.ConvertedMessagePart{Type: event.EventMessage, Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Pick one"}}
 	appendButtonsToText(part, Buttons{QuickReplies: []*metaid.PostbackButton{{Title: "Yes", Payload: "payload-qr-1", CTAType: "quick_reply"}}}, CTAOptions{})
-	if !strings.Contains(part.Content.FormattedBody, "<li>Yes — quick reply · react with 1️⃣") || !strings.Contains(part.Content.Body, "Pick one") {
+	if !strings.Contains(part.Content.FormattedBody, `[`+" "+`Yes`+" "+`]`) || !strings.Contains(part.Content.Body, "Pick one") || !strings.Contains(part.Content.Body, "[") {
 		t.Errorf("unexpected content: %+v", part.Content)
 	}
 	meta, ok := part.DBMetadata.(*metaid.MessageMetadata)

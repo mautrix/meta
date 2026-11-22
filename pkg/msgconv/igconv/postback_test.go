@@ -22,6 +22,8 @@ import (
 	"strings"
 	"testing"
 
+	"maunium.net/go/mautrix/format"
+
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
@@ -91,10 +93,9 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 		out := xmaCTAButtonsHTML(ctas, PostbackButtonsFromCTAs(ctas), nil, CTAOptions{})
 		for _, want := range []string{
 			`<div data-ig-cta="">`,
-			`<ul><li><a href="https://example.com/a">Website</a></li></ul>`,
-			`<ol><li>Yes &lt;b&gt; — postback · react with 1️⃣, or reply with 1 or the title</li>` +
-				`<li>No — postback · react with 2️⃣, or reply with 2 or the title</li></ol>`,
-			"<p>Or send <code>!ig tap N</code>.</p>",
+			`<a href="https://example.com/a">[` + " " + `Website` + " ↗ " + `]</a>`,
+			`<br>[` + " " + `Yes &lt;b&gt;` + " " + `]<br>[` + " " + `No` + " " + `]`,
+			"<p>React with 1️⃣–🔟, reply with the title, or send <code>!ig tap N</code>.</p>",
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("missing %q in %s", want, out)
@@ -111,8 +112,11 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 			{"cta_type":"xma_web_url","action_url":"https://example.com/2","title":"Following"},
 			{"cta_type":"xma_web_url","action_url":"https://example.com/3","title":"Docs"}]`)
 		out := xmaCTAButtonsHTML(three, nil, nil, CTAOptions{})
-		if got := strings.Count(out, "<li><a href="); got != 3 || !strings.Contains(out, "<ul>") {
-			t.Errorf("expected a list of 3 links, got %s", out)
+		if got := strings.Count(out, "<a href="); got != 3 || strings.Contains(out, "<ul>") || strings.Contains(out, "<li>") || strings.Count(out, "<br>") != 2 {
+			t.Errorf("expected 3 pseudo-buttons joined by <br>, got %s", out)
+		}
+		if !strings.Contains(out, "↗") {
+			t.Errorf("external links must include a glued ↗: %s", out)
 		}
 		if strings.Contains(out, " - ") {
 			t.Errorf("links are still joined with a dash: %s", out)
@@ -132,7 +136,7 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 
 	t.Run("url only", func(t *testing.T) {
 		out := xmaCTAButtonsHTML(ctas[:1], nil, nil, CTAOptions{})
-		if want := `<div data-ig-cta=""><ul><li><a href="https://example.com/a">Website</a></li></ul></div>`; out != want {
+		if want := `<div data-ig-cta=""><a href="https://example.com/a">[` + "\u00a0" + `Website` + "\u00a0↗\u00a0" + `]</a></div>`; out != want {
 			t.Errorf("got %q, want %q", out, want)
 		}
 	})
@@ -145,7 +149,7 @@ func TestXMACTAButtonsHTML(t *testing.T) {
 
 	t.Run("partially recovered", func(t *testing.T) {
 		out := xmaCTAButtonsHTML(parseCTAs(t, `[{"cta_type":"postback","title":"A"},{"cta_type":"postback","title":"B"}]`), []*metaid.PostbackButton{pb("A", "x")}, nil, CTAOptions{})
-		if !strings.Contains(out, "<li>A — postback") || strings.Contains(out, "Use the Instagram app") {
+		if !strings.Contains(out, `[`+"\u00a0"+`A`+"\u00a0"+`]`) || strings.Contains(out, "Use the Instagram app") || strings.Contains(out, "<li>") {
 			t.Errorf("unexpected output %s", out)
 		}
 	})
@@ -374,5 +378,44 @@ func TestHasKnownCTAFooter(t *testing.T) {
 		if !HasKnownCTAFooter(html) {
 			t.Errorf("%q: footer not detected", html)
 		}
+	}
+}
+
+func TestPseudoButtonLayout(t *testing.T) {
+	const nbsp = "\u00a0"
+	urlOnly := xmaCTAButtonsHTML(parseCTAs(t, `[{"cta_type":"xma_web_url","action_url":"https://example.com/a","title":"grab the skill"}]`), nil, nil, CTAOptions{})
+	if strings.Contains(urlOnly, "<ul>") || strings.Contains(urlOnly, "<ol>") || strings.Contains(urlOnly, "<li>") || strings.Contains(urlOnly, "React with") {
+		t.Fatalf("url-only must be a single pseudo-button with no footer: %s", urlOnly)
+	}
+	wantURL := `<a href="https://example.com/a">[` + nbsp + `grab the skill` + nbsp + `↗` + nbsp + `]</a>`
+	if !strings.Contains(urlOnly, wantURL) {
+		t.Fatalf("missing glued external label in %s", urlOnly)
+	}
+	plain := format.HTMLToContent(urlOnly).Body
+	if !strings.Contains(plain, "["+nbsp+"grab the skill"+nbsp+"↗"+nbsp+"]") {
+		t.Fatalf("plain body must keep the bracketed label, got %q", plain)
+	}
+
+	taps := xmaCTAButtonsHTML(nil, []*metaid.PostbackButton{pb("Send me the link", "x"), pb("Book a call", "y")}, []*metaid.PostbackButton{{Title: "Yes", Payload: "z", CTAType: "quick_reply"}}, CTAOptions{})
+	if strings.Contains(taps, "↗") {
+		t.Fatalf("tappable buttons must not get ↗: %s", taps)
+	}
+	for _, title := range []string{"Send me the link", "Book a call", "Yes"} {
+		if !strings.Contains(taps, "["+nbsp+title+nbsp+"]") {
+			t.Fatalf("missing [%s] in %s", title, taps)
+		}
+	}
+	if strings.Count(taps, "<br>") != 2 || strings.Contains(taps, "<ul>") || strings.Contains(taps, "<li>") {
+		t.Fatalf("taps must be one pseudo-button per line: %s", taps)
+	}
+	if !strings.Contains(taps, "React with 1️⃣–🔟, reply with the title, or send <code>!ig tap N</code>.") {
+		t.Fatalf("missing single footer: %s", taps)
+	}
+	if strings.Contains(taps, " — postback") || strings.Contains(taps, " — quick reply") || strings.Contains(taps, "react with 1️⃣, or reply") {
+		t.Fatalf("per-button instructions must not appear: %s", taps)
+	}
+	plainTaps := format.HTMLToContent(taps).Body
+	if strings.Count(plainTaps, "\n") < 3 || !strings.Contains(plainTaps, "["+nbsp+"Yes"+nbsp+"]") {
+		t.Fatalf("plain body must list one label per line, got %q", plainTaps)
 	}
 }

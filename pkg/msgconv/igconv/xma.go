@@ -216,31 +216,42 @@ func ButtonAtIndex(buttons []*metaid.PostbackButton, idx int) *metaid.PostbackBu
 	return buttons[idx-1]
 }
 
-// buttonLineHTML renders one tappable button as a single line: title, type and how to activate.
-func buttonLineHTML(idx int, button *metaid.PostbackButton, opts CTAOptions) string {
-	kind := "postback"
-	if button.IsQuickReply() {
-		kind = "quick reply"
+const (
+	nbsp              = "\u00a0"
+	externalLinkMark  = "↗"
+	tapFooterHTMLText = "React with 1️⃣–🔟, reply with the title, or send <code>" + PostbackTapCommand + " N</code>."
+)
+
+// pseudoButtonLabel is the visible bracketed control ("[ Título ]"). NBSPs keep
+// the brackets, and the ↗ of an external link, from wrapping onto their own line.
+func pseudoButtonLabel(title string, external bool) string {
+	if external {
+		return "[" + nbsp + title + nbsp + externalLinkMark + nbsp + "]"
 	}
-	activate := fmt.Sprintf("reply with %d or the title", idx)
-	if keycap := KeycapEmoji(idx); keycap != "" {
-		activate = fmt.Sprintf("react with %s, or %s", keycap, activate)
-	}
-	title := html.EscapeString(button.Title)
-	if link := opts.ButtonURL(idx, button); link != "" {
-		title = fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(link), title)
-	}
-	return fmt.Sprintf("<li>%s — %s · %s</li>", title, kind, activate)
+	return "[" + nbsp + title + nbsp + "]"
 }
 
-// xmaCTAButtonsHTML renders the CTA buttons of a card: URL buttons as a list of links, and the
-// recovered postback and quick reply buttons as one numbered list, a line each with its type and
-// how to activate it. Non-URL buttons that weren't recovered get a note that they only work in
-// the Instagram app, unless some button was recovered. The block is wrapped in a marked div so
-// it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
+func pseudoButtonHTML(href, title string, external bool) string {
+	label := html.EscapeString(pseudoButtonLabel(title, external))
+	if href == "" {
+		return label
+	}
+	return fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(href), label)
+}
+
+// buttonLineHTML renders one tappable button as a bracketed pseudo-button.
+func buttonLineHTML(idx int, button *metaid.PostbackButton, opts CTAOptions) string {
+	return pseudoButtonHTML(opts.ButtonURL(idx, button), button.Title, false)
+}
+
+// xmaCTAButtonsHTML renders each CTA as a bracketed pseudo-button, one per line,
+// joined by <br>, with no lists. External URL buttons include a glued ↗ inside
+// the brackets. A single discreet footer with the other ways to activate appears
+// only when the card has a quick reply or a postback. The block is wrapped in a
+// marked div so it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
 func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton, opts CTAOptions) string {
 	tap := metaid.TapButtons(postbacks, quickReplies)
-	var links, unrecovered []string
+	var lines, unrecovered []string
 	for _, cta := range ctas {
 		if cta == nil || cta.Title == "" {
 			continue
@@ -250,23 +261,22 @@ func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*
 			if err == nil {
 				actionURL = unwrapLinkShim(actionURL)
 				if actionURL.Scheme == "https" || actionURL.Scheme == "http" {
-					links = append(links, fmt.Sprintf(`<li><a href="%s">%s</a></li>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
+					lines = append(lines, pseudoButtonHTML(actionURL.String(), cta.Title, true))
 				}
 			}
 		} else if !slices.ContainsFunc(tap, func(b *metaid.PostbackButton) bool { return b.Title == cta.Title }) {
 			unrecovered = append(unrecovered, html.EscapeString(cta.Title))
 		}
 	}
+	for i, button := range tap {
+		lines = append(lines, buttonLineHTML(i+1, button, opts))
+	}
 	var out strings.Builder
-	if len(links) > 0 {
-		fmt.Fprintf(&out, "<ul>%s</ul>", strings.Join(links, ""))
+	if len(lines) > 0 {
+		out.WriteString(strings.Join(lines, "<br>"))
 	}
 	if len(tap) > 0 {
-		out.WriteString("<ol>")
-		for i, button := range tap {
-			out.WriteString(buttonLineHTML(i+1, button, opts))
-		}
-		fmt.Fprintf(&out, "</ol><p>Or send <code>%s N</code>.</p>", PostbackTapCommand)
+		fmt.Fprintf(&out, "<p>%s</p>", tapFooterHTMLText)
 	} else if len(unrecovered) > 0 {
 		fmt.Fprintf(&out, "<p>%s<br>%s</p>", strings.Join(unrecovered, ", "), appFallbackSnippet)
 	}

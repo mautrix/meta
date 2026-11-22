@@ -59,11 +59,14 @@ func TestTapLinksOnCardsAndArrival(t *testing.T) {
 		if strings.Count(body, `<a href="http://127.0.0.1:29330/_ig/tap/`) != 2 {
 			t.Fatal("expected two tap hyperlinks")
 		}
-		if !strings.Contains(body, `">Choose</a>`) || !strings.Contains(body, `">Reply</a>`) || !strings.Contains(body, "quick reply") || !strings.Contains(body, "postback") {
-			t.Fatal("missing linked titles or kinds")
+		if !strings.Contains(body, `[`+" "+`Choose`+" "+`]</a>`) || !strings.Contains(body, `[`+" "+`Reply`+" "+`]</a>`) {
+			t.Fatal("missing linked pseudo-button titles")
 		}
-		if !strings.Contains(body, `<ul><li><a href="https://example.com/">Open site</a></li></ul>`) || strings.Contains(body, " - ") {
+		if !strings.Contains(body, `<a href="https://example.com/">[`+" "+`Open site`+" ↗ "+`]</a>`) || strings.Contains(body, " - ") || strings.Contains(body, "<ul>") {
 			t.Fatal("URL CTA layout changed")
+		}
+		if strings.Contains(body, " — postback") || strings.Contains(body, " — quick reply") {
+			t.Fatal("per-button instructions must not appear")
 		}
 		if strings.Contains(body, "fixture-only") {
 			t.Fatal("button payload leaked")
