@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"image"
 	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -2172,9 +2173,21 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		oauthRedirectURL := userInput["oauth_token"]
 		if oauthRedirectURL != "" {
 			delete(userInput, "oauth_token")
-			zerolog.Ctx(ctx).Debug().
-				Str("oauth_redirect_url", oauthRedirectURL).
-				Msg("Google OAuth reached the Meta redirect URL")
+			logEvt := zerolog.Ctx(ctx).Debug()
+			if parsed, parseErr := url.Parse(oauthRedirectURL); parseErr == nil {
+				query := parsed.Query()
+				contextData := query.Get("context_data")
+				logEvt = logEvt.
+					Str("redirect_scheme", parsed.Scheme).
+					Str("redirect_host", parsed.Host).
+					Str("redirect_path", parsed.Path).
+					Strs("query_keys", slices.Sorted(maps.Keys(query))).
+					Bool("has_context_data", contextData != "").
+					Int("context_data_len", len(contextData))
+			} else {
+				logEvt = logEvt.Bool("redirect_parse_error", true)
+			}
+			logEvt.Msg("Google OAuth reached the Meta redirect URL")
 			return nil, fmt.Errorf("google sign-in not yet fully implemented")
 		}
 
@@ -2197,7 +2210,17 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Fields: []bridgev2.LoginCookieField{{
 					ID:       "oauth_token",
 					Required: true,
-					Sources:  []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "oauth_token"}},
+					Sources: []bridgev2.LoginCookieFieldSource{
+						{
+							Type:            bridgev2.LoginCookieTypeSpecial,
+							Name:            "redirect_url",
+							RequestURLRegex: `^fb://auth-platform-continue/`,
+						},
+						{
+							Type: bridgev2.LoginCookieTypeSpecial,
+							Name: "oauth_token",
+						},
+					},
 				}},
 				ExtractJS: `new Promise((resolve, reject) => {
 					const url = new URL(window.location.href);

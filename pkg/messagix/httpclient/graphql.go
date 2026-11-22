@@ -8,8 +8,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/go-querystring/query"
 	"github.com/google/uuid"
@@ -185,9 +188,135 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		if err = bloks.LogRedactedBundle(c.log, appID, []byte(innerData)); err != nil {
 			return nil, err
 		}
+		if appID == "com.bloks.www.ap.two_step_verification.login_with_third_party" &&
+			(c.GetPlatform() == types.MessengerLiteIOS || c.GetPlatform() == types.MessengerLiteAndroid) {
+			c.probeFacebookIOSThirdPartyBundle(ctx, appID, inner, deviceID, familyDeviceID)
+		}
 	}
 
 	return &respInner, nil
+}
+
+const (
+	facebookIOSAppID        = "6628568379"
+	facebookIOSAccessToken  = facebookIOSAppID + "|c1e620fa708a1d5696fb991c1bde5662"
+	facebookIOSUserAgent    = "[FBAN/FBIOS;FBAV/587.0.0.31.71;FBBV/1110946418;FBDV/iPhone16,2;FBMD/iPhone;FBSN/iOS;FBSV/18.3;FBSS/3;FBID/phone;FBLC/en_US;FBOP/5;FBRV/0]"
+	facebookIOSBloksVersion = "ea7a4a4b2560a71fe2516817d865ff247433d8cb60a0e9c7473188494101088e"
+)
+
+var (
+	probeOpaqueTokenRE = regexp.MustCompile(`[A-Za-z0-9_-]{32,}(?:\|aplc)?`)
+	probeSnakeCaseRE   = regexp.MustCompile(`^[a-z][a-z_]+$`)
+	probeURLQueryRE    = regexp.MustCompile(`([?&][^=&"\\]+)=([^&"\\]+)`)
+)
+
+func scrubProbeBundle(raw []byte) []byte {
+	scrubbed := probeURLQueryRE.ReplaceAll(raw, []byte("$1=<redacted>"))
+	return probeOpaqueTokenRE.ReplaceAllFunc(scrubbed, func(match []byte) []byte {
+		s := string(match)
+		if probeSnakeCaseRE.Match(match) ||
+			strings.HasPrefix(s, "BLOKS_") || strings.HasPrefix(s, "INTERNAL_") ||
+			strings.HasPrefix(s, "CAA_") {
+			return match
+		}
+		return []byte("<redacted_token>")
+	})
+}
+
+func (c *HTTPClient) probeFacebookIOSThirdPartyBundle(ctx context.Context, appID string, inner bloks.BloksParamsInner, deviceID, familyDeviceID string) {
+	if !c.fbIOSThirdPartyProbed.CompareAndSwap(false, true) {
+		return
+	}
+	probeDoc := bloks.BloksAppDocIOS
+	probeDoc.Version = facebookIOSBloksVersion
+	variables := bloks.NewBloksRequest(&probeDoc, appID, inner)
+	vBytes, err := json.Marshal(variables)
+	if err != nil {
+		c.log.Debug().Err(err).Str("bloks_app", appID).Msg("Failed to marshal Facebook iOS probe variables")
+		return
+	}
+
+	payload := &HTTPQuery{
+		Method:                           "post",
+		Pretty:                           "false",
+		Format:                           "json",
+		ServerTimestamps:                 "true",
+		Locale:                           "en_US",
+		Purpose:                          "fetch",
+		FbAPIReqFriendlyName:             probeDoc.Name + "-" + appID,
+		EnableCanonicalNaming:            "true",
+		EnableCanonicalVariableOverrides: "true",
+		EnableCanonicalNamingAmbiguousTypePrefixing: "true",
+		ClientDocID: probeDoc.ClientDocID,
+		Variables:   string(vBytes),
+	}
+	form, err := query.Values(payload)
+	if err != nil {
+		c.log.Debug().Err(err).Str("bloks_app", appID).Msg("Failed to encode Facebook iOS probe form")
+		return
+	}
+	payloadBytes := []byte(form.Encode())
+	reqURL := c.parent.GetEndpoint("graph_graphql")
+	headers := http.Header{}
+	headers.Set("content-type", "application/x-www-form-urlencoded")
+	headers.Set("priority", "u=3, i")
+	headers.Set("x-fb-friendly-name", probeDoc.Name+"-"+appID)
+	headers.Set("x-fb-client-ip", "True")
+	headers.Set("x-fb-server-cluster", "True")
+	headers.Set("user-agent", facebookIOSUserAgent)
+	headers.Set("x-fb-http-engine", "Tigon/MNS/TCP")
+	headers.Set("authorization", "OAuth "+facebookIOSAccessToken)
+	headers.Set("x-fb-device-id", deviceID)
+	headers.Set("x-fb-family-device-id", familyDeviceID)
+	headers.Set("x-graphql-request-purpose", "fetch")
+	headers.Set("x-root-field-name", probeDoc.RootField)
+	headers.Set("x-fb-conn-uuid-client", strings.ReplaceAll(uuid.New().String(), "-", ""))
+	headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
+	headers.Set("x-graphql-client-library", "pando")
+	headers.Set("x-meta-usdid-uuid", strings.ToUpper(uuid.New().String()))
+	if analyticsTags, err := MakeRequestAnalyticsHeader(facebookIOSAppID); err == nil {
+		headers.Set("x-fb-request-analytics-tags", analyticsTags)
+	}
+
+	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	go func() {
+		defer cancel()
+		req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, reqURL, bytes.NewReader(payloadBytes))
+		if err != nil {
+			c.log.Debug().Err(err).Str("bloks_app", appID+"#fbios").Msg("Failed to build Facebook iOS third-party probe request")
+			return
+		}
+		req.Header = headers
+		resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+		if err != nil {
+			c.log.Debug().Err(err).Str("bloks_app", appID+"#fbios").Msg("Facebook iOS third-party probe request failed")
+			return
+		}
+		defer resp.Body.Close()
+		respData, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		if err != nil {
+			c.log.Debug().Err(err).Str("bloks_app", appID+"#fbios").Msg("Facebook iOS third-party probe read failed")
+			return
+		}
+		var respOuter bloks.BloksResponse
+		if err = json.Unmarshal(respData, &respOuter); err != nil {
+			c.log.Debug().Err(err).Str("bloks_app", appID+"#fbios").Msg("Facebook iOS third-party probe decode failed")
+			return
+		}
+		innerData := ""
+		if respOuter.Data.BloksApp != nil {
+			innerData = respOuter.Data.BloksApp.Screen.Component.Bundle.Tree
+		} else if respOuter.Data.BloksAppFB != nil {
+			innerData = respOuter.Data.BloksAppFB.RootComponent.Bundle.Tree
+		}
+		if innerData == "" {
+			c.log.Debug().Str("bloks_app", appID+"#fbios").Int("errors", len(respOuter.Errors)).Msg("Facebook iOS third-party probe returned empty bundle")
+			return
+		}
+		if err = bloks.LogRedactedBundle(c.log, appID+"#fbios", scrubProbeBundle([]byte(innerData))); err != nil {
+			c.log.Debug().Err(err).Str("bloks_app", appID+"#fbios").Msg("Facebook iOS third-party probe redaction failed")
+		}
+	}()
 }
 
 var AntiJSPrefix = []byte("for (;;);")

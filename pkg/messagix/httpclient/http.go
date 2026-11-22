@@ -34,16 +34,17 @@ type HTTPClient struct {
 	lsRequests      int
 	configs         *Configs
 
-	HTTP            *http.Client
-	HTTPSettings    exhttp.ClientSettings
-	ownedTransport  *req.Transport
-	uploadHTTP      *http.Client
-	lsSyncHTTP      *http.Client
-	websocketClient *http.Client
-	proxyAddr       string
-	proxyLock       sync.Mutex
-	GetNewProxy     func(reason string) (string, error)
-	instagramNative atomic.Bool
+	HTTP                  *http.Client
+	HTTPSettings          exhttp.ClientSettings
+	ownedTransport        *req.Transport
+	uploadHTTP            *http.Client
+	lsSyncHTTP            *http.Client
+	websocketClient       *http.Client
+	proxyAddr             string
+	proxyLock             sync.Mutex
+	GetNewProxy           func(reason string) (string, error)
+	instagramNative       atomic.Bool
+	fbIOSThirdPartyProbed atomic.Bool
 
 	LogRedactedLoginResponses bool
 }
