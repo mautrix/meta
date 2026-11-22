@@ -141,6 +141,9 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if cli == nil {
 		return nil, wrapInstagramError(instameow.ErrClientIsNil)
 	}
+	if resp, handled, err := ic.handleMatrixPostbackTap(ctx, msg); handled {
+		return resp, err
+	}
 	_, err := ic.ensureIGID(ctx, msg.Portal)
 	if errors.Is(err, instameow.ErrThreadNotFound) && msg.Content.MsgType == event.MsgText && msg.Portal.RoomType == database.RoomTypeDM {
 		// Allow sending text DMs even if the thread isn't known

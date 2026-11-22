@@ -20,10 +20,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
+
+	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
@@ -112,16 +119,7 @@ func findPostbackMessage(ce *commands.Event, cli *IGClient) (*database.Message, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up recent messages: %w", err)
 	}
-	var newest *database.Message
-	for _, msg := range recent {
-		meta, ok := msg.Metadata.(*metaid.MessageMetadata)
-		if !ok || len(meta.PostbackButtons) == 0 {
-			continue
-		}
-		if newest == nil || msg.Timestamp.After(newest.Timestamp) {
-			newest = msg
-		}
-	}
+	newest := newestPostbackMessage(recent)
 	if newest == nil {
 		return nil, errors.New("no message with tappable buttons found. Reply to the message with the buttons")
 	}
@@ -146,4 +144,179 @@ func fetchStoredPostbackButtons(ctx context.Context, ce *commands.Event, cli *IG
 		ce.Log.Warn().Err(err).Msg("Failed to save recovered postback buttons")
 	}
 	return nil
+}
+
+var cmdRefresh = &commands.FullHandler{
+	Func: fnRefresh,
+	Name: "refresh",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionChats,
+		Description: "Refresh CTA buttons and links on existing Instagram cards in this room (or the replied-to message). Doesn't send anything to Instagram",
+	},
+	RequiresPortal: true,
+	RequiresLogin:  true,
+}
+
+type refreshResult int
+
+const (
+	refreshSkipped refreshResult = iota
+	refreshUpdated
+	refreshFailed
+)
+
+func fnRefresh(ce *commands.Event) {
+	login, _, err := ce.Portal.FindPreferredLogin(ce.Ctx, ce.User, false)
+	if err != nil || login == nil {
+		ce.Reply("Failed to find login for room")
+		ce.Log.Err(err).Msg("Failed to find login for room")
+		return
+	}
+	cli, ok := login.Client.(*IGClient)
+	if !ok || cli.Client == nil {
+		ce.Reply("Instagram client is not available")
+		return
+	}
+	var targets []*database.Message
+	if ce.ReplyTo != "" {
+		msg, err := ce.Bridge.DB.Message.GetPartByMXID(ce.Ctx, ce.ReplyTo)
+		if err != nil {
+			ce.Reply("Failed to look up the replied message: %v", err)
+			return
+		} else if msg == nil || msg.Room != ce.Portal.PortalKey {
+			ce.Reply("The replied message wasn't found in this chat")
+			return
+		}
+		targets = []*database.Message{msg}
+	} else if targets, err = ce.Bridge.DB.Message.GetLastNInPortal(ce.Ctx, ce.Portal.PortalKey, tapSearchMessageCount); err != nil {
+		ce.Reply("Failed to look up recent messages: %v", err)
+		return
+	}
+	portalMeta, err := cli.ensureIGID(ce.Ctx, ce.Portal)
+	if err != nil {
+		ce.Reply("Failed to refresh: %v", err)
+		return
+	}
+	items, err := cli.Client.FetchThreadGenericXMAItems(ce.Ctx, igconv.PostbackThreadID(portalMeta))
+	if err != nil {
+		ce.Log.Warn().Err(err).Msg("Failed to fetch thread items for refresh")
+		ce.Reply("Failed to fetch buttons from Instagram: %v", err)
+		return
+	}
+	var counts [3]int
+	for _, msg := range targets {
+		res := refreshCard(ce, login, items, msg)
+		counts[res]++
+	}
+	ce.Log.Info().
+		Int("updated", counts[refreshUpdated]).
+		Int("skipped", counts[refreshSkipped]).
+		Int("failed", counts[refreshFailed]).
+		Msg("Refreshed CTA buttons")
+	ce.Reply("Refreshed %d message(s), skipped %d, failed %d", counts[refreshUpdated], counts[refreshSkipped], counts[refreshFailed])
+}
+
+func samePostbacks(a, b []*metaid.PostbackButton) bool {
+	return slices.EqualFunc(a, b, func(x, y *metaid.PostbackButton) bool {
+		return x.Title == y.Title && x.Payload == y.Payload && x.CTAType == y.CTAType
+	})
+}
+
+// refreshCard updates the stored buttons and the Matrix event of one bridged card.
+// It never sends anything to Instagram.
+func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidetypes.ThreadItem, msg *database.Message) refreshResult {
+	log := ce.Log.With().Str("message_id", string(msg.ID)).Logger()
+	meta, ok := msg.Metadata.(*metaid.MessageMetadata)
+	if !ok || msg.MXID == "" {
+		return refreshSkipped
+	}
+	itemID := igconv.ItemIDFromMessageID(msg.ID)
+	if itemID == "" {
+		return refreshSkipped
+	}
+	var item *slidetypes.ThreadItem
+	for _, candidate := range items {
+		if candidate.MatchesID(itemID) {
+			if item != nil {
+				return refreshSkipped
+			}
+			item = candidate
+		}
+	}
+	if item == nil {
+		return refreshSkipped
+	}
+	ctas := item.AllCTAButtons()
+	postbacks := igconv.PostbackButtonsFromCTAs(ctas)
+	ctaHTML := igconv.BuildCTAButtonsHTML(ctas, postbacks)
+	if ctaHTML == "" {
+		return refreshSkipped
+	}
+	if !samePostbacks(meta.PostbackButtons, postbacks) {
+		meta.PostbackButtons = postbacks
+		if err := ce.Bridge.DB.Message.Update(ce.Ctx, msg); err != nil {
+			log.Warn().Err(err).Msg("Failed to save refreshed postback buttons")
+		}
+	}
+	sender := bridgev2.EventSender{
+		IsFromMe:    networkid.UserLoginID(msg.SenderID) == login.ID,
+		Sender:      msg.SenderID,
+		SenderLogin: networkid.UserLoginID(msg.SenderID),
+	}
+	intent, ok := ce.Portal.GetIntentFor(ce.Ctx, sender, login, bridgev2.RemoteEventEdit)
+	if !ok {
+		log.Warn().Msg("Failed to get intent for refresh edit")
+		return refreshFailed
+	}
+	evt, err := intent.GetEvent(ce.Ctx, ce.Portal.MXID, msg.MXID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get Matrix event for refresh")
+		return refreshFailed
+	}
+	content := currentMessageContent(evt)
+	if content == nil {
+		return refreshFailed
+	}
+	oldHTML := content.FormattedBody
+	if oldHTML == "" {
+		if content.MsgType != event.MsgText && content.MsgType != event.MsgNotice {
+			return refreshSkipped
+		}
+		oldHTML = event.TextToHTML(content.Body)
+	}
+	newHTML := igconv.ReplaceOrAppendCTAButtonsHTML(oldHTML, ctaHTML)
+	if newHTML == content.FormattedBody {
+		return refreshSkipped
+	}
+	newContent := *content
+	converted := format.HTMLToContent(newHTML)
+	newContent.Body = converted.Body
+	newContent.Format = event.FormatHTML
+	newContent.FormattedBody = newHTML
+	newContent.NewContent = nil
+	newContent.RelatesTo = nil
+	newContent.SetEdit(msg.MXID)
+	_, err = intent.SendMessage(ce.Ctx, ce.Portal.MXID, event.EventMessage, &event.Content{
+		Parsed: &newContent,
+		Raw:    map[string]any{"com.beeper.dont_render_edited": true},
+	}, &bridgev2.MatrixSendExtra{MessageMeta: msg})
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to send refresh edit")
+		return refreshFailed
+	}
+	return refreshUpdated
+}
+
+// currentMessageContent returns the latest content of a message event, using the bundled
+// latest edit if the homeserver provided one.
+func currentMessageContent(evt *event.Event) *event.MessageEventContent {
+	if edit := evt.Unsigned.Relations.GetLatestEdit(); edit != nil {
+		if edit.Content.Parsed == nil {
+			_ = edit.Content.ParseRaw(edit.Type)
+		}
+		if editContent := edit.Content.AsMessage(); editContent != nil && editContent.NewContent != nil {
+			return editContent.NewContent
+		}
+	}
+	return evt.Content.AsMessage()
 }

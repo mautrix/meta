@@ -46,7 +46,7 @@ func (ic *IGConnector) Init(bridge *bridgev2.Bridge) {
 	ic.DB = metadb.New(bridge.ID, bridge.DB.Database, ic.Bridge.Log.With().Str("db_section", "meta").Logger())
 	ic.MsgConv = igconv.New(bridge, ic.DB)
 	ic.MsgConv.DisableViewOnce = ic.Config.DisableViewOnce
-	bridge.Commands.(*commands.Processor).AddHandlers(cmdTap)
+	bridge.Commands.(*commands.Processor).AddHandlers(cmdTap, cmdRefresh)
 }
 
 func (ic *IGConnector) Start(ctx context.Context) error {
