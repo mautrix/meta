@@ -166,6 +166,15 @@ func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks []*metaid.Postb
 	return xmaCTAButtonsHTML(ctas, postbacks)
 }
 
+// HasKnownCTAFooter reports whether a formatted body already contains a CTA footer that
+// ReplaceOrAppendCTAButtonsHTML would replace or strip.
+func HasKnownCTAFooter(formattedBody string) bool {
+	return strings.Contains(formattedBody, ctaBlockOpen) ||
+		strings.Contains(formattedBody, appFallbackSnippet) ||
+		oldTapListRegex.MatchString(formattedBody) ||
+		oldLinkRunRegex.MatchString(formattedBody)
+}
+
 // ReplaceOrAppendCTAButtonsHTML puts ctaHTML into a formatted body: it replaces an existing
 // marked CTA block, or otherwise strips the known old CTA footers and appends the new block.
 // Everything else (caption, media description) is kept.

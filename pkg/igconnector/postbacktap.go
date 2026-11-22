@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,9 +28,13 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
 )
+
+// pendingPostbackTTL is how long a tap OTID is remembered if no echo arrives.
+const pendingPostbackTTL = 2 * time.Minute
 
 // newestPostbackMessage returns the newest of the given messages that has stored postback buttons.
 func newestPostbackMessage(msgs []*database.Message) *database.Message {
@@ -103,16 +108,36 @@ func (ic *IGClient) handleMatrixPostbackTap(ctx context.Context, msg *bridgev2.M
 	if err != nil {
 		return nil, true, err
 	}
-	clientContext, err := ic.Client.SendPostback(ctx, portalMeta.IGID, button.Title, button.Payload)
-	if err != nil {
+	otid := strconv.FormatInt(getOTID(msg.InputTransactionID), 10)
+	txnID := networkid.TransactionID(otid)
+	ic.pendingPostbackOTIDs.Add(otid)
+	time.AfterFunc(pendingPostbackTTL, func() { ic.pendingPostbackOTIDs.Remove(otid) })
+	// Instagram's message ID isn't known until the echo arrives, so save nothing now and let
+	// the framework save the Matrix event under the real ID when the echo with this transaction ID shows up.
+	msg.AddPendingToSave(nil, txnID, nil)
+	if _, err = ic.Client.SendPostbackWithContext(ctx, portalMeta.IGID, button.Title, button.Payload, otid); err != nil {
+		msg.RemovePending(txnID)
+		ic.pendingPostbackOTIDs.Remove(otid)
 		return nil, true, wrapInstagramError(err)
 	}
 	zerolog.Ctx(ctx).Debug().Msg("Sent Matrix message as a postback button tap")
-	return &bridgev2.MatrixMessageResponse{
-		DB: &database.Message{
-			ID:        metaid.MakeFBMessageID("postback-" + clientContext),
-			SenderID:  networkid.UserID(ic.UserLogin.ID),
-			Timestamp: time.UnixMilli(msg.Event.Timestamp),
-		},
-	}, true, nil
+	return &bridgev2.MatrixMessageResponse{Pending: true}, true, nil
+}
+
+// postbackTransactionID returns the transaction ID to attach to the echo of a postback tap
+// sent from Matrix, or an empty ID for every other message.
+func (ic *IGClient) postbackTransactionID(msg *slidetypes.Message) networkid.TransactionID {
+	if msg == nil || !ic.takePendingPostbackOTID(msg.OfflineThreadingID) {
+		return ""
+	}
+	return networkid.TransactionID(msg.OfflineThreadingID)
+}
+
+// takePendingPostbackOTID reports whether the OTID belongs to a pending postback tap, and forgets it.
+func (ic *IGClient) takePendingPostbackOTID(otid string) bool {
+	if otid == "" || !ic.pendingPostbackOTIDs.Has(otid) {
+		return false
+	}
+	ic.pendingPostbackOTIDs.Remove(otid)
+	return true
 }

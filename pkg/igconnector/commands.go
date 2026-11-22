@@ -213,7 +213,7 @@ func fnRefresh(ce *commands.Event) {
 		Int("skipped", counts[refreshSkipped]).
 		Int("failed", counts[refreshFailed]).
 		Msg("Refreshed CTA buttons")
-	ce.Reply("Refreshed %d message(s), skipped %d, failed %d", counts[refreshUpdated], counts[refreshSkipped], counts[refreshFailed])
+	ce.Reply("Refreshed %d message(s) (including stored buttons), skipped %d, failed %d", counts[refreshUpdated], counts[refreshSkipped], counts[refreshFailed])
 }
 
 func samePostbacks(a, b []*metaid.PostbackButton) bool {
@@ -252,11 +252,19 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 	if ctaHTML == "" {
 		return refreshSkipped
 	}
-	if !samePostbacks(meta.PostbackButtons, postbacks) {
+	metaChanged := !samePostbacks(meta.PostbackButtons, postbacks)
+	if metaChanged {
 		meta.PostbackButtons = postbacks
 		if err := ce.Bridge.DB.Message.Update(ce.Ctx, msg); err != nil {
 			log.Warn().Err(err).Msg("Failed to save refreshed postback buttons")
 		}
+	}
+	// Nothing to edit in Matrix: count as updated only if the stored buttons were rewritten.
+	noEdit := func() refreshResult {
+		if metaChanged {
+			return refreshUpdated
+		}
+		return refreshSkipped
 	}
 	sender := bridgev2.EventSender{
 		IsFromMe:    networkid.UserLoginID(msg.SenderID) == login.ID,
@@ -273,20 +281,24 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 		log.Warn().Err(err).Msg("Failed to get Matrix event for refresh")
 		return refreshFailed
 	}
-	content := currentMessageContent(evt)
+	content, bundledEdit := currentMessageContent(evt)
 	if content == nil {
 		return refreshFailed
 	}
 	oldHTML := content.FormattedBody
 	if oldHTML == "" {
 		if content.MsgType != event.MsgText && content.MsgType != event.MsgNotice {
-			return refreshSkipped
+			return noEdit()
 		}
 		oldHTML = event.TextToHTML(content.Body)
 	}
+	if !shouldEditRefreshedCard(bundledEdit, oldHTML) {
+		log.Debug().Msg("Skipping refresh edit: latest content unknown and no CTA footer to replace")
+		return noEdit()
+	}
 	newHTML := igconv.ReplaceOrAppendCTAButtonsHTML(oldHTML, ctaHTML)
 	if newHTML == content.FormattedBody {
-		return refreshSkipped
+		return noEdit()
 	}
 	newContent := *content
 	converted := format.HTMLToContent(newHTML)
@@ -307,16 +319,23 @@ func refreshCard(ce *commands.Event, login *bridgev2.UserLogin, items []*slidety
 	return refreshUpdated
 }
 
+// shouldEditRefreshedCard decides whether a refresh may send a Matrix edit. Without a bundled
+// latest edit the content is the original event, which may predate an edit that resolved the media
+// caption, so it is only edited if it already has a CTA footer to replace.
+func shouldEditRefreshedCard(bundledEdit bool, html string) bool {
+	return bundledEdit || igconv.HasKnownCTAFooter(html)
+}
+
 // currentMessageContent returns the latest content of a message event, using the bundled
-// latest edit if the homeserver provided one.
-func currentMessageContent(evt *event.Event) *event.MessageEventContent {
+// latest edit if the homeserver provided one. The bool is true if the content came from an edit.
+func currentMessageContent(evt *event.Event) (*event.MessageEventContent, bool) {
 	if edit := evt.Unsigned.Relations.GetLatestEdit(); edit != nil {
 		if edit.Content.Parsed == nil {
 			_ = edit.Content.ParseRaw(edit.Type)
 		}
 		if editContent := edit.Content.AsMessage(); editContent != nil && editContent.NewContent != nil {
-			return editContent.NewContent
+			return editContent.NewContent, true
 		}
 	}
-	return evt.Content.AsMessage()
+	return evt.Content.AsMessage(), false
 }

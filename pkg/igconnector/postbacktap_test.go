@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"go.mau.fi/util/exsync"
 	"maunium.net/go/mautrix/bridgev2/database"
 
+	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -44,5 +46,41 @@ func TestSelectPostbackForText(t *testing.T) {
 	}
 	if got := selectPostbackForText(nil, recent, "  "); got != nil {
 		t.Errorf("empty text: %v", got)
+	}
+}
+
+func TestShouldEditRefreshedCard(t *testing.T) {
+	caption := `<p>Resolved caption</p>`
+	if shouldEditRefreshedCard(false, caption) {
+		t.Error("caption-only original must not be edited")
+	}
+	if !shouldEditRefreshedCard(true, caption) {
+		t.Error("bundled latest edit may be edited")
+	}
+	for name, html := range map[string]string{
+		"app fallback": `<p>Hi<br>Use the Instagram app to click buttons</p>`,
+		"link run":     `<p>Cap</p><p><a href="https://a.example">A</a> - <a href="https://b.example">B</a></p>`,
+		"marker":       `<p>Cap</p><div data-ig-cta=""><ul></ul></div>`,
+	} {
+		if !shouldEditRefreshedCard(false, html) {
+			t.Errorf("%s: footer in original must allow edit", name)
+		}
+	}
+}
+
+func TestPendingPostbackOTID(t *testing.T) {
+	ic := &IGClient{pendingPostbackOTIDs: exsync.NewSet[string]()}
+	ic.pendingPostbackOTIDs.Add("123")
+	if got := ic.postbackTransactionID(&slidetypes.Message{OfflineThreadingID: "999"}); got != "" {
+		t.Errorf("unknown OTID got txn %q", got)
+	}
+	if got := ic.postbackTransactionID(&slidetypes.Message{}); got != "" {
+		t.Errorf("empty OTID got txn %q", got)
+	}
+	if got := ic.postbackTransactionID(&slidetypes.Message{OfflineThreadingID: "123"}); got != "123" {
+		t.Errorf("pending OTID got txn %q", got)
+	}
+	if got := ic.postbackTransactionID(&slidetypes.Message{OfflineThreadingID: "123"}); got != "" {
+		t.Errorf("OTID must be consumed, got %q", got)
 	}
 }

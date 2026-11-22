@@ -357,3 +357,21 @@ func TestPickPostbackButtonsByMessageID(t *testing.T) {
 		t.Errorf("unrelated ID must not match: got %+v", got)
 	}
 }
+
+func TestHasKnownCTAFooter(t *testing.T) {
+	for _, html := range []string{``, `<p>Just a caption - with a dash</p>`, `<p><a href="https://a.example">only one</a></p>`} {
+		if HasKnownCTAFooter(html) {
+			t.Errorf("%q: not a footer", html)
+		}
+	}
+	for _, html := range []string{
+		`<p>x</p><div data-ig-cta=""></div>`,
+		`<p>x<br>Use the Instagram app to click buttons</p>`,
+		`<p><a href="https://a.example">A</a> - <a href="https://b.example">B</a></p>`,
+		`<ol><li>A</li></ol><p>Tap a button with <code>!ig tap N</code>.</p>`,
+	} {
+		if !HasKnownCTAFooter(html) {
+			t.Errorf("%q: footer not detected", html)
+		}
+	}
+}

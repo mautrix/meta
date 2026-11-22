@@ -190,12 +190,20 @@ func newSendItemPostback(threadID, title, payload, clientContext string) *sendIt
 // SendPostback taps a postback button by publishing a send_item request over the mqttbypass
 // socket. It doesn't wait for a response from the server.
 func (c *Client) SendPostback(ctx context.Context, threadID, title, payload string) (string, error) {
+	return c.SendPostbackWithContext(ctx, threadID, title, payload, "")
+}
+
+// SendPostbackWithContext is like SendPostback, but uses the given client context (the
+// offline threading ID) instead of generating one. An empty clientContext generates one.
+func (c *Client) SendPostbackWithContext(ctx context.Context, threadID, title, payload, clientContext string) (string, error) {
 	if c == nil {
 		return "", ErrClientIsNil
 	} else if threadID == "" || title == "" || payload == "" {
 		return "", errors.New("thread ID, button title and postback payload are required")
 	}
-	clientContext := strconv.FormatInt(methods.GenerateEpochID(), 10)
+	if clientContext == "" {
+		clientContext = strconv.FormatInt(methods.GenerateEpochID(), 10)
+	}
 	body, err := json.Marshal(newSendItemPostback(threadID, title, payload, clientContext))
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal postback request: %w", err)
