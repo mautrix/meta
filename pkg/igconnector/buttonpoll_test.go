@@ -360,11 +360,26 @@ func TestPollVoteAndSignedLinkShareOneSend(t *testing.T) {
 		if _, err := f.vote("", "2"); !errors.Is(err, errButtonAlreadySent) {
 			t.Fatalf("vote on the clicked button: %v", err)
 		}
-		if f.sends() != 0 || len(f.matrix.ends()) != 0 {
-			t.Errorf("the vote sent %d and ended %d after the link already sent", f.sends(), len(f.matrix.ends()))
+		if f.sends() != 0 {
+			t.Errorf("the vote sent %d taps to Instagram after the link already sent", f.sends())
 		}
-		if _, err := f.vote("", "1"); err != nil || f.sends() != 1 {
-			t.Errorf("another button is still its own tap: %v, %d sends", err, f.sends())
+		ends := f.matrix.ends()
+		if len(ends) != 1 {
+			t.Fatalf("the button was sent, so the vote must end the poll: %d ends", len(ends))
+		}
+		if rel, _ := ends[0].raw["m.relates_to"].(map[string]any); ends[0].sender != "card-ghost" || rel["event_id"] != id.EventID("$poll") {
+			t.Errorf("end not sent by the card's ghost against the poll: %+v", ends[0])
+		}
+		for _, answer := range []string{"2", "1"} {
+			if _, err := f.vote("", answer); !errors.Is(err, errButtonAlreadySent) {
+				t.Errorf("vote %q on the ended poll: %v", answer, err)
+			}
+		}
+		if f.sends() != 0 || len(f.matrix.ends()) != 1 {
+			t.Errorf("votes on the ended poll sent %d taps and %d more ends", f.sends(), len(f.matrix.ends())-1)
+		}
+		if click(h, target(f, 1, igconv.TapPostback)) != http.StatusOK || linkSends.Load() != 2 {
+			t.Error("a link for a different button must still send")
 		}
 	})
 	t.Run("vote first, then link", func(t *testing.T) {

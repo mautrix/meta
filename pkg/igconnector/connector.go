@@ -38,8 +38,9 @@ type IGConnector struct {
 	tapServer *http.Server
 	// tapOnce makes a button send at most once whether it came from a signed link or a poll vote.
 	tapOnce tapOnce
-	// pollAttachLock serializes attaching button polls to old cards, and pollAttached remembers
-	// the cards that got one in this process, so two refreshes can't send two polls.
+	// pollAttachLock serializes attaching button polls to old cards. pollAttached remembers the
+	// cards that got one in this process, as a shortcut: the database, and the pending record in
+	// the bridge KV store if a poll's row couldn't be saved, are what survive a restart.
 	pollAttachLock sync.Mutex
 	pollAttached   map[string]struct{}
 }

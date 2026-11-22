@@ -18,6 +18,7 @@ package igconnector
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -224,5 +225,136 @@ func TestAttachButtonPollConcurrentRefreshesSendOnce(t *testing.T) {
 	wg.Wait()
 	if attached.Load() != 1 || len(f.polls()) != 1 || len(f.parts(t)) != 2 {
 		t.Errorf("attached %d times, %d polls sent, %d parts", attached.Load(), len(f.polls()), len(f.parts(t)))
+	}
+}
+
+const (
+	// A database that rejects the row of the button poll, like a busy or full one.
+	failPollRowInserts  = `CREATE TRIGGER fail_poll_rows BEFORE INSERT ON message WHEN NEW.part_id = 'buttonpoll' BEGIN SELECT RAISE(ABORT, 'injected insert failure'); END`
+	allowPollRowInserts = `DROP TRIGGER fail_poll_rows`
+	failKVWrites        = `CREATE TRIGGER fail_kv_writes BEFORE INSERT ON kv_store BEGIN SELECT RAISE(ABORT, 'injected kv failure'); END`
+)
+
+func (f *attachFixture) exec(t *testing.T, query string) {
+	t.Helper()
+	if _, err := f.connector.Bridge.DB.Exec(context.Background(), query); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// restart drops every bit of in-memory state: only the bridge database is left.
+func (f *attachFixture) restart() {
+	f.connector = &IGConnector{Bridge: f.connector.Bridge}
+}
+
+func setInsertRetryWait(t *testing.T, wait func(context.Context, int)) {
+	t.Helper()
+	old := waitBeforeButtonPollInsertRetry
+	waitBeforeButtonPollInsertRetry = wait
+	t.Cleanup(func() { waitBeforeButtonPollInsertRetry = old })
+}
+
+func (f *attachFixture) markerValue() (string, error) {
+	return f.connector.Bridge.DB.KV.GetWithError(context.Background(), pendingButtonPollKey(f.card))
+}
+
+func TestAttachButtonPollFailedInsertAfterSendIsRememberedAcrossRestart(t *testing.T) {
+	ctx := context.Background()
+	f := newAttachFixture(t)
+	f.exec(t, failPollRowInserts)
+	var retries int
+	setInsertRetryWait(t, func(context.Context, int) { retries++ })
+
+	if attached, err := f.attach(f.card); attached || err == nil {
+		t.Fatalf("attach with a failing insert = %v, %v", attached, err)
+	}
+	if len(f.polls()) != 1 || retries != buttonPollInsertAttempts-1 || len(f.parts(t)) != 1 {
+		t.Fatalf("%d polls sent, %d retries, %d parts", len(f.polls()), retries, len(f.parts(t)))
+	}
+	pending, err := f.connector.loadPendingButtonPoll(ctx, f.card)
+	if err != nil || pending == nil || pending.EventID != "$sent1" || pending.Metadata == nil || !pending.Metadata.ButtonPoll ||
+		len(pending.Metadata.PostbackButtons) != 1 || len(pending.Metadata.QuickReplies) != 1 {
+		t.Fatalf("the sent poll must be remembered durably: %+v, %v", pending, err)
+	}
+
+	f.restart()
+	if attached, err := f.attach(f.card); attached || err == nil {
+		t.Fatalf("attach after a restart with the database still failing = %v, %v", attached, err)
+	}
+	if len(f.polls()) != 1 || len(f.parts(t)) != 1 {
+		t.Fatalf("a restart must not send a second poll: %d sent, %d parts", len(f.polls()), len(f.parts(t)))
+	}
+	if _, err = f.markerValue(); err != nil {
+		t.Fatalf("the record must stay until the row is saved: %v", err)
+	}
+
+	f.exec(t, allowPollRowInserts)
+	f.restart()
+	if attached, err := f.attach(f.card); !attached || err != nil {
+		t.Fatalf("attach once the database works = %v, %v", attached, err)
+	}
+	parts := f.parts(t)
+	if len(f.polls()) != 1 || len(parts) != 2 {
+		t.Fatalf("%d polls sent, %d parts", len(f.polls()), len(parts))
+	}
+	poll := parts[1]
+	meta, _ := poll.Metadata.(*metaid.MessageMetadata)
+	if poll.PartID != metaid.ButtonPollPartID || poll.MXID != "$sent1" || poll.SenderID != "card-ghost" || poll.Room != f.card.Room ||
+		!poll.Timestamp.Equal(f.card.Timestamp) || !isButtonPoll(poll) || len(meta.PostbackButtons) != 1 || len(meta.QuickReplies) != 1 {
+		t.Errorf("the saved poll isn't the one that was sent: %+v (%+v)", poll, meta)
+	}
+	if _, err = f.markerValue(); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("the record must be gone once the row is saved: %v", err)
+	}
+	if again, err := f.attach(f.card); again || err != nil || len(f.polls()) != 1 || len(f.parts(t)) != 2 {
+		t.Errorf("a later attach = %v, %v with %d polls, %d parts", again, err, len(f.polls()), len(f.parts(t)))
+	}
+}
+
+func TestAttachButtonPollRetriesInsertBeforeParkingIt(t *testing.T) {
+	f := newAttachFixture(t)
+	f.exec(t, failPollRowInserts)
+	var retries int
+	setInsertRetryWait(t, func(context.Context, int) {
+		if retries++; retries == 1 {
+			f.exec(t, allowPollRowInserts)
+		}
+	})
+	if attached, err := f.attach(f.card); !attached || err != nil {
+		t.Fatalf("attach = %v, %v", attached, err)
+	}
+	if len(f.polls()) != 1 || len(f.parts(t)) != 2 || retries != 1 {
+		t.Errorf("%d polls sent, %d parts, %d retries", len(f.polls()), len(f.parts(t)), retries)
+	}
+	if _, err := f.markerValue(); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("nothing needed parking: %v", err)
+	}
+}
+
+func TestAttachButtonPollNeverResendsInProcessEvenIfNothingCouldBeSaved(t *testing.T) {
+	f := newAttachFixture(t)
+	f.exec(t, failPollRowInserts)
+	f.exec(t, failKVWrites)
+	setInsertRetryWait(t, func(context.Context, int) {})
+	if attached, err := f.attach(f.card); attached || err == nil {
+		t.Fatalf("attach = %v, %v", attached, err)
+	}
+	if attached, err := f.attach(f.card); attached || err != nil || len(f.polls()) != 1 {
+		t.Errorf("second attach = %v, %v with %d polls", attached, err, len(f.polls()))
+	}
+}
+
+func TestAttachButtonPollUnreadablePendingRecordNeverResends(t *testing.T) {
+	f := newAttachFixture(t)
+	f.connector.Bridge.DB.KV.Set(context.Background(), pendingButtonPollKey(f.card), "not json")
+	if attached, err := f.attach(f.card); attached || err == nil {
+		t.Fatalf("attach = %v, %v", attached, err)
+	}
+	f.connector.Bridge.DB.KV.Set(context.Background(), pendingButtonPollKey(f.card), `{"event_id":"$x"}`)
+	if attached, err := f.attach(f.card); attached || err == nil {
+		t.Fatalf("attach with an incomplete record = %v, %v", attached, err)
+	}
+	if len(f.matrix.sends) != 0 || len(f.parts(t)) != 1 {
+		t.Errorf("%d events sent, %d parts: the poll may already exist, so nothing may be sent", len(f.matrix.sends), len(f.parts(t)))
 	}
 }

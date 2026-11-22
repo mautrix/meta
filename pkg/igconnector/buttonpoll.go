@@ -90,8 +90,9 @@ func buttonForPollVote(poll *database.Message, content *event.PollResponseEventC
 }
 
 // HandleMatrixPollVote taps the button that a vote on a button poll selects, then ends the poll.
-// Votes never reach Instagram as poll votes, and only a successful send closes the poll, so a
-// failed send can be retried. A button is sent at most once, even if a signed link got there first.
+// Votes never reach Instagram as poll votes, and only a button that was successfully sent closes
+// the poll, so a failed send can be retried. A button is sent at most once, even if a signed link
+// got there first: the vote then sends nothing, but still ends the poll and gets errButtonAlreadySent.
 func (ic *IGClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.MatrixPollVote) (*bridgev2.MatrixMessageResponse, error) {
 	button, idx, err := buttonForPollVote(msg.VoteTo, msg.Content)
 	if err != nil {
@@ -99,6 +100,7 @@ func (ic *IGClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.Matr
 	}
 	once := &ic.Main.tapOnce
 	var otid string
+	var sentBefore bool
 	pollAlreadyDone, err := once.do(tapKey(msg.Portal.PortalKey, msg.VoteTo.ID, 0, ""), func() error {
 		buttonAlreadySent, err := once.do(tapKey(msg.Portal.PortalKey, msg.VoteTo.ID, idx, igconv.ButtonKind(button)), func() error {
 			portalMeta, err := ic.ensureIGID(ctx, msg.Portal)
@@ -123,15 +125,16 @@ func (ic *IGClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.Matr
 		if err != nil {
 			return err
 		}
-		if buttonAlreadySent {
-			return errButtonAlreadySent
-		}
+		// The button is sent exactly once, by this vote or by a signed link that got there
+		// first. Either way the poll is done. Returning nil also records that, so later votes
+		// don't end it again.
+		sentBefore = buttonAlreadySent
 		ic.endButtonPoll(ctx, msg.Portal, msg.VoteTo)
 		return nil
 	})
 	if err != nil {
 		return nil, err
-	} else if pollAlreadyDone {
+	} else if pollAlreadyDone || sentBefore {
 		return nil, errButtonAlreadySent
 	}
 	return &bridgev2.MatrixMessageResponse{DB: &database.Message{
