@@ -2261,7 +2261,10 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					if (!isMetaHost || url.pathname !== "/oauth2/redirect/") {
 						return;
 					}
-					resolve({oauth_token: window.location.href});
+					const fragment = new URLSearchParams(url.hash.slice(1));
+					if (url.searchParams.get("error") || fragment.get("error")) {
+						resolve({oauth_token: window.location.href});
+					}
 				})`,
 			},
 		}
