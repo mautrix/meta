@@ -143,6 +143,7 @@ type tapOnce struct {
 	mu       sync.Mutex
 	done     map[string]struct{}
 	inflight map[string]*tapFlight
+	onWait   func() // test hook: called when a request waits for an in-flight send
 }
 
 type tapFlight struct {
@@ -164,7 +165,11 @@ func (o *tapOnce) do(token string, fn func() error) (already bool, err error) {
 		return true, nil
 	}
 	if f, ok := o.inflight[token]; ok {
+		onWait := o.onWait
 		o.mu.Unlock()
+		if onWait != nil {
+			onWait()
+		}
 		<-f.done
 		if f.err != nil {
 			return false, f.err

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
@@ -268,9 +269,11 @@ func TestTapHTTPIdempotencyAndRetry(t *testing.T) {
 	}
 
 	started := make(chan struct{})
+	waiting := make(chan struct{})
 	release := make(chan struct{})
 	var concurrent atomic.Int32
 	handler.once = newTapOnce()
+	handler.once.onWait = func() { close(waiting) }
 	handler.resolve = func(context.Context, igconv.TapTarget) (*tapAction, error) {
 		return &tapAction{button: &metaid.PostbackButton{Title: "Go", CTAType: string(igconv.TapPostback)}, send: func(context.Context, *metaid.PostbackButton) error {
 			concurrent.Add(1)
@@ -291,6 +294,11 @@ func TestTapHTTPIdempotencyAndRetry(t *testing.T) {
 		}(i)
 	}
 	<-started
+	select {
+	case <-waiting:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second request did not wait on the in-flight send")
+	}
 	close(release)
 	wg.Wait()
 	if concurrent.Load() != 1 || codes[0] != 200 || codes[1] != 200 {
