@@ -219,6 +219,9 @@ type CTAButton struct {
 	// in that response, so both plausible names are accepted (and Unrecognized is scanned).
 	PostbackPayload string `json:"postback_payload,omitempty"`
 	Payload         string `json:"payload,omitempty"`
+	// PlatformToken is where live ig-direct_v2 responses carry the payload of postback
+	// buttons, as an object like {"postback": ...}. Kept raw as the value type isn't known.
+	PlatformToken json.RawMessage `json:"platform_token,omitempty"`
 
 	Unrecognized map[string]any `json:",unknown"`
 }
@@ -227,6 +230,7 @@ type CTAButton struct {
 // isn't supported by the JSON implementation in use, as Postback() scans it for the payload.
 func (b *CTAButton) UnmarshalJSON(data []byte) error {
 	type plain CTAButton
+	*b = CTAButton{}
 	if err := json.Unmarshal(data, (*plain)(b)); err != nil {
 		return err
 	}
@@ -237,7 +241,7 @@ func (b *CTAButton) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil
 	}
-	for _, known := range []string{"action_url", "cta_type", "title", "postback_payload", "payload"} {
+	for _, known := range []string{"action_url", "cta_type", "title", "postback_payload", "payload", "platform_token"} {
 		delete(raw, known)
 	}
 	if len(raw) > 0 {
@@ -261,8 +265,67 @@ func (b *CTAButton) Postback() string {
 	if b.Payload != "" {
 		return b.Payload
 	}
+	if payload := extractPlatformTokenPostback(b.PlatformToken); payload != "" {
+		return payload
+	}
 	for _, key := range sortedKeys(b.Unrecognized) {
-		if str, ok := b.Unrecognized[key].(string); ok && strings.Contains(str, PostbackPayloadMarker) {
+		switch val := b.Unrecognized[key].(type) {
+		case string:
+			if strings.Contains(val, PostbackPayloadMarker) {
+				return val
+			}
+		case map[string]any:
+			if str := markerString(val); str != "" {
+				return str
+			}
+		}
+	}
+	return ""
+}
+
+// markerString returns the first string value (in sorted key order) containing
+// PostbackPayloadMarker.
+func markerString(m map[string]any) string {
+	for _, key := range sortedKeys(m) {
+		if str, ok := m[key].(string); ok && strings.Contains(str, PostbackPayloadMarker) {
+			return str
+		}
+	}
+	return ""
+}
+
+func stringField(m map[string]any, key string) string {
+	str, _ := m[key].(string)
+	return str
+}
+
+// extractPlatformTokenPostback pulls the postback payload out of a button's platform_token.
+// Its `postback` field may be the payload string itself or an object wrapping it.
+func extractPlatformTokenPostback(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var token map[string]any
+	if err := json.Unmarshal(raw, &token); err != nil {
+		return ""
+	}
+	switch pb := token["postback"].(type) {
+	case string:
+		if pb != "" {
+			return pb
+		}
+	case map[string]any:
+		for _, key := range []string{"postback_payload", "payload", "token", "data"} {
+			if str := stringField(pb, key); str != "" {
+				return str
+			}
+		}
+		if str := markerString(pb); str != "" {
+			return str
+		}
+	}
+	for _, key := range []string{"postback_payload", "payload"} {
+		if str := stringField(token, key); str != "" {
 			return str
 		}
 	}

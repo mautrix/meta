@@ -36,6 +36,16 @@ func TestCTAButtonPostback(t *testing.T) {
 		{"missing payload", `{"cta_type":"postback","action_url":"","title":"Yes"}`, ""},
 		{"GT-PB in unrecognized", `{"cta_type":"postback","title":"Yes","some_other_key":"1:GT-PB:ACT::cc33","unrelated":"abc"}`, "1:GT-PB:ACT::cc33"},
 		{"payload without marker still accepted", `{"cta_type":"postback","title":"Yes","payload":"opaque"}`, "opaque"},
+		{"platform_token postback marker string", `{"cta_type":"postback","title":"Yes","platform_token":{"postback":"1:GT-PB:ACT::dd44"}}`, "1:GT-PB:ACT::dd44"},
+		{"platform_token postback opaque string", `{"cta_type":"postback","title":"Yes","platform_token":{"postback":"opaque"}}`, "opaque"},
+		{"platform_token postback object", `{"cta_type":"postback","title":"Yes","platform_token":{"postback":{"postback_payload":"1:GT-PB:ACT::ee55"}}}`, "1:GT-PB:ACT::ee55"},
+		{"platform_token postback object token", `{"cta_type":"postback","title":"Yes","platform_token":{"postback":{"token":"tok"}}}`, "tok"},
+		{"platform_token postback object marker field", `{"cta_type":"postback","title":"Yes","platform_token":{"postback":{"zzz":"1:GT-PB:ACT::ff66","a":"nope"}}}`, "1:GT-PB:ACT::ff66"},
+		{"platform_token direct payload", `{"cta_type":"postback","title":"Yes","platform_token":{"payload":"direct"}}`, "direct"},
+		{"platform_token empty postback", `{"cta_type":"postback","title":"Yes","platform_token":{"postback":""}}`, ""},
+		{"platform_token not object", `{"cta_type":"postback","title":"Yes","platform_token":"str"}`, ""},
+		{"top-level payload beats platform_token", `{"cta_type":"postback","payload":"top","platform_token":{"postback":"tok"}}`, "top"},
+		{"marker one level deep in unrecognized", `{"cta_type":"postback","title":"Yes","wrapper":{"b":"x","a":"1:GT-PB:ACT::77"}}`, "1:GT-PB:ACT::77"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -79,5 +89,44 @@ func TestThreadDetailsGenericXMAItems(t *testing.T) {
 	}
 	if got := items[2].TimestampMS(); got != 0 {
 		t.Errorf("missing timestamp: got %d", got)
+	}
+}
+
+func TestCTAButtonReuseNoStaleState(t *testing.T) {
+	var b slidetypes.CTAButton
+	if err := json.Unmarshal([]byte(`{"cta_type":"postback","title":"A","stale_key":"1:GT-PB:ACT::old1"}`), &b); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Postback(); got != "1:GT-PB:ACT::old1" {
+		t.Fatalf("first Postback() = %q", got)
+	}
+	if err := json.Unmarshal([]byte(`{"cta_type":"postback","title":"B"}`), &b); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Unrecognized) != 0 {
+		t.Errorf("stale Unrecognized kept: %v", b.Unrecognized)
+	}
+	if got := b.Postback(); got != "" {
+		t.Errorf("stale Postback() = %q", got)
+	}
+
+	var tok slidetypes.CTAButton
+	if err := json.Unmarshal([]byte(`{"cta_type":"postback","title":"A","platform_token":"tok"}`), &tok); err != nil {
+		t.Fatal(err)
+	}
+	if len(tok.PlatformToken) == 0 {
+		t.Fatal("first unmarshal missing platform_token")
+	}
+	if err := json.Unmarshal([]byte(`{"cta_type":"postback","title":"B"}`), &tok); err != nil {
+		t.Fatal(err)
+	}
+	if len(tok.PlatformToken) != 0 {
+		t.Errorf("stale PlatformToken kept: %s", tok.PlatformToken)
+	}
+	if err := json.Unmarshal([]byte(`null`), &tok); err != nil {
+		t.Fatal(err)
+	}
+	if tok.Title != "" {
+		t.Errorf("null left Title = %q", tok.Title)
 	}
 }
