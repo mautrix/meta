@@ -14,6 +14,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
 )
 
 func cardMsg(_ string, ts time.Time, buttons ...*metaid.PostbackButton) *database.Message {
@@ -110,6 +111,23 @@ func TestSelectButtonForTextQuickReply(t *testing.T) {
 	}
 	if newestPostbackMessage([]*database.Message{qrOnly}) != qrOnly {
 		t.Error("quick-reply-only message must count as a button message")
+	}
+}
+
+func TestPlanRefreshEditCTAOnlyCard(t *testing.T) {
+	var item slidetypes.ThreadItem
+	raw := `{"item_id":"1","generic_xma":{"cta_buttons":[{"cta_type":"postback","title":"Go","postback_payload":"pb-1"}]}}`
+	if err := json.Unmarshal([]byte(raw), &item); err != nil {
+		t.Fatal(err)
+	}
+	card := igconv.CardHTMLFromThreadItem(&item)
+	cta := igconv.BuildCTAButtonsHTML(item.AllCTAButtons(), igconv.ButtonsFromItem(&item).Postbacks, nil)
+	if card == "" || cta == "" {
+		t.Fatalf("card=%q cta=%q", card, cta)
+	}
+	got, send := planRefreshEdit(card, cta, nil, errors.New("can't decrypt the event"))
+	if !send || got == nil || got.FormattedBody != card {
+		t.Fatalf("send=%v got=%+v", send, got)
 	}
 }
 

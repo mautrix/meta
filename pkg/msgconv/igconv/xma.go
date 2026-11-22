@@ -135,7 +135,12 @@ func CardHTMLFromThreadItem(item *slidetypes.ThreadItem) string {
 	if ctas := item.AllCTAButtons(); len(ctas) > 0 {
 		xma.CTAButtons = ctas
 	}
-	return CaptionHTML(xma, ButtonsFromItem(item))
+	buttons := ButtonsFromItem(item)
+	if cardHTML := CaptionHTML(xma, buttons); cardHTML != "" {
+		return cardHTML
+	}
+	// CTA-only card: no caption text, but the buttons still need refreshing.
+	return xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies)
 }
 
 func unwrapLinkShim(u *url.URL) *url.URL {
