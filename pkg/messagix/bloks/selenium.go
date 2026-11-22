@@ -1385,10 +1385,18 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 		if !definitelyNotPhoneNumberRegexp.MatchString(username) {
-			return nil, loginerrors.PhoneNumber
+			log.Info().Msg("Rejected phone number login attempt")
+			delete(userInput, "username")
+			delete(userInput, "password")
+			b.LastError = fmt.Sprintf("%s does not allow phone number login on this type of login", b.profile.serviceName)
+			break
 		}
-		if strings.Contains(username, ":") { // covers MXIDs
-			return nil, b.profile.errors.InvalidUsername
+		if strings.Contains(username, ":") {
+			log.Info().Msg("Rejected invalid username login attempt")
+			delete(userInput, "username")
+			delete(userInput, "password")
+			b.LastError = "That doesn't look like a valid username"
+			break
 		}
 
 		// Set up in case we don't navigate to a new page successfully

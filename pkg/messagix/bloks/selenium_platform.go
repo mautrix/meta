@@ -14,7 +14,6 @@ import (
 )
 
 type browserPlatformErrors struct {
-	InvalidUsername  bridgev2.RespError
 	MandatoryOAuth   bridgev2.RespError
 	NoSupportedMFA   bridgev2.RespError
 	ReCaptcha        bridgev2.RespError
@@ -55,7 +54,7 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 		autofillDomain:         "facebook.com",
 		stepIDPrefix:           "fi.mau.meta.messengerlite",
 		initialState:           StateInitialMessenger,
-		credentialsInstruction: "Enter your Facebook credentials. The Messenger network will only work with Facebook accounts.",
+		credentialsInstruction: "Enter your Facebook email address or username and password. The Messenger network will only work with Facebook accounts.",
 		loginRejected:          "Facebook rejected that login",
 		accountSelection:       "Choose the Facebook account to connect",
 		codeFieldName:          "One-time code sent to you",
@@ -66,7 +65,6 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 		findMFAMethods:         findMessengerMFAMethodOptions,
 	}
 	profile.errors = browserPlatformErrors{
-		InvalidUsername:  loginerrors.InvalidUsername,
 		MandatoryOAuth:   loginerrors.MandatoryOAuth,
 		NoSupportedMFA:   loginerrors.NoSupportedMFA,
 		ReCaptcha:        loginerrors.ReCaptcha,
@@ -100,10 +98,6 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 		return findMFAMethodOptions(page)
 	}
 	profile.errors = browserPlatformErrors{
-		InvalidUsername: loginerrors.WithMessage(
-			loginerrors.InvalidUsername,
-			"That doesn't look like a valid Instagram username or email address",
-		),
 		MandatoryOAuth: loginerrors.WithMessage(
 			loginerrors.MandatoryOAuth,
 			"Meta is requiring Google sign-in, which is not supported. Please add a different two-factor method in the official app or website",
