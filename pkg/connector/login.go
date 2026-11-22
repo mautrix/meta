@@ -341,7 +341,6 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 	if m.historyComplete != nil {
 		return m.MessengerHistoryLogin.SubmitUserInput(ctx, input)
 	}
-	m.webLogin = false
 	return m.proceed(ctx, input)
 }
 
@@ -386,7 +385,7 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
 	if err != nil {
 		if errors.Is(err, loginerrors.PhoneNumber) {
-			log.Debug().Msg("Handing phone number login to facebook.com")
+			log.Info().Msg("Handing phone number login to facebook.com")
 			return m.facebookWebLoginStep()
 		}
 		log.Error().Err(err).Msg("Login steps returned error")
