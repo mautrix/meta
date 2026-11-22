@@ -61,6 +61,22 @@ func (mc *MessageConverter) wrapXMAPreviewImage(ctx context.Context, xma *slidet
 }
 
 func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.XMAContent, buttons Buttons) *event.MessageEventContent {
+	if _, err := url.Parse(xma.TargetURL); err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
+	}
+	captionHTML := CaptionHTML(xma, buttons)
+	if captionHTML == "" {
+		return nil
+	}
+	return ptr.Ptr(format.HTMLToContent(captionHTML))
+}
+
+// CaptionHTML builds the formatted caption of an XMA card: eyebrow, title, subtitle, body, target
+// link and then the CTA buttons block. It returns "" if the card has no caption text or link.
+func CaptionHTML(xma *slidetypes.XMAContent, buttons Buttons) string {
+	if xma == nil {
+		return ""
+	}
 	var captionHTML string
 	if xma.EyebrowText != "" {
 		captionHTML += fmt.Sprintf("<blockquote>%s</blockquote>", html.EscapeString(xma.EyebrowText))
@@ -78,23 +94,48 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	if xma.CaptionBodyText != "" {
 		captionHTML += fmt.Sprintf("<p>%s</p>", event.TextToHTML(xma.CaptionBodyText))
 	}
-
-	targetURL, err := url.Parse(xma.TargetURL)
-	if err == nil {
+	if targetURL, err := url.Parse(xma.TargetURL); err == nil {
 		targetURL = unwrapLinkShim(targetURL)
-	}
-	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
-	} else if targetURL.String() != "" {
-		fullTargetURL := targetURL.String()
-		targetURL.RawQuery = ""
-		captionHTML += fmt.Sprintf(`<p><a href="%s">%s</a></p>`, html.EscapeString(fullTargetURL), html.EscapeString(targetURL.String()))
+		if targetURL.String() != "" {
+			fullTargetURL := targetURL.String()
+			targetURL.RawQuery = ""
+			captionHTML += fmt.Sprintf(`<p><a href="%s">%s</a></p>`, html.EscapeString(fullTargetURL), html.EscapeString(targetURL.String()))
+		}
 	}
 	if captionHTML == "" {
+		return ""
+	}
+	return captionHTML + xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies)
+}
+
+// XMAFromThreadItem decodes the generic_xma of a REST thread item, which is either an object or
+// an array whose first element is the card. It returns nil if there is none.
+func XMAFromThreadItem(item *slidetypes.ThreadItem) *slidetypes.XMAContent {
+	if item == nil || len(item.GenericXMA) == 0 {
 		return nil
 	}
-	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies)
-	return ptr.Ptr(format.HTMLToContent(captionHTML))
+	var xma slidetypes.XMAContent
+	if err := json.Unmarshal(item.GenericXMA, &xma); err == nil {
+		return &xma
+	}
+	var list []*slidetypes.XMAContent
+	if err := json.Unmarshal(item.GenericXMA, &list); err == nil && len(list) > 0 && list[0] != nil {
+		return list[0]
+	}
+	return nil
+}
+
+// CardHTMLFromThreadItem rebuilds the formatted body of a card (caption plus CTA buttons) from a
+// REST thread item alone, without the original Matrix event. It returns "" if there is nothing to render.
+func CardHTMLFromThreadItem(item *slidetypes.ThreadItem) string {
+	xma := XMAFromThreadItem(item)
+	if xma == nil {
+		return ""
+	}
+	if ctas := item.AllCTAButtons(); len(ctas) > 0 {
+		xma.CTAButtons = ctas
+	}
+	return CaptionHTML(xma, ButtonsFromItem(item))
 }
 
 func unwrapLinkShim(u *url.URL) *url.URL {
