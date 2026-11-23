@@ -129,7 +129,7 @@ func (c *Client) instagramCAAWebLoginVariables(page *instagramCAALoginPage, iden
 	}
 	keyID := page.encryption.Get("key_id")
 	publicKey := page.encryption.Get("public_key").String()
-	if keyID.Type != gjson.Number || keyID.Int() < 1 || keyID.Int() > 255 || keyID.Float() != float64(keyID.Int()) || len(publicKey) != 64 {
+	if keyID.Type != gjson.Number || keyID.Int() < 0 || keyID.Int() > 255 || keyID.Float() != float64(keyID.Int()) || len(publicKey) != 64 {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	encrypted, err := crypto.EncryptInstagramWebPassword(int(keyID.Int()), publicKey, password)
