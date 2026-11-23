@@ -166,6 +166,7 @@ func (m *MetaClient) requestMoreHistory(ctx context.Context, threadID, minTimest
 			Int64("thread_id", threadID).
 			Int64("min_timestamp_ms", minTimestampMS).
 			Str("min_message_id", minMessageID).
+			Strs("response_table_fields", resp.NonNilFields()).
 			Msg("Requested more history")
 		return true
 	}
@@ -298,7 +299,11 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					zerolog.Ctx(ctx).Warn().Msg("Backfill collector did not call done, but has all messages")
 					break Loop
 				} else if time.Since(start) > timeout {
-					zerolog.Ctx(ctx).Error().Msg("Waiting for backfill collector timed out")
+					zerolog.Ctx(ctx).Error().
+						Int64("thread_type", int64(params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType)).
+						Int64("reference_timestamp_ms", oldestMessageTS).
+						Int("re_requests", timeouts).
+						Msg("Waiting for backfill collector timed out")
 					if ErrorOnBackfillTimeout {
 						return nil, fmt.Errorf("failed to backfill history")
 					}
