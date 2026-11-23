@@ -713,7 +713,7 @@ func mainE() error {
 			return fmt.Errorf("tapping try another way button: %w", err)
 		}
 	} else if *doRecaptcha {
-		webview := bundle.FindDescendantIncludingEmbedded(bloks.FilterByComponent("webview"))
+		webview := bundle.FindDescendantIncludingEmbedded(bloks.FilterByComponent("webview", "iosWebview"))
 		fmt.Println(webview)
 		fmt.Println("URL:", webview.GetAttribute("url"))
 	} else if *doContinue {

@@ -27,6 +27,7 @@ type browserPlatformProfile struct {
 	isInstagram bool
 
 	serviceName             string
+	autofillDomain          string
 	stepIDPrefix            string
 	initialState            BrowserState
 	credentialsInstruction  string
@@ -51,6 +52,7 @@ type browserPlatformProfile struct {
 func browserProfile(platform types.Platform) browserPlatformProfile {
 	profile := browserPlatformProfile{
 		serviceName:            "Facebook",
+		autofillDomain:         "facebook.com",
 		stepIDPrefix:           "fi.mau.meta.messengerlite",
 		initialState:           StateInitialMessenger,
 		credentialsInstruction: "Enter your Facebook credentials. The Messenger network will only work with Facebook accounts.",
@@ -78,6 +80,7 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 
 	profile.isInstagram = true
 	profile.serviceName = "Instagram"
+	profile.autofillDomain = "instagram.com"
 	profile.stepIDPrefix = "fi.mau.meta.instagram.caa"
 	profile.initialState = StateInitialInstagram
 	profile.credentialsInstruction = "Enter your Instagram email or username and password."

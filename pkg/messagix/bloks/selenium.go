@@ -16,6 +16,7 @@ import (
 	"image"
 	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -144,9 +145,9 @@ func (comp *BloksTreeComponent) FindContainingButton() *BloksTreeComponent {
 	})
 }
 
-func FilterByComponent(compid BloksComponentID) func(comp *BloksTreeComponent) bool {
+func FilterByComponent(compids ...BloksComponentID) func(comp *BloksTreeComponent) bool {
 	return func(comp *BloksTreeComponent) bool {
-		return comp.ComponentID == compid
+		return slices.Contains(compids, comp.ComponentID)
 	}
 }
 
@@ -842,6 +843,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 			case "com.bloks.www.two_step_verification.entrypoint":
 				newState = b.profile.twoStepEntrypointState(page)
 				b.profile.logTwoStepEntrypoint(log, page, newState)
+				b.MFACanGoBack = hasTryAnotherWay(page)
 			case "com.bloks.www.two_step_verification.enter_text_captcha_code",
 				"com.bloks.www.caa.ar.sms_captcha",
 				"com.bloks.www.ap.anti_scripting.text_captcha":
@@ -1374,8 +1376,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername},
-						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername, AutofillDomain: b.profile.autofillDomain},
+						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -1555,7 +1557,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Instructions: instructions,
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword},
+						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -1893,7 +1895,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateReCaptchaPage:
-		webview := b.CurrentPage.FindDescendantIncludingEmbedded(FilterByComponent("webview"))
+		webview := b.CurrentPage.FindDescendantIncludingEmbedded(FilterByComponent("webview", "iosWebview"))
 		if webview == nil {
 			return nil, fmt.Errorf("can't find reCAPTCHA webview")
 		}
@@ -2037,7 +2039,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
+						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -2922,6 +2924,13 @@ func (profile browserPlatformProfile) twoStepEntrypointState(page *BloksBundle) 
 		return StatePasskeyPage
 	}
 	return StateMFALandingPage
+}
+
+func hasTryAnotherWay(page *BloksBundle) bool {
+	if page == nil {
+		return false
+	}
+	return page.FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Try another way")).FindContainingButton() != nil
 }
 
 func isPasskeyPrompt(page *BloksBundle) bool {

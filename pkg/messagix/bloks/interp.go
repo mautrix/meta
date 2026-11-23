@@ -1804,7 +1804,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				Args:     append([]BloksScriptNode{{Content: callback}}, call.Args[1:]...),
 			},
 		})
-	case "bk.action.callback.MakeWithScopeOnly":
+	case "bk.action.callback.Make", "bk.action.callback.MakeWithScopeOnly", "dyw":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.session_store.Get":
 		return BloksLiteralOf(i.SessionStore), nil
