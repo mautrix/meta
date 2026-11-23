@@ -7,29 +7,21 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
-)
-
-var (
-	mregFormPattern      = regexp.MustCompile(`(?is)<form\b[^>]*\baction=(?:"([^"]*mreg/login/submit[^"]*)"|'([^']*mreg/login/submit[^']*)')[^>]*>(.*?)</form>`)
-	mregInputTagPattern  = regexp.MustCompile(`(?i)<input\b[^>]*>`)
-	mregAttrTypePattern  = regexp.MustCompile(`(?i)(?:^|\s)type=(?:"([^"]*)"|'([^']*)')`)
-	mregAttrNamePattern  = regexp.MustCompile(`(?i)(?:^|\s)name=(?:"([^"]*)"|'([^']*)')`)
-	mregAttrValuePattern = regexp.MustCompile(`(?i)(?:^|\s)value=(?:"([^"]*)"|'([^']*)')`)
 )
 
 func isAllowedFacebookWebHost(host string) bool {
@@ -52,21 +44,34 @@ func mregRedirectError(parsed *url.URL) error {
 	return nil
 }
 
-func firstNonEmptyMatch(m []string) string {
-	for _, s := range m[1:] {
-		if s != "" {
-			return s
+func htmlAttr(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return a.Val
 		}
 	}
 	return ""
 }
 
 func parseMRegSubmitForm(pageHTML, pageURL string) (string, url.Values, error) {
-	fm := mregFormPattern.FindStringSubmatch(pageHTML)
-	if len(fm) < 4 {
+	doc, err := html.Parse(strings.NewReader(pageHTML))
+	if err != nil {
+		return "", nil, fmt.Errorf("parsing mreg page html: %w", err)
+	}
+	var formNode *html.Node
+	var rawAction string
+	for n := range doc.Descendants() {
+		if n.Type == html.ElementNode && n.DataAtom == atom.Form {
+			if action := htmlAttr(n, "action"); strings.Contains(strings.ToLower(action), "mreg/login/submit") {
+				formNode = n
+				rawAction = action
+				break
+			}
+		}
+	}
+	if formNode == nil {
 		return "", nil, fmt.Errorf("mreg page missing login confirmation form")
 	}
-	rawAction := html.UnescapeString(cmp.Or(fm[1], fm[2]))
 	parsedAction, err := url.Parse(rawAction)
 	if err != nil {
 		return "", nil, fmt.Errorf("parsing mreg form action: %w", err)
@@ -83,24 +88,16 @@ func parseMRegSubmitForm(pageHTML, pageURL string) (string, url.Values, error) {
 	}
 
 	formVals := url.Values{}
-	for _, tag := range mregInputTagPattern.FindAllString(fm[3], -1) {
-		tm := mregAttrTypePattern.FindStringSubmatch(tag)
-		if len(tm) == 0 || !strings.EqualFold(firstNonEmptyMatch(tm), "hidden") {
+	for n := range formNode.Descendants() {
+		if n.Type != html.ElementNode || n.DataAtom != atom.Input {
 			continue
 		}
-		nm := mregAttrNamePattern.FindStringSubmatch(tag)
-		if len(nm) == 0 {
+		if !strings.EqualFold(htmlAttr(n, "type"), "hidden") {
 			continue
 		}
-		name := html.UnescapeString(firstNonEmptyMatch(nm))
-		if name == "" {
-			continue
+		if name := htmlAttr(n, "name"); name != "" {
+			formVals.Set(name, htmlAttr(n, "value"))
 		}
-		val := ""
-		if vm := mregAttrValuePattern.FindStringSubmatch(tag); len(vm) > 0 {
-			val = html.UnescapeString(firstNonEmptyMatch(vm))
-		}
-		formVals.Set(name, val)
 	}
 	if formVals.Get("fb_dtsg") == "" || formVals.Get("jazoest") == "" {
 		return "", nil, fmt.Errorf("mreg confirmation form missing required tokens")
