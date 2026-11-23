@@ -304,6 +304,9 @@ func (m *MessengerLiteMethods) exchangeMRegNonce(
 	unmarshalErr := json.Unmarshal(authBytes, &authResp)
 	switch {
 	case unmarshalErr == nil && authResp.Err() != nil:
+		if reqErr != nil {
+			return nil, nil, fmt.Errorf("%w: %w", reqErr, authResp.Err())
+		}
 		return nil, nil, authResp.Err()
 	case reqErr != nil:
 		return nil, nil, fmt.Errorf("exchanging mreg nonce for native session: %w", reqErr)
