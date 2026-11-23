@@ -37,6 +37,9 @@ type Config struct {
 	E2EEBackfill              bool `yaml:"e2ee_backfill"`
 
 	ThreadBackfill ThreadBackfillConfig `yaml:"thread_backfill"`
+
+	// Zero means the built-in BackfillTimeout/BackfillForwardTimeout/BackfillBackgroundTimeout.
+	HistoryFetchTimeout time.Duration `yaml:"history_fetch_timeout"`
 }
 
 type ThreadBackfillConfig struct {
@@ -82,6 +85,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "e2ee_backfill")
 	helper.Copy(up.Int, "thread_backfill", "batch_count")
 	helper.Copy(up.Str|up.Int, "thread_backfill", "batch_delay")
+	helper.Copy(up.Str|up.Int, "history_fetch_timeout")
 }
 
 func (m *MetaConnector) GetConfig() (string, any, up.Upgrader) {
