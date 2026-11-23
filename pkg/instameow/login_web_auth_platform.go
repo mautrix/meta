@@ -615,7 +615,7 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	}
 	encoded, err := json.Marshal(variables)
 	if err != nil {
-		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
+		return gjson.Result{}, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
 	}
 	rq.FbAPIReqFriendlyName, rq.DocID, rq.Variables = op.name, op.docID, string(encoded)
 	config := c.configs.BrowserConfigTable
