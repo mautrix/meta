@@ -302,7 +302,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					zerolog.Ctx(ctx).Error().
 						Int64("thread_type", int64(params.Portal.Metadata.(*metaid.PortalMetadata).ThreadType)).
 						Int64("reference_timestamp_ms", oldestMessageTS).
-						Int("re_requests", timeouts).
+						Int("re_requests", min(timeouts, MaxBackfillReRequests)).
 						Msg("Waiting for backfill collector timed out")
 					if ErrorOnBackfillTimeout {
 						return nil, fmt.Errorf("failed to backfill history")
