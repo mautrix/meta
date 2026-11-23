@@ -40,6 +40,12 @@ log_redacted_login_responses: false
 # Disabling this also stops backfill and uploads for logins that already entered their PIN.
 e2ee_backfill: false
 
+# How long to wait for a history fetch (e.g. the initial backfill of a chat) to finish before giving up.
+# Chats with more history than max_initial_messages can collect in that time fail to backfill, so raise this
+# (e.g. 10m) together with a high max_initial_messages. 0 uses the built-in defaults (30s, or 15s for forward
+# backfill without the portal event buffer, 8s in background mode).
+history_fetch_timeout: 0
+
 # Thread backfill settings for syncing older conversations
 thread_backfill:
   # Number of batches (pages) to backfill (-1 for unlimited, 0 to disable)

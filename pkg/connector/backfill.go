@@ -281,6 +281,9 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 		if m.Main.Bridge.Background {
 			timeout = BackfillBackgroundTimeout
 		}
+		if m.Main.Config.HistoryFetchTimeout > 0 {
+			timeout = m.Main.Config.HistoryFetchTimeout
+		}
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		// Finally kick off history request, we'll keep retrying this if we timeout
