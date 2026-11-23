@@ -2,14 +2,13 @@ package bloks
 
 import (
 	"fmt"
-	"strings"
 
 	"go.mau.fi/util/l10n"
 )
 
 var L = l10n.NewNamespace("mautrix-meta")
 
-const errorParamComment = "error is an English error message from the bridge or from Meta"
+const errorParamComment = "error is a message explaining what went wrong; it may be a localized bridge message or untranslated text from Meta"
 
 var (
 	msgStepFBCredentialsInstructions        = L.Define("login.step.facebook.email_password.instructions", "Enter your Facebook credentials. The Messenger network will only work with Facebook accounts.")
@@ -62,6 +61,20 @@ var (
 	msgFieldCodeActionOptionEnter           = L.Define("login.field.code_action.option.enter_code", "Enter code")
 	msgFieldCodeActionOptionResend          = L.Define("login.field.code_action.option.get_new_code", "Get a new code")
 	msgFieldCodeActionOptionAnother         = L.Define("login.field.code_action.option.try_another_way", "Try another way")
+
+	msgErrInvalidCredentials   = L.Define("login.error.invalid_credentials", "Invalid username or password")
+	msgErrIncorrectPassword    = L.Define("login.error.incorrect_password", "The password you entered is incorrect")
+	msgErrInvalidEmail         = L.Define("login.error.invalid_email", "Invalid email address")
+	msgErrNoAnotherMethod      = L.Define("login.error.no_another_method", "Instagram did not advance to another verification method")
+	msgErrCodeResendFailed     = L.Define("login.error.code_resend_failed", "Instagram didn't confirm that it sent a new code. Check for a message before requesting another")
+	msgErrCodeResendAccepted   = L.Define("login.error.code_resend_accepted", "Instagram is sending a new code")
+	msgErrCodeAnotherFailed    = L.Define("login.error.code_another_failed", "Instagram didn't offer another way to confirm it's you")
+	msgErrLoginRejected        = L.Define("login.error.login_rejected", "{service} rejected that login", l10n.WithComment("service is the network name, Facebook or Instagram"))
+	msgErrCaptchaRejected      = L.Define("login.error.captcha_rejected", "{service} rejected that captcha solution", l10n.WithComment("service is the network name, Facebook or Instagram"))
+	msgErrCodeRejected         = L.Define("login.error.code_rejected", "{service} rejected that code", l10n.WithComment("service is the network name, Facebook or Instagram"))
+	msgErrCodeNotSent          = L.Define("login.error.code_not_sent", "That code was not sent to {service}; please try again", l10n.WithComment("service is the network name, Facebook or Instagram"))
+	msgErrUsernameNotConnected = L.Define("login.error.username_not_connected", "That username is not connected to a {service} account", l10n.WithComment("service is the network name, Facebook or Instagram"))
+	msgErrEmailNotConnected    = L.Define("login.error.email_not_connected", "That email address is not connected to a {service} account", l10n.WithComment("service is the network name, Facebook or Instagram"))
 )
 
 type instructionTemplates struct {
@@ -70,16 +83,16 @@ type instructionTemplates struct {
 
 // stepInstructions consumes LastError. Text from Meta takes priority over the fallback template.
 func (b *Browser) stepInstructions(remoteText string, fallback instructionTemplates) l10n.Message {
-	lastError := strings.TrimSuffix(b.LastError, ".")
-	b.LastError = ""
+	lastError := b.LastError
+	b.LastError = l10n.Message{}
 	if remoteText == "" && fallback.plain != nil {
-		if lastError == "" {
+		if lastError.IsZero() {
 			return fallback.plain.Message()
 		}
 		return fallback.withError.Render(l10n.Params{"error": lastError})
 	}
-	if lastError != "" {
-		remoteText = fmt.Sprintf("%s. %s", lastError, remoteText)
+	if !lastError.IsZero() {
+		remoteText = fmt.Sprintf("%s. %s", lastError.Text, remoteText)
 	}
 	return l10n.Unlocalized(remoteText)
 }

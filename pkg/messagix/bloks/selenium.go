@@ -370,7 +370,7 @@ type Browser struct {
 
 	PasswordResetRequested bool
 
-	LastError           string
+	LastError           l10n.Message
 	PageTransitionCount uint64
 	ActionRPCCount      uint64
 }
@@ -426,12 +426,12 @@ func (b *Browser) stepID(name string) string {
 	return b.profile.stepIDPrefix + "." + name
 }
 
-func (b *Browser) rejectedCodeMessage() string {
-	return b.profile.serviceName + " rejected that code"
+func (b *Browser) rejectedCodeMessage() l10n.Message {
+	return msgErrCodeRejected.Render(l10n.Params{"service": b.profile.serviceName})
 }
 
-func (b *Browser) codeNotSentMessage() string {
-	return "That code was not sent to " + b.profile.serviceName + "; please try again"
+func (b *Browser) codeNotSentMessage() l10n.Message {
+	return msgErrCodeNotSent.Render(l10n.Params{"service": b.profile.serviceName})
 }
 
 type scriptInventory struct {
@@ -1027,7 +1027,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				if msg == "" {
 					return nil
 				}
-				b.LastError = msg
+				b.LastError = l10n.Unlocalized(strings.TrimSuffix(msg, "."))
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
 				if b.State != StateCodeEntryPage && b.State != StateAuthenticationCodePage {
 					break
@@ -1045,7 +1045,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				if msg == "" {
 					return nil
 				}
-				b.LastError = msg
+				b.LastError = l10n.Unlocalized(strings.TrimSuffix(msg, "."))
 			}
 			return nil
 		},
@@ -1415,14 +1415,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if b.profile.isCheckpointRejection(err) {
 				b.LastError = b.profile.loginRejected
 			} else if strings.Contains(err.Error(), "Invalid username or password") {
-				b.LastError = "Invalid username or password"
+				b.LastError = msgErrInvalidCredentials.Message()
 			} else if strings.Contains(err.Error(), "isn’t connected to an account") || strings.Contains(err.Error(), "isn't connected to an account") {
 				// Note matching both unicode + ASCII apostrophe - unicode appears to be what Meta uses
-				thing := "username"
 				if strings.Contains(username, "@") {
-					thing = "email address"
+					b.LastError = msgErrEmailNotConnected.Render(l10n.Params{"service": b.profile.serviceName})
+				} else {
+					b.LastError = msgErrUsernameNotConnected.Render(l10n.Params{"service": b.profile.serviceName})
 				}
-				b.LastError = fmt.Sprintf("That %s is not connected to a %s account", thing, b.profile.serviceName)
 			} else if strings.Contains(err.Error(), "com.bloks.www.caa.assistive_login_confirmation") {
 				// Facebook tries to send us to this screen when they think we are
 				// demonstrating substantial incompetence at entering an email
@@ -1433,7 +1433,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				// Technically we don't know that's the ONLY case where this screen
 				// comes up, but it's the only one sighted thus far. Update this if
 				// something new is discovered.
-				b.LastError = "Invalid email address"
+				b.LastError = msgErrInvalidEmail.Message()
 			} else if errorKind == "rate_limited" {
 				return nil, loginerrors.RateLimited
 			} else {
@@ -1475,7 +1475,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					return nil, fmt.Errorf("invalid authentication confirmation action")
 				}
 				delete(userInput, "confirmation_action")
-				b.LastError = "Instagram did not advance to another verification method."
+				b.LastError = msgErrNoAnotherMethod.Message()
 			}
 		}
 		if btn == nil {
@@ -1565,7 +1565,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			if strings.Contains(err.Error(), "Invalid username or password") {
-				b.LastError = "The password you entered is incorrect"
+				b.LastError = msgErrIncorrectPassword.Message()
 			} else {
 				return nil, fmt.Errorf("tapping password form log in button: %w", err)
 			}
@@ -1774,8 +1774,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			}
 
 			instructions := b.profile.captchaInstruction.Message()
-			if b.LastError != "" {
-				instructions = l10n.Unlocalized(b.LastError)
+			if !b.LastError.IsZero() {
+				instructions = b.LastError
 			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -1814,7 +1814,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		// Set up in case we don't navigate to a new page successfully
 		delete(userInput, "captcha_code")
-		b.LastError = b.profile.serviceName + " rejected that captcha solution"
+		b.LastError = msgErrCaptchaRejected.Render(l10n.Params{"service": b.profile.serviceName})
 
 		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
@@ -2227,7 +2227,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					log.Debug().Str("cur_state", string(b.State)).Str("prev_state", string(b.PreviousState)).Msg("Returning to previous Bloks screen")
 					b.State = StateEmailPasswordPage
 					b.CurrentPage = b.PreviousPage
-					b.LastError = "Invalid username or password"
+					b.LastError = msgErrInvalidCredentials.Message()
 				} else {
 					return nil, fmt.Errorf("no-op captcha on_mount script: %w", err)
 				}
@@ -2482,7 +2482,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Strs("field_ids", fieldIDs).
 				Strs("field_options", fieldOptions).
 				Msg("Requested user input")
-		} else if b.LastError != "" {
+		} else if !b.LastError.IsZero() {
 			log.Debug().
 				Str("cur_state", string(b.State)).
 				Bool("has_last_error", true).
@@ -2501,7 +2501,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		// Ignore LastError, which is only used for signaling an error within the current
 		// page and can be ignored once we move to a new page.
-		b.LastError = ""
+		b.LastError = l10n.Message{}
 	}
 	return step, nil
 }
@@ -2534,13 +2534,10 @@ func (b *Browser) CancelLoginStep(ctx context.Context) error {
 }
 
 const (
-	authCodeActionFieldID  = "code_action"
-	authCodeActionEnter    = "Enter code"
-	authCodeActionResend   = "Get a new code"
-	authCodeActionAnother  = "Try another way"
-	authCodeResendFailed   = "Instagram didn't confirm that it sent a new code. Check for a message before requesting another"
-	authCodeResendAccepted = "Instagram is sending a new code"
-	authCodeAnotherFailed  = "Instagram didn't offer another way to confirm it's you"
+	authCodeActionFieldID = "code_action"
+	authCodeActionEnter   = "Enter code"
+	authCodeActionResend  = "Get a new code"
+	authCodeActionAnother = "Try another way"
 )
 
 func (b *Browser) handleAuthenticationCodeOptions(
@@ -2597,15 +2594,15 @@ func (b *Browser) handleAuthenticationCodeOptions(
 		}
 		if tapErr != nil || b.ActionRPCCount == actionRPCCountBefore {
 			log.Warn().Err(tapErr).Msg("Instagram resend code request did not complete")
-			b.LastError = authCodeResendFailed
+			b.LastError = msgErrCodeResendFailed.Message()
 		} else {
-			b.LastError = authCodeResendAccepted
+			b.LastError = msgErrCodeResendAccepted.Message()
 		}
 		b.AuthCodeEntryChosen = true
 		return nil, false, nil
 	case choice == authCodeActionAnother && another != nil:
 		delete(userInput, authCodeActionFieldID)
-		b.LastError = authCodeAnotherFailed
+		b.LastError = msgErrCodeAnotherFailed.Message()
 		if err = another.TapButton(ctx, b.CurrentPage.Interpreter); err != nil {
 			return nil, true, fmt.Errorf("tapping try another way button: %w", err)
 		}

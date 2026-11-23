@@ -33,7 +33,7 @@ type browserPlatformProfile struct {
 	initialState            BrowserState
 	credentialsInstruction  instructionTemplates
 	passwordInstruction     instructionTemplates
-	loginRejected           string
+	loginRejected           l10n.Message
 	accountSelection        *l10n.Template
 	captchaInstruction      *l10n.Template
 	dialogInstruction       *l10n.Template
@@ -61,7 +61,7 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 		initialState:           StateInitialMessenger,
 		credentialsInstruction: instructionTemplates{msgStepFBCredentialsInstructions, msgStepFBCredentialsErrorInstructions},
 		passwordInstruction:    instructionTemplates{msgStepFBPasswordInstructions, msgStepFBPasswordErrorInstructions},
-		loginRejected:          "Facebook rejected that login",
+		loginRejected:          msgErrLoginRejected.Render(l10n.Params{"service": "Facebook"}),
 		accountSelection:       msgStepFBAccountSelectionInstructions,
 		captchaInstruction:     msgStepFBCaptchaInstructions,
 		dialogInstruction:      msgStepFBDialogInstructions,
@@ -92,7 +92,7 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 	profile.initialState = StateInitialInstagram
 	profile.credentialsInstruction = instructionTemplates{msgStepIGCredentialsInstructions, msgStepIGCredentialsErrorInstructions}
 	profile.passwordInstruction = instructionTemplates{msgStepIGPasswordInstructions, msgStepIGPasswordErrorInstructions}
-	profile.loginRejected = "Instagram rejected that login"
+	profile.loginRejected = msgErrLoginRejected.Render(l10n.Params{"service": "Instagram"})
 	profile.accountSelection = msgStepIGAccountSelectionInstructions
 	profile.captchaInstruction = msgStepIGCaptchaInstructions
 	profile.dialogInstruction = msgStepIGDialogInstructions
@@ -217,7 +217,7 @@ func (profile browserPlatformProfile) prepareCodeSubmission(
 	if !profile.isInstagram {
 		return
 	}
-	browser.LastError = ""
+	browser.LastError = l10n.Message{}
 	resetPending := resetPendingCodeSubmissionFlags(button, browser.CurrentPage.Interpreter)
 	if resetPending > 0 {
 		log.Debug().Int("reset_count", resetPending).Msg("Reset stale " + description + " pending flags")
