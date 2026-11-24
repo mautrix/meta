@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
@@ -20,6 +21,7 @@ type MessengerHistoryLogin struct {
 	historyComplete *bridgev2.LoginStep
 	historyBackup   *securehistory.Backup
 	historyRestored bool
+	historyRelogin  bool
 }
 
 var historyPINPattern = regexp.MustCompile(`^[0-9]{6}$`)
@@ -61,6 +63,7 @@ func (m *MessengerHistoryLogin) startHistory(ctx context.Context, complete *brid
 	} else if err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to check Messenger encrypted history")
 		if errors.Is(err, types.ErrPleaseLogIn) || errors.Is(err, httpclient.ErrTokenInvalidated) {
+			m.abortLogin(ctx, client)
 			return nil, loginerrors.TokenInvalidated
 		}
 		return historyPINStep("Couldn't check your saved history. Enter your PIN to try again, or leave it empty to continue."), nil
@@ -84,6 +87,7 @@ func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[s
 	if err := m.restoreHistory(ctx, client, pin); err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to restore Messenger encrypted history")
 		if errors.Is(err, types.ErrPleaseLogIn) || errors.Is(err, httpclient.ErrTokenInvalidated) {
+			m.abortLogin(ctx, client)
 			return nil, loginerrors.TokenInvalidated
 		}
 		message := "Couldn't restore encrypted history. You can leave the PIN empty to finish signing in."
@@ -99,6 +103,24 @@ func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[s
 		return historyPINStep(message), nil
 	}
 	return m.finishHistory(ctx)
+}
+
+func (m *MessengerHistoryLogin) abortLogin(ctx context.Context, client *MetaClient) {
+	state := status.BridgeState{
+		StateEvent: status.StateBadCredentials,
+		Error:      MetaCookieRemoved,
+	}
+	if !m.historyRelogin {
+		client.UserLogin.Delete(ctx, state, bridgev2.DeleteOpts{})
+		return
+	}
+	client.Disconnect()
+	client.Client = nil
+	client.LoginMeta.Cookies = nil
+	client.UserLogin.BridgeState.Send(state)
+	if err := client.UserLogin.Save(ctx); err != nil {
+		client.UserLogin.Log.Err(err).Msg("Failed to save user login after clearing cookies")
+	}
 }
 
 func (m *MessengerHistoryLogin) finishHistory(ctx context.Context) (*bridgev2.LoginStep, error) {

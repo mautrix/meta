@@ -281,6 +281,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	if err != nil {
 		return nil, err
 	}
+	m.historyRelogin = slices.Contains(m.User.GetUserLoginIDs(), metaid.MakeUserLoginID(c.GetUserID()))
 	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
 	if err != nil {
 		return nil, err
@@ -380,6 +381,7 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 
 	newClient.GetCookies().UpdateValues(newCookies.GetAll())
 
+	m.historyRelogin = slices.Contains(m.User.GetUserLoginIDs(), metaid.MakeUserLoginID(newCookies.GetUserID()))
 	step, err = loginWithCookies(ctx, log, newClient, m.User, m.Main, newCookies, m.SavedClient.MessengerLite.GetNativeSession())
 	if err != nil {
 		return nil, err

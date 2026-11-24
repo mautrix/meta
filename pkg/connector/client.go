@@ -417,13 +417,23 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 
 	m.initialTable.Store(initialTable)
 
-	err = m.Client.Connect(ctx)
+	cli := m.Client
+	if cli == nil {
+		zerolog.Ctx(ctx).Warn().Msg("Client was disconnected before connecting with initial table")
+		return
+	}
+	err = cli.Connect(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateUnknownError,
 			Error:      MetaConnectError,
 		})
+		return
+	}
+	if m.Client != cli {
+		zerolog.Ctx(ctx).Warn().Msg("Client was disconnected while connecting with initial table")
+		cli.Disconnect()
 		return
 	}
 
