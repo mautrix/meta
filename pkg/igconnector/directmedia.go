@@ -376,6 +376,7 @@ func (ic *IGConnector) refreshBlobMedia(
 			// Update the stored URL and expiry
 			dmm.URL = freshURL
 			dmm.ExpiresAt = jsontime.UM(mediadl.ParseExpiryFromURL(freshURL))
+			dmm.Gone = false
 
 			updatedMeta, err := json.Marshal(dmm)
 			if err != nil {
