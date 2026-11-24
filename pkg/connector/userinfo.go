@@ -46,8 +46,21 @@ const (
 	MetaAIMessengerID = 156025504001094
 )
 
+// makeUserIdentifiers returns the identifier list for a Facebook user, in the same
+// `network:handle` form the Instagram connector uses. Vanity usernames are optional
+// on Facebook, so fall back to the numeric ID, which works in profile URLs too.
+func makeUserIdentifiers(info types.UserInfo) []string {
+	if username := info.GetUsername(); username != "" {
+		return []string{fmt.Sprintf("facebook:%s", username)}
+	} else if fbid := info.GetFBID(); fbid != 0 {
+		return []string{fmt.Sprintf("facebook:%d", fbid)}
+	}
+	return nil
+}
+
 func (m *MetaClient) wrapUserInfo(info types.UserInfo) *bridgev2.UserInfo {
 	return &bridgev2.UserInfo{
+		Identifiers: makeUserIdentifiers(info),
 		Name: ptr.Ptr(m.Main.Config.FormatDisplayname(DisplaynameParams{
 			DisplayName: info.GetName(),
 			Username:    info.GetUsername(),

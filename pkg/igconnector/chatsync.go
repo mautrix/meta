@@ -228,6 +228,8 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		if !processThreads(resp.Mailbox.ThreadsByFolder) {
 			return
 		}
+		cursor = resp.Mailbox.ThreadsByFolder.PageInfo.EndCursor
+		hasNextPage = resp.Mailbox.ThreadsByFolder.PageInfo.HasNextPage
 	} else {
 		batchCount++
 	}
