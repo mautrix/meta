@@ -18,8 +18,11 @@ package igconnector
 
 import (
 	"context"
+	"net/http"
+	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/metadb"
@@ -28,10 +31,18 @@ import (
 )
 
 type IGConnector struct {
-	Bridge  *bridgev2.Bridge
-	Config  Config
-	MsgConv *igconv.MessageConverter
-	DB      *metadb.MetaDB
+	Bridge    *bridgev2.Bridge
+	Config    Config
+	MsgConv   *igconv.MessageConverter
+	DB        *metadb.MetaDB
+	tapServer *http.Server
+	// tapOnce makes a button send at most once whether it came from a signed link or a poll vote.
+	tapOnce tapOnce
+	// pollAttachLock serializes attaching button polls to old cards. pollAttached remembers the
+	// cards that got one in this process, as a shortcut: the database, and the pending record in
+	// the bridge KV store if a poll's row couldn't be saved, are what survive a restart.
+	pollAttachLock sync.Mutex
+	pollAttached   map[string]struct{}
 }
 
 var (
@@ -45,6 +56,7 @@ func (ic *IGConnector) Init(bridge *bridgev2.Bridge) {
 	ic.DB = metadb.New(bridge.ID, bridge.DB.Database, ic.Bridge.Log.With().Str("db_section", "meta").Logger())
 	ic.MsgConv = igconv.New(bridge, ic.DB)
 	ic.MsgConv.DisableViewOnce = ic.Config.DisableViewOnce
+	bridge.Commands.(*commands.Processor).AddHandlers(cmdTap, cmdRefresh, cmdRefreshAll)
 }
 
 func (ic *IGConnector) Start(ctx context.Context) error {
@@ -53,7 +65,7 @@ func (ic *IGConnector) Start(ctx context.Context) error {
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "meta"}
 	}
-	return nil
+	return ic.startTapListener(ctx)
 }
 
 func (ic *IGConnector) SetMaxFileSize(maxSize int64) {

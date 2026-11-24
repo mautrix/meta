@@ -57,9 +57,14 @@ func (c *Client) SetTyping(ctx context.Context, threadID string, typing bool) er
 	if err != nil {
 		return fmt.Errorf("failed to marshal indicate activity request: %w", err)
 	}
+	return c.publishMQTTBypass(ctx, marshaledReq)
+}
+
+// publishMQTTBypass publishes a JSON body to the /ig_send_message topic over the mqttbypass socket.
+func (c *Client) publishMQTTBypass(ctx context.Context, body []byte) error {
 	payload, err := thrift.Marshal(&mqttbypass.RequestPayload{
 		PublishRequest: &mqttbypass.PublishRequest{
-			Payload:   marshaledReq,
+			Payload:   body,
 			MqttTopic: "/ig_send_message",
 		},
 	})

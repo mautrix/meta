@@ -27,6 +27,14 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+	// Postback buttons of generic_xma cards (see https://github.com/mautrix/meta/issues/338).
+	PostbackButtons []*PostbackButton `json:"postback_buttons,omitempty"`
+	// Quick replies of text or XMA messages. Tapping one posts its title as text. Kept apart
+	// from PostbackButtons, which are sent with cta_type=postback.
+	QuickReplies []*PostbackButton `json:"quick_replies,omitempty"`
+	// ButtonPoll marks the Matrix-only poll that mirrors the buttons of a card. Voting in it taps
+	// the button. It is unrelated to PollID, which belongs to real Instagram and Messenger polls.
+	ButtonPoll bool `json:"button_poll,omitempty"`
 
 	PollID        int64              `json:"poll_id,omitzero"`
 	PollQuestion  string             `json:"poll_question,omitempty"`
@@ -50,6 +58,40 @@ func (m *MessageMetadata) GetFBThreadKey(portalID networkid.PortalID) int64 {
 		return m.FBThreadKey
 	}
 	return ParseFBPortalID(portalID)
+}
+
+// PostbackButton is a tappable generic_xma button whose payload has been recovered.
+type PostbackButton struct {
+	Title   string `json:"title"`
+	Payload string `json:"payload"`
+	CTAType string `json:"cta_type,omitempty"`
+}
+
+// CTATypeQuickReply is the CTAType of quick reply buttons.
+const CTATypeQuickReply = "quick_reply"
+
+// IsQuickReply reports whether the button is a quick reply (sent as text) rather than a postback.
+func (b *PostbackButton) IsQuickReply() bool {
+	return b != nil && b.CTAType == CTATypeQuickReply
+}
+
+// ButtonPollPartID is the part ID of the button poll that follows a card with tappable buttons.
+const ButtonPollPartID networkid.PartID = "buttonpoll"
+
+// TapButtons returns the tappable buttons in display order: postbacks, then quick replies.
+// The numbers in the rendered list, reactions, replies and `!ig tap N` all index this list.
+func TapButtons(postbacks, quickReplies []*PostbackButton) []*PostbackButton {
+	out := make([]*PostbackButton, 0, len(postbacks)+len(quickReplies))
+	out = append(out, postbacks...)
+	return append(out, quickReplies...)
+}
+
+// TapButtons returns the combined postback and quick reply list of the message.
+func (m *MessageMetadata) TapButtons() []*PostbackButton {
+	if m == nil {
+		return nil
+	}
+	return TapButtons(m.PostbackButtons, m.QuickReplies)
 }
 
 type XMAFetchMeta struct {

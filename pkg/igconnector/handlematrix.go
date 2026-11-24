@@ -141,6 +141,9 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if cli == nil {
 		return nil, wrapInstagramError(instameow.ErrClientIsNil)
 	}
+	if resp, handled, err := ic.handleMatrixPostbackTap(ctx, msg); handled {
+		return resp, err
+	}
 	_, err := ic.ensureIGID(ctx, msg.Portal)
 	if errors.Is(err, instameow.ErrThreadNotFound) && msg.Content.MsgType == event.MsgText && msg.Portal.RoomType == database.RoomTypeDM {
 		// Allow sending text DMs even if the thread isn't known
@@ -206,6 +209,9 @@ func (ic *IGClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	if err != nil {
 		return nil, err
 	}
+	if button := keycapButton(msg.TargetMessage, msg.Content.RelatesTo.Key); button != nil {
+		return ic.handleKeycapReaction(ctx, msg, meta, button)
+	}
 	msgID, ok := metaid.ParseMessageID(msg.TargetMessage.ID).(metaid.ParsedFBMessageID)
 	if !ok {
 		return nil, fmt.Errorf("unexpected parsed message ID type")
@@ -240,6 +246,10 @@ func (ic *IGClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	if meta.IGID == "" {
 		// TODO fetch?
 		return fmt.Errorf("portal metadata missing IGID")
+	}
+	if ic.isKeycapButtonReaction(ctx, msg.Portal, msg.TargetReaction) {
+		// The keycap only activated a button and was never sent to Instagram as a reaction.
+		return nil
 	}
 	msgID, ok := metaid.ParseMessageID(msg.TargetReaction.MessageID).(metaid.ParsedFBMessageID)
 	if !ok {
@@ -284,6 +294,10 @@ func (ic *IGClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 }
 
 func (ic *IGClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	if isMatrixOnlyButtonPart(msg.TargetMessage) {
+		// Button polls and votes only exist in Matrix, but share the ID of the card.
+		return nil
+	}
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
 	}

@@ -18,6 +18,8 @@ package slidetypes
 
 import (
 	"encoding/json"
+	"net/url"
+	"strings"
 )
 
 type MessageContent interface {
@@ -213,8 +215,157 @@ type CTAButton struct {
 	ActionURL string `json:"action_url"`
 	CTAType   string `json:"cta_type"`
 	Title     string `json:"title"`
+	// The postback payload is only seen on the direct_v2 REST thread response, see
+	// https://github.com/mautrix/meta/issues/338. The issue doesn't name the JSON key used
+	// in that response, so both plausible names are accepted (and Unrecognized is scanned).
+	PostbackPayload string `json:"postback_payload,omitempty"`
+	Payload         string `json:"payload,omitempty"`
+	// PlatformToken is where live ig-direct_v2 responses carry the payload of postback
+	// buttons, as an object like {"postback": ...}. Kept raw as the value type isn't known.
+	PlatformToken json.RawMessage `json:"platform_token,omitempty"`
 
 	Unrecognized map[string]any `json:",unknown"`
+}
+
+// UnmarshalJSON makes sure Unrecognized is filled even when the `unknown` struct tag option
+// isn't supported by the JSON implementation in use, as Postback() scans it for the payload.
+func (b *CTAButton) UnmarshalJSON(data []byte) error {
+	type plain CTAButton
+	*b = CTAButton{}
+	if err := json.Unmarshal(data, (*plain)(b)); err != nil {
+		return err
+	}
+	if len(b.Unrecognized) > 0 {
+		return nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	for _, known := range []string{"action_url", "cta_type", "title", "postback_payload", "payload", "platform_token"} {
+		delete(raw, known)
+	}
+	if len(raw) > 0 {
+		b.Unrecognized = raw
+	}
+	return nil
+}
+
+// CTATypeXMAWebURL is the cta_type of link buttons.
+const CTATypeXMAWebURL = "xma_web_url"
+
+// IsLink reports whether the button opens a web link: an http(s) action URL (possibly wrapped
+// in an l.facebook.com shim) or the xma_web_url type.
+func (b *CTAButton) IsLink() bool {
+	if b == nil {
+		return false
+	}
+	if strings.EqualFold(b.CTAType, CTATypeXMAWebURL) {
+		return true
+	}
+	u, err := url.Parse(b.ActionURL)
+	if err != nil {
+		return false
+	}
+	if u.Host == "l.facebook.com" {
+		if real, err := url.Parse(u.Query().Get("u")); err == nil && real.String() != "" {
+			u = real
+		}
+	}
+	return u.Scheme == "https" || u.Scheme == "http"
+}
+
+// IsPostback reports whether the button is a postback: cta_type postback (any case), a
+// recovered payload with the GT-PB marker, or a platform_token.postback value.
+func (b *CTAButton) IsPostback() bool {
+	if b == nil {
+		return false
+	}
+	return strings.EqualFold(b.CTAType, "postback") ||
+		strings.Contains(b.Postback(), PostbackPayloadMarker) ||
+		extractPlatformTokenPostback(b.PlatformToken) != ""
+}
+
+// PostbackPayloadMarker is a substring of the postback payload values documented in #338
+// (`1:GT-PB:ACT::<hex>`).
+const PostbackPayloadMarker = "GT-PB"
+
+// Postback returns the postback payload of the button, or an empty string if it has none.
+func (b *CTAButton) Postback() string {
+	if b == nil {
+		return ""
+	}
+	if b.PostbackPayload != "" {
+		return b.PostbackPayload
+	}
+	if b.Payload != "" {
+		return b.Payload
+	}
+	if payload := extractPlatformTokenPostback(b.PlatformToken); payload != "" {
+		return payload
+	}
+	for _, key := range sortedKeys(b.Unrecognized) {
+		switch val := b.Unrecognized[key].(type) {
+		case string:
+			if strings.Contains(val, PostbackPayloadMarker) {
+				return val
+			}
+		case map[string]any:
+			if str := markerString(val); str != "" {
+				return str
+			}
+		}
+	}
+	return ""
+}
+
+// markerString returns the first string value (in sorted key order) containing
+// PostbackPayloadMarker.
+func markerString(m map[string]any) string {
+	for _, key := range sortedKeys(m) {
+		if str, ok := m[key].(string); ok && strings.Contains(str, PostbackPayloadMarker) {
+			return str
+		}
+	}
+	return ""
+}
+
+func stringField(m map[string]any, key string) string {
+	str, _ := m[key].(string)
+	return str
+}
+
+// extractPlatformTokenPostback pulls the postback payload out of a button's platform_token.
+// Its `postback` field may be the payload string itself or an object wrapping it.
+func extractPlatformTokenPostback(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var token map[string]any
+	if err := json.Unmarshal(raw, &token); err != nil {
+		return ""
+	}
+	switch pb := token["postback"].(type) {
+	case string:
+		if pb != "" {
+			return pb
+		}
+	case map[string]any:
+		for _, key := range []string{"postback_payload", "payload", "token", "data"} {
+			if str := stringField(pb, key); str != "" {
+				return str
+			}
+		}
+		if str := markerString(pb); str != "" {
+			return str
+		}
+	}
+	for _, key := range []string{"postback_payload", "payload"} {
+		if str := stringField(token, key); str != "" {
+			return str
+		}
+	}
+	return ""
 }
 
 type XMAIcon struct {

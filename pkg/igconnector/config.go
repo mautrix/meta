@@ -30,6 +30,10 @@ import (
 var ExampleConfig string
 
 type Config struct {
+	TapListen        string `yaml:"tap_listen"`
+	TapPublicAddress string `yaml:"tap_public_address"`
+	TapHMACSecret    string `yaml:"tap_hmac_secret"`
+
 	Proxy        string `yaml:"proxy"`
 	GetProxyFrom string `yaml:"get_proxy_from"`
 	ProxyMedia   bool   `yaml:"proxy_media"`
@@ -79,6 +83,9 @@ func (c *Config) PostProcess() (err error) {
 }
 
 func upgradeConfig(helper up.Helper) {
+	helper.Copy(up.Str, "tap_listen")
+	helper.Copy(up.Str, "tap_public_address")
+	helper.Copy(up.Str|up.Null, "tap_hmac_secret")
 	helper.Copy(up.Str, "displayname_template")
 	helper.Copy(up.Str|up.Null, "proxy")
 	helper.Copy(up.Str|up.Null, "get_proxy_from")

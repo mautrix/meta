@@ -60,7 +60,23 @@ func (mc *MessageConverter) wrapXMAPreviewImage(ctx context.Context, xma *slidet
 	})
 }
 
-func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.XMAContent) *event.MessageEventContent {
+func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.XMAContent, buttons Buttons) *event.MessageEventContent {
+	if _, err := url.Parse(xma.TargetURL); err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
+	}
+	captionHTML := CaptionHTML(xma, buttons, mc.ctaOptions(ctx))
+	if captionHTML == "" {
+		return nil
+	}
+	return ptr.Ptr(format.HTMLToContent(captionHTML))
+}
+
+// CaptionHTML builds the formatted caption of an XMA card: eyebrow, title, subtitle, body, target
+// link and then the CTA buttons block. It returns "" if the card has no caption text or link.
+func CaptionHTML(xma *slidetypes.XMAContent, buttons Buttons, opts CTAOptions) string {
+	if xma == nil {
+		return ""
+	}
 	var captionHTML string
 	if xma.EyebrowText != "" {
 		captionHTML += fmt.Sprintf("<blockquote>%s</blockquote>", html.EscapeString(xma.EyebrowText))
@@ -78,23 +94,61 @@ func (mc *MessageConverter) wrapXMACaption(ctx context.Context, xma *slidetypes.
 	if xma.CaptionBodyText != "" {
 		captionHTML += fmt.Sprintf("<p>%s</p>", event.TextToHTML(xma.CaptionBodyText))
 	}
-
-	targetURL, err := url.Parse(xma.TargetURL)
-	if err == nil {
+	if targetURL, err := url.Parse(xma.TargetURL); err == nil {
 		targetURL = unwrapLinkShim(targetURL)
-	}
-	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Str("url", xma.TargetURL).Msg("Failed to parse XMA target URL")
-	} else if targetURL.String() != "" {
-		fullTargetURL := targetURL.String()
-		targetURL.RawQuery = ""
-		captionHTML += fmt.Sprintf(`<p><a href="%s">%s</a></p>`, html.EscapeString(fullTargetURL), html.EscapeString(targetURL.String()))
+		if targetURL.String() != "" {
+			fullTargetURL := targetURL.String()
+			targetURL.RawQuery = ""
+			captionHTML += fmt.Sprintf(`<p><a href="%s">%s</a></p>`, html.EscapeString(fullTargetURL), html.EscapeString(targetURL.String()))
+		}
 	}
 	if captionHTML == "" {
+		return ""
+	}
+	return captionHTML + xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies, opts)
+}
+
+// XMAFromThreadItem decodes the generic_xma of a REST thread item, which is either an object or
+// an array whose first element is the card. It returns nil if there is none.
+func XMAFromThreadItem(item *slidetypes.ThreadItem) *slidetypes.XMAContent {
+	if item == nil || len(item.GenericXMA) == 0 {
 		return nil
 	}
-	captionHTML += xmaCTAButtonsHTML(xma.CTAButtons)
-	return ptr.Ptr(format.HTMLToContent(captionHTML))
+	var xma slidetypes.XMAContent
+	if err := json.Unmarshal(item.GenericXMA, &xma); err == nil {
+		return &xma
+	}
+	var list []*slidetypes.XMAContent
+	if err := json.Unmarshal(item.GenericXMA, &list); err == nil && len(list) > 0 && list[0] != nil {
+		return list[0]
+	}
+	return nil
+}
+
+// CardHTMLFromThreadItem rebuilds the formatted body of a card (caption plus CTA buttons) from a
+// REST thread item alone, without the original Matrix event. It returns "" if there is nothing to render.
+func CardHTMLFromThreadItem(item *slidetypes.ThreadItem, opts CTAOptions) string {
+	if item == nil {
+		return ""
+	}
+	xma := XMAFromThreadItem(item)
+	if xma == nil {
+		buttons := ButtonsFromItem(item)
+		ctaHTML := xmaCTAButtonsHTML(item.AllCTAButtons(), buttons.Postbacks, buttons.QuickReplies, opts)
+		if ctaHTML != "" && item.Text != "" {
+			return "<p>" + event.TextToHTML(item.Text) + "</p>" + ctaHTML
+		}
+		return ctaHTML
+	}
+	if ctas := item.AllCTAButtons(); len(ctas) > 0 {
+		xma.CTAButtons = ctas
+	}
+	buttons := ButtonsFromItem(item)
+	if cardHTML := CaptionHTML(xma, buttons, opts); cardHTML != "" {
+		return cardHTML
+	}
+	// CTA-only card: no caption text, but the buttons still need refreshing.
+	return xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies, opts)
 }
 
 func unwrapLinkShim(u *url.URL) *url.URL {
@@ -106,44 +160,173 @@ func unwrapLinkShim(u *url.URL) *url.URL {
 	return u
 }
 
-func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton) string {
-	var links, buttons []string
+// PostbackTapCommand is the bridge command that taps a postback or quick reply button.
+const PostbackTapCommand = "!ig tap"
+
+const (
+	ctaBlockOpen       = `<div data-ig-cta="">`
+	ctaBlockClose      = "</div>"
+	appFallbackSnippet = "Use the Instagram app to click buttons"
+)
+
+var (
+	oldAppFallbackRegex = regexp.MustCompile(`<p>[^<]*(?:<br\s*/?>)?` + appFallbackSnippet + `</p>`)
+	oldTapListRegex     = regexp.MustCompile(`<ol>(?:<li>[^<]*</li>)*</ol><p>Tap a button with <code>` + PostbackTapCommand + `[^<]*</code>[^<]*(?:<code>[^<]*</code>)?</p>`)
+	oldLinkRunRegex     = regexp.MustCompile(`<p><a [^>]*>[^<]*</a>(?: - <a [^>]*>[^<]*</a>)+</p>`)
+)
+
+// keycapDigits are the reaction emojis that activate buttons 1-9 (digit + VS16 + keycap).
+const keycapSuffix = "\ufe0f\u20e3"
+const keycapTen = "\U0001F51F"
+
+// KeycapEmoji returns the keycap emoji for a 1-based button index, or "" above 10.
+func KeycapEmoji(n int) string {
+	switch {
+	case n >= 1 && n <= 9:
+		return strconv.Itoa(n) + keycapSuffix
+	case n == 10:
+		return keycapTen
+	}
+	return ""
+}
+
+// KeycapReactionIndex parses a keycap reaction (1️⃣-9️⃣, with or without VS16, or 🔟) into a
+// 1-based button index. Other emojis, including 0️⃣ and ❤, aren't button triggers.
+func KeycapReactionIndex(emoji string) (int, bool) {
+	emoji = strings.TrimSpace(emoji)
+	if emoji == keycapTen {
+		return 10, true
+	}
+	digits, ok := strings.CutSuffix(emoji, "\u20e3")
+	if !ok {
+		return 0, false
+	}
+	digits = strings.TrimSuffix(digits, "\ufe0f")
+	if len(digits) != 1 || digits[0] < '1' || digits[0] > '9' {
+		return 0, false
+	}
+	return int(digits[0] - '0'), true
+}
+
+// ButtonAtIndex returns the 1-based button of the list, or nil if the index is out of range.
+func ButtonAtIndex(buttons []*metaid.PostbackButton, idx int) *metaid.PostbackButton {
+	if idx < 1 || idx > len(buttons) {
+		return nil
+	}
+	return buttons[idx-1]
+}
+
+const nbsp = "\u00a0"
+
+// pseudoButtonLabel is the visible bracketed control ("[ Título ]"). NBSPs keep
+// the brackets from wrapping onto their own line. The bridge never adds a ↗;
+// Beeper already appends one after external links.
+func pseudoButtonLabel(title string) string {
+	return "[" + nbsp + title + nbsp + "]"
+}
+
+func pseudoButtonHTML(href, title string) string {
+	label := html.EscapeString(pseudoButtonLabel(title))
+	if href == "" {
+		return label
+	}
+	return fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(href), label)
+}
+
+// buttonLineHTML renders one tappable button as a bracketed pseudo-button.
+func buttonLineHTML(idx int, button *metaid.PostbackButton, opts CTAOptions) string {
+	return pseudoButtonHTML(opts.ButtonURL(idx, button), button.Title)
+}
+
+// xmaCTAButtonsHTML renders each CTA as a bracketed pseudo-button, one per line,
+// joined by <br>, with no lists and no footer. The block is wrapped in a marked
+// div so it can be replaced later (see ReplaceOrAppendCTAButtonsHTML).
+func xmaCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton, opts CTAOptions) string {
+	tap := metaid.TapButtons(postbacks, quickReplies)
+	var lines, unrecovered []string
 	for _, cta := range ctas {
 		if cta == nil || cta.Title == "" {
 			continue
 		}
-		actionURL, err := url.Parse(cta.ActionURL)
-		if err == nil {
-			actionURL = unwrapLinkShim(actionURL)
+		if cta.IsLink() {
+			actionURL, err := url.Parse(cta.ActionURL)
+			if err == nil {
+				actionURL = unwrapLinkShim(actionURL)
+				if actionURL.Scheme == "https" || actionURL.Scheme == "http" {
+					lines = append(lines, pseudoButtonHTML(actionURL.String(), cta.Title))
+				}
+			}
+		} else if !slices.ContainsFunc(tap, func(b *metaid.PostbackButton) bool { return b.Title == cta.Title }) {
+			unrecovered = append(unrecovered, html.EscapeString(cta.Title))
 		}
-		if err == nil && (actionURL.Scheme == "https" || actionURL.Scheme == "http") {
-			links = append(links, fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(actionURL.String()), html.EscapeString(cta.Title)))
-		} else {
-			buttons = append(buttons, html.EscapeString(cta.Title))
+	}
+	for i, button := range tap {
+		lines = append(lines, buttonLineHTML(i+1, button, opts))
+	}
+	var out strings.Builder
+	if len(lines) > 0 {
+		out.WriteString(strings.Join(lines, "<br>"))
+	}
+	if len(unrecovered) > 0 && len(tap) == 0 {
+		fmt.Fprintf(&out, "<p>%s<br>%s</p>", strings.Join(unrecovered, ", "), appFallbackSnippet)
+	}
+	if out.Len() == 0 {
+		return ""
+	}
+	return ctaBlockOpen + out.String() + ctaBlockClose
+}
+
+// BuildCTAButtonsHTML is the exported form of xmaCTAButtonsHTML, used when refreshing old cards.
+func BuildCTAButtonsHTML(ctas []*slidetypes.CTAButton, postbacks, quickReplies []*metaid.PostbackButton, opts CTAOptions) string {
+	return xmaCTAButtonsHTML(ctas, postbacks, quickReplies, opts)
+}
+
+// HasKnownCTAFooter reports whether a formatted body already contains a CTA footer that
+// ReplaceOrAppendCTAButtonsHTML would replace or strip.
+func HasKnownCTAFooter(formattedBody string) bool {
+	return strings.Contains(formattedBody, ctaBlockOpen) ||
+		oldAppFallbackRegex.MatchString(formattedBody) ||
+		oldTapListRegex.MatchString(formattedBody) ||
+		oldLinkRunRegex.MatchString(formattedBody)
+}
+
+// ReplaceOrAppendCTAButtonsHTML puts ctaHTML into a formatted body: it replaces an existing
+// marked CTA block, or otherwise strips the known old CTA footers and appends the new block.
+// Everything else (caption, media description) is kept.
+func ReplaceOrAppendCTAButtonsHTML(formattedBody, ctaHTML string) string {
+	if start := strings.Index(formattedBody, ctaBlockOpen); start >= 0 {
+		if end := strings.Index(formattedBody[start:], ctaBlockClose); end >= 0 {
+			end += start + len(ctaBlockClose)
+			return formattedBody[:start] + ctaHTML + formattedBody[end:]
 		}
 	}
-	var out string
-	if len(links) > 0 {
-		out += fmt.Sprintf("<p>%s</p>", strings.Join(links, " - "))
-	}
-	if len(buttons) > 0 {
-		out += fmt.Sprintf("<p>%s<br>Use the Instagram app to click buttons</p>", strings.Join(buttons, " - "))
-	}
-	return out
+	formattedBody = oldAppFallbackRegex.ReplaceAllString(formattedBody, "")
+	formattedBody = strings.ReplaceAll(formattedBody, appFallbackSnippet, "")
+	formattedBody = oldTapListRegex.ReplaceAllString(formattedBody, "")
+	formattedBody = oldLinkRunRegex.ReplaceAllString(formattedBody, "")
+	return formattedBody + ctaHTML
 }
 
 func xmaLooksLikeWhatsAppButton(xma *slidetypes.XMAContent) bool {
 	return xma != nil && len(xma.CTAButtons) == 1 && strings.HasPrefix(xma.CTAButtons[0].ActionURL, "https://api.whatsapp.com/send")
 }
 
-func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent) *bridgev2.ConvertedMessagePart {
+func (mc *MessageConverter) wrapXMA(ctx context.Context, xma *slidetypes.XMAContent, msg *slidetypes.Message) *bridgev2.ConvertedMessagePart {
 	if xma == nil {
 		return nil
 	}
+	buttons := mc.recoverButtons(ctx, xma, msg)
+	part := mc.wrapXMAWithButtons(ctx, xma, buttons)
+	attachButtons(part, buttons)
+	return part
+}
+
+func (mc *MessageConverter) wrapXMAWithButtons(ctx context.Context, xma *slidetypes.XMAContent, buttons Buttons) *bridgev2.ConvertedMessagePart {
 	previewPart := mc.wrapXMAPreviewImage(ctx, xma)
-	captionPart := mc.wrapXMACaption(ctx, xma)
-	if previewPart != nil && captionPart == nil {
-		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons); buttonsHTML != "" {
+	captionPart := mc.wrapXMACaption(ctx, xma, buttons)
+	opts := mc.ctaOptions(ctx)
+	if captionPart == nil {
+		if buttonsHTML := xmaCTAButtonsHTML(xma.CTAButtons, buttons.Postbacks, buttons.QuickReplies, opts); buttonsHTML != "" {
 			captionPart = ptr.Ptr(format.HTMLToContent(buttonsHTML))
 		}
 	}
