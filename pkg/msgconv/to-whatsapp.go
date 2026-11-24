@@ -245,6 +245,9 @@ func trimPNGTrailer(ctx context.Context, data []byte) []byte {
 }
 
 func (mc *MessageConverter) reuploadMediaToWhatsApp(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (*waMediaTransport.WAMediaTransport, string, []byte, error) {
+	if content.Info == nil {
+		content.Info = &event.FileInfo{}
+	}
 	mimeType := content.Info.MimeType
 	fileName := content.FileName
 	if fileName == "" {
