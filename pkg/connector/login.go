@@ -139,6 +139,40 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 	return fields
 }
 
+const cookieLoginJS = `(messenger => {
+	if (window.mautrixMetaLogin) {
+		return Promise.resolve({})
+	}
+	window.mautrixMetaLogin = true
+	const declineCookies = setInterval(() => {
+		const button = document.querySelector("button:has(+ #allow_button)")
+		if (button) {
+			clearInterval(declineCookies)
+			button.click()
+		}
+	}, 200)
+	setTimeout(() => {
+		if (!document.querySelector("input[type=password]")) {
+			return
+		}
+		const input = [...document.querySelectorAll("input")].find(el => el.type !== "hidden" && el.offsetParent !== null)
+		input?.scrollIntoView({block: "center"})
+		input?.focus()
+	}, 1000)
+	if (messenger && location.hostname === "www.facebook.com") {
+		const redirect = setInterval(() => {
+			if (location.href === "https://www.facebook.com/checkpoint/?next=https%3A%2F%2Fwww.facebook.com%2F") {
+				clearInterval(redirect)
+				location.href = "https://www.facebook.com/checkpoint/?next=https%3A%2F%2Fwww.messenger.com%2F"
+			} else if (+window.require?.("CurrentUserInitialData")?.USER_ID) {
+				clearInterval(redirect)
+				location.href = "https://www.messenger.com/?no_redirect=true"
+			}
+		}, 100)
+	}
+	return Promise.resolve({})
+})`
+
 func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	step := &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
@@ -153,10 +187,12 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		step.CookiesParams.URL = "https://www.facebook.com/"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "facebook.com")
 		step.CookiesParams.WaitForURLPattern = "^https://www\\.facebook\\.com/(?:messages/(?:e2ee/)?(?:t/[0-9]+/?)?)?(?:\\?.*)?$"
+		step.CookiesParams.ExtractJS = cookieLoginJS + "(false)"
 	case types.Messenger:
 		step.CookiesParams.URL = "https://www.messenger.com/?no_redirect=true"
 		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
 		step.CookiesParams.WaitForURLPattern = "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?(?:\\?.*)?$"
+		step.CookiesParams.ExtractJS = cookieLoginJS + "(true)"
 	default:
 		return nil, fmt.Errorf("unknown mode %s", m.Mode)
 	}
