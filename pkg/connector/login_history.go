@@ -129,7 +129,7 @@ func (m *MessengerHistoryLogin) restoreHistory(ctx context.Context, client *Meta
 		}
 		return nil
 	}
-	if err := client.e2eeConnectWaiter.WaitTimeoutCtx(ctx, ConnectWaitTimeout); err != nil {
+	if err := waitForHistoryE2EE(ctx, client); err != nil {
 		return err
 	}
 	history := client.Client.GetSecureHistoryClient()
@@ -185,4 +185,29 @@ func (m *MessengerHistoryLogin) restoreHistory(ctx context.Context, client *Meta
 	err = client.UserLogin.Save(saveCtx)
 	client.backfillLock.Unlock()
 	return err
+}
+
+func waitForHistoryE2EE(ctx context.Context, client *MetaClient) error {
+	deadline := time.Now().Add(ConnectWaitTimeout)
+	for {
+		if !client.IsLoggedIn() {
+			return fmt.Errorf("%w: logged out while waiting for encrypted messaging", httpclient.ErrTokenInvalidated)
+		}
+		wait := min(time.Until(deadline), time.Second)
+		if wait <= 0 {
+			return errors.New("timed out waiting for encrypted messaging to connect")
+		}
+		err := client.e2eeConnectWaiter.WaitTimeoutCtx(ctx, wait)
+		if err == nil && client.Client != nil {
+			return nil
+		} else if err == nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(wait):
+			}
+		} else if ctx.Err() != nil {
+			return err
+		}
+	}
 }
