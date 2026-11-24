@@ -313,6 +313,9 @@ func (ic *IGConnector) refreshBlobMedia(
 		case *slidetypes.MessageContentMusicSticker:
 			attachmentURLs["0"] = content.AudioTrack.Web30SPreviewDownloadURL
 		case *slidetypes.MessageContentXMA:
+			if content.XMA == nil {
+				continue
+			}
 			if att := cmp.Or(content.XMA.PreviewImage, content.XMA.XMAPreviewImage); att != nil {
 				attachmentURLs["0"] = att.URL
 			}
