@@ -225,6 +225,14 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		})
 		return
 	}
+	if m.LoginMeta.Cookies != nil && m.LoginMeta.Platform.IsMessengerLite() && m.LoginMeta.NativeSession == nil {
+		m.permanentErrored.Store(true)
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      MetaNoNativeSession,
+		})
+		return
+	}
 	m.ensureMessagixClient()
 	cli := m.Client
 	if cli == nil {
