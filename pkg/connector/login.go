@@ -165,11 +165,11 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaCookieLogin) Cancel() {}
 
-func getMessagixClient(log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies, useProxy bool) (*messagix.Client, error) {
+func getMessagixClient(ctx context.Context, log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies, useProxy bool) (*messagix.Client, error) {
 	client := messagix.NewClient(c, log, conn.getMessagixConfig())
-	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
-		client.GetHTTP().GetNewProxy = conn.getProxy
-		if !client.GetHTTP().UpdateProxy("login") {
+	if useProxy && conn.Bridge.Config.Proxy.IsConfigured() {
+		client.GetHTTP().GetNewProxy = conn.Bridge.GetProxy
+		if !client.GetHTTP().UpdateProxy(ctx, "login") {
 			return nil, fmt.Errorf("failed to update proxy")
 		}
 	}
@@ -187,6 +187,8 @@ func loginWithCookies(
 ) (*bridgev2.LoginStep, error) {
 	if missing := c.GetMissingCookieNames(); len(missing) > 0 {
 		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missing)
+	} else if c.Platform.IsMessengerLite() && nativeSession == nil {
+		return nil, loginerrors.TokenExchange
 	} else if err := validateNativeSession(nativeSession); err != nil {
 		return nil, err
 	}
@@ -276,10 +278,11 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	}
 
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
-	client, err := getMessagixClient(log, m.Main, c, m.Main.Config.ProxyOther)
+	client, err := getMessagixClient(ctx, log, m.Main, c, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
+	m.historyRelogin = slices.Contains(m.User.GetUserLoginIDs(), metaid.MakeUserLoginID(c.GetUserID()))
 	step, err := loginWithCookies(ctx, log, client, m.User, m.Main, c, nil)
 	if err != nil {
 		return nil, err
@@ -312,7 +315,7 @@ func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.L
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-	client, err := getMessagixClient(log, m.Main, fakeCookies, m.Main.Config.ProxyMessengerLite)
+	client, err := getMessagixClient(ctx, log, m.Main, fakeCookies, m.Main.Config.ProxyMessengerLite)
 	if err != nil {
 		return nil, err
 	}
@@ -372,13 +375,14 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-	newClient, err := getMessagixClient(log, m.Main, fakeCookies, m.Main.Config.ProxyOther)
+	newClient, err := getMessagixClient(ctx, log, m.Main, fakeCookies, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
 
 	newClient.GetCookies().UpdateValues(newCookies.GetAll())
 
+	m.historyRelogin = slices.Contains(m.User.GetUserLoginIDs(), metaid.MakeUserLoginID(newCookies.GetUserID()))
 	step, err = loginWithCookies(ctx, log, newClient, m.User, m.Main, newCookies, m.SavedClient.MessengerLite.GetNativeSession())
 	if err != nil {
 		return nil, err

@@ -14,13 +14,11 @@ import (
 var ExampleConfig string
 
 type Config struct {
-	Proxy              string `yaml:"proxy"`
-	Tor                bool   `yaml:"tor"`
-	GetProxyFrom       string `yaml:"get_proxy_from"`
-	ProxyMedia         bool   `yaml:"proxy_media"`
-	ProxyE2EE          bool   `yaml:"proxy_e2ee"`
-	ProxyMessengerLite bool   `yaml:"proxy_messenger_lite"`
-	ProxyOther         bool   `yaml:"proxy_other"`
+	Tor                bool `yaml:"tor"`
+	ProxyMedia         bool `yaml:"proxy_media"`
+	ProxyE2EE          bool `yaml:"proxy_e2ee"`
+	ProxyMessengerLite bool `yaml:"proxy_messenger_lite"`
+	ProxyOther         bool `yaml:"proxy_other"`
 
 	MinFullReconnectIntervalSeconds int  `yaml:"min_full_reconnect_interval_seconds"`
 	ForceRefreshIntervalSeconds     int  `yaml:"force_refresh_interval_seconds"`
@@ -61,13 +59,11 @@ func (c *Config) PostProcess() (err error) {
 
 func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "displayname_template")
-	helper.Copy(up.Str|up.Null, "proxy")
 	if val, ok := helper.Get(up.Str|up.Null, "mode"); ok && val == "facebook-tor" {
 		helper.Set(up.Bool, "true", "tor")
 	} else {
 		helper.Copy(up.Bool, "tor")
 	}
-	helper.Copy(up.Str|up.Null, "get_proxy_from")
 	helper.Copy(up.Bool, "proxy_media")
 	helper.Copy(up.Bool, "proxy_e2ee")
 	helper.Copy(up.Bool, "proxy_messenger_lite")

@@ -3,11 +3,13 @@ package connector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"time"
 
 	"go.mau.fi/util/l10n"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
@@ -20,6 +22,7 @@ type MessengerHistoryLogin struct {
 	historyComplete *bridgev2.LoginStep
 	historyBackup   *securehistory.Backup
 	historyRestored bool
+	historyRelogin  bool
 }
 
 var historyPINPattern = regexp.MustCompile(`^[0-9]{6}$`)
@@ -57,6 +60,7 @@ func (m *MessengerHistoryLogin) startHistory(ctx context.Context, complete *brid
 	} else if err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to check Messenger encrypted history")
 		if errors.Is(err, types.ErrPleaseLogIn) || errors.Is(err, httpclient.ErrTokenInvalidated) {
+			m.abortLogin(ctx, client)
 			return nil, loginerrors.TokenInvalidated
 		}
 		return historyPINStep(msgStepHistoryPINCheckFailedInstructions.Message()), nil
@@ -80,6 +84,7 @@ func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[s
 	if err := m.restoreHistory(ctx, client, pin); err != nil {
 		client.UserLogin.Log.Warn().Err(err).Msg("Failed to restore Messenger encrypted history")
 		if errors.Is(err, types.ErrPleaseLogIn) || errors.Is(err, httpclient.ErrTokenInvalidated) {
+			m.abortLogin(ctx, client)
 			return nil, loginerrors.TokenInvalidated
 		}
 		instructions := msgStepHistoryPINRestoreFailedInstructions.Message()
@@ -95,6 +100,24 @@ func (m *MessengerHistoryLogin) SubmitUserInput(ctx context.Context, input map[s
 		return historyPINStep(instructions), nil
 	}
 	return m.finishHistory(ctx)
+}
+
+func (m *MessengerHistoryLogin) abortLogin(ctx context.Context, client *MetaClient) {
+	state := status.BridgeState{
+		StateEvent: status.StateBadCredentials,
+		Error:      MetaCookieRemoved,
+	}
+	if !m.historyRelogin {
+		client.UserLogin.Delete(ctx, state, bridgev2.DeleteOpts{})
+		return
+	}
+	client.Disconnect()
+	client.Client = nil
+	client.LoginMeta.Cookies = nil
+	client.UserLogin.BridgeState.Send(state)
+	if err := client.UserLogin.Save(ctx); err != nil {
+		client.UserLogin.Log.Err(err).Msg("Failed to save user login after clearing cookies")
+	}
 }
 
 func (m *MessengerHistoryLogin) finishHistory(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -125,7 +148,7 @@ func (m *MessengerHistoryLogin) restoreHistory(ctx context.Context, client *Meta
 		}
 		return nil
 	}
-	if err := client.e2eeConnectWaiter.WaitTimeoutCtx(ctx, ConnectWaitTimeout); err != nil {
+	if err := waitForHistoryE2EE(ctx, client); err != nil {
 		return err
 	}
 	history := client.Client.GetSecureHistoryClient()
@@ -181,4 +204,29 @@ func (m *MessengerHistoryLogin) restoreHistory(ctx context.Context, client *Meta
 	err = client.UserLogin.Save(saveCtx)
 	client.backfillLock.Unlock()
 	return err
+}
+
+func waitForHistoryE2EE(ctx context.Context, client *MetaClient) error {
+	deadline := time.Now().Add(ConnectWaitTimeout)
+	for {
+		if !client.IsLoggedIn() {
+			return fmt.Errorf("%w: logged out while waiting for encrypted messaging", httpclient.ErrTokenInvalidated)
+		}
+		wait := min(time.Until(deadline), time.Second)
+		if wait <= 0 {
+			return errors.New("timed out waiting for encrypted messaging to connect")
+		}
+		err := client.e2eeConnectWaiter.WaitTimeoutCtx(ctx, wait)
+		if err == nil && client.Client != nil {
+			return nil
+		} else if err == nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(wait):
+			}
+		} else if ctx.Err() != nil {
+			return err
+		}
+	}
 }

@@ -45,6 +45,7 @@ const (
 	FBConsentRequired         status.BridgeStateErrorCode = "fb-consent-required"
 	FBCheckpointRequired      status.BridgeStateErrorCode = "fb-checkpoint-required"
 	MetaProxyUpdateFail       status.BridgeStateErrorCode = "meta-proxy-update-fail"
+	MetaNoNativeSession       status.BridgeStateErrorCode = "meta-no-native-session"
 	IGNotSupported            status.BridgeStateErrorCode = "meta-ig-not-supported"
 )
 
@@ -66,6 +67,7 @@ func init() {
 		MetaInboxLoadFailed:       "Facebook keeps failing to load your messages",
 		MetaPermanentError:        "Unknown permanent connection error",
 		MetaProxyUpdateFail:       "Failed to update proxy",
+		MetaNoNativeSession:       "Please log in to Facebook again to update your connection",
 		IGNotSupported:            "This bridge no longer supports Instagram",
 	})
 }

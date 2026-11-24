@@ -109,7 +109,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaCookieLogin) Cancel() {}
 
-func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
+func getInstaClient(ctx context.Context, log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
 	client := instameow.NewClient(instameow.ClientParams{
 		Cookies:                   c,
 		Log:                       log,
@@ -117,9 +117,9 @@ func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, u
 		DisableTyping:             conn.Config.DisableTyping,
 		LogRedactedLoginResponses: conn.Config.LogRedactedLoginResponses,
 	})
-	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
-		client.GetHTTP().GetNewProxy = conn.getProxy
-		if !client.GetHTTP().UpdateProxy("login") {
+	if useProxy && conn.Bridge.Config.Proxy.IsConfigured() {
+		client.GetHTTP().GetNewProxy = conn.Bridge.GetProxy
+		if !client.GetHTTP().UpdateProxy(ctx, "login") {
 			return nil, fmt.Errorf("failed to update proxy")
 		}
 	}
@@ -262,7 +262,7 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	}
 
 	log := user.Log.With().Str("component", "instameow").Logger()
-	client, err := getInstaClient(log, conn, c, conn.Config.ProxyOther)
+	client, err := getInstaClient(ctx, log, conn, c, conn.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}

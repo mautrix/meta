@@ -12,9 +12,13 @@ var (
 	msgStepAccountManagerInstructions = L.Define("login.step.instagram.account_manager.instructions", "Choose the Instagram profile to connect")
 	msgFieldAccountManagerName        = L.Define("login.field.instagram.account.name", "Instagram profile")
 
-	msgStepAPApproveInstructions = L.Define("login.step.instagram.auth_platform.approve.instructions", "Approve this login in the Instagram app on another device where you're signed in.")
-	msgStepAPMethodInstructions  = L.Define("login.step.instagram.auth_platform.method.instructions", "Choose one of the verification methods Instagram offered.")
-	msgStepAPActionInstructions  = L.Define(
+	msgStepAPApproveInstructions       = L.Define("login.step.instagram.auth_platform.approve.instructions", "Approve this login in the Instagram app on another device where you're signed in.")
+	msgStepAPApproveDeviceInstructions = L.Define(
+		"login.step.instagram.auth_platform.approve_device.instructions", "Instagram sent a notification to your {device}. Approve this login in the Instagram app on that device.",
+		l10n.WithComment("device is the device name Instagram reported, e.g. a phone model"),
+	)
+	msgStepAPMethodInstructions = L.Define("login.step.instagram.auth_platform.method.instructions", "Choose one of the verification methods Instagram offered.")
+	msgStepAPActionInstructions = L.Define(
 		"login.step.instagram.auth_platform.action.instructions", "Instagram requires a verification code via {channel}. Choose an action below.",
 		l10n.WithComment(channelParamComment),
 	)

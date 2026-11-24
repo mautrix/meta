@@ -4,14 +4,9 @@
 #  .ID - The internal user ID of the user.
 displayname_template: '{{or .DisplayName .Username "Unknown user"}}'
 
-# Static proxy address (HTTP or SOCKS5) for connecting to Meta.
-proxy:
-# If using a Tor proxy in the field above, you can set this to connect to
+# If using a Tor proxy in the top-level proxy section, you can set this to connect to
 # facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion instead of facebook.com.
 tor: false
-# HTTP endpoint to request new proxy address from, for dynamically assigned proxies.
-# The endpoint must return a JSON body with a string field called proxy_url.
-get_proxy_from:
 # Should media be proxied too?
 proxy_media: false
 # Should E2EE messages be proxied too?
