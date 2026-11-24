@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"slices"
 	"time"
@@ -15,8 +14,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/status"
 
-	"go.mau.fi/util/exslices"
 	"go.mau.fi/util/l10n"
+	"go.mau.fi/util/shape"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
@@ -195,7 +194,7 @@ func loginWithCookies(
 	client.MessengerLite.SetNativeSession(nativeSession)
 
 	log.Debug().
-		Strs("cookie_names", exslices.CastToString[string](slices.Collect(maps.Keys(c.GetAll())))).
+		Strs("cookie_names", shape.Keys(c.GetAll())).
 		Msg("Logging in with cookies")
 	user, tbl, err := client.LoadMessagesPage(ctx)
 	if err != nil {

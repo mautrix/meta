@@ -26,7 +26,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -34,6 +33,8 @@ import (
 	"github.com/google/go-querystring/query"
 	"github.com/tidwall/gjson"
 	"golang.org/x/net/html"
+
+	"go.mau.fi/util/shape"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/crypto"
@@ -241,19 +242,6 @@ func instagramWebLoginResponseKind(body []byte) string {
 	}
 }
 
-func instagramWebLoginResponseKeys(body []byte) []string {
-	var response map[string]json.RawMessage
-	if json.Unmarshal(body, &response) != nil {
-		return nil
-	}
-	keys := make([]string, 0, len(response))
-	for key := range response {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 func instagramWebLoginResponseClass(result instagramWebLoginResponse) string {
 	detail := strings.ToLower(result.Message + " " + result.ErrorType)
 	switch {
@@ -322,15 +310,6 @@ func normalizeInstagramWebChallengeURL(raw string) (string, bool) {
 	return parsed.String(), true
 }
 
-func instagramWebFormFields(form url.Values) []string {
-	fields := make([]string, 0, len(form))
-	for field := range form {
-		fields = append(fields, field)
-	}
-	sort.Strings(fields)
-	return fields
-}
-
 func (c *Client) logInstagramWebRequestRejection(
 	message string,
 	requestErr error,
@@ -350,8 +329,8 @@ func (c *Client) logInstagramWebRequestRejection(
 		Bool("web_session_header_present", headers.Get("x-web-session-id") != "").
 		Bool("web_device_header_present", headers.Get("x-web-device-id") != "").
 		Str("response_class", responseClass).
-		Strs("response_keys", instagramWebLoginResponseKeys(body)).
-		Strs("form_fields", instagramWebFormFields(form))
+		Strs("response_keys", shape.JSON(body, 1)).
+		Strs("form_fields", shape.Keys(form))
 	checkpointURL := gjson.GetBytes(body, "checkpoint_url").String()
 	redirectURL := gjson.GetBytes(body, "redirect_url").String()
 	logEvent = logEvent.

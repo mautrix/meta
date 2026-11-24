@@ -22,16 +22,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"maps"
 	"net/url"
 	"path"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/util/shape"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -221,7 +220,7 @@ func (mc *MessageConverter) fetchXMA(ctx context.Context, xma *slidetypes.XMACon
 			Str("target_id", xma.TargetID).
 			Str("target_url", xma.TargetURL).
 			Str("preview_layout_type", xma.PreviewLayoutType).
-			Strs("unrecognized_fields", slices.Sorted(maps.Keys(xma.Unrecognized))).
+			Strs("unrecognized_fields", shape.Keys(xma.Unrecognized)).
 			Msg("XMA target isn't a fetchable post or story")
 		basePart.Extra["fi.mau.instagram.xma_fetch_status"] = "unrecognized type"
 		return basePart
