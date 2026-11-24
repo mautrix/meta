@@ -1209,6 +1209,37 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 		}
 		return BloksLiteralOf(results), nil
+	case "bk.action.map.Filter":
+		dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.filter")
+		if err != nil {
+			return nil, err
+		}
+		callback, err := evalAs[*BloksLambda](ctx, i, &call.Args[1], "map.filter")
+		if err != nil {
+			return nil, err
+		}
+		results := map[string]*BloksScriptLiteral{}
+		for _, key := range slices.Sorted(maps.Keys(dict)) {
+			include, err := i.Evaluate(ctx, &BloksScriptNode{
+				Content: &BloksScriptFuncall{
+					Function: "bk.action.core.Apply",
+					Args: []BloksScriptNode{{
+						Content: BloksLiteralOf(callback),
+					}, {
+						Content: BloksLiteralOf(key),
+					}, {
+						Content: dict[key],
+					}},
+				},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("filter key %s: %w", key, err)
+			}
+			if include.IsTruthy() {
+				results[key] = dict[key]
+			}
+		}
+		return BloksLiteralOf(results), nil
 	case "bk.action.map.Keys":
 		dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.keys")
 		if err != nil {
