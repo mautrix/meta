@@ -14,6 +14,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/util/exslices"
+	"go.mau.fi/util/l10n"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -54,8 +55,8 @@ func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flo
 
 var (
 	loginFlowInstagram = bridgev2.LoginFlow{
-		Name:        "Cookies",
-		Description: "Login using cookies from instagram.com",
+		Name:        msgFlowCookiesName.Message(),
+		Description: msgFlowCookiesDescription.Message(),
 		ID:          FlowIDCookies,
 	}
 )
@@ -93,7 +94,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
 		StepID:       LoginStepIDCookies,
-		Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
+		Instructions: msgStepCookiesInstructions.Message(),
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			//UserAgent:         useragent.UserAgent,
 			URL: "https://www.instagram.com/accounts/login/",
@@ -239,7 +240,7 @@ func loginWithCookies(
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Logged in as %s (%s)", user.GetName(), ul.ID),
+		Instructions: msgStepCompleteInstructions.Render(l10n.Params{"name": user.GetName(), "id": string(ul.ID)}),
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: ul.ID,
 			UserLogin:   ul,

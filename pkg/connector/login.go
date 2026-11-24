@@ -16,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/util/exslices"
+	"go.mau.fi/util/l10n"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix"
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
@@ -83,23 +84,23 @@ func validateNativeSession(session *types.NativeSession) error {
 
 var (
 	loginFlowFacebook = bridgev2.LoginFlow{
-		Name:        "facebook.com",
-		Description: "Login using cookies from facebook.com",
+		Name:        msgFlowFacebookName.Message(),
+		Description: msgFlowFacebookDescription.Message(),
 		ID:          FlowIDFacebookCookies,
 	}
 	loginFlowMessenger = bridgev2.LoginFlow{
-		Name:        "messenger.com",
-		Description: "Login using cookies from messenger.com",
+		Name:        msgFlowMessengerName.Message(),
+		Description: msgFlowMessengerDescription.Message(),
 		ID:          FlowIDMessengerCookies,
 	}
 	loginFlowMessengerLiteIOS = bridgev2.LoginFlow{
-		Name:        "Messenger iOS",
-		Description: "Login with username/password using Messenger iOS API",
+		Name:        msgFlowMessengerLiteIOSName.Message(),
+		Description: msgFlowMessengerLiteIOSDescription.Message(),
 		ID:          FlowIDMessengerLiteIOS,
 	}
 	loginFlowMessengerLiteAndroid = bridgev2.LoginFlow{
-		Name:        "Messenger Android",
-		Description: "Login with username/password using Messenger Android API",
+		Name:        msgFlowMessengerLiteAndroidName.Message(),
+		Description: msgFlowMessengerLiteAndroidDescription.Message(),
 		ID:          FlowIDMessengerLiteAndroid,
 	}
 )
@@ -142,7 +143,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	step := &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
 		StepID:       LoginStepIDCookies,
-		Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
+		Instructions: msgStepCookiesInstructions.Message(),
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			UserAgent: useragent.UserAgent,
 		},
@@ -255,7 +256,7 @@ func loginWithCookies(
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Logged in as %s (%d)", user.GetName(), id),
+		Instructions: msgStepCompleteInstructions.Render(l10n.Params{"name": user.GetName(), "id": id}),
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: ul.ID,
 			UserLogin:   ul,
