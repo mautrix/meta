@@ -56,6 +56,10 @@ var ErrXMAReloadNeeded = mautrix.RespError{
 	StatusCode: http.StatusNotFound,
 }
 
+var ErrMediaGone = mautrix.MNotFound.WithMessage("Media no longer exists")
+
+var errTargetUnavailable = errors.New("target message is now an unavailable placeholder")
+
 func (ic *IGClient) ResolveMedia(ctx context.Context, portal *bridgev2.Portal, msg *database.Message, unresolvedMedia json.RawMessage) (*bridgev2.ResolvedMedia, error) {
 	edit, err := ic.Main.MsgConv.FetchUnresolvedXMA(ctx, ic.Client, ic.UserLogin, portal, msg, unresolvedMedia)
 	if err != nil {
@@ -107,6 +111,10 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 		return nil, err
 	}
 
+	if info.Gone {
+		return nil, ErrMediaGone
+	}
+
 	log := zerolog.Ctx(ctx)
 
 	needsRefresh := !info.ExpiresAt.IsZero() && time.Now().After(info.ExpiresAt.Add(-5*time.Minute))
@@ -125,6 +133,10 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 		refreshedURL, refreshErr := ic.refreshMediaURL(ctx, mediaInfo, msg, info)
 		if refreshErr != nil {
 			log.Warn().Err(refreshErr).Msg("Failed to refresh media URL")
+			if errors.Is(refreshErr, errTargetUnavailable) {
+				ic.markMediaGone(ctx, mediaInfo, msg, info)
+				return nil, ErrMediaGone
+			}
 			// Return the original error if refresh failed
 			return nil, mediadl.WrapDirectMediaError(err)
 		}
@@ -412,9 +424,29 @@ func (ic *IGConnector) refreshBlobMedia(
 
 	if resultURL != "" {
 		return resultURL, nil
+	} else if targetXMA != nil && len(targetAttachmentKeys) == 0 && strings.HasSuffix(targetXMA.Typename, "PlaceholderXMA") {
+		return "", fmt.Errorf("%w (%s)", errTargetUnavailable, targetXMA.Typename)
 	}
 
 	return "", fmt.Errorf("target attachment not found in re-fetched messages")
+}
+
+func (ic *IGConnector) markMediaGone(ctx context.Context, mediaInfo *metaid.MediaInfo, msg *database.Message, info *mediadl.DirectMediaMeta) {
+	info.Gone = true
+	updated, err := json.Marshal(info)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to marshal direct media metadata to mark media as gone")
+		return
+	}
+	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
+	if mediaInfo.Type == metaid.DirectMediaTypeMetaXMA {
+		msgMeta.XMADirectMediaMeta = updated
+	} else {
+		msgMeta.DirectMediaMeta = updated
+	}
+	if err = ic.Bridge.DB.Message.Update(ctx, msg); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to mark media as gone in database")
+	}
 }
 
 func nonEmptyJSONFields(val any) []string {
