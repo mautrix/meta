@@ -396,8 +396,9 @@ func instagramAuthPlatformApprovalDevice(body string) string {
 		return ""
 	}
 	device, _, _ = strings.Cut(device, "\n")
+	device, _, _ = strings.Cut(device, ". ")
 	device = strings.TrimSuffix(strings.TrimSpace(device), ".")
-	if device == "" || utf8.RuneCountInString(device) > 100 {
+	if device == "" || utf8.RuneCountInString(device) > 64 {
 		return ""
 	}
 	return device
