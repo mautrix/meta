@@ -30,6 +30,7 @@ var (
 	_ bridgev2.NetworkConnector        = (*MetaConnector)(nil)
 	_ bridgev2.MaxFileSizeingNetwork   = (*MetaConnector)(nil)
 	_ bridgev2.NetworkResettingNetwork = (*MetaConnector)(nil)
+	_ bridgev2.ProxyingNetwork         = (*MetaConnector)(nil)
 )
 
 func (m *MetaConnector) Init(bridge *bridgev2.Bridge) {
@@ -76,11 +77,13 @@ func (m *MetaConnector) GetName() bridgev2.BridgeName {
 	}
 }
 
+func (m *MetaConnector) SupportsProxy() {}
+
 func (m *MetaConnector) ResetHTTPTransport() {
 	cfg := m.Bridge.GetHTTPClientSettings()
 	mediadl.SetHTTP(cfg)
-	if m.Config.ProxyMedia && m.Config.Proxy != "" {
-		mediadl.SetProxy(m.Config.Proxy)
+	if m.Config.ProxyMedia && m.Bridge.Config.Proxy.URL != "" {
+		mediadl.SetProxy(m.Bridge.Config.Proxy.URL)
 	}
 	for _, login := range m.Bridge.GetAllCachedUserLogins() {
 		login.Client.(*MetaClient).Client.GetHTTP().SetConfig(cfg)
