@@ -63,6 +63,7 @@ type instagramAuthPlatformState struct {
 	resendAfter              time.Time
 	approving                bool
 	approvalCode             string
+	approvalDevice           string
 	approvalInterval         time.Duration
 }
 
@@ -315,7 +316,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		s.channel, s.choices, s.enterCode, s.tryAnotherWay = "", nil, false, false
 		s.notice = ""
 		s.canResend, s.resendCooldown, s.resendAfter = false, 0, time.Time{}
-		s.approving, s.approvalCode, s.approvalInterval = false, "", 0
+		s.approving, s.approvalCode, s.approvalDevice, s.approvalInterval = false, "", "", 0
 		op := instagramAPCode
 		if target.Path == "/auth_platform/challengepicker/" {
 			op = instagramAPPicker
@@ -348,6 +349,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			s.approving = true
 			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
 			s.approvalCode = data.Get("verification_code").String()
+			s.approvalDevice = instagramAuthPlatformApprovalDevice(data.Get("screen_content_body").String())
 		} else {
 			for _, option := range data.Get("challenge_options").Array() {
 				channel, index := instagramAuthPlatformChannel(option.Get("challenge_name").String()), option.Get("index")
@@ -388,6 +390,19 @@ func instagramAuthPlatformChannel(method string) string {
 	return map[string]string{"EMAIL": "email", "SMS": "SMS", "SOWA": "WhatsApp"}[method]
 }
 
+func instagramAuthPlatformApprovalDevice(body string) string {
+	device, ok := strings.CutPrefix(body, "We sent a notification to your ")
+	if !ok {
+		return ""
+	}
+	device, _, _ = strings.Cut(device, "\n")
+	device = strings.TrimSuffix(strings.TrimSpace(device), ".")
+	if device == "" || utf8.RuneCountInString(device) > 100 {
+		return ""
+	}
+	return device
+}
+
 func (s *instagramAuthPlatformState) configureCodeResend(data gjson.Result) {
 	// The browser starts this cooldown on entering the page, not just on resend.
 	cooldown := data.Get("resend_code_cooldown")
@@ -402,6 +417,9 @@ func (s *instagramAuthPlatformState) configureCodeResend(data gjson.Result) {
 func (s *instagramAuthPlatformState) step(instructions string) *bridgev2.LoginStep {
 	instructions = cmp.Or(instructions, s.notice)
 	if s.approving {
+		if s.approvalDevice != "" {
+			instructions = cmp.Or(instructions, "Instagram sent a notification to your "+s.approvalDevice+". Approve this login in the Instagram app on that device.")
+		}
 		params := &bridgev2.LoginDisplayAndWaitParams{Type: bridgev2.LoginDisplayTypeNothing, CanCancel: s.tryAnotherWay}
 		if s.approvalCode != "" {
 			params.Type, params.Data = bridgev2.LoginDisplayTypeCode, s.approvalCode
