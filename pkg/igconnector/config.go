@@ -30,10 +30,8 @@ import (
 var ExampleConfig string
 
 type Config struct {
-	Proxy        string `yaml:"proxy"`
-	GetProxyFrom string `yaml:"get_proxy_from"`
-	ProxyMedia   bool   `yaml:"proxy_media"`
-	ProxyOther   bool   `yaml:"proxy_other"`
+	ProxyMedia bool `yaml:"proxy_media"`
+	ProxyOther bool `yaml:"proxy_other"`
 
 	DisableXMABackfill bool `yaml:"disable_xma_backfill"`
 	DisableXMAAlways   bool `yaml:"disable_xma_always"`
@@ -80,8 +78,6 @@ func (c *Config) PostProcess() (err error) {
 
 func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "displayname_template")
-	helper.Copy(up.Str|up.Null, "proxy")
-	helper.Copy(up.Str|up.Null, "get_proxy_from")
 	helper.Copy(up.Bool, "proxy_media")
 	helper.Copy(up.Bool, "proxy_other")
 	helper.Copy(up.Int, "min_full_reconnect_interval_seconds")

@@ -310,7 +310,7 @@ func (c *Client) Connect(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			}
-			c.http.UpdateProxy("reconnect")
+			c.http.UpdateProxy(ctx, "reconnect")
 		}
 	}()
 	return nil

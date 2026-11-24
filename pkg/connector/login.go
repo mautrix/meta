@@ -164,11 +164,11 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaCookieLogin) Cancel() {}
 
-func getMessagixClient(log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies, useProxy bool) (*messagix.Client, error) {
+func getMessagixClient(ctx context.Context, log zerolog.Logger, conn *MetaConnector, c *cookies.Cookies, useProxy bool) (*messagix.Client, error) {
 	client := messagix.NewClient(c, log, conn.getMessagixConfig())
-	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
-		client.GetHTTP().GetNewProxy = conn.getProxy
-		if !client.GetHTTP().UpdateProxy("login") {
+	if useProxy && conn.Bridge.Config.Proxy.IsConfigured() {
+		client.GetHTTP().GetNewProxy = conn.Bridge.GetProxy
+		if !client.GetHTTP().UpdateProxy(ctx, "login") {
 			return nil, fmt.Errorf("failed to update proxy")
 		}
 	}
@@ -277,7 +277,7 @@ func (m *MetaCookieLogin) SubmitCookies(ctx context.Context, strCookies map[stri
 	}
 
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
-	client, err := getMessagixClient(log, m.Main, c, m.Main.Config.ProxyOther)
+	client, err := getMessagixClient(ctx, log, m.Main, c, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +314,7 @@ func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.L
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-	client, err := getMessagixClient(log, m.Main, fakeCookies, m.Main.Config.ProxyMessengerLite)
+	client, err := getMessagixClient(ctx, log, m.Main, fakeCookies, m.Main.Config.ProxyMessengerLite)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +374,7 @@ func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]stri
 	fakeCookies := &cookies.Cookies{
 		Platform: m.Mode,
 	}
-	newClient, err := getMessagixClient(log, m.Main, fakeCookies, m.Main.Config.ProxyOther)
+	newClient, err := getMessagixClient(ctx, log, m.Main, fakeCookies, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}

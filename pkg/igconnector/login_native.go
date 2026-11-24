@@ -96,9 +96,9 @@ func getInstaNativeClient(
 	if transport != nil {
 		client.GetHTTP().GetNewProxy = nil
 		client.GetHTTP().SetTransportOverride(transport)
-	} else if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
-		client.GetHTTP().GetNewProxy = conn.getProxy
-		if !client.GetHTTP().UpdateProxy("login") {
+	} else if useProxy && conn.Bridge.Config.Proxy.IsConfigured() {
+		client.GetHTTP().GetNewProxy = conn.Bridge.GetProxy
+		if !client.GetHTTP().UpdateProxy(ctx, "login") {
 			return nil, errors.New("failed to update proxy")
 		}
 	}
@@ -660,7 +660,7 @@ func (m *MetaNativeLogin) complete(ctx context.Context) (*bridgev2.LoginStep, er
 		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missingCookies)
 	}
 	m.clearCAAFallback()
-	client, err := getInstaClient(log, m.Main, loginCookies, m.Main.Config.ProxyOther)
+	client, err := getInstaClient(ctx, log, m.Main, loginCookies, m.Main.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
