@@ -135,7 +135,10 @@ func (c *HTTPClient) SendInstagramRUploadRequest(ctx context.Context, media *Mer
 		if media.IsVoiceClip {
 			h.Set("audio_type", "fb_voice_message")
 			if media.WaveformData != nil {
-				waveform, err := json.Marshal(media.WaveformData)
+				waveform, err := json.Marshal(map[string]any{
+					"amplitudes":    media.WaveformData.Amplitudes,
+					"sampling_freq": media.WaveformData.SamplingFrequency,
+				})
 				if err != nil {
 					return 0, fmt.Errorf("failed to marshal waveform: %w", err)
 				}
