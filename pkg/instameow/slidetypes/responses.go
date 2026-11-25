@@ -56,6 +56,14 @@ func (smr *SendMediaResponse) GetMessage() SentMessage {
 	return smr.Message
 }
 
+type SendStoreStickerResponse struct {
+	Message SentMessage `json:"direct_store_sticker_send_with_slide_response"`
+}
+
+func (sssr *SendStoreStickerResponse) GetMessage() SentMessage {
+	return sssr.Message
+}
+
 type EditMessageResponse struct {
 	Message SentMessage `json:"direct_edit_message_with_slide_messaging_response"`
 }
@@ -163,6 +171,42 @@ type CreateGroupResponse struct {
 		ID     string            `json:"id"`
 		Thread *FolderOnlyThread `json:"as_ig_direct_thread"`
 	} `json:"xig_ig_direct_create_thread"`
+}
+
+type StickerTrayResponse struct {
+	Data struct {
+		Sections struct {
+			Edges []struct {
+				Node *StickerTraySection `json:"node"`
+			} `json:"edges"`
+		} `json:"sections"`
+	} `json:"xig_igd_stickers_query"`
+}
+
+type StickerTraySection struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Type   string `json:"type"`
+	IconV2 struct {
+		LightSelected string `json:"light_selected"`
+	} `json:"icon_v2"`
+	Stickers struct {
+		Edges []struct {
+			Node *TraySticker `json:"node"`
+		} `json:"edges"`
+	} `json:"stickers"`
+}
+
+type TraySticker struct {
+	ID           string `json:"id"`
+	AltText      string `json:"alt_text"`
+	AnimatedInfo *struct {
+		WebP *struct {
+			URL    string `json:"url"`
+			Width  int    `json:"width"`
+			Height int    `json:"height"`
+		} `json:"webp"`
+	} `json:"animated_info"`
 }
 
 type UserInfoResponse struct {

@@ -155,7 +155,7 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return c.Int64("otid", otid)
 	})
 	log.Debug().Msg("Sending Matrix message to Meta")
-	converted, err := ic.Main.MsgConv.ToInstagram(ctx, cli, msg.Event, msg.Content, msg.ReplyTo, otid, msg.OrigSender != nil, msg.Portal)
+	converted, err := ic.Main.MsgConv.ToInstagram(ctx, cli, msg.Event, msg.Content, msg.ReplyTo, otid, msg.OrigSender != nil, msg.Portal, ic.getTrayStickerID(ctx, msg))
 	if err != nil {
 		if state := ic.errorToBridgeState(ctx, err); state != nil {
 			ic.UserLogin.BridgeState.Send(*state)
@@ -171,6 +171,8 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		resp, err = cli.SendMessage(ctx, req)
 	case *slidetypes.SendMediaRequest:
 		resp, err = cli.SendMedia(ctx, req)
+	case *slidetypes.SendStoreStickerRequest:
+		resp, err = cli.SendStoreSticker(ctx, req)
 	default:
 		return nil, fmt.Errorf("unexpected converted request type %T", converted)
 	}
