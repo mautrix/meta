@@ -19,18 +19,15 @@ package igconnector
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -53,6 +50,7 @@ type IGClient struct {
 	catchingUpTo int64
 
 	pendingGroupCreations *exsync.Set[string]
+	missingThreads        *exsync.Set[string]
 	stopConnectAttempt    atomic.Pointer[context.CancelFunc]
 	stopChatBackfill      atomic.Pointer[context.CancelFunc]
 	chatBackfillLock      sync.Mutex
@@ -82,6 +80,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		caughtUp:  exsync.NewEvent(),
 
 		pendingGroupCreations: exsync.NewSet[string](),
+		missingThreads:        exsync.NewSet[string](),
 		webPushCandidates:     exsync.NewSet[networkid.PortalID](),
 	}
 	c.mailboxProcessed.Store(true)
@@ -90,48 +89,6 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 }
 
 var _ bridgev2.NetworkAPI = (*IGClient)(nil)
-
-var getProxyClient = &http.Client{Timeout: 30 * time.Second}
-
-type respGetProxy struct {
-	ProxyURL string `json:"proxy_url"`
-}
-
-// TODO this should be moved into mautrix-go
-
-func (ic *IGConnector) getProxy(reason string) (string, error) {
-	if ic.Config.GetProxyFrom == "" {
-		return ic.Config.Proxy, nil
-	}
-	parsed, err := url.Parse(ic.Config.GetProxyFrom)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse address: %w", err)
-	}
-	q := parsed.Query()
-	q.Set("reason", reason)
-	parsed.RawQuery = q.Encode()
-	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to prepare request: %w", err)
-	}
-	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := getProxyClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-		return "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
-	}
-	var respData respGetProxy
-	err = json.NewDecoder(resp.Body).Decode(&respData)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-	return respData.ProxyURL, nil
-}
 
 func (ic *IGClient) ensureIGClient() {
 	if ic.LoginMeta.Cookies != nil && ic.Client == nil && ic.LoginMeta.Platform == types.Instagram {
@@ -258,9 +215,9 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		})
 		return
 	}
-	if ic.Main.Config.ProxyOther && (ic.Main.Config.GetProxyFrom != "" || ic.Main.Config.Proxy != "") {
-		cli.GetHTTP().GetNewProxy = ic.Main.getProxy
-		if !cli.GetHTTP().UpdateProxy("connect") {
+	if ic.Main.Config.ProxyOther && ic.Main.Bridge.Config.Proxy.IsConfigured() {
+		cli.GetHTTP().GetNewProxy = ic.Main.Bridge.GetProxy
+		if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
 			ic.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaProxyUpdateFail,
@@ -443,6 +400,7 @@ func (ic *IGClient) schedulePeriodicReconnect(ctx context.Context) {
 		(*oldCancel)()
 	}
 	interval := time.Duration(ic.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	interval -= rand.N(interval / 10)
 	ic.UserLogin.Log.Info().Stringer("interval", interval).Msg("Periodic reconnect scheduled")
 	go func() {
 		defer cancel()

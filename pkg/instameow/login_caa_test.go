@@ -416,7 +416,7 @@ func TestInstagramAccountManagerDiscoveryAndSwitchUseCurrentNativeContract(t *te
 	if step.StepID != "fi.mau.meta.instagram.account_manager" ||
 		step.UserInputParams == nil ||
 		len(step.UserInputParams.Fields) != 1 ||
-		!reflect.DeepEqual(step.UserInputParams.Fields[0].Options, []string{"current_user", "linked_user"}) {
+		!reflect.DeepEqual(step.UserInputParams.Fields[0].Options, bridgev2.UnlocalizedOptions("current_user", "linked_user")) {
 		t.Fatalf("unexpected Account Manager selection step: %#v", step)
 	}
 	if err = client.switchInstagramAccountManagerMobileAccount(

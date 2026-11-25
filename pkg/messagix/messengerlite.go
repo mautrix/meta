@@ -176,9 +176,14 @@ func (c *Client) FetchLightspeedKey(ctx context.Context) (*LightspeedKeyResponse
 	}
 	params := map[string]any{
 		"access_token": app.AccessToken,
-		"device_id":    strings.ToUpper(c.MessengerLite.deviceID.String()),
+		"device_id":    bloks.FormatDeviceID(c.Platform, c.MessengerLite.deviceID),
 		"machine_id":   c.MessengerLite.machineID,
 		"version":      "3",
+	}
+	if c.Platform == types.MessengerLiteAndroid {
+		delete(params, "machine_id")
+		params["flow"] = "CONTROLLER_INITIALIZATION"
+		params["version"] = "2"
 	}
 
 	query := url.Values{}
@@ -438,8 +443,8 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 			return nil, nil, fmt.Errorf("construct browser: %w", err)
 		}
 		if m.deviceID != uuid.Nil && m.familyDeviceID != uuid.Nil {
-			b.Bridge.DeviceID = strings.ToUpper(m.deviceID.String())
-			b.Bridge.FamilyDeviceID = strings.ToUpper(m.familyDeviceID.String())
+			b.Bridge.DeviceID = bloks.FormatDeviceID(m.client.Platform, m.deviceID)
+			b.Bridge.FamilyDeviceID = bloks.FormatDeviceID(m.client.Platform, m.familyDeviceID)
 			b.Bridge.MachineID = m.machineID
 		}
 		m.browser = b

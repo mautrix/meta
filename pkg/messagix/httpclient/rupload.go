@@ -12,9 +12,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/go-querystring/query"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
@@ -28,15 +31,15 @@ type RUploadMedia struct {
 	DurationMS  int
 }
 
-func ruploadNamespace(media *RUploadMedia) string {
+func ruploadNamespace(mimeType string) string {
 	switch {
-	case media.MimeType == "image/gif":
+	case mimeType == "image/gif":
 		return "messenger_gif"
-	case strings.HasPrefix(media.MimeType, "image/"):
+	case strings.HasPrefix(mimeType, "image/"):
 		return "messenger_image"
-	case strings.HasPrefix(media.MimeType, "video/"):
+	case strings.HasPrefix(mimeType, "video/"):
 		return "messenger_video"
-	case strings.HasPrefix(media.MimeType, "audio/"):
+	case strings.HasPrefix(mimeType, "audio/"):
 		return "messenger_audio"
 	default:
 		return "messenger_file"
@@ -49,7 +52,7 @@ func (c *HTTPClient) SendRUploadRequest(ctx context.Context, session *types.Nati
 	} else if session == nil || session.AccessToken == "" {
 		return 0, fmt.Errorf("no native session")
 	}
-	namespace := ruploadNamespace(media)
+	namespace := ruploadNamespace(media.MimeType)
 	entityName := fmt.Sprintf("%s-0-%d", hex.EncodeToString(random.Bytes(16)), len(media.MediaData))
 
 	h := http.Header{}
@@ -93,6 +96,67 @@ func (c *HTTPClient) SendRUploadRequest(ctx context.Context, session *types.Nati
 	_, body, err := c.makeRequest(ctx, c.uploadClient, reqURL, http.MethodPost, h, media.MediaData, "application/octet-stream", func(e *zerolog.Event) *zerolog.Event {
 		return e.Str("rupload_namespace", namespace)
 	})
+	return parseRUploadResponse(body, err)
+}
+
+func (c *HTTPClient) SendInstagramRUploadRequest(ctx context.Context, media *MercuryUploadMedia) (int64, error) {
+	if c == nil {
+		return 0, fmt.Errorf("client is nil")
+	}
+	namespace := ruploadNamespace(media.MimeType)
+	sessionID := uuid.NewString()
+	queryValues, err := query.Values(c.NewHTTPQuery())
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert HttpQuery into query.Values for rupload: %w", err)
+	}
+
+	h := c.BuildHeaders(true, false)
+	for _, sameOriginHeader := range []string{"x-csrftoken", "x-mid", "x-ig-www-claim", "x-ig-app-id", "x-fb-lsd", "x-asbd-id"} {
+		h.Del(sameOriginHeader)
+	}
+	h.Set("origin", c.parent.GetEndpoint("base_url"))
+	h.Set("referer", c.parent.GetEndpoint("base_url")+"/")
+	h.Set("priority", "u=1, i")
+	h.Set("sec-fetch-dest", "empty")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("sec-fetch-site", "same-site")
+	h.Set("x-ig-d", "www")
+	h.Set("ig-u-ds-user-id", c.parent.GetCookies().Get(cookies.IGCookieDSUserID))
+	h.Set("offset", "0")
+	h.Set("x-entity-length", strconv.Itoa(len(media.MediaData)))
+	h.Set("x-entity-name", url.PathEscape(cmp.Or(media.Filename, sessionID)))
+	h.Set("x-entity-type", media.MimeType)
+	switch namespace {
+	case "messenger_image", "messenger_gif":
+		h.Set("image_type", "FILE_ATTACHMENT")
+	case "messenger_video":
+		h.Set("video_type", "FILE_ATTACHMENT")
+	case "messenger_audio":
+		if media.IsVoiceClip {
+			h.Set("audio_type", "fb_voice_message")
+			if media.WaveformData != nil {
+				waveform, err := json.Marshal(map[string]any{
+					"amplitudes":    media.WaveformData.Amplitudes,
+					"sampling_freq": media.WaveformData.SamplingFrequency,
+				})
+				if err != nil {
+					return 0, fmt.Errorf("failed to marshal waveform: %w", err)
+				}
+				h.Set("waveform_data", string(waveform))
+			}
+		} else {
+			h.Set("audio_type", "FILE_ATTACHMENT")
+		}
+	case "messenger_file":
+		h.Set("file_type", "FILE_ATTACHMENT")
+	}
+
+	reqURL := fmt.Sprintf("%s%s/%s?%s", c.parent.GetEndpoint("rupload"), namespace, sessionID, queryValues.Encode())
+	_, body, err := c.makeRequestOnce(ctx, c.uploadClient(), reqURL, http.MethodPost, h, media.MediaData, types.NONE)
+	return parseRUploadResponse(body, err)
+}
+
+func parseRUploadResponse(body []byte, err error) (int64, error) {
 	if err != nil {
 		var errResp struct {
 			DebugInfo struct {

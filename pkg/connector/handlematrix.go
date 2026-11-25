@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 var (
@@ -65,6 +65,12 @@ var ErrNotConnected = bridgev2.WrapErrorInStatus(errors.New("not connected")).Wi
 
 const ConnectWaitTimeout = 1 * time.Minute
 
+const webStanzaIDPlatformBits = 0x1f << 17
+
+func makeWAMessageID(otid int64) waTypes.MessageID {
+	return strconv.FormatInt(otid&^webStanzaIDPlatformBits, 10)
+}
+
 func getOTID(inputTxnID networkid.RawTransactionID) int64 {
 	if inputTxnID != "" {
 		otid, err := strconv.ParseInt(string(inputTxnID), 10, 64)
@@ -94,7 +100,7 @@ func (m *MetaClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matr
 		if err != nil {
 			return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 		}
-		messageID := strconv.FormatInt(otid, 10)
+		messageID := makeWAMessageID(otid)
 		chatJID := portalMeta.JID(msg.Portal.ID)
 		senderJID := m.WADevice.ID
 		if waMeta == nil {
@@ -333,7 +339,7 @@ func (m *MetaClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Mat
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: waTypes.MessageID(msg.InputTransactionID),
+			ID: makeWAMessageID(getOTID(msg.InputTransactionID)),
 		})
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 		return nil, wrapMetaError(err)
@@ -382,7 +388,7 @@ func (m *MetaClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridge
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: waTypes.MessageID(msg.InputTransactionID),
+			ID: makeWAMessageID(getOTID(msg.InputTransactionID)),
 		})
 		zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 		return wrapMetaError(err)
@@ -500,7 +506,7 @@ func (m *MetaClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.Matrix
 		edit.EditTarget.Metadata.(*metaid.MessageMetadata).EditTimestamp = edit.Event.Timestamp
 		portalJID := edit.Portal.Metadata.(*metaid.PortalMetadata).JID(edit.Portal.ID)
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, nil, whatsmeow.SendRequestExtra{
-			ID: strconv.FormatInt(otid, 10),
+			ID: makeWAMessageID(otid),
 		})
 		log.Trace().Any("response", resp).Msg("WhatsApp edit response")
 		return wrapMetaError(err)
@@ -534,7 +540,7 @@ func (m *MetaClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev
 			Key: m.messageIDToWAKey(messageID),
 		})
 		portalJID := msg.Portal.Metadata.(*metaid.PortalMetadata).JID(msg.Portal.ID)
-		revokeID := strconv.FormatInt(getOTID(msg.InputTransactionID), 10)
+		revokeID := makeWAMessageID(getOTID(msg.InputTransactionID))
 		waMeta := &waMsgApplication.MessageApplication_Metadata{}
 		resp, err := m.E2EEClient.SendFBMessage(ctx, portalJID, consumerMsg, waMeta, whatsmeow.SendRequestExtra{
 			ID: revokeID,
@@ -800,6 +806,8 @@ func (m *MetaClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.Mat
 func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
 	if msg.Portal.RoomType == database.RoomTypeDM {
 		return false, fmt.Errorf("changing avatar not supported in DMs")
+	} else if m.Client == nil {
+		return false, bridgev2.ErrNotLoggedIn
 	}
 	threadID := metaid.ParseFBPortalID(msg.Portal.ID)
 	var imageID int64
@@ -807,21 +815,16 @@ func (m *MetaClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.M
 		// TODO: handle removing avatar. Messenger web doesn't have a remove option?
 		return false, fmt.Errorf("removing avatar not implemented")
 	} else {
-		data, err := m.Main.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
-		if err != nil {
-			return false, fmt.Errorf("failed to download avatar: %w", err)
-		}
-		mimeType := http.DetectContentType(data)
-		resp, err := m.Client.GetHTTP().SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
-			Filename:  "avatar.jpg",
-			MimeType:  mimeType,
-			MediaData: data,
+		var err error
+		imageID, err = mediadl.ReuploadFileToMeta(ctx, m.Client.GetHTTP(), m.Client.MessengerLite.GetNativeSession(), msg.Portal, &event.MessageEventContent{
+			MsgType:  event.MsgImage,
+			URL:      msg.Content.URL,
+			FileName: "avatar.jpg",
+			Info:     &event.FileInfo{},
 		})
 		if err != nil {
 			return false, wrapMetaError(fmt.Errorf("failed to upload avatar: %w", err))
 		}
-
-		imageID = resp.Payload.RealMetadata.GetFbId()
 		if imageID == 0 {
 			return false, fmt.Errorf("no image ID received from upload")
 		}

@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"math/rand/v2"
-	"net/http"
-	"net/url"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -21,7 +19,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	waTypes "go.mau.fi/whatsmeow/types"
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -134,48 +131,6 @@ var (
 	_ status.BridgeStateFiller = (*MetaClient)(nil)
 )
 
-var getProxyClient = &http.Client{Timeout: 30 * time.Second}
-
-type respGetProxy struct {
-	ProxyURL string `json:"proxy_url"`
-}
-
-// TODO this should be moved into mautrix-go
-
-func (m *MetaConnector) getProxy(reason string) (string, error) {
-	if m.Config.GetProxyFrom == "" {
-		return m.Config.Proxy, nil
-	}
-	parsed, err := url.Parse(m.Config.GetProxyFrom)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse address: %w", err)
-	}
-	q := parsed.Query()
-	q.Set("reason", reason)
-	parsed.RawQuery = q.Encode()
-	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to prepare request: %w", err)
-	}
-	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := getProxyClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-		return "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
-	}
-	var respData respGetProxy
-	err = json.NewDecoder(resp.Body).Decode(&respData)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-	return respData.ProxyURL, nil
-}
-
 func (m *MetaClient) ensureMessagixClient() {
 	if m.LoginMeta.Cookies != nil && m.Client == nil {
 		m.LoginMeta.Cookies.Platform = m.LoginMeta.Platform
@@ -225,6 +180,14 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 		})
 		return
 	}
+	if m.LoginMeta.Cookies != nil && m.LoginMeta.Platform.IsMessengerLite() && m.LoginMeta.NativeSession == nil {
+		m.permanentErrored.Store(true)
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      MetaNoNativeSession,
+		})
+		return
+	}
 	m.ensureMessagixClient()
 	cli := m.Client
 	if cli == nil {
@@ -262,9 +225,9 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 	} else {
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
-	if m.Main.Config.ProxyOther && (m.Main.Config.GetProxyFrom != "" || m.Main.Config.Proxy != "") {
-		cli.GetHTTP().GetNewProxy = m.Main.getProxy
-		if !cli.GetHTTP().UpdateProxy("connect") {
+	if m.Main.Config.ProxyOther && m.Main.Bridge.Config.Proxy.IsConfigured() {
+		cli.GetHTTP().GetNewProxy = m.Main.Bridge.GetProxy
+		if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
 			m.UserLogin.BridgeState.Send(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaProxyUpdateFail,
@@ -409,13 +372,23 @@ func (m *MetaClient) connectWithTable(ctx context.Context, initialTable *table.L
 
 	m.initialTable.Store(initialTable)
 
-	err = m.Client.Connect(ctx)
+	cli := m.Client
+	if cli == nil {
+		zerolog.Ctx(ctx).Warn().Msg("Client was disconnected before connecting with initial table")
+		return
+	}
+	err = cli.Connect(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect")
 		m.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateUnknownError,
 			Error:      MetaConnectError,
 		})
+		return
+	}
+	if m.Client != cli {
+		zerolog.Ctx(ctx).Warn().Msg("Client was disconnected while connecting with initial table")
+		cli.Disconnect()
 		return
 	}
 
@@ -449,6 +422,7 @@ func (m *MetaClient) periodicReconnect() {
 		(*oldCancel)()
 	}
 	interval := time.Duration(m.Main.Config.ForceRefreshIntervalSeconds) * time.Second
+	interval -= rand.N(interval / 10)
 	timer := time.NewTimer(interval)
 	defer timer.Stop()
 	m.UserLogin.Log.Info().Stringer("interval", interval).Msg("Starting periodic reconnect loop")
@@ -594,8 +568,8 @@ func (m *MetaClient) connectE2EE() error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare e2ee client: %w", err)
 	}
-	if m.Main.Config.ProxyE2EE && m.Main.Config.Proxy != "" {
-		m.E2EEClient.SetProxyAddress(m.Main.Config.Proxy)
+	if m.Main.Config.ProxyE2EE && m.Main.Bridge.Config.Proxy.URL != "" {
+		m.E2EEClient.SetProxyAddress(m.Main.Bridge.Config.Proxy.URL)
 	}
 	if m.Main.Bridge.Config.PortalEventBuffer == 0 {
 		m.E2EEClient.SynchronousAck = true

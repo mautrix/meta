@@ -522,22 +522,15 @@ func mainE() error {
 			return fmt.Errorf("tap continue: %w", err)
 		}
 	} else if *afad {
-		notif := bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
-			if comp.ComponentID != "bk.data.TextSpan" {
-				return false
-			}
-			for _, prefix := range []string{
-				"We sent a",
-				"Open the notification",
-				"You need to sign in on",
-				"Check your notifications",
-			} {
-				if strings.HasPrefix(comp.GetAttribute("text"), prefix) {
-					return true
-				}
-			}
-			return false
-		})
+		notif := bundle.FindDescendant(bloks.FilterByAttributePrefix(
+			"bk.data.TextSpan", "text",
+			"We sent a",
+			"Open the notification",
+			"You need to sign in on",
+		))
+		if notif == nil {
+			notif = bundle.FindDescendant(bloks.FilterByAttributePrefix("bk.data.TextSpan", "text", "Check your notifications"))
+		}
 		if notif == nil {
 			return fmt.Errorf("couldn't find AFAD notification info")
 		}
@@ -720,7 +713,7 @@ func mainE() error {
 			return fmt.Errorf("tapping try another way button: %w", err)
 		}
 	} else if *doRecaptcha {
-		webview := bundle.FindDescendantIncludingEmbedded(bloks.FilterByComponent("webview"))
+		webview := bundle.FindDescendantIncludingEmbedded(bloks.FilterByComponent("webview", "iosWebview"))
 		fmt.Println(webview)
 		fmt.Println("URL:", webview.GetAttribute("url"))
 	} else if *doContinue {

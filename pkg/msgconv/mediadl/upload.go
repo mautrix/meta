@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -34,6 +35,13 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
+
+var ErrNoNativeSession = bridgev2.WrapErrorInStatus(errors.New("messenger lite login has no access token for media uploads")).
+	WithMessage("log in to Facebook again to send media").
+	WithStatus(event.MessageStatusFail).
+	WithErrorReason(event.MessageStatusUnsupported).
+	WithIsCertain(true).
+	WithSendNotice(true)
 
 func ReuploadFileToMeta(
 	ctx context.Context,
@@ -63,7 +71,10 @@ func ReuploadFileToMeta(
 			waveformData.Amplitudes[i] = max(min(float64(amp)/256.0, 1.0), 0.0)
 		}
 	}
-	if client.GetPlatform().IsMessengerLite() && nativeSession != nil {
+	if client.GetPlatform().IsMessengerLite() {
+		if nativeSession == nil {
+			return 0, ErrNoNativeSession
+		}
 		mediaID, err := client.SendRUploadRequest(ctx, nativeSession, &httpclient.RUploadMedia{
 			Filename:    fileName,
 			MimeType:    mime,
@@ -76,13 +87,21 @@ func ReuploadFileToMeta(
 		}
 		return mediaID, nil
 	}
-	resp, err := client.SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
+	media := &httpclient.MercuryUploadMedia{
 		Filename:     fileName,
 		MimeType:     mime,
 		MediaData:    data,
 		IsVoiceClip:  isVoice,
 		WaveformData: waveformData,
-	})
+	}
+	if client.GetPlatform() == types.Instagram {
+		mediaID, err := client.SendInstagramRUploadRequest(ctx, media)
+		if err == nil {
+			return mediaID, nil
+		}
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment via rupload, falling back to mercury")
+	}
+	resp, err := client.SendMercuryUploadRequest(ctx, threadID, media)
 	if err != nil {
 		zerolog.Ctx(ctx).Debug().
 			Str("file_name", fileName).

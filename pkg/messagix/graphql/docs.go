@@ -7,6 +7,7 @@ type GraphQLDoc struct {
 	FriendlyName string
 	NoRetry      bool
 	SlowQuery    bool
+	EndpointName string
 
 	Jsessw string
 }
@@ -217,10 +218,12 @@ var GraphQLDocs = map[string]GraphQLDoc{
 	"IGDBlockUserDialogOffMsysMutation": {
 		DocID:        "28875204315418002",
 		FriendlyName: "IGDBlockUserDialogOffMsysMutation",
+		EndpointName: "graphql_query",
 	},
 	"IGDBlockUserDialogOffMsysUnblockMutation": {
 		DocID:        "28615617751365746",
 		FriendlyName: "IGDBlockUserDialogOffMsysUnblockMutation",
+		EndpointName: "graphql_query",
 	},
 }
 
