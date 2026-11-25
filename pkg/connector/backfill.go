@@ -61,7 +61,8 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 		Int("message_count", len(upsert.Messages)).
 		Msg("Received upsert messages")
 	if collector, ok := m.backfillCollectors[upsert.GetThreadKey()]; ok {
-		if collector.UpsertMessages != nil && upsert.Range.MaxTimestampMsTemplate > collector.Range.MinTimestampMs {
+		if collector.UpsertMessages != nil && (!collector.Forward || len(collector.Messages) > 0) &&
+			upsert.Range.MaxTimestampMsTemplate > collector.Range.MinTimestampMs {
 			log.Warn().
 				Int64("prev_min_timestamp_ms", collector.Range.MinTimestampMs).
 				Msg("Ignoring unexpected upsert messages while collecting history")
