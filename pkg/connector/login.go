@@ -143,6 +143,51 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 
 const facebookCookiesWaitForURLPattern = `^https://www\.facebook\.com/(?:messages/(?:e2ee/)?(?:t/[0-9]+/?)?)?(?:\?[^#]*)?(?:#.*)?$`
 
+const cookieLoginJS = `(messenger => {
+	if (window.mautrixMetaLogin) {
+		return Promise.resolve({})
+	}
+	window.mautrixMetaLogin = true
+	const declineCookies = setInterval(() => {
+		let shown
+		try {
+			shown = window.require("CookieConsent").shouldShowCookieBanner()
+		} catch {}
+		// The consent dialog's last two visible buttons are decline and accept
+		const buttons = shown && [...document.querySelectorAll("div[role=dialog]")]
+			.map(dialog => [...dialog.querySelectorAll("[role=button]")]
+				.filter(el => !el.closest("[aria-hidden=true]") && el.getAttribute("aria-disabled") !== "true"))
+			.find(buttons => buttons.length > 1)
+		const button = document.querySelector("button:has(+ #allow_button)") ?? buttons?.[buttons.length - 2]
+		if (button) {
+			button.click()
+		}
+		if (button || shown === false) {
+			clearInterval(declineCookies)
+		}
+	}, 200)
+	setTimeout(() => {
+		if (!document.querySelector("input[type=password]")) {
+			return
+		}
+		const input = [...document.querySelectorAll("input")].find(el => el.type !== "hidden" && el.offsetParent !== null)
+		input?.scrollIntoView({block: "center"})
+		input?.focus()
+	}, 1000)
+	if (messenger && location.hostname === "www.facebook.com") {
+		const redirect = setInterval(() => {
+			if (location.href === "https://www.facebook.com/checkpoint/?next=https%3A%2F%2Fwww.facebook.com%2F") {
+				clearInterval(redirect)
+				location.href = "https://www.facebook.com/checkpoint/?next=https%3A%2F%2Fwww.messenger.com%2F"
+			} else if (+window.require?.("CurrentUserInitialData")?.USER_ID) {
+				clearInterval(redirect)
+				location.href = "https://www.messenger.com/?no_redirect=true"
+			}
+		}, 100)
+	}
+	return Promise.resolve({})
+})`
+
 func facebookCookieStep(stepID string, instructions l10n.Message) *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
@@ -150,9 +195,10 @@ func facebookCookieStep(stepID string, instructions l10n.Message) *bridgev2.Logi
 		Instructions: instructions,
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			URL:               "https://www.facebook.com/",
-			UserAgent:         useragent.UserAgent,
+			UserAgentHints:    []bridgev2.UserAgentHint{bridgev2.UserAgentHintDesktop},
 			Fields:            cookieListToFields(cookies.FBRequiredCookies, "facebook.com"),
 			WaitForURLPattern: facebookCookiesWaitForURLPattern,
+			ExtractJS:         cookieLoginJS + "(false)",
 		},
 	}
 }
@@ -169,9 +215,10 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 			Instructions: instructions,
 			CookiesParams: &bridgev2.LoginCookiesParams{
 				URL:               "https://www.messenger.com/?no_redirect=true",
-				UserAgent:         useragent.UserAgent,
+				UserAgentHints:    []bridgev2.UserAgentHint{bridgev2.UserAgentHintDesktop},
 				Fields:            cookieListToFields(cookies.FBRequiredCookies, "messenger.com"),
 				WaitForURLPattern: "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?(?:\\?.*)?$",
+				ExtractJS:         cookieLoginJS + "(true)",
 			},
 		}, nil
 	default:
