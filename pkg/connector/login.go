@@ -94,6 +94,8 @@ var (
 		Name:        msgFlowMessengerName.Message(),
 		Description: msgFlowMessengerDescription.Message(),
 		ID:          FlowIDMessengerCookies,
+
+		RequiredClientCapabilities: []bridgev2.ClientCapability{bridgev2.ClientCapabilityWebviewThirdPartyCookies},
 	}
 	loginFlowMessengerLiteIOS = bridgev2.LoginFlow{
 		Name:        msgFlowMessengerLiteIOSName.Message(),
