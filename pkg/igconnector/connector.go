@@ -38,6 +38,7 @@ var (
 	_ bridgev2.NetworkConnector        = (*IGConnector)(nil)
 	_ bridgev2.MaxFileSizeingNetwork   = (*IGConnector)(nil)
 	_ bridgev2.NetworkResettingNetwork = (*IGConnector)(nil)
+	_ bridgev2.ProxyingNetwork         = (*IGConnector)(nil)
 )
 
 func (ic *IGConnector) Init(bridge *bridgev2.Bridge) {
@@ -72,11 +73,13 @@ func (ic *IGConnector) GetName() bridgev2.BridgeName {
 	}
 }
 
+func (ic *IGConnector) SupportsProxy() {}
+
 func (ic *IGConnector) ResetHTTPTransport() {
 	cfg := ic.Bridge.GetHTTPClientSettings()
 	mediadl.SetHTTP(cfg)
-	if ic.Config.ProxyMedia && ic.Config.Proxy != "" {
-		mediadl.SetProxy(ic.Config.Proxy)
+	if ic.Config.ProxyMedia && ic.Bridge.Config.Proxy.URL != "" {
+		mediadl.SetProxy(ic.Bridge.Config.Proxy.URL)
 	}
 	for _, login := range ic.Bridge.GetAllCachedUserLogins() {
 		login.Client.(*IGClient).Client.GetHTTP().SetConfig(cfg)

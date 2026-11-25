@@ -433,6 +433,7 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 		output = &waConsumerApplication.ConsumerApplication_Content_VideoMessage{VideoMessage: videoMsg}
 	case event.MsgAudio:
 		_, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]
+		waveform, duration := mediadl.GetAudioInfo(content)
 		audioMsg := &waConsumerApplication.ConsumerApplication_AudioMessage{
 			PTT: &isVoice,
 		}
@@ -441,7 +442,8 @@ func (mc *MessageConverter) wrapWhatsAppMedia(
 				Transport: reuploaded,
 			},
 			Ancillary: &waMediaTransport.AudioTransport_Ancillary{
-				Seconds: proto.Uint32(uint32(content.Info.Duration / 1000)),
+				Seconds:  proto.Uint32(uint32(duration / 1000)),
+				Waveform: waveform,
 			},
 		})
 		output = &waConsumerApplication.ConsumerApplication_Content_AudioMessage{AudioMessage: audioMsg}

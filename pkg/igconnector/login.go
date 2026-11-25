@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -14,6 +15,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/util/exslices"
+	"go.mau.fi/util/l10n"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -54,8 +56,8 @@ func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flo
 
 var (
 	loginFlowInstagram = bridgev2.LoginFlow{
-		Name:        "Cookies",
-		Description: "Login using cookies from instagram.com",
+		Name:        msgFlowCookiesName.Message(),
+		Description: msgFlowCookiesDescription.Message(),
 		ID:          FlowIDCookies,
 	}
 )
@@ -93,7 +95,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
 		StepID:       LoginStepIDCookies,
-		Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
+		Instructions: msgStepCookiesInstructions.Message(),
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			//UserAgent:         useragent.UserAgent,
 			URL: "https://www.instagram.com/accounts/login/",
@@ -108,7 +110,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaCookieLogin) Cancel() {}
 
-func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
+func getInstaClient(ctx context.Context, log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
 	client := instameow.NewClient(instameow.ClientParams{
 		Cookies:                   c,
 		Log:                       log,
@@ -116,9 +118,9 @@ func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, u
 		DisableTyping:             conn.Config.DisableTyping,
 		LogRedactedLoginResponses: conn.Config.LogRedactedLoginResponses,
 	})
-	if useProxy && (conn.Config.GetProxyFrom != "" || conn.Config.Proxy != "") {
-		client.GetHTTP().GetNewProxy = conn.getProxy
-		if !client.GetHTTP().UpdateProxy("login") {
+	if useProxy && conn.Bridge.Config.Proxy.IsConfigured() {
+		client.GetHTTP().GetNewProxy = conn.Bridge.GetProxy
+		if !client.GetHTTP().UpdateProxy(ctx, "login") {
 			return nil, fmt.Errorf("failed to update proxy")
 		}
 	}
@@ -219,6 +221,7 @@ func loginWithCookies(
 	// Override the client because LoadMessagesPage saves some state and we don't want to call it again
 	client.SetLogger(ul.Log.With().Str("component", "instameow").Logger())
 	client.SetEventHandler(igClient.handleIGEvent)
+	igClient.lastFullReconnect = time.Time{}
 	igClient.Client = client
 
 	dumpedState, err := client.DumpState()
@@ -239,7 +242,7 @@ func loginWithCookies(
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Logged in as %s (%s)", user.GetName(), ul.ID),
+		Instructions: msgStepCompleteInstructions.Render(l10n.Params{"name": user.GetName(), "id": string(ul.ID)}),
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: ul.ID,
 			UserLogin:   ul,
@@ -261,7 +264,7 @@ func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridge
 	}
 
 	log := user.Log.With().Str("component", "instameow").Logger()
-	client, err := getInstaClient(log, conn, c, conn.Config.ProxyOther)
+	client, err := getInstaClient(ctx, log, conn, c, conn.Config.ProxyOther)
 	if err != nil {
 		return nil, err
 	}
