@@ -108,6 +108,9 @@ func (ic *IGClient) ensureIGClient() {
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})
+		if ic.Main.Config.ProxyOther && ic.Main.Bridge.Config.Proxy.IsConfigured() {
+			ic.Client.GetHTTP().GetNewProxy = ic.Main.Bridge.GetProxy
+		}
 	}
 }
 
@@ -216,15 +219,12 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		})
 		return
 	}
-	if ic.Main.Config.ProxyOther && ic.Main.Bridge.Config.Proxy.IsConfigured() {
-		cli.GetHTTP().GetNewProxy = ic.Main.Bridge.GetProxy
-		if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateUnknownError,
-				Error:      MetaProxyUpdateFail,
-			})
-			return
-		}
+	if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
+		ic.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      MetaProxyUpdateFail,
+		})
+		return
 	}
 	ic.permanentErrored.Store(false)
 	if attempts > 0 {
@@ -381,7 +381,18 @@ func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 }
 
 func (ic *IGClient) LogoutRemote(ctx context.Context) {
-	// TODO actual logout request?
+	cli := ic.Client
+	if cli == nil {
+		ic.ensureIGClient()
+		if cli = ic.Client; cli != nil && !cli.GetHTTP().UpdateProxy(ctx, "logout") {
+			cli = nil
+		}
+	}
+	if cli != nil {
+		if err := cli.Logout(ctx); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Instagram")
+		}
+	}
 	ic.Disconnect()
 	ic.LoginMeta.Cookies = nil
 }

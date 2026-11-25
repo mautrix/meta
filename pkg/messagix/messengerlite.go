@@ -379,6 +379,36 @@ func (m *MessengerLiteMethods) GetSessionForApp(ctx context.Context, accessToken
 	return &response, nil
 }
 
+func (m *MessengerLiteMethods) Logout(ctx context.Context) error {
+	session := m.GetNativeSession()
+	if session == nil || session.AccessToken == "" {
+		return nil
+	}
+	app, err := m.client.getMessengerLiteApp()
+	if err != nil {
+		return err
+	}
+	analyticsTags, err := httpclient.MakeRequestAnalyticsHeader(app.AppID)
+	if err != nil {
+		return err
+	}
+	params := url.Values{
+		"format":                   {"json"},
+		"device_id":                {session.DeviceID.String()},
+		"retain_for_dbl":           {"false"},
+		"fb_api_req_friendly_name": {"logout"},
+	}
+	headers := http.Header{}
+	headers.Set("accept", "*/*")
+	headers.Set("authorization", "OAuth "+session.AccessToken)
+	headers.Set("user-agent", app.UserAgent)
+	headers.Set("x-fb-appid", app.AppID)
+	headers.Set("x-fb-friendly-name", "logout")
+	headers.Set("x-fb-request-analytics-tags", analyticsTags)
+	_, _, err = m.client.http.MakeRequestOnce(ctx, m.client.GetEndpoint("expire_session"), http.MethodPost, headers, []byte(params.Encode()), types.FORM)
+	return err
+}
+
 func (m *MessengerLiteMethods) ExchangeTransientToken(ctx context.Context, accessToken string) (*cookies.Cookies, error) {
 	resp, err := m.GetSessionForApp(ctx, accessToken, SessionForAppOptions{})
 	if err != nil {

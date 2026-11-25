@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 
 	"github.com/google/go-querystring/query"
 	"go.mau.fi/util/jsonbytes"
@@ -84,4 +86,31 @@ type pushNotificationsResponse struct {
 	} `json:"payload"`
 	DtsgToken string `json:"dtsgToken"`
 	Lid       string `json:"lid"`
+}
+
+func (fb *FacebookMethods) Logout(ctx context.Context) error {
+	c := fb.client
+	if c.configs.BrowserConfigTable.DTSGInitData.Token == "" {
+		err := httpclient.NewModuleParser(c, c.http, c.configs).Load(ctx, c.GetEndpoint("messages"))
+		if errors.Is(err, httpclient.ErrTokenInvalidated) {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("failed to load messages page: %w", err)
+		}
+	}
+	form := url.Values{
+		"fb_dtsg": {c.configs.BrowserConfigTable.DTSGInitData.Token},
+		"jazoest": {c.configs.Jazoest},
+	}
+	headers := c.http.BuildHeaders(true, true)
+	headers.Set("origin", c.GetEndpoint("base_url"))
+	headers.Set("referer", c.GetEndpoint("messages"))
+	headers.Set("sec-fetch-site", "same-origin")
+	resp, _, err := c.http.MakeRequestOnceNoRedirect(ctx, c.GetEndpoint("logout"), http.MethodPost, headers, []byte(form.Encode()), types.FORM)
+	if err != nil {
+		return err
+	} else if resp.StatusCode != http.StatusFound {
+		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+	return nil
 }
