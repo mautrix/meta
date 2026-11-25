@@ -66,8 +66,8 @@ type IGClient struct {
 	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	accountStateRechecks  atomic.Int32
-  lastFullReconnect     time.Time
-  
+	lastFullReconnect     time.Time
+
 	stickerLock          sync.Mutex
 	stickerTray          []*slidetypes.StickerTraySection
 	stickerTrayErr       error
