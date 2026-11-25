@@ -34,6 +34,42 @@ const (
 	instagramWebLoggedInURLPattern = "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?|accounts/onetap/)?(?:\\?.*)?$"
 )
 
+const instagramInitJS = `if (/(^|\.)instagram\.com$/.test(location.hostname) && navigator.maxTouchPoints > 0) {
+	Object.defineProperty(Navigator.prototype, "maxTouchPoints", {get: () => 0})
+	const matchMedia = window.matchMedia.bind(window)
+	window.matchMedia = query => matchMedia(String(query)
+		.replace(/\(\s*hover\s*:\s*none\s*\)/gi, "(hover: hover)")
+		.replace(/\(\s*pointer\s*:\s*coarse\s*\)/gi, "(pointer: fine)"))
+}`
+
+const instagramExtractJS = `(() => {
+	if (window.mautrixInstagramLogin || !/(^|\.)instagram\.com$/.test(location.hostname)) {
+		return Promise.resolve({})
+	}
+	window.mautrixInstagramLogin = true
+	const config = name => {
+		try {
+			return require(name)
+		} catch {}
+	}
+	const started = Date.now()
+	const declineCookies = setInterval(() => {
+		const initial = config("InitialCookieConsent")
+		const polaris = config("PolarisCookieConsent")
+		const shown = initial?.shouldShowCookieBanner || polaris?.should_show_consent_dialog
+		const buttons = shown && [...document.querySelectorAll("div[role=dialog]")]
+			.map(dialog => dialog.querySelectorAll("button"))
+			.find(buttons => buttons.length > 1)
+		if (buttons) {
+			buttons[buttons.length - 1].click()
+		}
+		if (buttons || (initial && polaris && !shown) || Date.now() - started > 30000) {
+			clearInterval(declineCookies)
+		}
+	}, 500)
+	return Promise.resolve({})
+})()`
+
 func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	switch flowID {
 	case FlowIDAndroidNative:
@@ -104,6 +140,8 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 				cookieListToFields(cookies.IGOptionalCookies, "instagram.com", false)...,
 			),
 			WaitForURLPattern: instagramWebLoggedInURLPattern,
+			InitJS:            instagramInitJS,
+			ExtractJS:         instagramExtractJS,
 		},
 	}, nil
 }

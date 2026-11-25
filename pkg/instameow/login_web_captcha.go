@@ -10,7 +10,9 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -19,8 +21,6 @@ import (
 	"github.com/tidwall/gjson"
 	"go.mau.fi/util/l10n"
 	"maunium.net/go/mautrix/bridgev2"
-
-	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 var (
@@ -122,17 +122,17 @@ func (c *Client) instagramAuthPlatformCaptchaStep(instructions *l10n.Template) (
 		Type: bridgev2.LoginStepTypeCookies, StepID: InstagramWebCaptchaStepID, Instructions: instructions.Message(),
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			URL:       "https://www.instagram.com/accounts/login/",
-			UserAgent: useragent.UserAgent,
 			ExtractJS: "(" + instagramCaptchaJS + ")(" + string(config) + ")",
 			Fields: []bridgev2.LoginCookieField{
 				{ID: "captcha_token", Required: true, Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_token"}}},
 				{ID: "captcha_user_agent", Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_user_agent"}}},
+				{ID: "captcha_client_hints", Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_client_hints"}}},
 			},
 		},
 	}, nil
 }
 
-func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token, userAgent string) (*bridgev2.LoginStep, error) {
+func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token, userAgent, clientHints string) (*bridgev2.LoginStep, error) {
 	if _, err := c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions); err != nil {
 		return nil, err
 	}
@@ -147,20 +147,17 @@ func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token, userAgent
 		return nil, err
 	}
 	pending.lastToken = fingerprint
-	userAgent = strings.TrimSpace(userAgent)
-	if len(userAgent) > 512 || strings.ContainsFunc(userAgent, unicode.IsControl) {
-		userAgent = ""
-	}
+	browser := instagramCaptchaBrowserHeaders(userAgent, clientHints)
 	// Consume before transport: an ambiguous response must not replay a token.
 	s.captcha = nil
 	if pending.instrumented {
-		_, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaRender, map[string]any{}, userAgent)
+		_, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaRender, map[string]any{}, browser)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		// The browser treats render-outcome telemetry errors as non-fatal.
 	}
-	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaSubmit, map[string]any{"captcha_response": token}, userAgent)
+	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaSubmit, map[string]any{"captcha_response": token}, browser)
 	if err != nil {
 		return nil, err
 	}
@@ -182,4 +179,83 @@ func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token, userAgent
 		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions)
 	}
 	return c.webAuthPlatform.step(), nil
+}
+
+type instagramUABrand struct {
+	Brand   string `json:"brand"`
+	Version string `json:"version"`
+}
+
+// From navigator.userAgentData.getHighEntropyValues
+type instagramClientHints struct {
+	Brands          []instagramUABrand `json:"brands"`
+	FullVersionList []instagramUABrand `json:"fullVersionList"`
+	Mobile          bool               `json:"mobile"`
+	Platform        string             `json:"platform"`
+	PlatformVersion string             `json:"platformVersion"`
+	Model           string             `json:"model"`
+}
+
+var chromeVersionRegex = regexp.MustCompile(`Chrome/(\d+)`)
+
+// instagramCaptchaBrowserHeaders returns the headers of the browser that solved the CAPTCHA,
+// so the render and submit mutations look like they came from it.
+func instagramCaptchaBrowserHeaders(userAgent, clientHintsJSON string) http.Header {
+	userAgent = strings.TrimSpace(userAgent)
+	if userAgent == "" || len(userAgent) > 512 || strings.ContainsFunc(userAgent, unicode.IsControl) {
+		return nil
+	}
+	headers := http.Header{}
+	headers.Set("user-agent", userAgent)
+	chromeVersion := chromeVersionRegex.FindStringSubmatch(userAgent)
+	if chromeVersion == nil {
+		return headers
+	}
+	var hints instagramClientHints
+	if len(clientHintsJSON) > 4096 || json.Unmarshal([]byte(clientHintsJSON), &hints) != nil || len(hints.Brands) == 0 {
+		major := chromeVersion[1]
+		hints = instagramClientHints{
+			Brands:          []instagramUABrand{{"Not-A.Brand", "99"}, {"Google Chrome", major}, {"Chromium", major}},
+			FullVersionList: []instagramUABrand{{"Not-A.Brand", "99.0.0.0"}, {"Google Chrome", major + ".0.0.0"}, {"Chromium", major + ".0.0.0"}},
+			Mobile:          strings.Contains(userAgent, " Mobile"),
+			Platform:        "Unknown",
+		}
+		switch {
+		case strings.Contains(userAgent, "Android"):
+			hints.Platform = "Android"
+		case strings.Contains(userAgent, "Windows"):
+			hints.Platform = "Windows"
+		case strings.Contains(userAgent, "Macintosh"):
+			hints.Platform = "macOS"
+		case strings.Contains(userAgent, "CrOS"):
+			hints.Platform = "Chrome OS"
+		case strings.Contains(userAgent, "Linux"):
+			hints.Platform = "Linux"
+		}
+	}
+	quote := func(s string) string {
+		if strings.ContainsFunc(s, func(r rune) bool { return r == '"' || r == '\\' || r < 0x20 || r > 0x7e }) {
+			return `""`
+		}
+		return `"` + s + `"`
+	}
+	brandList := func(brands []instagramUABrand) string {
+		parts := make([]string, len(brands))
+		for i, brand := range brands {
+			parts[i] = quote(brand.Brand) + ";v=" + quote(brand.Version)
+		}
+		return strings.Join(parts, ", ")
+	}
+	headers.Set("sec-ch-ua", brandList(hints.Brands))
+	if len(hints.FullVersionList) > 0 {
+		headers.Set("sec-ch-ua-full-version-list", brandList(hints.FullVersionList))
+	}
+	headers.Set("sec-ch-ua-mobile", "?0")
+	if hints.Mobile {
+		headers.Set("sec-ch-ua-mobile", "?1")
+	}
+	headers.Set("sec-ch-ua-platform", quote(hints.Platform))
+	headers.Set("sec-ch-ua-platform-version", quote(hints.PlatformVersion))
+	headers.Set("sec-ch-ua-model", quote(hints.Model))
+	return headers
 }

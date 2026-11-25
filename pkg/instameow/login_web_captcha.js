@@ -47,7 +47,9 @@ config => {
         window.removeEventListener('message', listener)
         notice.textContent = 'CAPTCHA completed. Returning to your login…'
         retry.disabled = true
-        resolve({ captcha_token: data.token, captcha_user_agent: navigator.userAgent })
+        const result = { captcha_token: data.token, captcha_user_agent: navigator.userAgent }
+        const hints = navigator.userAgentData?.getHighEntropyValues(['fullVersionList', 'platformVersion', 'model'])
+        resolve(hints ? hints.then(hints => ({ ...result, captcha_client_hints: JSON.stringify(hints) }), () => result) : result)
       }
     }
     window.addEventListener('message', listener)

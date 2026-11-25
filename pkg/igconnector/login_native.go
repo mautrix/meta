@@ -452,6 +452,8 @@ func (m *MetaNativeLogin) instagramWebviewStep(challengeURL string) *bridgev2.Lo
 				cookieListToFields(cookies.IGOptionalCookies, "instagram.com", false)...,
 			),
 			WaitForURLPattern: instagramWebLoggedInURLPattern,
+			InitJS:            instagramInitJS,
+			ExtractJS:         instagramExtractJS,
 		},
 	}
 }
@@ -477,7 +479,7 @@ func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]st
 	if m.client == nil || !m.client.HasInstagramWebCaptcha() {
 		return nil, errInstagramWebCheckpointUnsupported
 	}
-	step, err := m.client.SubmitInstagramWebCaptcha(ctx, input["captcha_token"], input["captcha_user_agent"])
+	step, err := m.client.SubmitInstagramWebCaptcha(ctx, input["captcha_token"], input["captcha_user_agent"], input["captcha_client_hints"])
 	return m.handleWebAuthPlatformResult(ctx, step, err)
 }
 

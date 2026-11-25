@@ -296,12 +296,12 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			}
 			triedPasskey = true
 			apc := target.Query().Get("apc")
-			if data, err := c.instagramAuthPlatformRequest(ctx, instagramAPPasskey, nil, ""); err == nil {
+			if data, err := c.instagramAuthPlatformRequest(ctx, instagramAPPasskey, nil, nil); err == nil {
 				apc = cmp.Or(data.Get("encrypted_ap_context").String(), apc)
 			} else if !errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
 				return err
 			}
-			data, err := c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, "")
+			data, err := c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, nil)
 			if errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
 				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
 			} else if err != nil {
@@ -326,7 +326,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		} else if target.Path != "/auth_platform/codeentry/" {
 			return ErrInstagramWebCheckpointUnsupported
 		}
-		data, err := c.instagramAuthPlatformRequest(ctx, op, nil, "")
+		data, err := c.instagramAuthPlatformRequest(ctx, op, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -521,7 +521,7 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 		}
 		values["code"] = code
 	}
-	data, err := c.instagramAuthPlatformRequest(ctx, op, values, "")
+	data, err := c.instagramAuthPlatformRequest(ctx, op, values, nil)
 	if errors.Is(err, ErrInstagramWebCheckpointRequestFailed) && op == instagramAPSubmit {
 		c.log.Warn().Err(err).Msg("Instagram verification code submission did not complete")
 		return s.stepWithInstructions(msgStepAPRequestFailedInstructions.Message(), msgStepAPRequestFailedHintInstructions.Message()), nil
@@ -550,7 +550,7 @@ func (c *Client) followInstagramAuthPlatformRedirect(ctx context.Context, redire
 
 func (c *Client) waitForInstagramAuthPlatformApproval(ctx context.Context) (*bridgev2.LoginStep, error) {
 	for {
-		data, err := c.instagramAuthPlatformRequest(ctx, instagramAPApprovalState, nil, "")
+		data, err := c.instagramAuthPlatformRequest(ctx, instagramAPApprovalState, nil, nil)
 		if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
 			return nil, bridgev2.ErrLoginStepCancelled
 		} else if err != nil {
@@ -588,7 +588,7 @@ func (c *Client) resendInstagramAuthPlatformCode(ctx context.Context) (*bridgev2
 	// Consume the cooldown before I/O, including ambiguous failures. Never retry a
 	// send automatically: the provider may already have dispatched the message.
 	s.resendAfter = time.Now().Add(max(s.resendCooldown, time.Second))
-	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPResend, map[string]any{}, "")
+	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPResend, map[string]any{}, nil)
 	if errors.Is(err, context.Canceled) {
 		return nil, err
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
@@ -606,7 +606,7 @@ func (c *Client) resendInstagramAuthPlatformCode(ctx context.Context) (*bridgev2
 	return s.step(), nil
 }
 
-func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramAuthPlatformOperation, input map[string]any, userAgent string) (gjson.Result, error) {
+func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramAuthPlatformOperation, input map[string]any, browser http.Header) (gjson.Result, error) {
 	s := c.webAuthPlatform
 	params := s.url.Query()
 	rq := c.http.NewHTTPQuery()
@@ -658,7 +658,7 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
 	}
 	c.log.Debug().Str("auth_platform_operation", op.name).Msg("Submitting Instagram verification request")
-	body, err := c.instagramWebGraphQLRequest(ctx, rq, s.url.String(), csrfToken, userAgent)
+	body, err := c.instagramWebGraphQLRequest(ctx, rq, s.url.String(), csrfToken, browser)
 	if err != nil {
 		return gjson.Result{}, err
 	}

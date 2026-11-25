@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"sort"
@@ -861,7 +862,7 @@ func (c *Client) sendInstagramWebTwoFactorCode(ctx context.Context, state *insta
 	rq.FbAPIReqFriendlyName = "useTwoStepVerificationSendCodeMutation"
 	rq.DocID = instagramWebTwoFactorSendCodeDocID
 	rq.Variables = string(variables)
-	body, err := c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login_two_step_verification"), state.csrfToken, "")
+	body, err := c.instagramWebGraphQLRequest(ctx, rq, c.GetEndpoint("login_two_step_verification"), state.csrfToken, nil)
 	if csrfToken := c.cookies.Get(cookies.IGCookieCSRFToken); csrfToken != "" {
 		state.csrfToken = csrfToken
 	}
@@ -1065,7 +1066,7 @@ func instagramRelaySprinkleToken(token string, config types.SprinkleConfig) stri
 	return result
 }
 
-func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.HTTPQuery, referrer, csrf, userAgent string) ([]byte, error) {
+func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.HTTPQuery, referrer, csrf string, browser http.Header) ([]byte, error) {
 	config := c.configs.BrowserConfigTable
 	rq.Av, rq.User, rq.Jssesw = "0", "0", ""
 	rq.FbAPICallerClass, rq.ServerTimestamps = "RelayModern", "true"
@@ -1077,13 +1078,13 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 		return nil, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
 	}
 	headers := c.http.BuildHeaders(true, false)
-	if userAgent != "" && !strings.Contains(userAgent, "Chrome/") {
-		headers.Set("user-agent", userAgent)
+	if browser != nil {
 		for name := range headers {
 			if strings.HasPrefix(name, "Sec-Ch-") || name == "Dpr" || name == "Viewport-Width" {
 				headers.Del(name)
 			}
 		}
+		maps.Copy(headers, browser)
 	}
 	headers.Set("origin", "https://www.instagram.com")
 	headers.Set("referer", referrer)
