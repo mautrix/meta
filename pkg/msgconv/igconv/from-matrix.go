@@ -80,8 +80,23 @@ func (mc *MessageConverter) ToInstagram(
 		if meta.IGID != "" {
 			textReq.IGThreadIGID = &meta.IGID
 		} else if portal.RoomType == database.RoomTypeDM {
-			// TODO should this be actual IG user IDs?
-			textReq.RecipientIGIDs = []string{strconv.FormatInt(threadID, 10)}
+			recipientIGID, err := mc.DB.GetIGUserForFBID(ctx, threadID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get IGID of DM recipient: %w", err)
+			} else if recipientIGID == "" {
+				resp, err := client.GetUserForNewDM(ctx, threadID)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get IGID of DM recipient: %w", err)
+				} else if resp.Data == nil || resp.Data.ID == "" {
+					return nil, fmt.Errorf("IGID of DM recipient not found")
+				}
+				recipientIGID = resp.Data.ID
+				err = mc.DB.PutFBIDForIGUser(ctx, recipientIGID, threadID)
+				if err != nil {
+					zerolog.Ctx(ctx).Err(err).Msg("Failed to save IGID of DM recipient")
+				}
+			}
+			textReq.RecipientIGIDs = []string{recipientIGID}
 		} else {
 			// TODO use recipients in groups?
 			return nil, fmt.Errorf("no IGID for group thread saved")
