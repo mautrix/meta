@@ -125,8 +125,11 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		stateEvt := status.StateTransientDisconnect
 		errCode := DGWConnectionError
 		var retErr error
-		if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
-			// TODO do full reconnect instead of this?
+		if dgw.IsUnauthorized(evt.Error) && ic.canReconnect() {
+			ic.UserLogin.Log.Debug().Err(evt.Error).Msg("Doing full reconnect after connection was unauthorized")
+			retErr = fmt.Errorf("connection unauthorized; doing full reconnect")
+			go ic.FullReconnect(false, true)
+		} else if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized
 			if errors.Is(evt.Error, instameow.ErrUserIDMissing) {
