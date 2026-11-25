@@ -311,6 +311,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 			case <-ticker.C:
 				m.backfillLock.Lock()
 				reqTS, reqID := oldestMessageTS, oldestMessageID
+				gapMode := false
 				hasAll := false
 				if params.Forward && collector.UpsertMessages != nil {
 					if len(collector.Messages) == 0 {
@@ -320,6 +321,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 						reqTS, reqID = collector.Range.MinTimestampMs, collector.Range.MinMessageId
 						collector.gapReRequested = sawCollectedMessages
 						sawCollectedMessages = true
+						gapMode = true
 					}
 				}
 				m.backfillLock.Unlock()
@@ -338,7 +340,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					break Loop
 				}
 				// No response? Let's re-request that history again
-				if timeouts < MaxBackfillReRequests && !m.requestMoreHistory(ctx, threadID, reqTS, reqID) {
+				if (timeouts < MaxBackfillReRequests || gapMode) && !m.requestMoreHistory(ctx, threadID, reqTS, reqID) {
 					return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 				}
 				timeouts++
