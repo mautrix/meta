@@ -301,7 +301,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 			return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 		}
 		timeouts := 0
-		sawCollectedMessages := false
+		lastAnchorRequest := time.Now()
 	Loop:
 		for {
 			select {
@@ -319,8 +319,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					} else {
 						hasAll = collector.Range.MinTimestampMs <= oldestMessageTS || !collector.Range.HasMoreBefore
 						reqTS, reqID = collector.Range.MinTimestampMs, collector.Range.MinMessageId
-						collector.gapReRequested = sawCollectedMessages
-						sawCollectedMessages = true
+						collector.gapReRequested = time.Since(lastAnchorRequest) >= 4*time.Second
 						gapMode = true
 					}
 				}
@@ -342,6 +341,9 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 				// No response? Let's re-request that history again
 				if (timeouts < MaxBackfillReRequests || gapMode) && !m.requestMoreHistory(ctx, threadID, reqTS, reqID) {
 					return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
+				}
+				if !gapMode && timeouts < MaxBackfillReRequests {
+					lastAnchorRequest = time.Now()
 				}
 				timeouts++
 			case <-ctx.Done():
