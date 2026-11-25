@@ -149,10 +149,21 @@ const cookieLoginJS = `(messenger => {
 	}
 	window.mautrixMetaLogin = true
 	const declineCookies = setInterval(() => {
-		const button = document.querySelector("button:has(+ #allow_button)")
+		let shown
+		try {
+			shown = window.require("CookieConsent").shouldShowCookieBanner()
+		} catch {}
+		// The consent dialog's last two visible buttons are decline and accept
+		const buttons = shown && [...document.querySelectorAll("div[role=dialog]")]
+			.map(dialog => [...dialog.querySelectorAll("[role=button]")]
+				.filter(el => !el.closest("[aria-hidden=true]") && el.getAttribute("aria-disabled") !== "true"))
+			.find(buttons => buttons.length > 1)
+		const button = document.querySelector("button:has(+ #allow_button)") ?? buttons?.[buttons.length - 2]
 		if (button) {
-			clearInterval(declineCookies)
 			button.click()
+		}
+		if (button || shown === false) {
+			clearInterval(declineCookies)
 		}
 	}, 200)
 	setTimeout(() => {
