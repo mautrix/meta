@@ -569,14 +569,14 @@ func instagramAccountManagerSelectionStep(
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
 		StepID:       "fi.mau.meta.instagram.account_manager",
-		Instructions: "Choose the Instagram profile to connect",
+		Instructions: msgStepAccountManagerInstructions.Message(),
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: []bridgev2.LoginInputDataField{
 				{
 					ID:      instagramAccountManagerField,
-					Name:    "Instagram profile",
+					Name:    msgFieldAccountManagerName.Message(),
 					Type:    bridgev2.LoginInputFieldTypeSelect,
-					Options: options,
+					Options: bridgev2.UnlocalizedOptions(options...),
 				},
 			},
 		},

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -128,12 +129,12 @@ func (c *Client) instagramCAAWebLoginVariables(page *instagramCAALoginPage, iden
 	}
 	keyID := page.encryption.Get("key_id")
 	publicKey := page.encryption.Get("public_key").String()
-	if keyID.Type != gjson.Number || keyID.Int() < 1 || keyID.Int() > 255 || keyID.Float() != float64(keyID.Int()) || len(publicKey) != 64 {
+	if keyID.Type != gjson.Number || keyID.Int() < 0 || keyID.Int() > 255 || keyID.Float() != float64(keyID.Int()) || len(publicKey) != 64 {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	encrypted, err := crypto.EncryptInstagramWebPassword(int(keyID.Int()), publicKey, password)
 	if err != nil {
-		return nil, ErrInstagramWebCheckpointRequestFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
 	}
 	extra := map[string]string{
 		"ab_test_data": "", "shared_prefs_data": "", "cuid": form.Get("idd_user_crypted_uid").String(),

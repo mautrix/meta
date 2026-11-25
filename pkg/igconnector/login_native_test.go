@@ -71,7 +71,7 @@ func TestInstagramCookieLoginIncludesOptionalRoutingCookies(t *testing.T) {
 }
 
 func TestInstagramNativeCredentialsStep(t *testing.T) {
-	assertInstagramCredentialsStep(t, instagramCredentialsStep("Enter your credentials"))
+	assertInstagramCredentialsStep(t, instagramCredentialsStep(msgStepCredentialsInstructions.Message()))
 }
 
 func TestInstagramNativeReconnectDefaultsUsername(t *testing.T) {

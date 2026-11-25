@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
+	"go.mau.fi/util/l10n"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -370,7 +371,7 @@ type Browser struct {
 
 	PasswordResetRequested bool
 
-	LastError           string
+	LastError           l10n.Message
 	PageTransitionCount uint64
 	ActionRPCCount      uint64
 }
@@ -426,12 +427,12 @@ func (b *Browser) stepID(name string) string {
 	return b.profile.stepIDPrefix + "." + name
 }
 
-func (b *Browser) rejectedCodeMessage() string {
-	return b.profile.serviceName + " rejected that code"
+func (b *Browser) rejectedCodeMessage() l10n.Message {
+	return msgErrCodeRejected.Render(l10n.Params{"service": b.profile.serviceName})
 }
 
-func (b *Browser) codeNotSentMessage() string {
-	return "That code was not sent to " + b.profile.serviceName + "; please try again"
+func (b *Browser) codeNotSentMessage() l10n.Message {
+	return msgErrCodeNotSent.Render(l10n.Params{"service": b.profile.serviceName})
 }
 
 type scriptInventory struct {
@@ -1027,7 +1028,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				if msg == "" {
 					return nil
 				}
-				b.LastError = msg
+				b.LastError = l10n.Unlocalized(strings.TrimSuffix(msg, "."))
 			case "BLOKS_AUTH_PLATFORM_ENTER_CODE:error_message":
 				if b.State != StateCodeEntryPage && b.State != StateAuthenticationCodePage {
 					break
@@ -1045,7 +1046,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				if msg == "" {
 					return nil
 				}
-				b.LastError = msg
+				b.LastError = l10n.Unlocalized(strings.TrimSuffix(msg, "."))
 			case "BLOKS_AUTH_PLATFORM_LOGIN_WITH_THIRD_PARTY:error_message":
 				if b.State != StateOAuthPage {
 					break
@@ -1057,7 +1058,7 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 				if msg == "" {
 					return nil
 				}
-				b.LastError = msg
+				b.LastError = l10n.Unlocalized(strings.TrimSuffix(msg, "."))
 			}
 			return nil
 		},
@@ -1175,9 +1176,9 @@ func (b *Browser) getContactPointInstructions() string {
 
 const dialogActionFieldID = "dialog_action"
 
-func pendingDialogInstructions(dialog *BloksDialog, service string) string {
+func pendingDialogInstructions(dialog *BloksDialog, fallback *l10n.Template) l10n.Message {
 	if dialog == nil {
-		return service + " requires a confirmation."
+		return fallback.Message()
 	}
 	parts := make([]string, 0, 2)
 	if title := strings.TrimSpace(dialog.Title); title != "" {
@@ -1187,9 +1188,9 @@ func pendingDialogInstructions(dialog *BloksDialog, service string) string {
 		parts = append(parts, message)
 	}
 	if len(parts) == 0 {
-		return service + " requires a confirmation."
+		return fallback.Message()
 	}
-	return strings.Join(parts, "\n\n")
+	return l10n.Unlocalized(strings.Join(parts, "\n\n"))
 }
 
 func pendingDialogOptions(dialog *BloksDialog) ([]string, map[string]*BloksDialogButton) {
@@ -1245,14 +1246,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("dialog"),
-				Instructions: pendingDialogInstructions(dialog, b.profile.serviceName),
+				Instructions: pendingDialogInstructions(dialog, b.profile.dialogInstruction),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{{
 						ID:           dialogActionFieldID,
-						Name:         "Continue login",
+						Name:         msgFieldDialogActionName.Message(),
 						Type:         bridgev2.LoginInputFieldTypeSelect,
 						DefaultValue: options[0],
-						Options:      options,
+						Options:      bridgev2.UnlocalizedOptions(options...),
 					}},
 				},
 			}
@@ -1278,7 +1279,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("captcha"),
-				Instructions: "Here is a test captcha",
+				Instructions: msgStepTestCaptchaInstructions.Message(),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Attachments: []*bridgev2.LoginUserInputAttachment{
 						{
@@ -1302,7 +1303,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						},
 					},
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
+						{ID: "captcha_code", Name: msgFieldCaptchaCodeName.Message(), Type: bridgev2.LoginInputFieldTypeCaptchaCode},
 					},
 				},
 			}
@@ -1377,20 +1378,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		username := userInput["username"]
 		password := userInput["password"]
 		if username == "" || password == "" {
-			instructions := b.profile.credentialsInstruction
-			stepID := b.stepID("email_password")
-			if b.LastError != "" {
-				instructions = fmt.Sprintf("%s. %s", b.LastError, instructions)
-				b.LastError = ""
-			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
-				StepID:       stepID,
-				Instructions: instructions,
+				StepID:       b.stepID("email_password"),
+				Instructions: b.stepInstructions("", b.profile.credentialsInstruction),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "username", Name: "Username or email address", Type: bridgev2.LoginInputFieldTypeUsername, AutofillDomain: b.profile.autofillDomain},
-						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
+						{ID: "username", Name: msgFieldUsernameName.Message(), Type: bridgev2.LoginInputFieldTypeUsername, AutofillDomain: b.profile.autofillDomain},
+						{ID: "password", Name: msgFieldPasswordName.Message(), Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -1433,14 +1428,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			if b.profile.isCheckpointRejection(err) {
 				b.LastError = b.profile.loginRejected
 			} else if strings.Contains(err.Error(), "Invalid username or password") {
-				b.LastError = "Invalid username or password"
+				b.LastError = msgErrInvalidCredentials.Message()
 			} else if strings.Contains(err.Error(), "isn’t connected to an account") || strings.Contains(err.Error(), "isn't connected to an account") {
 				// Note matching both unicode + ASCII apostrophe - unicode appears to be what Meta uses
-				thing := "username"
 				if strings.Contains(username, "@") {
-					thing = "email address"
+					b.LastError = msgErrEmailNotConnected.Render(l10n.Params{"service": b.profile.serviceName})
+				} else {
+					b.LastError = msgErrUsernameNotConnected.Render(l10n.Params{"service": b.profile.serviceName})
 				}
-				b.LastError = fmt.Sprintf("That %s is not connected to a %s account", thing, b.profile.serviceName)
 			} else if strings.Contains(err.Error(), "com.bloks.www.caa.assistive_login_confirmation") {
 				// Facebook tries to send us to this screen when they think we are
 				// demonstrating substantial incompetence at entering an email
@@ -1451,7 +1446,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				// Technically we don't know that's the ONLY case where this screen
 				// comes up, but it's the only one sighted thus far. Update this if
 				// something new is discovered.
-				b.LastError = "Invalid email address"
+				b.LastError = msgErrInvalidEmail.Message()
 			} else if errorKind == "rate_limited" {
 				return nil, loginerrors.RateLimited
 			} else {
@@ -1474,19 +1469,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				}
 				choice := userInput["confirmation_action"]
 				if choice == "" {
-					instructions := "Instagram sent a sign-in link by SMS. To use a different verification method, choose Try another way."
-					if b.LastError != "" {
-						instructions = b.LastError + " " + instructions
-						b.LastError = ""
-					}
 					step = &bridgev2.LoginStep{
-						Type:         bridgev2.LoginStepTypeUserInput,
-						StepID:       b.stepID("confirmation_action"),
-						Instructions: instructions,
+						Type:   bridgev2.LoginStepTypeUserInput,
+						StepID: b.stepID("confirmation_action"),
+						Instructions: b.stepInstructions("", instructionTemplates{
+							msgStepIGConfirmationInstructions, msgStepIGConfirmationErrorInstructions,
+						}),
 						UserInputParams: &bridgev2.LoginUserInputParams{
 							Fields: []bridgev2.LoginInputDataField{{
-								ID: "confirmation_action", Name: "Verification method", Type: bridgev2.LoginInputFieldTypeSelect,
-								Options: []string{"Try another way"},
+								ID: "confirmation_action", Name: msgFieldConfirmationActionName.Message(), Type: bridgev2.LoginInputFieldTypeSelect,
+								Options: []bridgev2.LoginInputOption{{Value: "Try another way", Label: msgFieldConfirmationActionOptionAnother.Message()}},
 							}},
 						},
 					}
@@ -1496,7 +1488,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					return nil, fmt.Errorf("invalid authentication confirmation action")
 				}
 				delete(userInput, "confirmation_action")
-				b.LastError = "Instagram did not advance to another verification method."
+				b.LastError = msgErrNoAnotherMethod.Message()
 			}
 		}
 		if btn == nil {
@@ -1527,12 +1519,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("account_selection"),
-				Instructions: b.profile.accountSelection,
+				Instructions: b.profile.accountSelection.Message(),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{
-							ID: "account", Name: "Instagram account", Type: bridgev2.LoginInputFieldTypeSelect,
-							Options: accountNames,
+							ID: "account", Name: msgFieldAccountName.Message(), Type: bridgev2.LoginInputFieldTypeSelect,
+							Options: bridgev2.UnlocalizedOptions(accountNames...),
 						},
 					},
 				},
@@ -1557,20 +1549,13 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StatePasswordFormPage:
 		password := userInput["password"]
 		if password == "" {
-			instructions := fmt.Sprintf("Re-enter your %s password.", b.profile.serviceName)
-			if b.LastError != "" {
-				instructions = fmt.Sprintf(
-					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
-				)
-				b.LastError = ""
-			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("password"),
-				Instructions: instructions,
+				Instructions: b.stepInstructions("", b.profile.passwordInstruction),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "password", Name: "Password", Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
+						{ID: "password", Name: msgFieldPasswordName.Message(), Type: bridgev2.LoginInputFieldTypePassword, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -1593,7 +1578,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			TapButton(ctx, b.CurrentPage.Interpreter)
 		if err != nil {
 			if strings.Contains(err.Error(), "Invalid username or password") {
-				b.LastError = "The password you entered is incorrect"
+				b.LastError = msgErrIncorrectPassword.Message()
 			} else {
 				return nil, fmt.Errorf("tapping password form log in button: %w", err)
 			}
@@ -1612,32 +1597,23 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 		otpCode := userInput["otp_code"]
 		if otpCode == "" {
-			instructions := ""
+			remoteInstructions := ""
 			if codeState == StateAuthenticationCodePage && b.profile.isInstagram {
-				instructions = authenticationCodeInstructions(b.CurrentPage)
+				remoteInstructions = authenticationCodeInstructions(b.CurrentPage)
 			}
-			if instructions == "" {
-				instructions = b.getCodeInstructions()
-			}
-			if instructions == "" {
-				instructions = b.profile.codeInstruction
-			}
-			if b.LastError != "" {
-				instructions = fmt.Sprintf(
-					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
-				)
-				b.LastError = ""
+			if remoteInstructions == "" {
+				remoteInstructions = b.getCodeInstructions()
 			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("otp_code"),
-				Instructions: instructions,
+				Instructions: b.stepInstructions(remoteInstructions, b.profile.codeInstruction),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					CanCancel: b.MFACanGoBack || (codeState == StateAuthenticationCodePage && b.AuthCodeEntryChosen),
 					Fields: []bridgev2.LoginInputDataField{
 						{
 							ID:   "otp_code",
-							Name: b.profile.codeFieldName,
+							Name: b.profile.codeFieldName.Message(),
 							Type: bridgev2.LoginInputFieldType2FACode,
 						},
 					},
@@ -1696,22 +1672,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateBackupCodePage:
 		backupCode := userInput["backup_code"]
 		if backupCode == "" {
-			instructions := "Enter one of your two-factor backup codes."
-			if b.LastError != "" {
-				instructions = fmt.Sprintf(
-					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
-				)
-				b.LastError = ""
-			}
-
 			step = &bridgev2.LoginStep{
-				Type:         bridgev2.LoginStepTypeUserInput,
-				StepID:       b.stepID("backup_code"),
-				Instructions: instructions,
+				Type:   bridgev2.LoginStepTypeUserInput,
+				StepID: b.stepID("backup_code"),
+				Instructions: b.stepInstructions("", instructionTemplates{
+					msgStepBackupCodeInstructions, msgStepBackupCodeErrorInstructions,
+				}),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "backup_code", Name: "Backup code", Type: bridgev2.LoginInputFieldType2FACode},
+						{ID: "backup_code", Name: msgFieldBackupCodeName.Message(), Type: bridgev2.LoginInputFieldType2FACode},
 					},
 				},
 			}
@@ -1816,8 +1786,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				imageHeight = imageMeta.Height
 			}
 
-			instructions := b.profile.serviceName + " requires solving a captcha"
-			if b.LastError != "" {
+			instructions := b.profile.captchaInstruction.Message()
+			if !b.LastError.IsZero() {
 				instructions = b.LastError
 			}
 			step = &bridgev2.LoginStep{
@@ -1848,7 +1818,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 						},
 					},
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "captcha_code", Name: "Captcha code", Type: bridgev2.LoginInputFieldTypeCaptchaCode},
+						{ID: "captcha_code", Name: msgFieldCaptchaCodeName.Message(), Type: bridgev2.LoginInputFieldTypeCaptchaCode},
 					},
 				},
 			}
@@ -1857,7 +1827,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		// Set up in case we don't navigate to a new page successfully
 		delete(userInput, "captcha_code")
-		b.LastError = b.profile.serviceName + " rejected that captcha solution"
+		b.LastError = msgErrCaptchaRejected.Render(l10n.Params{"service": b.profile.serviceName})
 
 		input := b.CurrentPage.
 			FindDescendant(func(comp *BloksTreeComponent) bool {
@@ -1921,7 +1891,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeCookies,
 				StepID:       b.stepID("recaptcha"),
-				Instructions: "Complete the Google reCAPTCHA challenge.",
+				Instructions: msgStepReCaptchaInstructions.Message(),
 				CookiesParams: &bridgev2.LoginCookiesParams{
 					URL: url,
 					Fields: []bridgev2.LoginCookieField{{
@@ -1998,12 +1968,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("mfa_type"),
-				Instructions: "Choose how to finish signing in",
+				Instructions: msgStepMFATypeInstructions.Message(),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{
-							ID: "mfatype", Name: "Login method", Type: bridgev2.LoginInputFieldTypeSelect,
-							Options: methodNames,
+							ID: "mfatype", Name: msgFieldMFATypeName.Message(), Type: bridgev2.LoginInputFieldTypeSelect,
+							Options: bridgev2.UnlocalizedOptions(methodNames...),
 						},
 					},
 				},
@@ -2038,21 +2008,16 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateTOTPPage:
 		totpCode := userInput["totp_code"]
 		if totpCode == "" {
-			instructions := "Enter a six-digit code from your authenticator app"
-			if b.LastError != "" {
-				instructions = fmt.Sprintf(
-					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
-				)
-				b.LastError = ""
-			}
 			step = &bridgev2.LoginStep{
-				Type:         bridgev2.LoginStepTypeUserInput,
-				StepID:       b.stepID("totp"),
-				Instructions: instructions,
+				Type:   bridgev2.LoginStepTypeUserInput,
+				StepID: b.stepID("totp"),
+				Instructions: b.stepInstructions("", instructionTemplates{
+					msgStepTOTPInstructions, msgStepTOTPErrorInstructions,
+				}),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "totp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode, AutofillDomain: b.profile.autofillDomain},
+						{ID: "totp_code", Name: msgFieldTOTPCodeName.Message(), Type: bridgev2.LoginInputFieldType2FACode, AutofillDomain: b.profile.autofillDomain},
 					},
 				},
 			}
@@ -2142,7 +2107,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		step = &bridgev2.LoginStep{
 			Type:         bridgev2.LoginStepTypeDisplayAndWait,
 			StepID:       b.stepID("afad_wait"),
-			Instructions: b.AFADNotification,
+			Instructions: l10n.Unlocalized(b.AFADNotification),
 			DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
 				Type:      bridgev2.LoginDisplayTypeNothing,
 				CanCancel: b.MFACanGoBack,
@@ -2203,15 +2168,15 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				}
 				if oauthErr != "" {
 					if oauthErr == "access_denied" {
-						b.LastError = "Google verification was cancelled"
+						b.LastError = msgErrGoogleVerificationCancelled.Message()
 					} else {
-						b.LastError = "Google verification failed"
+						b.LastError = msgErrGoogleVerificationFailed.Message()
 					}
 					break
 				}
 				return nil, fmt.Errorf("google sign-in did not return continuation data")
 			}
-			b.LastError = "Google verification failed"
+			b.LastError = msgErrGoogleVerificationFailed.Message()
 			if err = b.continueThirdPartyOAuth(ctx, contextData); err != nil {
 				return nil, fmt.Errorf("continuing Google verification: %w", err)
 			}
@@ -2228,16 +2193,12 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("oauth button failed to open url")
 		}
 
-		instructions := "Sign in with your Google account."
-		if b.LastError != "" {
-			instructions = fmt.Sprintf("%s. %s", strings.TrimSuffix(b.LastError, "."), instructions)
-			b.LastError = ""
-		}
-
 		step = &bridgev2.LoginStep{
-			Type:         bridgev2.LoginStepTypeCookies,
-			StepID:       "fi.mau.meta.messengerlite.google_oauth",
-			Instructions: instructions,
+			Type:   bridgev2.LoginStepTypeCookies,
+			StepID: "fi.mau.meta.messengerlite.google_oauth",
+			Instructions: b.stepInstructions("", instructionTemplates{
+				msgStepGoogleOAuthInstructions, msgStepGoogleOAuthErrorInstructions,
+			}),
 			CookiesParams: &bridgev2.LoginCookiesParams{
 				URL: b.DisplayedURL,
 				Fields: []bridgev2.LoginCookieField{{
@@ -2245,8 +2206,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					Required: true,
 					Sources: []bridgev2.LoginCookieFieldSource{
 						{
-							Type:            bridgev2.LoginCookieTypeSpecial,
-							Name:            "redirect_url",
+							Type:            bridgev2.LoginCookieTypeRedirectURL,
 							RequestURLRegex: `^fb://auth-platform-continue/`,
 						},
 						{
@@ -2315,7 +2275,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 					log.Debug().Str("cur_state", string(b.State)).Str("prev_state", string(b.PreviousState)).Msg("Returning to previous Bloks screen")
 					b.State = StateEmailPasswordPage
 					b.CurrentPage = b.PreviousPage
-					b.LastError = "Invalid username or password"
+					b.LastError = msgErrInvalidCredentials.Message()
 				} else {
 					return nil, fmt.Errorf("no-op captcha on_mount script: %w", err)
 				}
@@ -2325,24 +2285,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateSMSPageAfterSend:
 		smsCode := userInput["sms_code"]
 		if smsCode == "" {
-			instructions := b.getCodeInstructions()
-			if instructions == "" {
-				instructions = b.profile.smsInstruction
-			}
-			if b.LastError != "" {
-				instructions = fmt.Sprintf(
-					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
-				)
-				b.LastError = ""
-			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("sms"),
-				Instructions: instructions,
+				Instructions: b.stepInstructions(b.getCodeInstructions(), b.profile.smsInstruction),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "sms_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
+						{ID: "sms_code", Name: msgFieldSMSCodeName.Message(), Type: bridgev2.LoginInputFieldType2FACode},
 					},
 				},
 			}
@@ -2413,9 +2363,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			contactPoint = pointNames[0]
 		}
 		if contactPoint == "" {
-			instructions := b.getContactPointInstructions()
-			if instructions == "" {
-				instructions = b.profile.contactPointInstruction
+			instructions := l10n.Unlocalized(b.getContactPointInstructions())
+			if instructions.Text == "" && b.profile.contactPointInstruction != nil {
+				instructions = b.profile.contactPointInstruction.Message()
 			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
@@ -2424,8 +2374,8 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					Fields: []bridgev2.LoginInputDataField{
 						{
-							ID: "contact_point", Name: "Phone number or email", Type: bridgev2.LoginInputFieldTypeSelect,
-							Options: pointNames,
+							ID: "contact_point", Name: msgFieldContactPointName.Message(), Type: bridgev2.LoginInputFieldTypeSelect,
+							Options: bridgev2.UnlocalizedOptions(pointNames...),
 						},
 					},
 				},
@@ -2468,24 +2418,14 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 	case StateWhatsAppPageAfterSend:
 		whatsAppCode := userInput["whatsapp_code"]
 		if whatsAppCode == "" {
-			instructions := b.getCodeInstructions()
-			if instructions == "" {
-				instructions = b.profile.whatsAppInstruction
-			}
-			if b.LastError != "" {
-				instructions = fmt.Sprintf(
-					"%s. %s", strings.TrimSuffix(b.LastError, "."), instructions,
-				)
-				b.LastError = ""
-			}
 			step = &bridgev2.LoginStep{
 				Type:         bridgev2.LoginStepTypeUserInput,
 				StepID:       b.stepID("whatsapp"),
-				Instructions: instructions,
+				Instructions: b.stepInstructions(b.getCodeInstructions(), b.profile.whatsAppInstruction),
 				UserInputParams: &bridgev2.LoginUserInputParams{
 					CanCancel: b.MFACanGoBack,
 					Fields: []bridgev2.LoginInputDataField{
-						{ID: "whatsapp_code", Name: "Six-digit code", Type: bridgev2.LoginInputFieldType2FACode},
+						{ID: "whatsapp_code", Name: msgFieldWhatsAppCodeName.Message(), Type: bridgev2.LoginInputFieldType2FACode},
 					},
 				},
 			}
@@ -2573,7 +2513,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				for _, field := range step.UserInputParams.Fields {
 					fieldIDs = append(fieldIDs, field.ID)
 					if field.Type == bridgev2.LoginInputFieldTypeSelect {
-						fieldOptions = append(fieldOptions, field.Options...)
+						for _, opt := range field.Options {
+							fieldOptions = append(fieldOptions, opt.Value)
+						}
 					}
 				}
 			}
@@ -2588,7 +2530,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 				Strs("field_ids", fieldIDs).
 				Strs("field_options", fieldOptions).
 				Msg("Requested user input")
-		} else if b.LastError != "" {
+		} else if !b.LastError.IsZero() {
 			log.Debug().
 				Str("cur_state", string(b.State)).
 				Bool("has_last_error", true).
@@ -2607,7 +2549,7 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 
 		// Ignore LastError, which is only used for signaling an error within the current
 		// page and can be ignored once we move to a new page.
-		b.LastError = ""
+		b.LastError = l10n.Message{}
 	}
 	return step, nil
 }
@@ -2640,13 +2582,10 @@ func (b *Browser) CancelLoginStep(ctx context.Context) error {
 }
 
 const (
-	authCodeActionFieldID  = "code_action"
-	authCodeActionEnter    = "Enter code"
-	authCodeActionResend   = "Get a new code"
-	authCodeActionAnother  = "Try another way"
-	authCodeResendFailed   = "Instagram didn't confirm that it sent a new code. Check for a message before requesting another"
-	authCodeResendAccepted = "Instagram is sending a new code"
-	authCodeAnotherFailed  = "Instagram didn't offer another way to confirm it's you"
+	authCodeActionFieldID = "code_action"
+	authCodeActionEnter   = "Enter code"
+	authCodeActionResend  = "Get a new code"
+	authCodeActionAnother = "Try another way"
 )
 
 func (b *Browser) handleAuthenticationCodeOptions(
@@ -2666,29 +2605,21 @@ func (b *Browser) handleAuthenticationCodeOptions(
 	log := zerolog.Ctx(ctx)
 	switch choice := userInput[authCodeActionFieldID]; {
 	case choice == "":
-		options := []string{authCodeActionEnter}
+		options := []bridgev2.LoginInputOption{{Value: authCodeActionEnter, Label: msgFieldCodeActionOptionEnter.Message()}}
 		if resend != nil {
-			options = append(options, authCodeActionResend)
+			options = append(options, bridgev2.LoginInputOption{Value: authCodeActionResend, Label: msgFieldCodeActionOptionResend.Message()})
 		}
 		if another != nil {
-			options = append(options, authCodeActionAnother)
-		}
-		instructions := authenticationCodeInstructions(b.CurrentPage)
-		if instructions == "" {
-			instructions = b.profile.codeInstruction
-		}
-		if b.LastError != "" {
-			instructions = fmt.Sprintf("%s. %s", strings.TrimSuffix(b.LastError, "."), instructions)
-			b.LastError = ""
+			options = append(options, bridgev2.LoginInputOption{Value: authCodeActionAnother, Label: msgFieldCodeActionOptionAnother.Message()})
 		}
 		return &bridgev2.LoginStep{
 			Type:         bridgev2.LoginStepTypeUserInput,
 			StepID:       b.stepID(authCodeActionFieldID),
-			Instructions: instructions,
+			Instructions: b.stepInstructions(authenticationCodeInstructions(b.CurrentPage), b.profile.codeInstruction),
 			UserInputParams: &bridgev2.LoginUserInputParams{
 				Fields: []bridgev2.LoginInputDataField{{
 					ID:           authCodeActionFieldID,
-					Name:         "Verification code",
+					Name:         msgFieldCodeActionName.Message(),
 					Type:         bridgev2.LoginInputFieldTypeSelect,
 					DefaultValue: authCodeActionEnter,
 					Options:      options,
@@ -2711,15 +2642,15 @@ func (b *Browser) handleAuthenticationCodeOptions(
 		}
 		if tapErr != nil || b.ActionRPCCount == actionRPCCountBefore {
 			log.Warn().Err(tapErr).Msg("Instagram resend code request did not complete")
-			b.LastError = authCodeResendFailed
+			b.LastError = msgErrCodeResendFailed.Message()
 		} else {
-			b.LastError = authCodeResendAccepted
+			b.LastError = msgErrCodeResendAccepted.Message()
 		}
 		b.AuthCodeEntryChosen = true
 		return nil, false, nil
 	case choice == authCodeActionAnother && another != nil:
 		delete(userInput, authCodeActionFieldID)
-		b.LastError = authCodeAnotherFailed
+		b.LastError = msgErrCodeAnotherFailed.Message()
 		if err = another.TapButton(ctx, b.CurrentPage.Interpreter); err != nil {
 			return nil, true, fmt.Errorf("tapping try another way button: %w", err)
 		}

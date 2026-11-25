@@ -87,13 +87,21 @@ func ReuploadFileToMeta(
 		}
 		return mediaID, nil
 	}
-	resp, err := client.SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
+	media := &httpclient.MercuryUploadMedia{
 		Filename:     fileName,
 		MimeType:     mime,
 		MediaData:    data,
 		IsVoiceClip:  isVoice,
 		WaveformData: waveformData,
-	})
+	}
+	if client.GetPlatform() == types.Instagram {
+		mediaID, err := client.SendInstagramRUploadRequest(ctx, media)
+		if err == nil {
+			return mediaID, nil
+		}
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment via rupload, falling back to mercury")
+	}
+	resp, err := client.SendMercuryUploadRequest(ctx, threadID, media)
 	if err != nil {
 		zerolog.Ctx(ctx).Debug().
 			Str("file_name", fileName).

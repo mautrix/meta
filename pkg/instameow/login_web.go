@@ -1074,7 +1074,7 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 	rq.Jazoest = instagramRelaySprinkleToken(cmp.Or(rq.FbDtsg, rq.Lsd), config.SprinkleConfig)
 	form, err := query.Values(rq)
 	if err != nil {
-		return nil, ErrInstagramWebCheckpointRequestFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
 	}
 	headers := c.http.BuildHeaders(true, false)
 	if userAgent != "" && !strings.Contains(userAgent, "Chrome/") {
@@ -1106,7 +1106,9 @@ func (c *Client) instagramWebGraphQLRequest(ctx context.Context, rq *httpclient.
 	}
 	if errors.Is(err, httpclient.ErrRateLimited) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return nil, err
-	} else if err != nil || response == nil || response.StatusCode != http.StatusOK {
+	} else if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
+	} else if response == nil || response.StatusCode != http.StatusOK {
 		return nil, ErrInstagramWebCheckpointRequestFailed
 	} else if gjson.GetBytes(bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix), "errors.#(code==1675004)").Exists() {
 		return nil, httpclient.ErrRateLimited

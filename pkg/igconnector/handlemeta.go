@@ -35,6 +35,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/dgw"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -236,6 +237,33 @@ func (ic *IGClient) getAndResyncThread(ctx context.Context, threadIGID, source s
 	return evt.PortalKey, nil
 }
 
+func (ic *IGClient) resyncMissingThread(threadIGID string) {
+	if !ic.missingThreads.Add(threadIGID) {
+		return
+	}
+	defer ic.missingThreads.Remove(threadIGID)
+	log := ic.UserLogin.Log.With().Str("action", "resync missing thread").Str("thread_igid", threadIGID).Logger()
+	ctx := log.WithContext(ic.Main.Bridge.BackgroundCtx)
+	delay := 2 * time.Second
+	for range 10 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return
+		}
+		delay *= 2
+		if ic.Client == nil {
+			return
+		} else if _, err := ic.getAndResyncThread(ctx, threadIGID, "missing thread"); err == nil {
+			return
+		} else if !errors.Is(err, httpclient.ErrRateLimited) {
+			log.Err(err).Msg("Failed to resync missing thread")
+			return
+		}
+	}
+	log.Warn().Msg("Giving up on resyncing missing thread")
+}
+
 func (ic *IGClient) ensurePortal(ctx context.Context, threadIGID string, allowCreate bool, source string) (networkid.PortalKey, bool, error) {
 	if threadIGID == "" {
 		return networkid.PortalKey{}, false, nil
@@ -319,7 +347,11 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	}
 
 	portalKey, didResync, err := ic.ensurePortal(ctx, d.ThreadIGID, allowCreate, fmt.Sprintf("delta %s", d.TypeName))
-	if err != nil {
+	if errors.Is(err, httpclient.ErrRateLimited) {
+		log.Warn().Err(err).Msg("Failed to get info for missing thread, will retry later")
+		go ic.resyncMissingThread(d.ThreadIGID)
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("failed to ensure portal for thread %s: %w", d.ThreadIGID, err)
 	} else if portalKey.IsEmpty() {
 		log.Warn().Msg("Ignoring event with no portal")
