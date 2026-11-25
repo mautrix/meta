@@ -487,6 +487,7 @@ func (m *MetaNativeLogin) completePhoneCookieLogin(ctx context.Context, strCooki
 	}
 	newClient.GetCookies().UpdateValues(nativeCookies.GetAll())
 
+	m.historyRelogin = slices.Contains(m.User.GetUserLoginIDs(), metaid.MakeUserLoginID(nativeCookies.GetUserID()))
 	step, err := loginWithCookies(ctx, log, newClient, m.User, m.Main, nativeCookies, nativeSession)
 	if err != nil {
 		return nil, err
