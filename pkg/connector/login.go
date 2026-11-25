@@ -179,7 +179,7 @@ func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 		StepID:       LoginStepIDCookies,
 		Instructions: msgStepCookiesInstructions.Message(),
 		CookiesParams: &bridgev2.LoginCookiesParams{
-			UserAgent: useragent.UserAgent,
+			UserAgentHints: []bridgev2.UserAgentHint{bridgev2.UserAgentHintDesktop},
 		},
 	}
 	switch m.Mode {
