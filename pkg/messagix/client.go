@@ -301,7 +301,12 @@ func (c *Client) Connect(ctx context.Context) error {
 				}
 			}
 			if err != nil {
-				c.Logger.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in connection, reconnecting")
+				logEvt := c.Logger.Error()
+				if reconnectIn == 0 {
+					// Meta closes long-lived connections routinely
+					logEvt = c.Logger.Warn()
+				}
+				logEvt.Err(err).Dur("reconnect_in", reconnectIn).Msg("Error in connection, reconnecting")
 			} else {
 				c.Logger.Warn().Dur("reconnect_in", reconnectIn).Msg("Connection closed without error, reconnecting")
 			}
