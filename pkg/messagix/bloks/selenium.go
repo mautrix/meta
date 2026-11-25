@@ -95,8 +95,8 @@ func (comp *BloksTreeComponent) FindDescendant(pred func(*BloksTreeComponent) bo
 	if pred(comp) {
 		return comp
 	}
-	for _, subnode := range comp.Attributes {
-		if match := subnode.FindDescendant(pred); match != nil {
+	for _, key := range slices.Sorted(maps.Keys(comp.Attributes)) {
+		if match := comp.Attributes[key].FindDescendant(pred); match != nil {
 			return match
 		}
 	}
@@ -111,8 +111,8 @@ func (comp *BloksTreeComponent) FindDescendants(pred func(*BloksTreeComponent) b
 		return []*BloksTreeComponent{comp}
 	}
 	matches := []*BloksTreeComponent{}
-	for _, subnode := range comp.Attributes {
-		matches = append(matches, subnode.FindDescendants(pred)...)
+	for _, key := range slices.Sorted(maps.Keys(comp.Attributes)) {
+		matches = append(matches, comp.Attributes[key].FindDescendants(pred)...)
 	}
 	return matches
 }
