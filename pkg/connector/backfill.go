@@ -36,6 +36,8 @@ type BackfillCollector struct {
 	Forward     bool
 	Anchor      *database.Message
 	Done        func()
+
+	gapReRequested bool
 }
 
 var globalUpsertCounter atomic.Int64
@@ -70,7 +72,7 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 		}
 		if collector.Forward && len(collector.Messages) > 0 && collector.Anchor != nil {
 			anchorTS := collector.Anchor.Timestamp.UnixMilli()
-			if collector.Range.MinTimestampMs > anchorTS && upsert.Range.MaxTimestampMs < anchorTS {
+			if !collector.gapReRequested && collector.Range.MinTimestampMs > anchorTS && upsert.Range.MaxTimestampMs < anchorTS {
 				log.Warn().
 					Int64("prev_min_timestamp_ms", collector.Range.MinTimestampMs).
 					Int64("anchor_timestamp_ms", anchorTS).
@@ -315,6 +317,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					} else {
 						hasAll = collector.Range.MinTimestampMs <= oldestMessageTS || !collector.Range.HasMoreBefore
 						reqTS, reqID = collector.Range.MinTimestampMs, collector.Range.MinMessageId
+						collector.gapReRequested = time.Since(start) <= timeout && timeouts < MaxBackfillReRequests
 					}
 				}
 				m.backfillLock.Unlock()
