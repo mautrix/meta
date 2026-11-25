@@ -68,6 +68,16 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 				Msg("Ignoring unexpected upsert messages while collecting history")
 			return nil
 		}
+		if collector.Forward && len(collector.Messages) > 0 && collector.Anchor != nil {
+			anchorTS := collector.Anchor.Timestamp.UnixMilli()
+			if collector.Range.MinTimestampMs > anchorTS && upsert.Range.MaxTimestampMs < anchorTS {
+				log.Warn().
+					Int64("prev_min_timestamp_ms", collector.Range.MinTimestampMs).
+					Int64("anchor_timestamp_ms", anchorTS).
+					Msg("Ignoring upsert older than forward backfill anchor before the gap is filled")
+				return nil
+			}
+		}
 		if collector.MaxMessages > 0 {
 			collector.MaxMessages = max(collector.MaxMessages-len(upsert.Messages), 0)
 		}
@@ -296,7 +306,19 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 				upsert = collector.UpsertMessages
 				break Loop
 			case <-ticker.C:
-				if params.Forward && collector.UpsertMessages != nil && collector.UpsertMessages.Range.MinTimestampMs >= oldestMessageTS {
+				m.backfillLock.Lock()
+				reqTS, reqID := oldestMessageTS, oldestMessageID
+				hasAll := false
+				if params.Forward && collector.UpsertMessages != nil {
+					if len(collector.Messages) == 0 {
+						hasAll = collector.Range.MinTimestampMs >= oldestMessageTS
+					} else {
+						hasAll = collector.Range.MinTimestampMs <= oldestMessageTS || !collector.Range.HasMoreBefore
+						reqTS, reqID = collector.Range.MinTimestampMs, collector.Range.MinMessageId
+					}
+				}
+				m.backfillLock.Unlock()
+				if hasAll {
 					zerolog.Ctx(ctx).Warn().Msg("Backfill collector did not call done, but has all messages")
 					break Loop
 				} else if time.Since(start) > timeout {
@@ -311,7 +333,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					break Loop
 				}
 				// No response? Let's re-request that history again
-				if timeouts < MaxBackfillReRequests && !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
+				if timeouts < MaxBackfillReRequests && !m.requestMoreHistory(ctx, threadID, reqTS, reqID) {
 					return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 				}
 				timeouts++
