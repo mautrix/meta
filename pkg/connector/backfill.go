@@ -314,10 +314,10 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 				gapMode := false
 				hasAll := false
 				if params.Forward && collector.UpsertMessages != nil {
-					if len(collector.Messages) == 0 {
-						hasAll = collector.Range.MinTimestampMs >= oldestMessageTS
-					} else {
-						hasAll = collector.Range.MinTimestampMs <= oldestMessageTS || !collector.Range.HasMoreBefore
+					hasAll = collector.Range.MinTimestampMs == oldestMessageTS ||
+						(collector.Anchor != nil && collector.Range.MinTimestampMs <= collector.Anchor.Timestamp.UnixMilli()) ||
+						(len(collector.Messages) > 0 && !collector.Range.HasMoreBefore)
+					if !hasAll && len(collector.Messages) > 0 {
 						reqTS, reqID = collector.Range.MinTimestampMs, collector.Range.MinMessageId
 						collector.gapReRequested = time.Since(lastAnchorRequest) >= 4*time.Second
 						gapMode = true
