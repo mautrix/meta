@@ -46,7 +46,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 	if err != nil {
 		return nil, err
 	} else if msg == nil {
-		return nil, fmt.Errorf("message not found")
+		return nil, mautrix.MNotFound.WithMessage("Message not found")
 	}
 
 	dmm := msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta

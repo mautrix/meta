@@ -91,7 +91,7 @@ func (ic *IGConnector) Download(ctx context.Context, mediaID networkid.MediaID, 
 		return nil, err
 	} else if msg == nil {
 		zerolog.Ctx(ctx).Trace().Any("media_info", mediaInfo).Msg("Message not found in database")
-		return nil, fmt.Errorf("message not found")
+		return nil, mautrix.MNotFound.WithMessage("Message not found")
 	}
 
 	msgMeta := msg.Metadata.(*metaid.MessageMetadata)
