@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/tidwall/gjson"
+	"go.mau.fi/util/l10n"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -37,7 +38,9 @@ var (
 	instagramAPResend                       = instagramAuthPlatformOperation{"useAuthPlatformSendCodeAgainMutation", "29612122925068775", "xfb_auth_platform_send_code_again"}
 	instagramAPApprove                      = instagramAuthPlatformOperation{"AuthPlatformApproveFromAnotherDeviceViewQuery", "27305034922459648", "xfb_auth_platform_afad_content"}
 	instagramAPApprovalState                = instagramAuthPlatformOperation{"AuthPlatformApproveFromAnotherDevicePollingMutation", "24626773746933809", "xfb_auth_platform_afad_approval_state"}
+	instagramAPPasskey                      = instagramAuthPlatformOperation{"AuthPlatformPasskeyViewQuery", "25777997685217823", "xfb_auth_platform_passkey_auth_options"}
 	ErrInstagramWebCheckpointCAPTCHA        = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
+	ErrInstagramPasskeyRequired             = errors.New("instagram requires a passkey and offered no other way")
 	errInstagramAuthPlatformLoggedOut       = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebLoginRejected)
 	ErrInstagramAuthPlatformApprovalExpired = errors.New("instagram login approval expired")
 )
@@ -51,7 +54,7 @@ type instagramAuthPlatformState struct {
 	referrer                 string
 	url                      *url.URL
 	expectedUserID, channel  string
-	notice                   string
+	notice, noticeHint       l10n.Message
 	tryAnotherWay, enterCode bool
 	mutationID               int
 	choices                  []instagramAuthPlatformChoice
@@ -61,6 +64,7 @@ type instagramAuthPlatformState struct {
 	resendAfter              time.Time
 	approving                bool
 	approvalCode             string
+	approvalDevice           string
 	approvalInterval         time.Duration
 }
 
@@ -112,7 +116,7 @@ func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
 		return nil, false
 	}
 	switch target.Path {
-	case "/auth_platform/", "/auth_platform/codeentry/", "/auth_platform/challengepicker/", "/auth_platform/recaptcha/", "/auth_platform/afad/":
+	case "/auth_platform/", "/auth_platform/codeentry/", "/auth_platform/challengepicker/", "/auth_platform/recaptcha/", "/auth_platform/afad/", "/auth_platform/passkey/":
 		if len(params["apc"]) != 1 || params.Get("apc") == "" || len(params["device_id"]) > 1 {
 			return nil, false
 		}
@@ -174,7 +178,7 @@ func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
 	target := mustParseURL(base).ResolveReference(reference)
 	pathKind := map[string]string{
 		"/": "root", "/auth_platform/": "auth_platform", "/auth_platform/codeentry/": "codeentry",
-		"/auth_platform/challengepicker/": "picker", "/auth_platform/recaptcha/": "recaptcha", "/auth_platform/afad/": "afad",
+		"/auth_platform/challengepicker/": "picker", "/auth_platform/recaptcha/": "recaptcha", "/auth_platform/afad/": "afad", "/auth_platform/passkey/": "passkey",
 		"/accounts/onetap/": "onetap", "/accounts/edit/": "edit", "/direct/inbox/": "inbox",
 		"/accounts/login/": "login", "/web/unsupported_version/": "unsupported_version",
 		"/oauth/oidc/": "oidc", "/consent/": "consent", "/privacy/consent/": "privacy_consent",
@@ -225,6 +229,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 	s := c.webAuthPlatform
 	// Redirects keep the initiating document's referrer until a new page loads.
 	s.referrer = s.url.String()
+	triedPasskey := false
 	for range 5 {
 		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
 		if !ok {
@@ -284,12 +289,35 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 		}
 		if target.Path == "/auth_platform/recaptcha/" {
 			return c.prepareInstagramAuthPlatformCaptcha(body)
+		} else if target.Path == "/auth_platform/passkey/" {
+			if triedPasskey {
+				c.webAuthPlatform = nil
+				return ErrInstagramPasskeyRequired
+			}
+			triedPasskey = true
+			apc := target.Query().Get("apc")
+			if data, err := c.instagramAuthPlatformRequest(ctx, instagramAPPasskey, nil, ""); err == nil {
+				apc = cmp.Or(data.Get("encrypted_ap_context").String(), apc)
+			} else if !errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+				return err
+			}
+			data, err := c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, "")
+			if errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
+			} else if err != nil {
+				return err
+			} else if rawURL = data.Get("redirect_uri").String(); rawURL == "" {
+				c.webAuthPlatform = nil
+				return ErrInstagramPasskeyRequired
+			}
+			s.referrer = s.url.String()
+			continue
 		}
 		s.captcha = nil
 		s.channel, s.choices, s.enterCode, s.tryAnotherWay = "", nil, false, false
-		s.notice = ""
+		s.notice, s.noticeHint = l10n.Message{}, l10n.Message{}
 		s.canResend, s.resendCooldown, s.resendAfter = false, 0, time.Time{}
-		s.approving, s.approvalCode, s.approvalInterval = false, "", 0
+		s.approving, s.approvalCode, s.approvalDevice, s.approvalInterval = false, "", "", 0
 		op := instagramAPCode
 		if target.Path == "/auth_platform/challengepicker/" {
 			op = instagramAPPicker
@@ -313,7 +341,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 				return ErrInstagramWebCheckpointUnsupported
 			}
 			if data.Get("error_message").String() != "" {
-				s.notice = "Instagram reported a problem with verification. Check the code or choose another available method."
+				s.notice, s.noticeHint = msgStepAPProblemInstructions.Message(), msgStepAPProblemHintInstructions.Message()
 			}
 		} else if op == instagramAPApprove {
 			if s.approvalInterval <= 0 {
@@ -322,6 +350,7 @@ func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string
 			s.approving = true
 			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
 			s.approvalCode = data.Get("verification_code").String()
+			s.approvalDevice = instagramAuthPlatformApprovalDevice(data.Get("screen_content_body").String())
 		} else {
 			for _, option := range data.Get("challenge_options").Array() {
 				channel, index := instagramAuthPlatformChannel(option.Get("challenge_name").String()), option.Get("index")
@@ -362,6 +391,20 @@ func instagramAuthPlatformChannel(method string) string {
 	return map[string]string{"EMAIL": "email", "SMS": "SMS", "SOWA": "WhatsApp"}[method]
 }
 
+func instagramAuthPlatformApprovalDevice(body string) string {
+	device, ok := strings.CutPrefix(body, "We sent a notification to your ")
+	if !ok {
+		return ""
+	}
+	device, _, _ = strings.Cut(device, "\n")
+	device, _, _ = strings.Cut(device, ". ")
+	device = strings.TrimSuffix(strings.TrimSpace(device), ".")
+	if device == "" || utf8.RuneCountInString(device) > 64 {
+		return ""
+	}
+	return device
+}
+
 func (s *instagramAuthPlatformState) configureCodeResend(data gjson.Result) {
 	// The browser starts this cooldown on entering the page, not just on resend.
 	cooldown := data.Get("resend_code_cooldown")
@@ -373,9 +416,20 @@ func (s *instagramAuthPlatformState) configureCodeResend(data gjson.Result) {
 	}
 }
 
-func (s *instagramAuthPlatformState) step(instructions string) *bridgev2.LoginStep {
-	instructions = cmp.Or(instructions, s.notice)
+func (s *instagramAuthPlatformState) step() *bridgev2.LoginStep {
+	return s.stepWithInstructions(l10n.Message{}, l10n.Message{})
+}
+
+// withResendHint is used instead of instructions when the code entry step can go back to resend a code.
+func (s *instagramAuthPlatformState) stepWithInstructions(instructions, withResendHint l10n.Message) *bridgev2.LoginStep {
+	if instructions.IsZero() {
+		instructions, withResendHint = s.notice, s.noticeHint
+	}
+	channelParams := l10n.Params{"channel": s.channel}
 	if s.approving {
+		if s.approvalDevice != "" {
+			instructions = orMessage(instructions, msgStepAPApproveDeviceInstructions.Render(l10n.Params{"device": s.approvalDevice}))
+		}
 		params := &bridgev2.LoginDisplayAndWaitParams{Type: bridgev2.LoginDisplayTypeNothing, CanCancel: s.tryAnotherWay}
 		if s.approvalCode != "" {
 			params.Type, params.Data = bridgev2.LoginDisplayTypeCode, s.approvalCode
@@ -383,31 +437,35 @@ func (s *instagramAuthPlatformState) step(instructions string) *bridgev2.LoginSt
 		return &bridgev2.LoginStep{
 			Type:                 bridgev2.LoginStepTypeDisplayAndWait,
 			StepID:               "fi.mau.meta.instagram.auth_platform.approve",
-			Instructions:         cmp.Or(instructions, "Approve this login in the Instagram app on another device where you're signed in."),
+			Instructions:         orMessage(instructions, msgStepAPApproveInstructions.Message()),
 			DisplayAndWaitParams: params,
 		}
 	}
-	field := bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeSelect, ID: "method", Name: "Verification method"}
+	field := bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeSelect, ID: "method", Name: msgFieldAPMethodName.Message()}
 	if len(s.choices) != 0 {
-		instructions = cmp.Or(instructions, "Choose one of the verification methods Instagram offered.")
+		instructions = orMessage(instructions, msgStepAPMethodInstructions.Message())
 		for _, choice := range s.choices {
-			field.Options = append(field.Options, choice.label)
+			field.Options = append(field.Options, bridgev2.UnlocalizedOptions(choice.label)...)
 		}
 	} else if (s.tryAnotherWay || s.canResend) && !s.enterCode {
-		instructions = cmp.Or(instructions, "Instagram requires a verification code via "+s.channel+". Choose an action below.")
-		field.ID, field.Options = "action", []string{"Enter code"}
+		instructions = orMessage(instructions, msgStepAPActionInstructions.Render(channelParams))
+		field.ID, field.Name = "action", msgFieldAPActionName.Message()
+		field.Options = []bridgev2.LoginInputOption{{Value: "Enter code", Label: msgFieldAPActionOptionEnter.Message()}}
 		if s.canResend {
-			field.Options = append(field.Options, "Resend code")
+			field.Options = append(field.Options, bridgev2.LoginInputOption{Value: "Resend code", Label: msgFieldAPActionOptionResend.Message()})
 		}
 		if s.tryAnotherWay {
-			field.Options = append(field.Options, "Try another method")
+			field.Options = append(field.Options, bridgev2.LoginInputOption{Value: "Try another method", Label: msgFieldAPActionOptionAnother.Message()})
 		}
 	} else {
-		instructions = cmp.Or(instructions, "Enter your Instagram verification code from "+s.channel+".")
-		if s.canResend {
-			instructions += " If it hasn't arrived, go back and choose Resend code."
+		if instructions.IsZero() {
+			instructions = msgStepAPCodeInstructions.Render(channelParams)
+			withResendHint = msgStepAPCodeHintInstructions.Render(channelParams)
 		}
-		field = bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldType2FACode, ID: "verification_code", Name: "Verification code", Pattern: "^.{5,8}$"}
+		if s.canResend && !withResendHint.IsZero() {
+			instructions = withResendHint
+		}
+		field = bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldType2FACode, ID: "verification_code", Name: msgFieldAPVerificationCodeName.Message(), Pattern: "^.{5,8}$"}
 	}
 	return &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeUserInput, StepID: "fi.mau.meta.instagram.auth_platform." + field.ID,
 		Instructions: instructions, UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{field}, CanCancel: (s.tryAnotherWay || s.canResend) && s.enterCode}}
@@ -420,12 +478,12 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
 	if s.captcha != nil {
-		return c.instagramAuthPlatformCaptchaStep("")
+		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions)
 	}
 	op, values := instagramAPSubmit, map[string]any{}
 	if s.approving {
 		if input == nil {
-			return s.step(""), nil
+			return s.step(), nil
 		} else if input["back"] != "true" || !s.tryAnotherWay {
 			return c.waitForInstagramAuthPlatformApproval(ctx)
 		}
@@ -438,7 +496,7 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 			}
 		}
 		if len(values) == 0 {
-			return s.step(""), nil
+			return s.step(), nil
 		}
 		op = instagramAPSelect
 	} else if (s.tryAnotherWay || s.canResend) && !s.enterCode {
@@ -450,29 +508,29 @@ func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[
 			op = instagramAPAnother
 		}
 		if op != instagramAPAnother {
-			return s.step(""), nil
+			return s.step(), nil
 		}
 	} else {
 		if input["back"] == "true" && (s.tryAnotherWay || s.canResend) {
 			s.enterCode = false
-			return s.step(""), nil
+			return s.step(), nil
 		}
 		code := strings.TrimSpace(input["verification_code"])
 		if n := utf8.RuneCountInString(code); n < 5 || n > 8 {
-			return s.step(""), nil
+			return s.step(), nil
 		}
 		values["code"] = code
 	}
 	data, err := c.instagramAuthPlatformRequest(ctx, op, values, "")
 	if errors.Is(err, ErrInstagramWebCheckpointRequestFailed) && op == instagramAPSubmit {
 		c.log.Warn().Err(err).Msg("Instagram verification code submission did not complete")
-		return s.step("The verification request did not complete on this device. Enter the code again to retry."), nil
+		return s.stepWithInstructions(msgStepAPRequestFailedInstructions.Message(), msgStepAPRequestFailedHintInstructions.Message()), nil
 	} else if err != nil {
 		return nil, err
 	}
 	redirect := data.Get("redirect_uri").String()
 	if data.Get("error_style").String() == "INLINE" && redirect == "" && op == instagramAPSubmit {
-		return s.step("Instagram did not accept that code. Check the latest code and try again, or go back to choose another method."), nil
+		return s.stepWithInstructions(msgStepAPCodeRejectedInstructions.Message(), msgStepAPCodeRejectedHintInstructions.Message()), nil
 	} else if redirect == "" || data.Get("error_message").String() != "" || data.Get("ap_error_code").Type != gjson.Null {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
@@ -485,9 +543,9 @@ func (c *Client) followInstagramAuthPlatformRedirect(ctx context.Context, redire
 	} else if c.webAuthPlatform == nil {
 		return nil, nil
 	} else if c.webAuthPlatform.captcha != nil {
-		return c.instagramAuthPlatformCaptchaStep("")
+		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions)
 	}
-	return c.webAuthPlatform.step(""), nil
+	return c.webAuthPlatform.step(), nil
 }
 
 func (c *Client) waitForInstagramAuthPlatformApproval(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -525,7 +583,7 @@ func (c *Client) resendInstagramAuthPlatformCode(ctx context.Context) (*bridgev2
 	}
 	if remaining := time.Until(s.resendAfter); remaining > 0 {
 		seconds := int((remaining + time.Second - 1) / time.Second)
-		return s.step(fmt.Sprintf("Wait %d seconds before requesting another code. You can still enter a code you've already received.", seconds)), nil
+		return s.stepWithInstructions(msgStepAPResendWaitInstructions.Render(l10n.Params{"seconds": seconds}), l10n.Message{}), nil
 	}
 	// Consume the cooldown before I/O, including ambiguous failures. Never retry a
 	// send automatically: the provider may already have dispatched the message.
@@ -535,16 +593,17 @@ func (c *Client) resendInstagramAuthPlatformCode(ctx context.Context) (*bridgev2
 		return nil, err
 	} else if errors.Is(err, httpclient.ErrRateLimited) {
 		s.canResend = false
-		s.notice = "Instagram is limiting code requests. You can still enter a code you've received or use another available method."
+		s.notice, s.noticeHint = msgStepAPRateLimitedInstructions.Message(), l10n.Message{}
 	} else if err != nil || (data.Get("success").Type != gjson.True && data.Get("success").Type != gjson.False) {
-		s.notice = "Couldn't confirm whether Instagram sent another code. Check for a message before requesting another."
+		s.notice, s.noticeHint = msgStepAPResendUnconfirmedInstructions.Message(), msgStepAPResendUnconfirmedHintInstructions.Message()
 	} else if data.Get("success").Type == gjson.False || data.Get("error_message").String() != "" {
-		s.notice = "Instagram couldn't send another code. Wait before trying again, or use another available method."
+		s.notice, s.noticeHint = msgStepAPResendFailedInstructions.Message(), msgStepAPResendFailedHintInstructions.Message()
 	} else {
-		s.notice = "Instagram accepted the request for another code via " + s.channel + ". Enter the latest code when it arrives."
+		channelParams := l10n.Params{"channel": s.channel}
+		s.notice, s.noticeHint = msgStepAPResendAcceptedInstructions.Render(channelParams), msgStepAPResendAcceptedHintInstructions.Render(channelParams)
 		s.enterCode = true
 	}
-	return s.step(""), nil
+	return s.step(), nil
 }
 
 func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramAuthPlatformOperation, input map[string]any, userAgent string) (gjson.Result, error) {
@@ -555,7 +614,9 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	if input != nil {
 		s.mutationID++
 		input["actor_id"], input["client_mutation_id"] = "0", strconv.Itoa(s.mutationID)
-		input["encrypted_ap_context"] = params.Get("apc")
+		if input["encrypted_ap_context"] == nil {
+			input["encrypted_ap_context"] = params.Get("apc")
+		}
 		variables = input
 		rq.Crn = "comet.igweb.PolarisAuthPlatformCodeEntryRoute"
 		if op == instagramAPSelect {
@@ -587,7 +648,7 @@ func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramA
 	}
 	encoded, err := json.Marshal(variables)
 	if err != nil {
-		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
+		return gjson.Result{}, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
 	}
 	rq.FbAPIReqFriendlyName, rq.DocID, rq.Variables = op.name, op.docID, string(encoded)
 	config := c.configs.BrowserConfigTable
@@ -682,4 +743,11 @@ func (c *Client) refreshInstagramAuthPlatformConfig(body []byte) error {
 	*c.configs.BrowserConfigTable = config
 	c.configs.LSDToken, c.configs.CometReq = config.LSD.Token, strconv.FormatInt(config.SiteData.CometEnv, 10)
 	return nil
+}
+
+func orMessage(msg, fallback l10n.Message) l10n.Message {
+	if msg.IsZero() {
+		return fallback
+	}
+	return msg
 }

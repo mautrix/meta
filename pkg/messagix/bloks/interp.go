@@ -1209,6 +1209,37 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 			}
 		}
 		return BloksLiteralOf(results), nil
+	case "bk.action.map.Filter":
+		dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.filter")
+		if err != nil {
+			return nil, err
+		}
+		callback, err := evalAs[*BloksLambda](ctx, i, &call.Args[1], "map.filter")
+		if err != nil {
+			return nil, err
+		}
+		results := map[string]*BloksScriptLiteral{}
+		for _, key := range slices.Sorted(maps.Keys(dict)) {
+			include, err := i.Evaluate(ctx, &BloksScriptNode{
+				Content: &BloksScriptFuncall{
+					Function: "bk.action.core.Apply",
+					Args: []BloksScriptNode{{
+						Content: BloksLiteralOf(callback),
+					}, {
+						Content: BloksLiteralOf(key),
+					}, {
+						Content: dict[key],
+					}},
+				},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("filter key %s: %w", key, err)
+			}
+			if include.IsTruthy() {
+				results[key] = dict[key]
+			}
+		}
+		return BloksLiteralOf(results), nil
 	case "bk.action.map.Keys":
 		dict, err := evalAs[map[string]*BloksScriptLiteral](ctx, i, &call.Args[0], "map.keys")
 		if err != nil {
@@ -1804,7 +1835,7 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 				Args:     append([]BloksScriptNode{{Content: callback}}, call.Args[1:]...),
 			},
 		})
-	case "bk.action.callback.MakeWithScopeOnly":
+	case "bk.action.callback.Make", "bk.action.callback.MakeWithScopeOnly", "dyw":
 		return i.Evaluate(ctx, &call.Args[0])
 	case "bk.action.session_store.Get":
 		return BloksLiteralOf(i.SessionStore), nil
@@ -1935,7 +1966,8 @@ func (i *Interpreter) Evaluate(ctx context.Context, form *BloksScriptNode) (*Blo
 		"bk.action.text_input.ClearText",
 		"bk.action.caa.reg.SaveCachedInfo",
 		"bk.action.textinput.SetTextV2",
-		"bk.action.caa.reg.SaveMachineID":
+		"bk.action.caa.reg.SaveMachineID",
+		"bk.action.caa.reg.ClearWACode":
 		return BloksNothing, nil
 	}
 	return nil, fmt.Errorf("unimplemented function %s (%d args)", call.Function, len(call.Args))

@@ -72,6 +72,7 @@ type DirectMediaMeta struct {
 	MediaRefreshMeta
 	MimeType string `json:"mime_type,omitempty"`
 	URL      string `json:"url"`
+	Gone     bool   `json:"gone,omitempty"`
 }
 
 var ErrURLNotFound = errors.New("url not found")

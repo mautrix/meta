@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/l10n"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/loginerrors"
@@ -27,16 +28,20 @@ type browserPlatformProfile struct {
 	isInstagram bool
 
 	serviceName             string
+	autofillDomain          string
 	stepIDPrefix            string
 	initialState            BrowserState
-	credentialsInstruction  string
-	loginRejected           string
-	accountSelection        string
-	codeFieldName           string
-	codeInstruction         string
-	smsInstruction          string
-	contactPointInstruction string
-	whatsAppInstruction     string
+	credentialsInstruction  instructionTemplates
+	passwordInstruction     instructionTemplates
+	loginRejected           l10n.Message
+	accountSelection        *l10n.Template
+	captchaInstruction      *l10n.Template
+	dialogInstruction       *l10n.Template
+	codeFieldName           *l10n.Template
+	codeInstruction         instructionTemplates
+	smsInstruction          instructionTemplates
+	contactPointInstruction *l10n.Template
+	whatsAppInstruction     instructionTemplates
 	uninformativeMessage    string
 
 	caaCodeEntryState         BrowserState
@@ -51,12 +56,16 @@ type browserPlatformProfile struct {
 func browserProfile(platform types.Platform) browserPlatformProfile {
 	profile := browserPlatformProfile{
 		serviceName:            "Facebook",
+		autofillDomain:         "facebook.com",
 		stepIDPrefix:           "fi.mau.meta.messengerlite",
 		initialState:           StateInitialMessenger,
-		credentialsInstruction: "Enter your Facebook credentials. The Messenger network will only work with Facebook accounts.",
-		loginRejected:          "Facebook rejected that login",
-		accountSelection:       "Choose the Facebook account to connect",
-		codeFieldName:          "One-time code sent to you",
+		credentialsInstruction: instructionTemplates{msgStepFBCredentialsInstructions, msgStepFBCredentialsErrorInstructions},
+		passwordInstruction:    instructionTemplates{msgStepFBPasswordInstructions, msgStepFBPasswordErrorInstructions},
+		loginRejected:          msgErrLoginRejected.Render(l10n.Params{"service": "Facebook"}),
+		accountSelection:       msgStepFBAccountSelectionInstructions,
+		captchaInstruction:     msgStepFBCaptchaInstructions,
+		dialogInstruction:      msgStepFBDialogInstructions,
+		codeFieldName:          msgFieldFBCodeName,
 		uninformativeMessage:   "Facebook rejected the login without providing a reason. It may help to try again, log in from the official app/website first, or change MFA settings for your Facebook account",
 		caaCodeEntryState:      StateCodeEntryPage,
 		authMethodState:        StateMFALandingPage,
@@ -78,16 +87,20 @@ func browserProfile(platform types.Platform) browserPlatformProfile {
 
 	profile.isInstagram = true
 	profile.serviceName = "Instagram"
+	profile.autofillDomain = "instagram.com"
 	profile.stepIDPrefix = "fi.mau.meta.instagram.caa"
 	profile.initialState = StateInitialInstagram
-	profile.credentialsInstruction = "Enter your Instagram email or username and password."
-	profile.loginRejected = "Instagram rejected that login"
-	profile.accountSelection = "Choose the Instagram account to connect"
-	profile.codeFieldName = "Instagram verification code"
-	profile.codeInstruction = "Enter the security code Instagram sent you"
-	profile.smsInstruction = "Enter the SMS code sent to your phone number"
-	profile.contactPointInstruction = "Choose where to receive an MFA code"
-	profile.whatsAppInstruction = "Enter the code sent to you on WhatsApp"
+	profile.credentialsInstruction = instructionTemplates{msgStepIGCredentialsInstructions, msgStepIGCredentialsErrorInstructions}
+	profile.passwordInstruction = instructionTemplates{msgStepIGPasswordInstructions, msgStepIGPasswordErrorInstructions}
+	profile.loginRejected = msgErrLoginRejected.Render(l10n.Params{"service": "Instagram"})
+	profile.accountSelection = msgStepIGAccountSelectionInstructions
+	profile.captchaInstruction = msgStepIGCaptchaInstructions
+	profile.dialogInstruction = msgStepIGDialogInstructions
+	profile.codeFieldName = msgFieldIGCodeName
+	profile.codeInstruction = instructionTemplates{msgStepIGCodeInstructions, msgStepIGCodeErrorInstructions}
+	profile.smsInstruction = instructionTemplates{msgStepIGSMSInstructions, msgStepIGSMSErrorInstructions}
+	profile.contactPointInstruction = msgStepIGContactPointInstructions
+	profile.whatsAppInstruction = instructionTemplates{msgStepIGWhatsAppInstructions, msgStepIGWhatsAppErrorInstructions}
 	profile.uninformativeMessage = "Instagram rejected the login without providing a reason. Try again later or complete the security check in the official app or website"
 	profile.caaCodeEntryState = StateAccountRecoveryPage
 	profile.authMethodState = StateChooseMFAPage
@@ -204,7 +217,7 @@ func (profile browserPlatformProfile) prepareCodeSubmission(
 	if !profile.isInstagram {
 		return
 	}
-	browser.LastError = ""
+	browser.LastError = l10n.Message{}
 	resetPending := resetPendingCodeSubmissionFlags(button, browser.CurrentPage.Interpreter)
 	if resetPending > 0 {
 		log.Debug().Int("reset_count", resetPending).Msg("Reset stale " + description + " pending flags")

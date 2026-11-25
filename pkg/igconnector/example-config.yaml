@@ -4,11 +4,6 @@
 #  .ID - The internal user ID of the user.
 displayname_template: '{{or .DisplayName .Username "Unknown user"}}'
 
-# Static proxy address (HTTP or SOCKS5) for connecting to Instagram.
-proxy:
-# HTTP endpoint to request new proxy address from, for dynamically assigned proxies.
-# The endpoint must return a JSON body with a string field called proxy_url.
-get_proxy_from:
 # Should media be proxied too?
 proxy_media: false
 # Should other traffic, not configured here, be proxied?
