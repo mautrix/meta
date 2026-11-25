@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,7 +28,7 @@ import (
 // completely different API that takes a ton of different parameters
 // and is used by a different client, despite also being called
 // "graphql" in the url.
-func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID string, familyDeviceID string) (*bloks.BloksBundle, error) {
+func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, appID string, inner bloks.BloksParamsInner, deviceID, familyDeviceID, machineID string) (*bloks.BloksBundle, error) {
 	c.log.Debug().Str("bloks_app", appID).Msg("Making Bloks request")
 
 	variables := bloks.NewBloksRequest(doc, appID, inner)
@@ -75,8 +74,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
 		headers.Set("x-graphql-client-library", "pando")
 
-		// Not clear if this needs to be remembered
-		headers.Set("x-meta-usdid-uuid", strings.ToUpper(uuid.New().String()))
+		headers.Set("x-meta-usdid-uuid", cmp.Or(c.USDID, strings.ToUpper(uuid.New().String())))
 
 		// Skip setting encoding headers since it messes up
 		// our own http library
@@ -100,15 +98,14 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-fb-net-hni", "310260")
 		headers.Set("x-fb-sim-hni", "310240")
 
-		// This probably needs to come from somewhere
-		headers.Set("x-fb-integrity-machine-id", string(random.StringBytes(24)))
+		if machineID != "" {
+			headers.Set("x-fb-integrity-machine-id", machineID)
+		}
 
-		// Meaning unclear
-		did := uuid.New().String()
-		headers.Set("x-zero-f-device-id", did)
-		headers.Set("x-zero-eh", hex.EncodeToString(random.Bytes(16)))
+		headers.Set("x-zero-f-device-id", familyDeviceID)
+		headers.Set("x-zero-eh", "664c0faaac849cb891d0a261fbb72a12")
 		headers.Set("x-zero-state", "unknown")
-		headers.Set("app-scope-id-header", did)
+		headers.Set("app-scope-id-header", deviceID)
 
 		// Skip setting encoding headers since it messes up
 		// our own http library

@@ -256,6 +256,28 @@ type SearchRequest struct {
 	SearchText string `json:"search_text"`
 }
 
+type SendStoreStickerRequest struct {
+	Data     StoreStickerData `json:"data"`
+	SendData StickerSendData  `json:"send_data"`
+}
+
+type StoreStickerData struct {
+	StickerID string `json:"sticker_id"`
+}
+
+type StickerSendData struct {
+	ThreadID                  string  `json:"thread_id"`
+	OfflineThreadingID        string  `json:"offline_threading_id"`
+	ReplyToMessageID          *string `json:"reply_to_message_id"`
+	RecipientUsers            *string `json:"recipient_users"`
+	ForwardedFromThreadID     *string `json:"forwarded_from_thread_id"`
+	IsForwardedFromOwnMessage *bool   `json:"is_forwarded_from_own_message"`
+}
+
+type StickerTrayRequest struct {
+	SearchQuery string `json:"search_query"`
+}
+
 type CreateGroupRequest struct {
 	RecipientFBIDs     []string `json:"recipient_eimu_fbids"`
 	OfflineThreadingID string   `json:"offline_threading_id"`

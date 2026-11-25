@@ -37,6 +37,10 @@ func (c *Client) SendMedia(ctx context.Context, req *slidetypes.SendMediaRequest
 	return makeGraphQLRequest[*slidetypes.SendMediaResponse](ctx, c, "IGDirectMediaSendMutation", req, true)
 }
 
+func (c *Client) SendStoreSticker(ctx context.Context, req *slidetypes.SendStoreStickerRequest) (*slidetypes.SendStoreStickerResponse, error) {
+	return makeGraphQLRequest[*slidetypes.SendStoreStickerResponse](ctx, c, "IGDirectStoreStickerSendMutation", req, true)
+}
+
 func (c *Client) EditMessage(ctx context.Context, req *slidetypes.EditMessageRequest) (*slidetypes.EditMessageResponse, error) {
 	return makeGraphQLRequest[*slidetypes.EditMessageResponse](ctx, c, "IGDirectEditMessageMutation", req, true)
 }
@@ -141,6 +145,10 @@ func (c *Client) GetUserForNewDM(ctx context.Context, fbid int64) (*slidetypes.U
 
 func (c *Client) SearchUsers(ctx context.Context, query string) (*slidetypes.SearchResponse, error) {
 	return makeGraphQLRequest[*slidetypes.SearchResponse](ctx, c, "IGDOmniPickerSearchResultsListQuery", slidetypes.SearchRequest{SearchText: query}, true)
+}
+
+func (c *Client) GetStickerTray(ctx context.Context) (*slidetypes.StickerTrayResponse, error) {
+	return makeGraphQLRequest[*slidetypes.StickerTrayResponse](ctx, c, "IGDComposerRichContentStickersV2Query", slidetypes.StickerTrayRequest{}, true)
 }
 
 func (c *Client) CreateGroup(ctx context.Context, req *slidetypes.CreateGroupRequest) (*slidetypes.CreateGroupResponse, error) {

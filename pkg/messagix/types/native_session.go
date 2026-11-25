@@ -9,3 +9,11 @@ type NativeSession struct {
 	FamilyDeviceID uuid.UUID `json:"family_device_id"`
 	MachineID      string    `json:"machine_id,omitempty"`
 }
+
+type MessengerLoginDevice struct {
+	DeviceID       uuid.UUID
+	FamilyDeviceID uuid.UUID
+	MachineID      string
+	AttestationKey string
+	USDID          string
+}

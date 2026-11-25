@@ -62,16 +62,10 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		return
 	}
 	resyncSince := ic.resyncChatsSince.Swap(nil)
-	if resyncSince != nil && ic.LoginMeta.ThreadBackfillCursor != "" {
-		ic.LoginMeta.ThreadBackfillCursor = ""
-		err := ic.UserLogin.Save(ctx)
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to clear chat backfill cursor after resnapshot")
-		}
-	}
 	go func() {
 		defer done()
 
+		backfilling := ic.updateChatBackfillState(ctx, mailbox, resyncSince != nil)
 		for _, evt := range events {
 			if ctx.Err() != nil {
 				return
@@ -84,20 +78,6 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 		}
 		if ctx.Err() != nil {
 			return
-		}
-		backfilling := false
-		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background {
-			if !mailbox.ThreadsByFolder.PageInfo.HasNextPage {
-				zerolog.Ctx(ctx).Info().Msg("Only one page in inbox, marking backfill as completed")
-				ic.LoginMeta.BackfillCompleted = true
-				err := ic.UserLogin.Save(ctx)
-				if err != nil {
-					zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after mailbox processing")
-				}
-			} else if ic.Main.Config.ThreadBackfill.Enabled() && ic.LoginMeta.ThreadBackfillCursor == "" {
-				backfilling = true
-				go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, time.Time{})
-			}
 		}
 		edges := mailbox.ThreadsByFolder.Edges
 		if resyncSince != nil && !backfilling && !ic.Main.Bridge.Background &&
@@ -113,6 +93,33 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to save reconnection state after mailbox processing")
 		}
 	}()
+}
+
+func (ic *IGClient) updateChatBackfillState(ctx context.Context, mailbox *slidetypes.Mailbox, resnapshot bool) (backfilling bool) {
+	ic.chatBackfillLock.Lock()
+	defer ic.chatBackfillLock.Unlock()
+	oldCursor, oldCompleted := ic.LoginMeta.ThreadBackfillCursor, ic.LoginMeta.BackfillCompleted
+	if resnapshot {
+		ic.LoginMeta.ThreadBackfillCursor = ""
+	}
+	if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background {
+		if !mailbox.ThreadsByFolder.PageInfo.HasNextPage {
+			zerolog.Ctx(ctx).Info().Msg("Only one page in inbox, marking backfill as completed")
+			ic.LoginMeta.BackfillCompleted = true
+		} else if ic.Main.Config.ThreadBackfill.Enabled() {
+			backfilling = true
+			if ic.LoginMeta.ThreadBackfillCursor == "" {
+				ic.LoginMeta.ThreadBackfillCursor = mailbox.ThreadsByFolder.PageInfo.EndCursor
+			}
+		}
+	}
+	if ic.LoginMeta.ThreadBackfillCursor != oldCursor || ic.LoginMeta.BackfillCompleted != oldCompleted {
+		err := ic.UserLogin.Save(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save chat backfill state after mailbox processing")
+		}
+	}
+	return
 }
 
 func (ic *IGConnector) waitForChatBackfillSlot(ctx context.Context) (func(), error) {
@@ -144,11 +151,14 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		zerolog.Ctx(ctx).Warn().Msg("No viewer FBID for chat backfill")
 		return
 	}
-	if !ic.chatBackfillLock.TryLock() {
-		zerolog.Ctx(ctx).Debug().Msg("Chat backfill already in progress, not starting new backfill")
-		return
-	}
+	ic.chatBackfillLock.Lock()
 	defer ic.chatBackfillLock.Unlock()
+	if since.IsZero() {
+		if ic.LoginMeta.BackfillCompleted {
+			return
+		}
+		cursor = ic.LoginMeta.ThreadBackfillCursor
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

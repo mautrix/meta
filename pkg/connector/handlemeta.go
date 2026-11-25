@@ -132,8 +132,12 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			m.sendBridgeState(m.metaState)
 		}
 	case *messagix.PermanentErrorEvent:
-		// TODO do full reconnect in some cases?
 		if websocket.CloseStatus(evt.Err) == dgw.CloseStatusUnauthorized {
+			if m.canReconnect() {
+				log.Debug().Err(evt.Err).Msg("Doing full reconnect after socket was closed as unauthorized")
+				go m.FullReconnect()
+				return
+			}
 			m.permanentErrored.Store(true)
 			m.metaState = status.BridgeState{
 				StateEvent: status.StateBadCredentials,
@@ -320,6 +324,17 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 			},
 		})
 	}
+	adminMessageSenders := make(map[int64]int64)
+	for _, msg := range tbl.LSInsertMessage {
+		if !msg.IsAdminMessage {
+			continue
+		}
+		if prev, ok := adminMessageSenders[msg.ThreadKey]; ok && prev != msg.SenderId {
+			adminMessageSenders[msg.ThreadKey] = 0
+		} else {
+			adminMessageSenders[msg.ThreadKey] = msg.SenderId
+		}
+	}
 	params := threadMaps{
 		ctx:           ctx,
 		m:             m,
@@ -327,6 +342,8 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		syncs:         threadResyncs,
 		activeThreads: activeThreads,
 		waThreadMap:   waThreadMap,
+
+		adminMessageSenders: adminMessageSenders,
 	}
 
 	for _, thread := range tbl.LSVerifyThreadExists {
@@ -442,7 +459,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 
 	blockUpdates := make(map[int64]*simplevent.ChatInfoChange)
 	updateBlock := func(contactID int64, isBlocked bool, changeType string) {
-		blockUpdates[contactID] = m.wrapChatInfoChange(contactID, 0, table.UNKNOWN_THREAD_TYPE, &bridgev2.ChatInfoChange{
+		blockUpdates[contactID] = m.wrapChatInfoChange(contactID, 0, 0, table.UNKNOWN_THREAD_TYPE, &bridgev2.ChatInfoChange{
 			ChatInfo: &bridgev2.ChatInfo{
 				UserBlocked: new(isBlocked),
 			},
@@ -601,7 +618,7 @@ func (m *MetaClient) handleDeleteThenInsertMessageRequest(tk handlerParams, msg 
 		tk.Sync.Info.MessageRequest = ptr.Ptr(isMessageRequest)
 		return nil
 	}
-	return m.wrapChatInfoChange(tk.ID, 0, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, 0, 0, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
 			MessageRequest: ptr.Ptr(isMessageRequest),
 		},
@@ -683,7 +700,7 @@ func (m *MetaClient) handleMoveThreadToE2EE(tk handlerParams, msg *table.LSMoveT
 		tk.Sync.Info.ExtraUpdates = bridgev2.MergeExtraUpdaters(tk.Sync.Info.ExtraUpdates, markPortalAsEncrypted)
 		return nil
 	}
-	return m.wrapChatInfoChange(tk.ID, 0, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, 0, 0, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
 			ExtraUpdates: markPortalAsEncrypted,
 		},
@@ -722,7 +739,7 @@ func (m *MetaClient) handleUpdateThreadName(tk handlerParams, evt *table.LSSyncU
 	if tk.Type.IsOneToOne() && !m.Main.Bridge.Config.PrivateChatPortalMeta {
 		return nil
 	}
-	return m.wrapChatInfoChange(tk.ID, 0, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, 0, tk.AdminMessageSender, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
 			Name: &evt.ThreadName,
 		},
@@ -733,7 +750,7 @@ func (m *MetaClient) handleSetThreadImage(tk handlerParams, evt *table.LSSetThre
 	if tk.Type.IsOneToOne() && !m.Main.Bridge.Config.PrivateChatPortalMeta {
 		return nil
 	}
-	return m.wrapChatInfoChange(tk.ID, 0, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, 0, tk.AdminMessageSender, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
 			Avatar: wrapAvatar(evt.ImageURL),
 		},
@@ -752,7 +769,7 @@ func (m *MetaClient) handleUpdateMuteSetting(tk handlerParams, evt *table.LSUpda
 		tk.Sync.Info.UserLocal.MutedUntil = &mutedUntil
 		return nil
 	}
-	return m.wrapChatInfoChange(tk.ID, 0, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, 0, 0, tk.Type, &bridgev2.ChatInfoChange{
 		ChatInfo: &bridgev2.ChatInfo{
 			UserLocal: &bridgev2.UserLocalPortalInfo{
 				MutedUntil: &mutedUntil,
@@ -768,7 +785,7 @@ func (m *MetaClient) handleAddParticipant(tk handlerParams, evt *table.LSAddPart
 	}
 	memberMap := make(bridgev2.ChatMemberMap, 1)
 	memberMap.Add(m.wrapChatMember(evt))
-	return m.wrapChatInfoChange(tk.ID, evt.ContactId, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, evt.ContactId, tk.AdminMessageSender, tk.Type, &bridgev2.ChatInfoChange{
 		MemberChanges: &bridgev2.ChatMemberList{
 			MemberMap: memberMap,
 		},
@@ -794,7 +811,7 @@ func (m *MetaClient) handleRemoveParticipant(tk handlerParams, evt *table.LSRemo
 		Membership:     event.MembershipLeave,
 		PrevMembership: event.MembershipJoin,
 	})
-	return m.wrapChatInfoChange(tk.ID, evt.ParticipantId, tk.Type, &bridgev2.ChatInfoChange{
+	return m.wrapChatInfoChange(tk.ID, evt.ParticipantId, tk.AdminMessageSender, tk.Type, &bridgev2.ChatInfoChange{
 		MemberChanges: &bridgev2.ChatMemberList{
 			MemberMap: memberMap,
 		},
@@ -882,6 +899,8 @@ type threadMaps struct {
 	syncs         map[int64]*FBChatResync
 	activeThreads exmaps.Set[int64]
 	waThreadMap   map[int64]int64
+
+	adminMessageSenders map[int64]int64
 }
 
 func (tm threadMaps) MapWhatsAppThreadKey(fbKey int64) int64 {
@@ -900,6 +919,8 @@ type handlerParams struct {
 	Sync   *FBChatResync
 
 	ThreadMsgID string
+
+	AdminMessageSender int64
 
 	vtes          map[int64]*table.LSVerifyThreadExists
 	syncs         map[int64]*FBChatResync
@@ -950,6 +971,8 @@ func collectPortalEvents[T ThreadKeyable](
 			Portal:      p.m.makeFBPortalKey(threadKey, threadType),
 			Sync:        sync,
 			ThreadMsgID: threadMsgID,
+
+			AdminMessageSender: p.adminMessageSenders[msg.GetThreadKey()],
 
 			vtes:          p.vtes,
 			syncs:         p.syncs,
