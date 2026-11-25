@@ -99,7 +99,7 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 	headers.Set("X-FB-Friendly-Name", "registerPush")
 	headers.Set("X-ZERO-STATE", "unknown")
 	headers.Set("X-FB-Family-Device-Id", session.FamilyDeviceID.String())
-	headers.Set("X-Zero-F-Device-Id", deviceID)
+	headers.Set("X-Zero-F-Device-Id", session.FamilyDeviceID.String())
 	headers.Set("App-Scope-Id-Header", deviceID)
 	if session.MachineID != "" {
 		headers.Set("X-FB-Integrity-Machine-Id", session.MachineID)

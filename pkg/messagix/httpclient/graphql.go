@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -103,12 +102,10 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		// This probably needs to come from somewhere
 		headers.Set("x-fb-integrity-machine-id", string(random.StringBytes(24)))
 
-		// Meaning unclear
-		did := uuid.New().String()
-		headers.Set("x-zero-f-device-id", did)
-		headers.Set("x-zero-eh", hex.EncodeToString(random.Bytes(16)))
+		headers.Set("x-zero-f-device-id", familyDeviceID)
+		headers.Set("x-zero-eh", "664c0faaac849cb891d0a261fbb72a12")
 		headers.Set("x-zero-state", "unknown")
-		headers.Set("app-scope-id-header", did)
+		headers.Set("app-scope-id-header", deviceID)
 
 		// Skip setting encoding headers since it messes up
 		// our own http library
