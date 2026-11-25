@@ -20,8 +20,11 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -34,6 +37,36 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
+
+var ErrNoNativeSession = bridgev2.WrapErrorInStatus(errors.New("messenger lite login has no access token for media uploads")).
+	WithMessage("log in to Facebook again to send media").
+	WithStatus(event.MessageStatusFail).
+	WithErrorReason(event.MessageStatusUnsupported).
+	WithIsCertain(true).
+	WithSendNotice(true)
+
+func GetAudioInfo(content *event.MessageEventContent) (waveform []byte, duration int) {
+	duration = content.Info.Duration
+	audioInfo := content.MSC1767Audio
+	if audioInfo == nil {
+		return
+	}
+	if duration == 0 {
+		duration = audioInfo.Duration
+	}
+	if len(audioInfo.Waveform) == 0 {
+		return
+	}
+	divisor := 1
+	if slices.Max(audioInfo.Waveform) > 256 {
+		divisor = 4
+	}
+	waveform = make([]byte, len(audioInfo.Waveform))
+	for i, part := range audioInfo.Waveform {
+		waveform[i] = byte(min(max(part/divisor, 0), 255))
+	}
+	return
+}
 
 func ReuploadFileToMeta(
 	ctx context.Context,
@@ -53,36 +86,51 @@ func ReuploadFileToMeta(
 		mime = http.DetectContentType(data)
 	}
 	isVoice := content.MSC3245Voice != nil
+	waveform, duration := GetAudioInfo(content)
 	var waveformData *httpclient.WaveformData
-	if isVoice && content.MSC1767Audio != nil {
+	if isVoice && len(waveform) > 0 {
 		waveformData = &httpclient.WaveformData{
-			Amplitudes:        make([]float64, len(content.MSC1767Audio.Waveform)),
+			Amplitudes:        make([]float64, len(waveform)),
 			SamplingFrequency: 9,
 		}
-		for i, amp := range content.MSC1767Audio.Waveform {
-			waveformData.Amplitudes[i] = max(min(float64(amp)/256.0, 1.0), 0.0)
+		if duration > 0 {
+			waveformData.SamplingFrequency = max(int(math.Round(float64(len(waveform))*1000/float64(duration))), 1)
+		}
+		for i, amp := range waveform {
+			waveformData.Amplitudes[i] = float64(amp) / 255
 		}
 	}
-	if client.GetPlatform().IsMessengerLite() && nativeSession != nil {
+	if client.GetPlatform().IsMessengerLite() {
+		if nativeSession == nil {
+			return 0, ErrNoNativeSession
+		}
 		mediaID, err := client.SendRUploadRequest(ctx, nativeSession, &httpclient.RUploadMedia{
 			Filename:    fileName,
 			MimeType:    mime,
 			MediaData:   data,
 			IsVoiceClip: isVoice,
-			DurationMS:  content.Info.Duration,
+			DurationMS:  duration,
 		})
 		if err != nil {
 			return 0, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 		}
 		return mediaID, nil
 	}
-	resp, err := client.SendMercuryUploadRequest(ctx, threadID, &httpclient.MercuryUploadMedia{
+	media := &httpclient.MercuryUploadMedia{
 		Filename:     fileName,
 		MimeType:     mime,
 		MediaData:    data,
 		IsVoiceClip:  isVoice,
 		WaveformData: waveformData,
-	})
+	}
+	if client.GetPlatform() == types.Instagram {
+		mediaID, err := client.SendInstagramRUploadRequest(ctx, media)
+		if err == nil {
+			return mediaID, nil
+		}
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment via rupload, falling back to mercury")
+	}
+	resp, err := client.SendMercuryUploadRequest(ctx, threadID, media)
 	if err != nil {
 		zerolog.Ctx(ctx).Debug().
 			Str("file_name", fileName).
@@ -133,7 +181,7 @@ func reuploadVideoToMetaFallback(ctx context.Context, client *httpclient.HTTPCli
 	h.Add("offset", "0")
 	h.Add("segment-start-offset", "0")
 	h.Add("segment-type", "3")
-	h.Add("user-agent", useragent.AndroidUserAgent)
+	h.Add("user-agent", useragent.IGAndroidUserAgent)
 	h.Add("video_type", "FILE_ATTACHMENT")
 	h.Add("x-entity-length", fmt.Sprintf("%d", len(data)))
 	h.Add("x-entity-name", uploadID)

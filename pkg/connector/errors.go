@@ -98,6 +98,7 @@ func wrapMetaError(err error) error {
 			WithSendNotice(true)
 	case errors.Is(err, whatsmeow.ErrServerReturnedError), errors.As(err, &iqErr):
 		return withFallbackMessage(bridgev2.WrapErrorInStatus(err), "Facebook returned an error").
+			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(true).
 			WithSendNotice(true)
 	case errors.As(err, &lsErr), errors.As(err, &gqlErr), errors.Is(err, httpclient.ErrUnexpectedError):

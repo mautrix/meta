@@ -13,9 +13,11 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
+	"go.mau.fi/util/l10n"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
@@ -106,7 +108,7 @@ func (c *Client) HasInstagramWebCaptcha() bool {
 	return c.webAuthPlatform != nil && c.webAuthPlatform.captcha != nil
 }
 
-func (c *Client) instagramAuthPlatformCaptchaStep(notice string) (*bridgev2.LoginStep, error) {
+func (c *Client) instagramAuthPlatformCaptchaStep(instructions *l10n.Template) (*bridgev2.LoginStep, error) {
 	if !c.HasInstagramWebCaptcha() || time.Now().After(c.webAuthPlatform.captcha.expires) {
 		c.webAuthPlatform = nil
 		return nil, ErrInstagramWebCheckpointUnsupported
@@ -116,23 +118,22 @@ func (c *Client) instagramAuthPlatformCaptchaStep(notice string) (*bridgev2.Logi
 	if err != nil {
 		return nil, ErrInstagramWebCheckpointUnsupported
 	}
-	if notice == "" {
-		notice = "Complete Instagram's CAPTCHA in the embedded browser. Your login will continue here afterwards."
-	}
 	return &bridgev2.LoginStep{
-		Type: bridgev2.LoginStepTypeCookies, StepID: InstagramWebCaptchaStepID, Instructions: notice,
+		Type: bridgev2.LoginStepTypeCookies, StepID: InstagramWebCaptchaStepID, Instructions: instructions.Message(),
 		CookiesParams: &bridgev2.LoginCookiesParams{
 			URL:       "https://www.instagram.com/accounts/login/",
 			UserAgent: useragent.UserAgent,
 			ExtractJS: "(" + instagramCaptchaJS + ")(" + string(config) + ")",
-			Fields: []bridgev2.LoginCookieField{{ID: "captcha_token", Required: true,
-				Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_token"}}}},
+			Fields: []bridgev2.LoginCookieField{
+				{ID: "captcha_token", Required: true, Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_token"}}},
+				{ID: "captcha_user_agent", Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "captcha_user_agent"}}},
+			},
 		},
 	}, nil
 }
 
-func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token string) (*bridgev2.LoginStep, error) {
-	if _, err := c.instagramAuthPlatformCaptchaStep(""); err != nil {
+func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token, userAgent string) (*bridgev2.LoginStep, error) {
+	if _, err := c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions); err != nil {
 		return nil, err
 	}
 	s := c.webAuthPlatform
@@ -140,29 +141,33 @@ func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token string) (*
 	token = strings.TrimSpace(token)
 	fingerprint := sha256.Sum256([]byte(token))
 	if token == "" || len(token) > 16384 || strings.ContainsAny(token, "\r\n\x00") || fingerprint == pending.lastToken {
-		return c.instagramAuthPlatformCaptchaStep("Complete a fresh CAPTCHA to continue this login.")
+		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaFreshInstructions)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	pending.lastToken = fingerprint
+	userAgent = strings.TrimSpace(userAgent)
+	if len(userAgent) > 512 || strings.ContainsFunc(userAgent, unicode.IsControl) {
+		userAgent = ""
+	}
 	// Consume before transport: an ambiguous response must not replay a token.
 	s.captcha = nil
 	if pending.instrumented {
-		_, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaRender, map[string]any{})
+		_, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaRender, map[string]any{}, userAgent)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		// The browser treats render-outcome telemetry errors as non-fatal.
 	}
-	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaSubmit, map[string]any{"captcha_response": token})
+	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPCaptchaSubmit, map[string]any{"captcha_response": token}, userAgent)
 	if err != nil {
 		return nil, err
 	}
 	if data.Get("is_success").Type == gjson.False {
 		pending.instance = uuid.NewString()
 		s.captcha = pending
-		return c.instagramAuthPlatformCaptchaStep("Instagram rejected or expired that CAPTCHA. Complete a fresh challenge.")
+		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaRejectedInstructions)
 	}
 	if data.Get("is_success").Type != gjson.True || data.Get("redirect_uri").Type != gjson.String || data.Get("redirect_uri").String() == "" {
 		return nil, ErrInstagramWebCheckpointUnsupported
@@ -174,7 +179,7 @@ func (c *Client) SubmitInstagramWebCaptcha(ctx context.Context, token string) (*
 		return nil, nil
 	}
 	if c.HasInstagramWebCaptcha() {
-		return c.instagramAuthPlatformCaptchaStep("")
+		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions)
 	}
-	return c.webAuthPlatform.step(""), nil
+	return c.webAuthPlatform.step(), nil
 }

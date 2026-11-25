@@ -169,7 +169,7 @@ func (m *MetaClient) makeMinimalChatInfo(threadID int64, threadType table.Thread
 		ParentID:    parentIDPtr,
 		ExtraUpdates: func(ctx context.Context, portal *bridgev2.Portal) (changed bool) {
 			meta := portal.Metadata.(*metaid.PortalMetadata)
-			if threadType == table.GROUP_THREAD && meta.ThreadType > 15 {
+			if threadType == table.GROUP_THREAD && meta.ThreadType >= 5 {
 				// Don't trust changing more specific group types into the generic type
 				return
 			}
@@ -287,12 +287,12 @@ func (m *MetaClient) wrapChatMember(tbl *table.LSAddParticipantIdToGroupThread) 
 }
 
 func (m *MetaClient) wrapChatInfoChange(
-	threadKey, participantID int64,
+	threadKey, participantID, senderID int64,
 	threadType table.ThreadType,
 	change *bridgev2.ChatInfoChange,
 	changeType string,
 ) *simplevent.ChatInfoChange {
-	return &simplevent.ChatInfoChange{
+	evt := &simplevent.ChatInfoChange{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventChatInfoChange,
 			LogContext: func(c zerolog.Context) zerolog.Context {
@@ -306,4 +306,8 @@ func (m *MetaClient) wrapChatInfoChange(
 		},
 		ChatInfoChange: change,
 	}
+	if senderID != 0 {
+		evt.Sender = m.makeEventSender(senderID)
+	}
+	return evt
 }

@@ -17,6 +17,7 @@
 package instameow
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -31,7 +32,6 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
-	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
 const instagramAccountManagerField = "account"
@@ -108,9 +108,8 @@ func newInstagramAccountManagerToken(session *instagramMobileSession) instagramA
 
 func (c *Client) instagramAccountManagerHeaders() http.Header {
 	session := c.mobileSession.Load()
-	headers := http.Header{}
+	headers := c.nativeHeaders(session.Device)
 	headers.Set("authorization", session.Authorization)
-	headers.Set("user-agent", instagramMobileUserAgent)
 	headers.Set("ig-u-ds-user-id", session.UserID)
 	headers.Set("ig-intended-user-id", session.UserID)
 	headers.Set("ig-u-rur", session.RUR)
@@ -118,11 +117,7 @@ func (c *Client) instagramAccountManagerHeaders() http.Header {
 	headers.Set("ig-u-shbts", session.SHBTS)
 	headers.Set("ig-u-ig-direct-region-hint", session.DirectRegionHint)
 	headers.Set("x-ig-www-claim", session.WWWClaim)
-	headers.Set("x-ig-device-id", session.Device.DeviceID)
-	headers.Set("x-ig-family-device-id", session.Device.PhoneID)
-	headers.Set("x-ig-android-id", session.Device.AndroidDeviceID)
-	headers.Set("x-mid", c.cookies.Get(cookies.IGCookieMachineID))
-	headers.Set("x-ig-app-id", useragent.IGAndroidAppID)
+	headers.Set("x-mid", cmp.Or(session.Device.MachineID, c.cookies.Get(cookies.IGCookieMachineID)))
 	return headers
 }
 
@@ -199,6 +194,8 @@ func instagramAccountManagerRequestError(
 	var failure instagramAccountManagerError
 	_ = json.Unmarshal(body, &failure)
 	switch {
+	case failure.ErrorType == "two_factor_required":
+		return fmt.Errorf("%s: %w", action, ErrInstagramAccountManagerTwoFactorRequired)
 	case failure.ErrorType != "" && failure.Message != "":
 		return fmt.Errorf(
 			"%s: Instagram returned %s (%s, HTTP %d)",
@@ -501,8 +498,11 @@ func (c *Client) DoInstagramWebAccountManagerSteps(
 			return nil, errors.New("instagram web login did not return the current profile")
 		}
 		accounts, err := c.getInstagramWebAccountManagerAccounts(ctx, currentUsername)
-		if err != nil {
+		if httpclient.IsPermanentRequestError(err) {
 			return nil, err
+		} else if err != nil {
+			c.log.Warn().Err(err).Msg("Failed to load Instagram web Account Manager profiles, continuing with current account")
+			accounts = []instagramAccountManagerAccount{{Username: currentUsername}}
 		}
 		state = &instagramWebAccountManagerState{
 			Accounts:  accounts,
@@ -563,14 +563,14 @@ func instagramAccountManagerSelectionStep(
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
 		StepID:       "fi.mau.meta.instagram.account_manager",
-		Instructions: "Choose the Instagram profile to connect",
+		Instructions: msgStepAccountManagerInstructions.Message(),
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: []bridgev2.LoginInputDataField{
 				{
 					ID:      instagramAccountManagerField,
-					Name:    "Instagram profile",
+					Name:    msgFieldAccountManagerName.Message(),
 					Type:    bridgev2.LoginInputFieldTypeSelect,
-					Options: options,
+					Options: bridgev2.UnlocalizedOptions(options...),
 				},
 			},
 		},

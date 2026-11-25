@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -114,7 +115,7 @@ func (c *Client) ContinueInstagramWebSessionAfterCookieConsent(ctx context.Conte
 		"opted_in_controls": []string{}, "ig_did": c.configs.BrowserConfigTable.PolarisSiteData.DeviceID,
 	})
 	if err != nil {
-		return nil, ErrInstagramWebCheckpointRequestFailed
+		return nil, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
 	}
 	for name, value := range state.values {
 		c.cookies.Set(name, value)

@@ -7,6 +7,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
 )
@@ -69,7 +71,56 @@ func TestInstagramCookieLoginIncludesOptionalRoutingCookies(t *testing.T) {
 }
 
 func TestInstagramNativeCredentialsStep(t *testing.T) {
-	assertInstagramCredentialsStep(t, instagramCredentialsStep("Enter your credentials"))
+	assertInstagramCredentialsStep(t, instagramCredentialsStep(msgStepCredentialsInstructions.Message()))
+}
+
+func TestInstagramNativeReconnectDefaultsUsername(t *testing.T) {
+	login := &MetaNativeLogin{
+		User: &bridgev2.User{Log: zerolog.Nop()},
+		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
+	}
+	step, err := login.StartWithOverride(context.Background(), &bridgev2.UserLogin{UserLogin: &database.UserLogin{
+		RemoteProfile: status.RemoteProfile{Username: "saved_username"},
+	}})
+	if err != nil {
+		t.Fatalf("failed to start native login: %v", err)
+	}
+	assertInstagramCredentialsStep(t, step)
+	if got := step.UserInputParams.Fields[0].DefaultValue; got != "saved_username" {
+		t.Fatalf("username default = %q, want saved_username", got)
+	}
+}
+
+func TestInstagramNativeReconnectHasNoPasswordDefault(t *testing.T) {
+	login := &MetaNativeLogin{
+		User: &bridgev2.User{Log: zerolog.Nop()},
+		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
+	}
+	step, err := login.StartWithOverride(context.Background(), &bridgev2.UserLogin{UserLogin: &database.UserLogin{
+		RemoteProfile: status.RemoteProfile{Username: "saved_username"},
+	}})
+	if err != nil {
+		t.Fatalf("failed to start native login: %v", err)
+	}
+	assertInstagramCredentialsStep(t, step)
+	if got := step.UserInputParams.Fields[1].DefaultValue; got != "" {
+		t.Fatalf("password default = %q, want empty", got)
+	}
+}
+
+func TestInstagramNativeNewLoginHasNoUsernameDefault(t *testing.T) {
+	login := &MetaNativeLogin{
+		User: &bridgev2.User{Log: zerolog.Nop()},
+		Main: &IGConnector{Bridge: &bridgev2.Bridge{}},
+	}
+	step, err := login.Start(context.Background())
+	if err != nil {
+		t.Fatalf("failed to start native login: %v", err)
+	}
+	assertInstagramCredentialsStep(t, step)
+	if got := step.UserInputParams.Fields[0].DefaultValue; got != "" {
+		t.Fatalf("username default = %q, want empty", got)
+	}
 }
 
 func TestInstagramNativeLoginUsesClientHTTPTransport(t *testing.T) {

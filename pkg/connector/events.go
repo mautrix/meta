@@ -53,6 +53,8 @@ const (
 	folderMessengerMarketingMessage = "messenger_marketing_message"
 )
 
+const marketplaceFolderThreadKey = -12
+
 type VerifyThreadExistsEvent struct {
 	*table.LSVerifyThreadExists
 	m *MetaClient
@@ -69,7 +71,38 @@ func (evt *VerifyThreadExistsEvent) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *VerifyThreadExistsEvent) ShouldCreatePortal() bool {
-	return evt.FolderName != folderSpam
+	if evt.FolderName == folderSpam {
+		return false
+	} else if evt.ThreadType == table.FOLDER {
+		return true
+	}
+	if evt.m.requestedThreads.Add(evt.ThreadKey) {
+		log := evt.m.UserLogin.Log.With().Int64("thread_id", evt.ThreadKey).Logger()
+		log.Debug().Msg("Sending create thread request for unknown thread in verifyThreadExists")
+		resp, err := evt.m.Client.ExecuteTasks(log.WithContext(evt.m.Main.Bridge.BackgroundCtx), &socket.CreateThreadTask{
+			ThreadFBID:                evt.ThreadKey,
+			ForceUpsert:               0,
+			UseOpenMessengerTransport: 0,
+			SyncGroup:                 1,
+			MetadataOnly:              0,
+			PreviewOnly:               0,
+		})
+		if err != nil {
+			log.Err(err).Msg("Failed to request full thread info")
+			evt.m.requestedThreads.Remove(evt.ThreadKey)
+		} else {
+			log.Trace().Any("response", resp).Msg("Requested full thread info")
+		}
+	}
+	// Minimal info is enough for DMs, but other threads only get members and a name from
+	// the actual thread info, so let the resync caused by the request above create those.
+	// Meta often doesn't answer that request for new marketplace threads, so create them here.
+	return evt.ThreadType.IsOneToOne() || evt.isMarketplace()
+}
+
+func (evt *VerifyThreadExistsEvent) isMarketplace() bool {
+	return evt.ThreadType == table.MARKETPLACE ||
+		(evt.ParentThreadKey == marketplaceFolderThreadKey && evt.ThreadType == table.GROUP_THREAD)
 }
 
 func (evt *VerifyThreadExistsEvent) GetPortalKey() networkid.PortalKey {
@@ -92,27 +125,11 @@ func (evt *VerifyThreadExistsEvent) GetSender() bridgev2.EventSender {
 }
 
 func (evt *VerifyThreadExistsEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	if portal.MXID == "" && evt.ThreadType != table.FOLDER {
-		if portal.Metadata.(*metaid.PortalMetadata).FetchAttempted.Swap(true) {
-			zerolog.Ctx(ctx).Warn().Msg("Not resending create request for thread that was already requested")
-			return nil, fmt.Errorf("thread resync was already requested")
-		}
-		zerolog.Ctx(ctx).Debug().Msg("Sending create thread request for unknown thread in verifyThreadExists")
-		resp, err := evt.m.Client.ExecuteTasks(ctx, &socket.CreateThreadTask{
-			ThreadFBID:                evt.ThreadKey,
-			ForceUpsert:               0,
-			UseOpenMessengerTransport: 0,
-			SyncGroup:                 1,
-			MetadataOnly:              0,
-			PreviewOnly:               0,
-		})
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to request full thread info")
-		} else {
-			zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("Requested full thread info")
-		}
+	threadType := evt.ThreadType
+	if evt.isMarketplace() {
+		threadType = table.MARKETPLACE
 	}
-	chatInfo := evt.m.makeMinimalChatInfo(evt.ThreadKey, evt.ThreadType, evt.ParentThreadKey)
+	chatInfo := evt.m.makeMinimalChatInfo(evt.ThreadKey, threadType, evt.ParentThreadKey)
 	chatInfo.MessageRequest = ptr.Ptr(evt.FolderName == folderPending)
 	return chatInfo, nil
 }
@@ -369,6 +386,7 @@ type WAMessageEvent struct {
 
 var (
 	_ bridgev2.RemoteMessage              = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteMessageUpsert        = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEdit                 = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithTimestamp   = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReaction             = (*WAMessageEvent)(nil)
@@ -477,8 +495,7 @@ func (evt *WAMessageEvent) GetRemovedEmojiID() networkid.EmojiID {
 }
 
 func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
-	// FIXME proper log
-	log := zerolog.Ctx(context.TODO())
+	log := &evt.m.UserLogin.Log
 	switch typedMsg := evt.Message.(type) {
 	case *waConsumerApplication.ConsumerApplication:
 		switch payload := typedMsg.GetPayload().GetPayload().(type) {
@@ -492,7 +509,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 				}
 				return bridgev2.RemoteEventReaction
 			default:
-				return bridgev2.RemoteEventMessage
+				return bridgev2.RemoteEventMessageUpsert
 			}
 		case *waConsumerApplication.ConsumerApplication_Payload_ApplicationData:
 			switch applicationContent := payload.ApplicationData.GetApplicationContent().(type) {
@@ -511,7 +528,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	case *waArmadilloApplication.Armadillo:
 		switch payload := typedMsg.GetPayload().GetPayload().(type) {
 		case *waArmadilloApplication.Armadillo_Payload_Content:
-			return bridgev2.RemoteEventMessage
+			return bridgev2.RemoteEventMessageUpsert
 		case *waArmadilloApplication.Armadillo_Payload_ApplicationData:
 			log.Warn().Msg("Unsupported armadillo application data message")
 		case *waArmadilloApplication.Armadillo_Payload_Signal:
@@ -532,7 +549,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 			return bridgev2.RemoteEventEdit
 		}
 	case *instamadilloAddMessage.AddMessagePayload:
-		return bridgev2.RemoteEventMessage
+		return bridgev2.RemoteEventMessageUpsert
 	case *instamadilloDeleteMessage.DeleteMessagePayload:
 		return bridgev2.RemoteEventMessageRemove
 	default:
@@ -584,6 +601,19 @@ func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.
 		evt.m.Main.AddMediaEditCache(portal, evt.GetID(), cm.Parts[0])
 	}
 	return cm, nil
+}
+
+func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (bridgev2.UpsertResult, error) {
+	if meta, ok := existing[0].Metadata.(*metaid.MessageMetadata); ok && meta.DecryptionFailed {
+		zerolog.Ctx(ctx).Debug().
+			Stringer("existing_mxid", existing[0].MXID).
+			Msg("Received decryptable version of previously undecryptable message")
+		return bridgev2.UpsertResult{SubEvents: []bridgev2.RemoteEvent{
+			&WANowDecryptableMessage{WAMessageEvent: evt, editParts: existing},
+		}}, nil
+	}
+	zerolog.Ctx(ctx).Debug().Stringer("existing_mxid", existing[0].MXID).Msg("Ignoring duplicate message")
+	return bridgev2.UpsertResult{}, nil
 }
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
@@ -836,4 +866,104 @@ func (f *FBFolderResync) GetSender() bridgev2.EventSender {
 
 func (f *FBFolderResync) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	return f.m.wrapFolderInfo(f.LSUpsertFolder), nil
+}
+
+type WANowDecryptableMessage struct {
+	*WAMessageEvent
+	editParts []*database.Message
+}
+
+var (
+	_ bridgev2.RemoteEdit                  = (*WANowDecryptableMessage)(nil)
+	_ bridgev2.RemoteEventWithBundledParts = (*WANowDecryptableMessage)(nil)
+)
+
+func (evt *WANowDecryptableMessage) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventEdit
+}
+
+func (evt *WANowDecryptableMessage) GetTargetMessage() networkid.MessageID {
+	return evt.GetID()
+}
+
+func (evt *WANowDecryptableMessage) GetTargetDBMessage() []*database.Message {
+	return evt.editParts
+}
+
+func (evt *WANowDecryptableMessage) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
+	converted, err := evt.ConvertMessage(ctx, portal, intent)
+	if err != nil {
+		return nil, err
+	}
+	edit := &bridgev2.ConvertedEdit{}
+	for i, part := range converted.Parts {
+		if i < len(existing) {
+			if meta, ok := existing[i].Metadata.(*metaid.MessageMetadata); ok {
+				meta.DecryptionFailed = false
+			}
+			edit.ModifiedParts = append(edit.ModifiedParts, part.ToEditPart(existing[i]))
+		} else {
+			if edit.AddedParts == nil {
+				edit.AddedParts = &bridgev2.ConvertedMessage{Disappear: converted.Disappear}
+			}
+			edit.AddedParts.Parts = append(edit.AddedParts.Parts, part)
+		}
+	}
+	return edit, nil
+}
+
+type WAUndecryptableMessage struct {
+	*events.UndecryptableMessage
+	m *MetaClient
+}
+
+var (
+	_ bridgev2.RemoteMessage              = (*WAUndecryptableMessage)(nil)
+	_ bridgev2.RemoteEventWithTimestamp   = (*WAUndecryptableMessage)(nil)
+	_ bridgev2.RemoteEventWithStreamOrder = (*WAUndecryptableMessage)(nil)
+)
+
+func (evt *WAUndecryptableMessage) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventMessage
+}
+
+func (evt *WAUndecryptableMessage) GetPortalKey() networkid.PortalKey {
+	return evt.m.makeWAPortalKey(evt.Info.Chat)
+}
+
+func (evt *WAUndecryptableMessage) AddLogContext(c zerolog.Context) zerolog.Context {
+	return c.Str("message_id", evt.Info.ID).Stringer("sender_id", evt.Info.Sender).Bool("undecryptable", true)
+}
+
+func (evt *WAUndecryptableMessage) GetSender() bridgev2.EventSender {
+	return evt.m.makeWAEventSender(evt.Info.Sender)
+}
+
+func (evt *WAUndecryptableMessage) GetID() networkid.MessageID {
+	return metaid.MakeWAMessageID(evt.Info.Chat, evt.Info.Sender, evt.Info.ID)
+}
+
+func (evt *WAUndecryptableMessage) GetTimestamp() time.Time {
+	return evt.Info.Timestamp
+}
+
+func (evt *WAUndecryptableMessage) GetStreamOrder() int64 {
+	return evt.Info.Timestamp.UnixMilli()
+}
+
+func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    "Decrypting message failed, waiting for sender to re-send...",
+			},
+			Extra: map[string]any{
+				"fi.mau.meta.undecryptable": true,
+			},
+			DBMetadata: &metaid.MessageMetadata{DecryptionFailed: true},
+		}},
+		Disappear: portal.Disappear,
+	}, nil
 }

@@ -186,6 +186,7 @@ var ErrSocketAlreadyOpen = errors.New("dgw: socket is already open")
 var ErrDial = errors.New("dgw: failed to dial socket")
 var ErrPongTimeout = errors.New("dgw: pong timeout")
 var ErrUnauthorized = errors.New("dgw: unauthorized")
+var ErrDeauthFrame = errors.New("dgw: received deauth frame")
 
 func IsUnauthorized(err error) bool {
 	return errors.Is(err, ErrUnauthorized) || websocket.CloseStatus(err) == CloseStatusUnauthorized
@@ -363,9 +364,9 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 					}, "ack for unknown stream")
 				}
 			} else {
-				incoming <- wrappedDataFrame{
-					s: stream,
-					f: f,
+				select {
+				case incoming <- wrappedDataFrame{s: stream, f: f}:
+				case <-done:
 				}
 			}
 		case *AckFrame:
@@ -388,8 +389,10 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 					Uint16("stream_id", uint16(streamID)).
 					Stringer("reason", f.GetReason()).
 					Msg("Received end of data frame")
-				incoming <- wrappedDataFrame{
-					s: stream,
+				select {
+				case incoming <- wrappedDataFrame{s: stream}:
+				case <-done:
+					stream.close(false)
 				}
 				s.streams.Delete(streamID)
 			}
@@ -398,7 +401,7 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 		case *DeauthFrame:
 			s.Log.Debug().Msg("Received deauth frame")
 			if conn.extendedData {
-				fatalError(ErrUnauthorized)
+				fatalError(ErrDeauthFrame)
 			}
 		case *UnsupportedFrame:
 			s.Log.Warn().
@@ -489,6 +492,11 @@ func (s *Socket) readLoop(ctx context.Context, conn *connection) error {
 	}
 
 	wg.Wait()
+	for frame := range incoming {
+		if frame.s != nil && frame.f == nil {
+			frame.s.close(false)
+		}
+	}
 
 	s.stopped.Set()
 	s.conn.Store(nil)

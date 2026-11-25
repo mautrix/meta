@@ -2,9 +2,9 @@ package httpclient
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -74,8 +74,7 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		headers.Set("x-fb-rmd", "fail=Server:INVALID_MAP,Default:INVALID_MAP;v=;ip=;tkn=;reqTime=0;recvTime=0")
 		headers.Set("x-graphql-client-library", "pando")
 
-		// Not clear if this needs to be remembered
-		headers.Set("x-meta-usdid-uuid", strings.ToUpper(uuid.New().String()))
+		headers.Set("x-meta-usdid-uuid", cmp.Or(c.USDID, strings.ToUpper(uuid.New().String())))
 
 		// Skip setting encoding headers since it messes up
 		// our own http library
@@ -102,12 +101,10 @@ func (c *HTTPClient) MakeBloksRequest(ctx context.Context, doc *bloks.BloksDoc, 
 		// This probably needs to come from somewhere
 		headers.Set("x-fb-integrity-machine-id", string(random.StringBytes(24)))
 
-		// Meaning unclear
-		did := uuid.New().String()
-		headers.Set("x-zero-f-device-id", did)
-		headers.Set("x-zero-eh", hex.EncodeToString(random.Bytes(16)))
+		headers.Set("x-zero-f-device-id", familyDeviceID)
+		headers.Set("x-zero-eh", "664c0faaac849cb891d0a261fbb72a12")
 		headers.Set("x-zero-state", "unknown")
-		headers.Set("app-scope-id-header", did)
+		headers.Set("app-scope-id-header", deviceID)
 
 		// Skip setting encoding headers since it messes up
 		// our own http library
@@ -232,7 +229,7 @@ func (c *HTTPClient) MakeGraphQLRequest(ctx context.Context, name string, variab
 	headers.Set("origin", c.parent.GetEndpoint("base_url"))
 	headers.Set("referer", c.parent.GetEndpoint("messages")+"/")
 
-	reqUrl := c.parent.GetEndpoint("graphql")
+	reqUrl := c.parent.GetEndpoint(cmp.Or(graphQLDoc.EndpointName, "graphql"))
 	//c.Logger.Info().Any("url", reqUrl).Any("payload", string(payloadBytes)).Any("headers", headers).Msg("Sending graphQL request.")
 	var resp *http.Response
 	var respData []byte

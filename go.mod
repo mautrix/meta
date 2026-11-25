@@ -2,12 +2,12 @@ module go.mau.fi/mautrix-meta
 
 go 1.26.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 tool go.mau.fi/util/cmd/maubuild
 
 require (
-	github.com/apache/thrift v0.24.0
+	github.com/apache/thrift v0.25.0
 	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c
 	github.com/bytemare/cryptotools v0.0.0-20210309005813-f9985b05742f
 	github.com/bytemare/opaque v0.0.0-20210310201842-16a10d180656
@@ -24,16 +24,16 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.20.0
 	github.com/zyedidia/clipboard v1.0.4
-	go.mau.fi/libsignal v0.2.3-0.20261103023201-5ce3f7a54370
-	go.mau.fi/util v0.11.1-0.20261026174803-9e6b9c87cfbc
-	go.mau.fi/whatsmeow v0.0.0-20261027104441-1eec1136a50b
-	golang.org/x/crypto v0.58.0
-	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e
-	golang.org/x/image v0.47.0
-	golang.org/x/net v0.61.0
+	go.mau.fi/libsignal v0.2.3
+	go.mau.fi/util v0.11.2-0.20261123232031-42f343a1bef8
+	go.mau.fi/whatsmeow v0.0.0-20261116172437-19d61352436f
+	golang.org/x/crypto v0.59.0
+	golang.org/x/exp v0.0.0-20261113113407-e3970619a1a4
+	golang.org/x/image v0.48.0
+	golang.org/x/net v0.62.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.32.1-0.20261105233647-a3fe62a69fe2
+	maunium.net/go/mautrix v0.33.1-0.20261125114131-b1b4ee3b87d9
 )
 
 require (
@@ -49,25 +49,25 @@ require (
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.52 // indirect
-	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b // indirect
+	github.com/mattn/go-sqlite3 v1.14.53 // indirect
+	github.com/petermattis/goid v0.0.0-20261109124353-7cfa343ad0ab // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tidwall/match v1.1.1 // indirect
-	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/pretty v1.3.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.2.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	github.com/yuin/goldmark v1.8.6 // indirect
+	github.com/yuin/goldmark v1.8.7 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
-	golang.org/x/mod v0.42.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/mod v0.43.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
 
-replace github.com/imroc/req/v3 => github.com/beeper/req/v3 v3.0.0-20260925135712-b49593750e56
+replace github.com/imroc/req/v3 => github.com/beeper/req/v3 v3.0.0-20261112020631-42bebc180e13

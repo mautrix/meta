@@ -137,6 +137,10 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if ic.LoginMeta.Cookies == nil {
 		return nil, bridgev2.ErrNotLoggedIn
 	}
+	cli := ic.Client
+	if cli == nil {
+		return nil, wrapInstagramError(instameow.ErrClientIsNil)
+	}
 	_, err := ic.ensureIGID(ctx, msg.Portal)
 	if errors.Is(err, instameow.ErrThreadNotFound) && msg.Content.MsgType == event.MsgText && msg.Portal.RoomType == database.RoomTypeDM {
 		// Allow sending text DMs even if the thread isn't known
@@ -151,7 +155,7 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		return c.Int64("otid", otid)
 	})
 	log.Debug().Msg("Sending Matrix message to Meta")
-	converted, err := ic.Main.MsgConv.ToInstagram(ctx, ic.Client, msg.Event, msg.Content, msg.ReplyTo, otid, msg.OrigSender != nil, msg.Portal, ic.getTrayStickerID(ctx, msg))
+	converted, err := ic.Main.MsgConv.ToInstagram(ctx, cli, msg.Event, msg.Content, msg.ReplyTo, otid, msg.OrigSender != nil, msg.Portal, ic.getTrayStickerID(ctx, msg))
 	if err != nil {
 		if state := ic.errorToBridgeState(ctx, err); state != nil {
 			ic.UserLogin.BridgeState.Send(*state)
@@ -164,11 +168,11 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	switch req := converted.(type) {
 	case *slidetypes.SendTextRequest:
-		resp, err = ic.Client.SendMessage(ctx, req)
+		resp, err = cli.SendMessage(ctx, req)
 	case *slidetypes.SendMediaRequest:
-		resp, err = ic.Client.SendMedia(ctx, req)
+		resp, err = cli.SendMedia(ctx, req)
 	case *slidetypes.SendStoreStickerRequest:
-		resp, err = ic.Client.SendStoreSticker(ctx, req)
+		resp, err = cli.SendStoreSticker(ctx, req)
 	default:
 		return nil, fmt.Errorf("unexpected converted request type %T", converted)
 	}

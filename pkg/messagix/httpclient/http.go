@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,10 +41,12 @@ type HTTPClient struct {
 	lsSyncHTTP      *http.Client
 	websocketClient *http.Client
 	proxyAddr       string
-	GetNewProxy     func(reason string) (string, error)
+	proxyLock       sync.Mutex
+	GetNewProxy     func(ctx context.Context, reason string) (string, error)
 	instagramNative atomic.Bool
 
 	LogRedactedLoginResponses bool
+	USDID                     string
 }
 
 type Client interface {
@@ -155,7 +158,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 			hostname = addr[:i]
 		}
 
-		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_120)
+		spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build Chrome uTLS spec: %w", err)
 		}
@@ -164,7 +167,7 @@ func forceHTTP1ChromeFingerprint(c *req.Client) {
 		exts := spec.Extensions[:0]
 		for _, ext := range spec.Extensions {
 			switch e := ext.(type) {
-			case *utls.ApplicationSettingsExtension:
+			case *utls.ApplicationSettingsExtension, *utls.ApplicationSettingsExtensionNew:
 				continue
 			case *utls.ALPNExtension:
 				e.AlpnProtocols = []string{"http/1.1"}
@@ -251,12 +254,34 @@ func (c *HTTPClient) SetProxy(proxyAddr string) error {
 	return nil
 }
 
-func (c *HTTPClient) UpdateProxy(reason string) bool {
+func (c *HTTPClient) UpdateProxy(ctx context.Context, reason string) bool {
 	if c == nil || c.GetNewProxy == nil {
 		return true
 	}
-	if proxyAddr, err := c.GetNewProxy(reason); err != nil {
+	if proxyAddr, err := c.GetNewProxy(ctx, reason); err != nil {
 		c.log.Err(err).Str("reason", reason).Msg("Failed to get new proxy")
+		return false
+	} else if err = c.SetProxy(proxyAddr); err != nil {
+		c.log.Err(err).Str("reason", reason).Msg("Failed to set new proxy")
+		return false
+	}
+	return true
+}
+
+func (c *HTTPClient) changeProxyAfter(ctx context.Context, prevProxy, reason string) bool {
+	if c.GetNewProxy == nil {
+		return false
+	}
+	c.proxyLock.Lock()
+	defer c.proxyLock.Unlock()
+	if c.proxyAddr != prevProxy {
+		return true
+	}
+	proxyAddr, err := c.GetNewProxy(ctx, reason)
+	if err != nil {
+		c.log.Err(err).Str("reason", reason).Msg("Failed to get new proxy")
+		return false
+	} else if proxyAddr == prevProxy {
 		return false
 	} else if err = c.SetProxy(proxyAddr); err != nil {
 		c.log.Err(err).Str("reason", reason).Msg("Failed to set new proxy")
@@ -387,6 +412,7 @@ var (
 	ErrResponseReadFailed       = errors.New("failed to read response body")
 	ErrUnexpectedError          = errors.New("server returned unexpected HTTP status")
 	ErrRateLimited              = fmt.Errorf("%w 429", ErrUnexpectedError)
+	ErrPageInternalServerError  = errors.New("page returned internal server error")
 	ErrMaxRetriesReached        = errors.New("maximum retries reached")
 	ErrTooManyRedirects         = errors.New("too many redirects")
 	ErrUserIDIsZero             = fmt.Errorf("%w: user id in initial data is zero", ErrTokenInvalidated)
@@ -466,7 +492,7 @@ func (c *HTTPClient) checkHTTPRedirect(req *http.Request, via []*http.Request) e
 		return RedirectedError{Type: ErrChallengeRequired, URL: req.URL.String()}
 	} else if req.URL.Path == "/accounts/suspended/" {
 		return RedirectedError{Type: ErrAccountSuspended, URL: req.URL.String()}
-	} else if req.URL.Path == "/consent/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
+	} else if req.URL.Path == "/consent/" || req.URL.Path == "/terms/unblock/" || strings.HasPrefix(req.URL.Path, "/privacy/consent/") {
 		return RedirectedError{Type: ErrConsentRequired, URL: req.URL.String()}
 	} else if checkpointRedirect {
 		return RedirectedError{Type: ErrCheckpointRequired, URL: req.URL.String()}
@@ -515,9 +541,11 @@ func (c *HTTPClient) makeRequest(
 	logContext func(e *zerolog.Event) *zerolog.Event,
 ) (*http.Response, []byte, error) {
 	var attempts int
+	var changedProxy bool
 	for {
 		attempts++
 		start := time.Now()
+		proxyAddr := c.proxyAddr
 		resp, respDat, err := c.makeRequestOnce(ctx, getClient(), url, method, headers, payload, contentType)
 		dur := time.Since(start)
 		if err == nil {
@@ -528,6 +556,14 @@ func (c *HTTPClient) makeRequest(
 				Int("status_code", resp.StatusCode).
 				Msg("Request successful")
 			return resp, respDat, nil
+		} else if errors.Is(err, ErrRateLimited) && !changedProxy && !isClientHTTP(resp, err) && c.changeProxyAfter(ctx, proxyAddr, "rate_limited") {
+			changedProxy = true
+			logContext(c.log.Warn().Err(err)).
+				Str("url", url).
+				Str("method", method).
+				Dur("duration", dur).
+				Msg("Request rate limited, retrying with new proxy")
+			continue
 		} else if attempts > MaxHTTPRetries {
 			logContext(c.log.Err(err)).
 				Str("url", url).
@@ -606,7 +642,7 @@ func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Clien
 		if challengePath || checkpointPath {
 			err = errors.Unwrap(err)
 		}
-		c.UpdateProxy(fmt.Sprintf("http request error: %v", err.Error()))
+		c.UpdateProxy(ctx, fmt.Sprintf("http request error: %v", err.Error()))
 		return nil, nil, fmt.Errorf("%w: %w", ErrRequestFailed, err)
 	}
 	responseBody, readErr := io.ReadAll(response.Body)
@@ -627,7 +663,9 @@ func (c *HTTPClient) makeRequestOnce(ctx context.Context, httpClient *http.Clien
 func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, error) {
 	headers := c.BuildHeaders(true, true)
 	//headers.Set("host", m.client.getEndpoint("host"))
-	response, responseBody, err := c.MakeRequest(ctx, page, "GET", headers, nil, types.NONE)
+	response, responseBody, err := c.makeRequest(ctx, c.GetHTTPClient, page, "GET", headers, nil, types.NONE, func(e *zerolog.Event) *zerolog.Event {
+		return e.Strs("cookie_names", c.parent.GetCookies().GetNames())
+	})
 	if response != nil {
 		c.parent.GetCookies().UpdateFromResponse(response)
 		if err != nil && c.LogRedactedLoginResponses {
@@ -637,6 +675,9 @@ func (c *HTTPClient) fetchPageData(ctx context.Context, page string) ([]byte, er
 				Str("content_type", response.Header.Get("content-type")).
 				Strs("cookie_names", c.parent.GetCookies().GetNames())
 			AddRedactedResponse(evt, responseBody).Msg("Page request failed")
+		}
+		if errors.Is(err, ErrUnexpectedError) && response.StatusCode == http.StatusInternalServerError {
+			err = fmt.Errorf("%w: %w", ErrPageInternalServerError, err)
 		}
 	}
 	return responseBody, err

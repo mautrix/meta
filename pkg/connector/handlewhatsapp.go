@@ -1,10 +1,14 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
+	"go.mau.fi/whatsmeow/proto/waArmadilloApplication"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -16,6 +20,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv"
 )
 
 func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
@@ -32,10 +37,28 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			Any("ig_transport", evt.IGTransport).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
+		if armadillo, ok := evt.Message.(*waArmadilloApplication.Armadillo); ok && evt.Info.IsFromMe {
+			if metadataSync := armadillo.GetPayload().GetApplicationData().GetMetadataSync(); metadataSync != nil {
+				return m.handleWAMetadataSync(metadataSync)
+			}
+		}
 		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
 			return false
 		}
 		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAMessageEvent{FBMessage: evt, m: m}).Success
+	case *events.UndecryptableMessage:
+		log.Debug().
+			Any("info", evt.Info).
+			Bool("unavailable", evt.IsUnavailable).
+			Str("decrypt_fail", string(evt.DecryptFailMode)).
+			Msg("Received undecryptable WhatsApp message")
+		if evt.DecryptFailMode == events.DecryptFailHide {
+			return true
+		}
+		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Info.Chat, m: m}).Success {
+			return false
+		}
+		return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &WAUndecryptableMessage{UndecryptableMessage: evt, m: m}).Success
 	case *events.ChatPresence:
 		m.handleWAChatPresence(m.Main.Bridge.BackgroundCtx, evt)
 	case *events.Receipt:
@@ -72,6 +95,8 @@ func (m *MetaClient) e2eeEventHandler(rawEvt any) bool {
 			},
 			Targets: targets,
 		}).Success
+	case *events.FBCallEvent:
+		return m.handleWAFBCall(evt)
 	case *events.OfflineSyncPreview:
 		m.connectBackgroundWAEventCount.Store(uint32(evt.Messages))
 	case *events.OfflineSyncCompleted:
@@ -225,4 +250,76 @@ func (m *MetaClient) handleWAChatPresence(ctx context.Context, evt *events.ChatP
 		Timeout: timeout,
 		Type:    typingType,
 	})
+}
+
+func (m *MetaClient) handleWAMetadataSync(sync *waArmadilloApplication.Armadillo_ApplicationData_MetadataSyncNotification) bool {
+	log := m.UserLogin.Log
+	for _, action := range sync.GetActions() {
+		chatAction := action.GetChatAction()
+		if chatAction.GetChatDelete() == nil {
+			log.Debug().Type("action_type", action.GetActionType()).Msg("Ignoring unsupported metadata sync action")
+			continue
+		}
+		chatID := chatAction.GetChatID()
+		if !strings.ContainsRune(chatID, '@') {
+			chatID += "@" + waTypes.MessengerServer
+		}
+		chatJID, err := waTypes.ParseJID(chatID)
+		if err != nil {
+			log.Warn().Err(err).Str("chat_id", chatAction.GetChatID()).Msg("Failed to parse chat ID in metadata sync chat delete")
+			continue
+		}
+		log.Debug().Stringer("chat_jid", chatJID).Msg("Handling chat delete from metadata sync")
+		if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.ChatDelete{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatDelete,
+				PortalKey: m.makeWAPortalKey(chatJID),
+			},
+			OnlyForMe: true,
+		}).Success {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *MetaClient) handleWAFBCall(evt *events.FBCallEvent) bool {
+	if evt.EventType != "missed" && evt.EventType != "ended" {
+		return true
+	}
+	if !m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &EnsureWAChatStateEvent{JID: evt.Chat, m: m}).Success {
+		return false
+	}
+	return m.Main.Bridge.QueueRemoteEvent(m.UserLogin, &simplevent.Message[*events.FBCallEvent]{
+		EventMeta: simplevent.EventMeta{
+			Type:        bridgev2.RemoteEventMessage,
+			PortalKey:   m.makeWAPortalKey(evt.Chat),
+			Sender:      m.makeWAEventSender(evt.Actor),
+			Timestamp:   evt.Timestamp,
+			StreamOrder: evt.Timestamp.UnixMilli(),
+		},
+		ID:                 metaid.MakeWAMessageID(evt.Chat, evt.Actor, "call-"+cmp.Or(evt.ParentID, evt.ID)),
+		Data:               evt,
+		ConvertMessageFunc: convertWAFBCall,
+	}).Success
+}
+
+func convertWAFBCall(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, evt *events.FBCallEvent) (*bridgev2.ConvertedMessage, error) {
+	video := evt.CallType == "video"
+	var body string
+	if evt.EventType == "ended" {
+		body = "Audio call"
+		if video {
+			body = "Video call"
+		}
+		seconds := int(evt.Duration.Seconds())
+		if seconds >= 3600 {
+			body = fmt.Sprintf("%s (%d:%02d:%02d)", body, seconds/3600, seconds/60%60, seconds%60)
+		} else {
+			body = fmt.Sprintf("%s (%d:%02d)", body, seconds/60, seconds%60)
+		}
+	}
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{msgconv.CallLogToMatrix(body, video, evt.EventType == "missed")},
+	}, nil
 }
