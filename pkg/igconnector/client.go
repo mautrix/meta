@@ -66,6 +66,14 @@ type IGClient struct {
 	webPushCandidates     *exsync.Set[networkid.PortalID]
 	stopPeriodicReconnect atomic.Pointer[context.CancelFunc]
 	accountStateRechecks  atomic.Int32
+	lastFullReconnect     time.Time
+
+	stickerLock          sync.Mutex
+	stickerTray          []*slidetypes.StickerTraySection
+	stickerTrayErr       error
+	stickerTrayFetchedAt time.Time
+	stickerPacks         *exsync.Map[string, cachedStickerPack]
+	stickerPackLock      exsync.KeyedMutex[string]
 }
 
 func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -82,6 +90,7 @@ func (ic *IGConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLo
 		pendingGroupCreations: exsync.NewSet[string](),
 		missingThreads:        exsync.NewSet[string](),
 		webPushCandidates:     exsync.NewSet[networkid.PortalID](),
+		stickerPacks:          exsync.NewMap[string, cachedStickerPack](),
 	}
 	c.mailboxProcessed.Store(true)
 	login.Client = c
@@ -107,6 +116,9 @@ func (ic *IGClient) ensureIGClient() {
 
 			LogRedactedLoginResponses: ic.Main.Config.LogRedactedLoginResponses,
 		})
+		if ic.Main.Config.ProxyOther && ic.Main.Bridge.Config.Proxy.IsConfigured() {
+			ic.Client.GetHTTP().GetNewProxy = ic.Main.Bridge.GetProxy
+		}
 	}
 }
 
@@ -215,15 +227,12 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 		})
 		return
 	}
-	if ic.Main.Config.ProxyOther && ic.Main.Bridge.Config.Proxy.IsConfigured() {
-		cli.GetHTTP().GetNewProxy = ic.Main.Bridge.GetProxy
-		if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateUnknownError,
-				Error:      MetaProxyUpdateFail,
-			})
-			return
-		}
+	if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
+		ic.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      MetaProxyUpdateFail,
+		})
+		return
 	}
 	ic.permanentErrored.Store(false)
 	if attempts > 0 {
@@ -380,7 +389,18 @@ func (ic *IGClient) IsThisUser(ctx context.Context, userID networkid.UserID) boo
 }
 
 func (ic *IGClient) LogoutRemote(ctx context.Context) {
-	// TODO actual logout request?
+	cli := ic.Client
+	if cli == nil {
+		ic.ensureIGClient()
+		if cli = ic.Client; cli != nil && !cli.GetHTTP().UpdateProxy(ctx, "logout") {
+			cli = nil
+		}
+	}
+	if cli != nil {
+		if err := cli.Logout(ctx); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Instagram")
+		}
+	}
 	ic.Disconnect()
 	ic.LoginMeta.Cookies = nil
 }
@@ -470,4 +490,9 @@ func (ic *IGClient) FullReconnect(seqIDOnly, reconnectionStateOnly bool) {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to delete reconnection state")
 	}
 	ic.Connect(ctx)
+	ic.lastFullReconnect = time.Now()
+}
+
+func (ic *IGClient) canReconnect() bool {
+	return time.Since(ic.lastFullReconnect) > time.Duration(ic.Main.Config.MinFullReconnectIntervalSeconds)*time.Second && ic.LoginMeta.Cookies != nil
 }

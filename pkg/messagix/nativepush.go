@@ -22,6 +22,8 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/useragent"
 )
 
+const fcmSendURL = "https://fcm.googleapis.com/fcm/send"
+
 type NativePushConfig struct {
 	AppID    string
 	DeviceID uuid.UUID
@@ -51,9 +53,8 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 		return fmt.Errorf("invalid native push private key: %w", err)
 	}
 	deviceID := session.DeviceID.String()
-	androidID := sha256.Sum256([]byte(deviceID))
 	protocol, err := json.Marshal(map[string]any{
-		"url":              "https://fcm.googleapis.com/fcm/send",
+		"url":              fcmSendURL,
 		"token":            token,
 		"device_id":        deviceID,
 		"family_device_id": strings.ToUpper(session.FamilyDeviceID.String()),
@@ -76,7 +77,7 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 			"sys_notif":              1,
 			"messaging_channel_mask": 118,
 		},
-		"android_id":               hex.EncodeToString(androidID[:8]),
+		"android_id":               nativePushAndroidID(session),
 		"request_id":               uuid.NewString(),
 		"client_reported_user_ids": strconv.FormatInt(userID, 10),
 	})
@@ -92,19 +93,7 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 		"fb_api_req_friendly_name": {"registerPush"},
 		"fb_api_caller_class":      {"FacebookPushServerRegisterJobImpl"},
 	}
-	headers := http.Header{}
-	headers.Set("Authorization", "OAuth "+session.AccessToken)
-	headers.Set("User-Agent", useragent.MessengerLiteAndroidUserAgent)
-	headers.Set("X-FB-Connection-Quality", "EXCELLENT")
-	headers.Set("X-FB-Friendly-Name", "registerPush")
-	headers.Set("X-ZERO-STATE", "unknown")
-	headers.Set("X-FB-Family-Device-Id", session.FamilyDeviceID.String())
-	headers.Set("X-Zero-F-Device-Id", deviceID)
-	headers.Set("App-Scope-Id-Header", deviceID)
-	if session.MachineID != "" {
-		headers.Set("X-FB-Integrity-Machine-Id", session.MachineID)
-	}
-	_, response, err := fb.client.http.MakeRequest(ctx, "https://b-graph.facebook.com/me/register_push_tokens", http.MethodPost, headers, []byte(form.Encode()), types.FORM)
+	_, response, err := fb.client.http.MakeRequest(ctx, "https://b-graph.facebook.com/me/register_push_tokens", http.MethodPost, nativePushHeaders(session, "registerPush"), []byte(form.Encode()), types.FORM)
 	if err != nil {
 		return fmt.Errorf("failed to register native push: %w", err)
 	}
@@ -118,4 +107,45 @@ func (fb *FacebookMethods) RegisterNativePushNotifications(ctx context.Context, 
 		return fmt.Errorf("native push registration rejected (disabled source %d)", result.DisabledSource)
 	}
 	return nil
+}
+
+func (fb *FacebookMethods) UnregisterNativePushNotifications(ctx context.Context, session *types.NativeSession, token string) error {
+	form := url.Values{
+		"format":                   {"json"},
+		"token":                    {token},
+		"family_device_id":         {strings.ToUpper(session.FamilyDeviceID.String())},
+		"android_id":               {nativePushAndroidID(session)},
+		"url":                      {fcmSendURL},
+		"request_id":               {uuid.NewString()},
+		"fb_api_req_friendly_name": {"unregisterPush"},
+	}
+	_, response, err := fb.client.http.MakeRequestOnce(ctx, "https://b-graph.facebook.com/me/unregister_push_tokens", http.MethodPost, nativePushHeaders(session, "unregisterPush"), []byte(form.Encode()), types.FORM)
+	if err != nil {
+		return fmt.Errorf("failed to unregister native push: %w", err)
+	} else if string(response) != "true" {
+		return fmt.Errorf("unexpected native push unregistration response: %s", response)
+	}
+	return nil
+}
+
+func nativePushAndroidID(session *types.NativeSession) string {
+	androidID := sha256.Sum256([]byte(session.DeviceID.String()))
+	return hex.EncodeToString(androidID[:8])
+}
+
+func nativePushHeaders(session *types.NativeSession, friendlyName string) http.Header {
+	deviceID := session.DeviceID.String()
+	headers := http.Header{}
+	headers.Set("Authorization", "OAuth "+session.AccessToken)
+	headers.Set("User-Agent", useragent.MessengerLiteAndroidUserAgent)
+	headers.Set("X-FB-Connection-Quality", "EXCELLENT")
+	headers.Set("X-FB-Friendly-Name", friendlyName)
+	headers.Set("X-ZERO-STATE", "unknown")
+	headers.Set("X-FB-Family-Device-Id", session.FamilyDeviceID.String())
+	headers.Set("X-Zero-F-Device-Id", session.FamilyDeviceID.String())
+	headers.Set("App-Scope-Id-Header", deviceID)
+	if session.MachineID != "" {
+		headers.Set("X-FB-Integrity-Machine-Id", session.MachineID)
+	}
+	return headers
 }

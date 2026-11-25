@@ -296,31 +296,37 @@ func (c *Client) makeMobileSignedRequest(
 	)
 }
 
-func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
+func (c *Client) nativeHeaders(device types.InstagramLoginDevice) http.Header {
 	_, timezoneOffset := time.Now().Zone()
 	headers := make(http.Header)
-	headers.Set("accept", "*/*")
 	headers.Set("accept-language", "en-US")
 	headers.Set("user-agent", useragent.IGAndroidUserAgent)
 	headers.Set("x-ig-app-locale", "en_US")
 	headers.Set("x-ig-device-locale", "en_US")
 	headers.Set("x-ig-mapped-locale", "en_US")
-	headers.Set("x-pigeon-session-id", "UFS-"+uuid.NewString()+"-1")
+	headers.Set("x-pigeon-session-id", c.pigeonSessionID)
 	headers.Set(
 		"x-pigeon-rawclienttime",
 		strconv.FormatFloat(float64(time.Now().UnixMilli())/1000, 'f', 3, 64),
 	)
 	headers.Set("x-bloks-version-id", bloks.BloksVersionInstagramAndroid)
-	headers.Set("x-ig-www-claim", "0")
 	headers.Set("x-bloks-is-layout-rtl", "false")
-	headers.Set("x-ig-device-id", state.DeviceID)
-	headers.Set("x-ig-family-device-id", state.PhoneID)
-	headers.Set("x-ig-android-id", state.AndroidDeviceID)
+	headers.Set("x-ig-device-id", device.DeviceID)
+	headers.Set("x-ig-family-device-id", device.PhoneID)
+	headers.Set("x-ig-android-id", device.AndroidDeviceID)
 	headers.Set("x-ig-timezone-offset", strconv.Itoa(timezoneOffset))
 	headers.Set("x-ig-connection-type", "WIFI")
+	headers.Set("x-fb-connection-type", "WIFI")
 	headers.Set("x-ig-capabilities", useragent.IGAndroidCapabilities)
 	headers.Set("x-ig-app-id", useragent.IGAndroidAppID)
 	headers.Set("x-fb-http-engine", "Tigon/MNS/TCP")
+	return headers
+}
+
+func (c *Client) mobileLoginHeaders(state *mobileLoginState) http.Header {
+	headers := c.nativeHeaders(state.device())
+	headers.Set("accept", "*/*")
+	headers.Set("x-ig-www-claim", "0")
 	headers.Set("x-tigon-is-retry", "False")
 	headers.Set("x-fb-client-ip", "True")
 	headers.Set("x-fb-server-cluster", "True")

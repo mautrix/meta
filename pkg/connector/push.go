@@ -125,6 +125,12 @@ func (m *MetaClient) registerNativePush(ctx context.Context, token string) error
 	if err := client.Facebook.RegisterNativePushNotifications(ctx, session, token, m.LoginMeta.NativePushKeys); err != nil {
 		return err
 	}
+	if m.LoginMeta.NativePushToken != token {
+		m.LoginMeta.NativePushToken = token
+		if err := m.UserLogin.Save(ctx); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save native push token")
+		}
+	}
 	if err := e2eeClient.RegisterForPushNotifications(ctx, &messagix.NativePushConfig{AppID: session.AppID, DeviceID: session.DeviceID}); err != nil {
 		return fmt.Errorf("failed to register encrypted native push: %w", err)
 	}
