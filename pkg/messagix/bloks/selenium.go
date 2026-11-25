@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"image"
 	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -1046,6 +1047,18 @@ func NewBrowser(cfg *BrowserConfig) (*Browser, error) {
 					return nil
 				}
 				b.LastError = l10n.Unlocalized(strings.TrimSuffix(msg, "."))
+			case "BLOKS_AUTH_PLATFORM_LOGIN_WITH_THIRD_PARTY:error_message":
+				if b.State != StateOAuthPage {
+					break
+				}
+				msg, ok := value.Value().(string)
+				if !ok {
+					return fmt.Errorf("non-string third-party login error: %T", value.Value())
+				}
+				if msg == "" {
+					return nil
+				}
+				b.LastError = l10n.Unlocalized(strings.TrimSuffix(msg, "."))
 			}
 			return nil
 		},
@@ -1062,7 +1075,7 @@ var mfaPickerMethods = map[string]bool{
 	"Text message":                   true,
 	"Backup code":                    true,
 	"WhatsApp":                       true,
-	"Verify with Google":             false,
+	"Verify with Google":             true,
 }
 
 // caa.ar.initiate_view renders the same picker with its own labels, and puts a
@@ -2127,6 +2140,9 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 	case StateOAuthPage:
+		if b.profile.isInstagram {
+			return nil, b.profile.errors.MandatoryOAuth
+		}
 		oauthButton := b.CurrentPage.
 			FindDescendant(FilterByAttribute("bk.data.TextSpan", "text", "Verify with Google")).
 			FindContainingButton()
@@ -2134,13 +2150,37 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 			return nil, fmt.Errorf("couldn't find verify with Google button")
 		}
 
-		oauthRedirectURL := userInput["oauth_token"]
+		oauthRedirectURL := strings.TrimSpace(userInput["oauth_token"])
+		delete(userInput, "oauth_token")
 		if oauthRedirectURL != "" {
-			delete(userInput, "oauth_token")
-			zerolog.Ctx(ctx).Debug().
-				Str("oauth_redirect_url", oauthRedirectURL).
-				Msg("Google OAuth reached the Meta redirect URL")
-			return nil, fmt.Errorf("google sign-in not yet fully implemented")
+			parsed, err := url.Parse(oauthRedirectURL)
+			if err != nil {
+				return nil, fmt.Errorf("google sign-in returned an invalid redirect URL")
+			}
+			query := parsed.Query()
+			contextData := query.Get("context_data")
+			if parsed.Scheme != "fb" || !strings.EqualFold(parsed.Host, "auth-platform-continue") || contextData == "" {
+				oauthErr := query.Get("error")
+				if oauthErr == "" && parsed.Fragment != "" {
+					if frag, fragErr := url.ParseQuery(parsed.Fragment); fragErr == nil {
+						oauthErr = frag.Get("error")
+					}
+				}
+				if oauthErr != "" {
+					if oauthErr == "access_denied" {
+						b.LastError = msgErrGoogleVerificationCancelled.Message()
+					} else {
+						b.LastError = msgErrGoogleVerificationFailed.Message()
+					}
+					break
+				}
+				return nil, fmt.Errorf("google sign-in did not return continuation data")
+			}
+			b.LastError = msgErrGoogleVerificationFailed.Message()
+			if err = b.continueThirdPartyOAuth(ctx, contextData); err != nil {
+				return nil, fmt.Errorf("continuing Google verification: %w", err)
+			}
+			break
 		}
 
 		b.DisplayedURL = ""
@@ -2154,29 +2194,37 @@ func (b *Browser) DoLoginStep(ctx context.Context, userInput map[string]string) 
 		}
 
 		step = &bridgev2.LoginStep{
-			Type:         bridgev2.LoginStepTypeCookies,
-			StepID:       "fi.mau.meta.messengerlite.google_oauth",
-			Instructions: msgStepGoogleOAuthInstructions.Message(),
+			Type:   bridgev2.LoginStepTypeCookies,
+			StepID: "fi.mau.meta.messengerlite.google_oauth",
+			Instructions: b.stepInstructions("", instructionTemplates{
+				msgStepGoogleOAuthInstructions, msgStepGoogleOAuthErrorInstructions,
+			}),
 			CookiesParams: &bridgev2.LoginCookiesParams{
 				URL: b.DisplayedURL,
 				Fields: []bridgev2.LoginCookieField{{
 					ID:       "oauth_token",
 					Required: true,
-					Sources:  []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeSpecial, Name: "oauth_token"}},
+					Sources: []bridgev2.LoginCookieFieldSource{
+						{
+							Type:            bridgev2.LoginCookieTypeRedirectURL,
+							RequestURLRegex: `^fb://auth-platform-continue/`,
+						},
+						{
+							Type: bridgev2.LoginCookieTypeSpecial,
+							Name: "oauth_token",
+						},
+					},
 				}},
-				ExtractJS: `new Promise((resolve, reject) => {
+				ExtractJS: `new Promise((resolve) => {
 					const url = new URL(window.location.href);
 					const isMetaHost = ["m.facebook.com", "www.facebook.com", "web.facebook.com"].includes(url.hostname);
 					if (!isMetaHost || url.pathname !== "/oauth2/redirect/") {
 						return;
 					}
 					const fragment = new URLSearchParams(url.hash.slice(1));
-					const error = url.searchParams.get("error") || fragment.get("error");
-					if (error) {
-						reject(new Error("Google OAuth failed: " + error));
-						return;
+					if (url.searchParams.get("error") || fragment.get("error")) {
+						resolve({oauth_token: window.location.href});
 					}
-					resolve({oauth_token: window.location.href});
 				})`,
 			},
 		}
@@ -2516,7 +2564,7 @@ func (b *Browser) CancelLoginStep(ctx context.Context) error {
 	}
 	switch b.State {
 	case StateCodeEntryPage, StateAuthenticationCodePage, StateBackupCodePage, StateTOTPPage,
-		StateSMSPageAfterSend, StateWhatsAppPageAfterSend, StateAFADPageWaiting:
+		StateSMSPageAfterSend, StateWhatsAppPageAfterSend, StateAFADPageWaiting, StateOAuthPage:
 	default:
 		return fmt.Errorf("current login step cannot be cancelled")
 	}
@@ -2895,4 +2943,61 @@ func classifyMFAMethod(label string) (isMethod, supported bool) {
 	default:
 		return false, false
 	}
+}
+
+func (b *Browser) globalConsistencyString(key string) string {
+	if b.CurrentPage == nil || b.CurrentPage.Interpreter == nil {
+		return ""
+	}
+	interp := b.CurrentPage.Interpreter
+	for _, vars := range []map[BloksVariableID]*BloksScriptLiteral{interp.GlobalVars, interp.LocalVars} {
+		if val := vars[BloksVariableID(key)]; val != nil {
+			if str, ok := val.Value().(string); ok {
+				return str
+			}
+		}
+	}
+	for _, page := range []*BloksBundle{b.CurrentPage, b.PreviousPage} {
+		if page == nil {
+			continue
+		}
+		for _, item := range page.Layout.Payload.Variables {
+			if item.Info.Name != key {
+				continue
+			}
+			for _, vars := range []map[BloksVariableID]*BloksScriptLiteral{interp.GlobalVars, interp.LocalVars} {
+				if val := vars[BloksVariableID(item.ID)]; val != nil {
+					if str, ok := val.Value().(string); ok {
+						return str
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (b *Browser) continueThirdPartyOAuth(ctx context.Context, contextData string) error {
+	payload, err := json.Marshal(map[string]any{
+		"server_params": map[string]any{
+			"device_id": b.Bridge.DeviceID,
+		},
+		"client_input_params": map[string]any{
+			"context_data": contextData,
+			"aac":          b.globalConsistencyString("CAA_ACCOUNT_ACCESS_CONTEXT:aac"),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling continue_async params: %w", err)
+	}
+	action, err := b.Bridge.DoActionRPC(
+		ctx,
+		"com.bloks.www.ap.two_step_verification.continue_async",
+		map[string]string{"params": string(payload)},
+	)
+	if err != nil {
+		return err
+	}
+	_, err = b.CurrentPage.Interpreter.Evaluate(ctx, action)
+	return err
 }
