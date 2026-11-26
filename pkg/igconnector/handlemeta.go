@@ -526,13 +526,29 @@ func (ic *IGClient) handleReaction(ctx context.Context, portalKey networkid.Port
 		TargetMessage: metaid.MakeFBMessageID(evt.MessageID),
 		Emoji:         evt.Reaction.Reaction,
 	}
-	textPart, err := ic.Main.Bridge.DB.Message.GetPartByID(ctx, portalKey.Receiver, reaction.TargetMessage, igconv.XMATextBodyPartID)
+	targetPart, err := ic.getReactionTargetPart(ctx, portalKey, reaction.TargetMessage, reaction.Sender.Sender)
 	if err != nil {
 		return bridgev2.EventHandlingResultFailed.WithError(fmt.Errorf("failed to get reaction target part from db: %w", err))
-	} else if textPart != nil {
-		return ic.UserLogin.QueueRemoteEvent(&partReaction{Reaction: reaction, TargetPart: textPart.PartID})
+	} else if targetPart != nil {
+		return ic.UserLogin.QueueRemoteEvent(&partReaction{Reaction: reaction, TargetPart: *targetPart})
 	}
 	return ic.UserLogin.QueueRemoteEvent(reaction)
+}
+
+func (ic *IGClient) getReactionTargetPart(ctx context.Context, portalKey networkid.PortalKey, messageID networkid.MessageID, sender networkid.UserID) (*networkid.PartID, error) {
+	existing, err := ic.Main.Bridge.DB.Reaction.GetByIDWithoutMessagePart(ctx, portalKey.Receiver, messageID, sender, "")
+	if err != nil {
+		return nil, err
+	} else if existing != nil {
+		return &existing.MessagePartID, nil
+	}
+	textPart, err := ic.Main.Bridge.DB.Message.GetPartByID(ctx, portalKey.Receiver, messageID, igconv.XMATextBodyPartID)
+	if err != nil {
+		return nil, err
+	} else if textPart != nil {
+		return &textPart.PartID, nil
+	}
+	return nil, nil
 }
 
 type partReaction struct {
