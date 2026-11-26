@@ -107,6 +107,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		} else {
 			ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		}
+		go ic.checkDirectPushSettings()
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {

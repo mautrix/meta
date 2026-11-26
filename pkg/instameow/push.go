@@ -1,6 +1,7 @@
 package instameow
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdh"
 	"encoding/base64"
@@ -69,6 +70,62 @@ func (c *Client) RegisterNativePushNotifications(ctx context.Context, token stri
 	}
 	c.updateNativeSession(ctx, response)
 	return nil
+}
+
+type notificationSettingsResponse struct {
+	Status   string `json:"status"`
+	Sections []struct {
+		Items []struct {
+			ContentType  string `json:"content_type"`
+			UIType       string `json:"ui_type"`
+			SettingValue string `json:"setting_value"`
+			Checked      *bool  `json:"checked"`
+		} `json:"items"`
+	} `json:"sections"`
+}
+
+func (c *Client) GetDirectNotificationSettings(ctx context.Context) (map[string]string, error) {
+	if c == nil {
+		return nil, ErrClientIsNil
+	}
+	session := c.GetInstagramNativeSession()
+	if session == nil || session.Authorization == "" {
+		return nil, errors.New("missing native Instagram session")
+	} else if session.UserID != c.cookies.Get(cookies.IGCookieDSUserID) {
+		return nil, errors.New("native Instagram session belongs to a different account")
+	}
+	query := url.Values{
+		"content_type":           {"instagram_direct"},
+		"enable_ig_new_settings": {"false"},
+	}
+	headers := c.instagramAccountManagerHeaders()
+	response, body, err := c.http.MakeRequest(ctx, instagramMobileAPIBase+"notifications/get_notification_settings/?"+query.Encode(), http.MethodGet, headers, nil, types.NONE)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get notification settings: %w", err)
+	}
+	var result notificationSettingsResponse
+	if err = json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to decode notification settings response: %w", err)
+	} else if result.Status != "ok" {
+		return nil, fmt.Errorf("notification settings request rejected: %s", result.Status)
+	}
+	c.updateNativeSession(ctx, response)
+	settings := make(map[string]string)
+	for _, section := range result.Sections {
+		for _, item := range section.Items {
+			if item.Checked == nil {
+				continue
+			} else if item.UIType == "toggle" {
+				settings[item.ContentType] = "off"
+				if *item.Checked {
+					settings[item.ContentType] = "on"
+				}
+			} else if *item.Checked {
+				settings[item.ContentType] = cmp.Or(item.SettingValue, "off")
+			}
+		}
+	}
+	return settings, nil
 }
 
 func (c *Client) updateNativeSession(ctx context.Context, response *http.Response) {
