@@ -221,6 +221,7 @@ func (ic *IGClient) wrapChatInfo(info *slidetypes.ThreadInfo) *bridgev2.ChatInfo
 				event.StateTopic:                   powerDefault,
 				event.StateBeeperDisappearingTimer: powerDefault,
 			},
+			RoomMention: ptr.Ptr(powerDefault),
 		},
 	}
 	nickMap := make(map[int64]*string, len(info.Nicknames))
