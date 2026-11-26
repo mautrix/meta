@@ -33,6 +33,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
 
 func (mc *MessageConverter) ToInstagram(
@@ -80,6 +81,9 @@ func (mc *MessageConverter) ToInstagram(
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		text, mentions := mc.HTMLParser.Parse(ctx, content, portal)
+		if content.Mentions != nil && content.Mentions.Room && portal.RoomType != database.RoomTypeDM {
+			text, mentions = textfmt.RoomMentionToMeta(text, mentions, threadID)
+		}
 		realMentions, mentionedUserIDs, commands := slidetypes.SocketMentionsToInput(mentions)
 		textReq := slidetypes.SendTextRequest{
 			OfflineThreadingID: strconv.FormatInt(otid, 10),

@@ -52,7 +52,7 @@ func (ic *IGConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (ic *IGConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 19
+	return 1, 20
 }
 
 const MaxTextLength = 1000
@@ -66,7 +66,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.instagram.capabilities.2026_11_11"
+	base := "fi.mau.instagram.capabilities.2026_11_26"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -161,6 +161,7 @@ var igCapsSelf *event.RoomFeatures
 func init() {
 	igCapsGroup = igCaps.Clone()
 	igCapsGroup.ID += "+group"
+	igCapsGroup.Formatting[event.FmtAtRoomMention] = event.CapLevelFullySupported
 	igCapsGroup.State = event.StateFeatureMap{
 		event.StateRoomName.Type:   {Level: event.CapLevelFullySupported},
 		event.StateRoomAvatar.Type: {Level: event.CapLevelFullySupported},

@@ -18,6 +18,9 @@ package textfmt
 
 import (
 	"context"
+	"regexp"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -98,6 +101,38 @@ func (mhp *MatrixHTMLParser) Parse(ctx context.Context, content *event.MessageEv
 	}
 
 	return parsed, socketMentions
+}
+
+var roomMentionRegex = regexp.MustCompile(`(^|\s)@room($|[\s,!?]|\.(?:\s|$))`)
+
+func RoomMentionToMeta(text string, mentions socket.Mentions, threadID int64) (string, socket.Mentions) {
+	start, offset := -1, 0
+	for _, match := range roomMentionRegex.FindAllStringSubmatchIndex(text, -1) {
+		offset = len(NewUTF16String(text[:match[3]]))
+		if !slices.ContainsFunc(mentions, func(m socket.Mention) bool { return m.Offset == offset }) {
+			start = match[3]
+			break
+		}
+	}
+	if start == -1 {
+		return text, mentions
+	}
+	const everyone = "@everyone"
+	text = text[:start] + everyone + text[start+len("@room"):]
+	shift := len(everyone) - len("@room")
+	for i := range mentions {
+		if mentions[i].Offset >= offset {
+			mentions[i].Offset += shift
+		}
+	}
+	mentions = append(mentions, socket.Mention{
+		ID:     threadID,
+		Offset: offset,
+		Length: len(everyone),
+		Type:   socket.MentionTypeThread,
+	})
+	sort.Sort(mentions)
+	return text, mentions
 }
 
 func (mhp *MatrixHTMLParser) ParseWhatsApp(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal) (string, []string) {
