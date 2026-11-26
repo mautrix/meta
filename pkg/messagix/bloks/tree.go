@@ -270,12 +270,17 @@ func (btn *BloksTreeNode) UnmarshalJSON(data []byte) error {
 	}
 	if str, ok := literal.BloksJavaScriptValue.(string); ok && (strings.HasPrefix(str, "\t") || strings.HasPrefix(str, "(")) {
 		script := BloksTreeScript{}
-		err := script.Parse(str)
-		if err != nil {
-			return fmt.Errorf("script: %w", err)
+		end, err := script.AST.ParseAny(str, 0)
+		if strings.HasPrefix(str, "\t") {
+			if err != nil {
+				return fmt.Errorf("script: %w", err)
+			}
+			btn.BloksTreeNodeContent = &script
+			return nil
+		} else if err == nil && strings.TrimSpace(str[end:]) == "" {
+			btn.BloksTreeNodeContent = &script
+			return nil
 		}
-		btn.BloksTreeNodeContent = &script
-		return nil
 	}
 	if arr, ok := literal.BloksJavaScriptValue.([]any); ok {
 		set := BloksTreeScriptSet{
