@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,8 +34,9 @@ const (
 	FlowIDMessengerLiteIOS     = "messenger-lite"
 	FlowIDMessengerLiteAndroid = "messenger-lite-android"
 
-	LoginStepIDCookies  = "fi.mau.meta.cookies"
-	LoginStepIDComplete = "fi.mau.meta.complete"
+	LoginStepIDCookies      = "fi.mau.meta.cookies"
+	LoginStepIDPhoneCookies = "fi.mau.meta.phone_cookies"
+	LoginStepIDComplete     = "fi.mau.meta.complete"
 
 	LoginStepIDCredentials = "fi.mau.meta.credentials"
 )
@@ -138,28 +140,42 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string) []bridg
 	return fields
 }
 
-func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
-	step := &bridgev2.LoginStep{
+const facebookCookiesWaitForURLPattern = `^https://www\.facebook\.com/(?:messages/(?:e2ee/)?(?:t/[0-9]+/?)?)?(?:\?[^#]*)?(?:#.*)?$`
+
+func facebookCookieStep(stepID string, instructions l10n.Message) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
-		StepID:       LoginStepIDCookies,
-		Instructions: msgStepCookiesInstructions.Message(),
+		StepID:       stepID,
+		Instructions: instructions,
 		CookiesParams: &bridgev2.LoginCookiesParams{
-			UserAgent: useragent.UserAgent,
+			URL:               "https://www.facebook.com/",
+			UserAgent:         useragent.UserAgent,
+			Fields:            cookieListToFields(cookies.FBRequiredCookies, "facebook.com"),
+			WaitForURLPattern: facebookCookiesWaitForURLPattern,
 		},
 	}
+}
+
+func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	instructions := msgStepCookiesInstructions.Message()
 	switch m.Mode {
 	case types.Facebook, types.FacebookTor:
-		step.CookiesParams.URL = "https://www.facebook.com/"
-		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "facebook.com")
-		step.CookiesParams.WaitForURLPattern = "^https://www\\.facebook\\.com/(?:messages/(?:e2ee/)?(?:t/[0-9]+/?)?)?(?:\\?.*)?$"
+		return facebookCookieStep(LoginStepIDCookies, instructions), nil
 	case types.Messenger:
-		step.CookiesParams.URL = "https://www.messenger.com/?no_redirect=true"
-		step.CookiesParams.Fields = cookieListToFields(cookies.FBRequiredCookies, "messenger.com")
-		step.CookiesParams.WaitForURLPattern = "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?(?:\\?.*)?$"
+		return &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeCookies,
+			StepID:       LoginStepIDCookies,
+			Instructions: instructions,
+			CookiesParams: &bridgev2.LoginCookiesParams{
+				URL:               "https://www.messenger.com/?no_redirect=true",
+				UserAgent:         useragent.UserAgent,
+				Fields:            cookieListToFields(cookies.FBRequiredCookies, "messenger.com"),
+				WaitForURLPattern: "^https://www\\.messenger\\.com/(?:e2ee/)?(?:t/[0-9]+/?)?(?:\\?.*)?$",
+			},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown mode %s", m.Mode)
 	}
-	return step, nil
 }
 
 func (m *MetaCookieLogin) Cancel() {}
@@ -296,10 +312,66 @@ type MetaNativeLogin struct {
 	User *bridgev2.User
 	Main *MetaConnector
 
-	SavedClient *messagix.Client
+	SavedClient         *messagix.Client
+	loginDevice         types.MessengerLoginDevice
+	phoneCookieFallback bool
 }
 
 func (m *MetaNativeLogin) Cancel() {}
+
+func (m *MetaNativeLogin) loginDeviceAppID() string {
+	if m.Mode == types.MessengerLiteAndroid {
+		return useragent.MessengerLiteAndroidAppID
+	}
+	return useragent.MessengerLiteIOSAppID
+}
+
+func (m *MetaNativeLogin) loadLoginDevice(ctx context.Context, override *bridgev2.UserLogin) (*types.MessengerLoginDevice, error) {
+	if m.Main.DB == nil {
+		return nil, nil
+	}
+	appID := m.loginDeviceAppID()
+	device, err := m.Main.DB.GetMessengerLoginDevice(ctx, m.User.MXID, appID)
+	if err != nil || device != nil {
+		return device, err
+	}
+	logins := m.User.GetUserLogins()
+	slices.SortFunc(logins, func(a, b *bridgev2.UserLogin) int {
+		return strings.Compare(string(a.ID), string(b.ID))
+	})
+	if override != nil {
+		logins = append([]*bridgev2.UserLogin{override}, logins...)
+	}
+	for _, login := range logins {
+		session := login.Metadata.(*metaid.UserLoginMetadata).NativeSession
+		if session == nil || session.AppID != appID || session.DeviceID == uuid.Nil || session.FamilyDeviceID == uuid.Nil {
+			continue
+		}
+		device = &types.MessengerLoginDevice{
+			DeviceID:       session.DeviceID,
+			FamilyDeviceID: session.FamilyDeviceID,
+			MachineID:      session.MachineID,
+		}
+		if err = m.Main.DB.PutMessengerLoginDevice(ctx, m.User.MXID, appID, *device); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save Messenger login device")
+		}
+		return device, nil
+	}
+	return nil, nil
+}
+
+func (m *MetaNativeLogin) saveLoginDevice(ctx context.Context) {
+	device := m.SavedClient.MessengerLite.GetLoginDevice()
+	if m.Main.DB == nil || device.DeviceID == uuid.Nil || device == m.loginDevice {
+		return
+	}
+	err := m.Main.DB.PutMessengerLoginDevice(ctx, m.User.MXID, m.loginDeviceAppID(), device)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save Messenger login device")
+		return
+	}
+	m.loginDevice = device
+}
 
 func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	return m.StartWithParams(ctx, bridgev2.LoginStartParams{})
@@ -307,8 +379,13 @@ func (m *MetaNativeLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error
 
 func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
+	device, err := m.loadLoginDevice(ctx, params.Override)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Messenger login device: %w", err)
+	}
 	log.Debug().
 		Bool("client_http", params.HTTP != nil).
+		Bool("known_device", device != nil).
 		Msg("Starting Messenger Lite login flow")
 
 	fakeCookies := &cookies.Cookies{
@@ -322,6 +399,10 @@ func (m *MetaNativeLogin) StartWithParams(ctx context.Context, params bridgev2.L
 		client.GetHTTP().GetNewProxy = nil
 		client.GetHTTP().SetTransportOverride(params.HTTP)
 	}
+	if device != nil {
+		client.MessengerLite.SetLoginDevice(device)
+		m.loginDevice = *device
+	}
 	m.SavedClient = client
 
 	return m.proceed(ctx, nil)
@@ -331,14 +412,23 @@ func (m *MetaNativeLogin) SubmitUserInput(ctx context.Context, input map[string]
 	if m.historyComplete != nil {
 		return m.MessengerHistoryLogin.SubmitUserInput(ctx, input)
 	}
+	if m.phoneCookieFallback {
+		return nil, fmt.Errorf("waiting for browser login cookies")
+	}
 	return m.proceed(ctx, input)
 }
 
 func (m *MetaNativeLogin) SubmitCookies(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	if m.phoneCookieFallback {
+		return m.completePhoneCookieLogin(ctx, input)
+	}
 	return m.proceed(ctx, input)
 }
 
 func (m *MetaNativeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if m.phoneCookieFallback {
+		return nil, fmt.Errorf("waiting for browser login cookies")
+	}
 	return m.proceed(ctx, nil)
 }
 
@@ -346,17 +436,78 @@ func (m *MetaNativeLogin) CancelStep(ctx context.Context) (*bridgev2.LoginStep, 
 	if m.historyComplete != nil {
 		return m.finishHistory(ctx)
 	}
+	if m.phoneCookieFallback {
+		return nil, fmt.Errorf("current login step cannot be cancelled")
+	}
 	if err := m.SavedClient.MessengerLite.CancelLoginStep(ctx); err != nil {
 		return nil, wrapMetaRespError(err)
 	}
 	return m.proceed(ctx, nil)
 }
 
+func (m *MetaNativeLogin) completePhoneCookieLogin(ctx context.Context, strCookies map[string]string) (*bridgev2.LoginStep, error) {
+	webCookies := &cookies.Cookies{Platform: types.Facebook}
+	cookieMap := make(map[cookies.MetaCookieName]string, len(strCookies))
+	for key, val := range strCookies {
+		cookieMap[cookies.MetaCookieName(key)] = val
+	}
+	webCookies.UpdateValues(cookieMap)
+
+	if missing := webCookies.GetMissingCookieNames(); len(missing) > 0 {
+		return nil, loginerrors.MissingCookies.AppendMessage(": %v", missing)
+	}
+
+	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
+	nativeCookies, nativeSession, err := m.SavedClient.MessengerLite.ExchangeCookiesForNativeSession(ctx, webCookies)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to exchange phone-login cookies for native session")
+		var respErr bridgev2.RespError
+		switch {
+		case errors.As(err, &respErr):
+			return nil, respErr
+		case errors.Is(err, httpclient.ErrChallengeRequired):
+			return nil, loginerrors.Challenge
+		case errors.Is(err, httpclient.ErrCheckpointRequired):
+			return nil, loginerrors.Checkpoint
+		case errors.Is(err, httpclient.ErrTokenInvalidated):
+			return nil, loginerrors.TokenInvalidated
+		case errors.Is(err, httpclient.ErrRateLimited):
+			return nil, loginerrors.RateLimited
+		case httpclient.IsClientHTTPError(err):
+			return nil, loginerrors.ClientHTTPFailed.WithInternalError(err)
+		default:
+			return nil, loginerrors.TokenExchange.WithInternalError(err)
+		}
+	}
+
+	newClient, err := getMessagixClient(ctx, log, m.Main, &cookies.Cookies{Platform: types.MessengerLiteAndroid}, m.Main.Config.ProxyOther)
+	if err != nil {
+		return nil, err
+	}
+	newClient.GetCookies().UpdateValues(nativeCookies.GetAll())
+
+	m.historyRelogin = slices.Contains(m.User.GetUserLoginIDs(), metaid.MakeUserLoginID(nativeCookies.GetUserID()))
+	step, err := loginWithCookies(ctx, log, newClient, m.User, m.Main, nativeCookies, nativeSession)
+	if err != nil {
+		return nil, err
+	}
+	m.phoneCookieFallback = false
+	return m.startHistory(ctx, step)
+}
+
 func (m *MetaNativeLogin) proceed(ctx context.Context, userInput map[string]string) (*bridgev2.LoginStep, error) {
 	log := zerolog.Ctx(ctx).With().Str("component", "messagix").Logger()
 
 	step, newCookies, err := m.SavedClient.MessengerLite.DoLoginSteps(ctx, userInput)
+	m.saveLoginDevice(ctx)
 	if err != nil {
+		if errors.Is(err, loginerrors.PhoneNumber) {
+			m.phoneCookieFallback = true
+			return facebookCookieStep(
+				LoginStepIDPhoneCookies,
+				msgStepPhoneCookiesInstructions.Message(),
+			), nil
+		}
 		log.Error().Err(err).Msg("Login steps returned error")
 		if errors.As(err, &bloks.CheckpointError{}) {
 			err = loginerrors.Checkpoint

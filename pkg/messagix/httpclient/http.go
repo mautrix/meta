@@ -46,6 +46,7 @@ type HTTPClient struct {
 	instagramNative atomic.Bool
 
 	LogRedactedLoginResponses bool
+	USDID                     string
 }
 
 type Client interface {

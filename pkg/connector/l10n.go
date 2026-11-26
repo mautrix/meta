@@ -16,8 +16,9 @@ var (
 	msgFlowMessengerLiteAndroidName        = L.Define("login.flow.messenger-lite-android.name", "Messenger Android")
 	msgFlowMessengerLiteAndroidDescription = L.Define("login.flow.messenger-lite-android.description", "Login with username/password using Messenger Android API")
 
-	msgStepCookiesInstructions  = L.Define("login.step.cookies.instructions", "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.")
-	msgStepCompleteInstructions = L.Define(
+	msgStepCookiesInstructions      = L.Define("login.step.cookies.instructions", "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.")
+	msgStepPhoneCookiesInstructions = L.Define("login.step.phone_cookies.instructions", "Sign in to Facebook in the browser to continue with your phone number.")
+	msgStepCompleteInstructions     = L.Define(
 		"login.step.complete.instructions", "Logged in as {name} ({id})",
 		l10n.WithComment("name is the Facebook account's display name, id is its numeric user ID"),
 	)

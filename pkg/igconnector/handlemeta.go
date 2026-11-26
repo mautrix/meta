@@ -117,16 +117,23 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 		} else {
 			ic.catchingUpTo = evt.LatestSeqID
 		}
-		if !ic.LoginMeta.BackfillCompleted && !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
-			go ic.doChatBackfill(ctx, ic.LoginMeta.ThreadBackfillCursor, time.Time{})
+		if !ic.Main.Bridge.Background && ic.Main.Config.ThreadBackfill.Enabled() {
+			go func() {
+				if ic.doWaitMailboxProcessed(ctx) == nil {
+					ic.doChatBackfill(ctx, "", time.Time{})
+				}
+			}()
 		}
 		return nil
 	case *slidetypes.Disconnected:
 		stateEvt := status.StateTransientDisconnect
 		errCode := DGWConnectionError
 		var retErr error
-		if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
-			// TODO do full reconnect instead of this?
+		if dgw.IsUnauthorized(evt.Error) && ic.canReconnect() {
+			ic.UserLogin.Log.Debug().Err(evt.Error).Msg("Doing full reconnect after connection was unauthorized")
+			retErr = fmt.Errorf("connection unauthorized; doing full reconnect")
+			go ic.FullReconnect(false, true)
+		} else if dgw.IsUnauthorized(evt.Error) || errors.Is(evt.Error, instameow.ErrUserIDMissing) {
 			stateEvt = status.StateBadCredentials
 			errCode = DGWConnectionUnauthorized
 			if errors.Is(evt.Error, instameow.ErrUserIDMissing) {

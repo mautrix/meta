@@ -141,6 +141,9 @@ func (m *MetaClient) ensureMessagixClient() {
 		)
 		m.Client.SetEventHandler(m.handleMetaEvent)
 		m.Client.MessengerLite.SetNativeSession(m.LoginMeta.NativeSession)
+		if m.Main.Config.ProxyOther && m.Main.Bridge.Config.Proxy.IsConfigured() {
+			m.Client.GetHTTP().GetNewProxy = m.Main.Bridge.GetProxy
+		}
 	}
 }
 
@@ -225,15 +228,12 @@ func (m *MetaClient) connectWithRetry(retryCtx, ctx context.Context, attempts in
 	} else {
 		zerolog.Ctx(ctx).Debug().Msg("No saved reconnection state")
 	}
-	if m.Main.Config.ProxyOther && m.Main.Bridge.Config.Proxy.IsConfigured() {
-		cli.GetHTTP().GetNewProxy = m.Main.Bridge.GetProxy
-		if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
-			m.UserLogin.BridgeState.Send(status.BridgeState{
-				StateEvent: status.StateUnknownError,
-				Error:      MetaProxyUpdateFail,
-			})
-			return
-		}
+	if !cli.GetHTTP().UpdateProxy(ctx, "connect") {
+		m.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      MetaProxyUpdateFail,
+		})
+		return
 	}
 	m.initialTableHandled.Store(false)
 	m.permanentErrored.Store(false)
@@ -673,7 +673,33 @@ func (m *MetaClient) IsThisUser(ctx context.Context, userID networkid.UserID) bo
 }
 
 func (m *MetaClient) LogoutRemote(ctx context.Context) {
+	cli := m.Client
+	if cli == nil && m.LoginMeta.Platform != types.Instagram {
+		m.ensureMessagixClient()
+		if cli = m.Client; !cli.GetHTTP().UpdateProxy(ctx, "logout") {
+			cli = nil
+		}
+	}
 	m.disconnect(false)
+	if cli != nil {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		switch {
+		case m.LoginMeta.NativeSession != nil:
+			if token := m.LoginMeta.NativePushToken; token != "" {
+				if err := cli.Facebook.UnregisterNativePushNotifications(ctx, m.LoginMeta.NativeSession, token); err != nil {
+					zerolog.Ctx(ctx).Err(err).Msg("Failed to unregister native push")
+				}
+			}
+			if err := cli.MessengerLite.Logout(ctx); err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Messenger app session")
+			}
+		case m.LoginMeta.Platform == types.Messenger:
+			if err := cli.Facebook.Logout(ctx); err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to log out of Messenger web session")
+			}
+		}
+	}
 	if dev := m.WADevice; dev != nil {
 		err := dev.Delete(ctx)
 		if err != nil {
