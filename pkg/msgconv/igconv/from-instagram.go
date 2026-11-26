@@ -43,6 +43,8 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/msgconv/textfmt"
 )
 
+const XMATextBodyPartID networkid.PartID = "xma-text-body"
+
 func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid.UserID) (id.UserID, string, error) {
 	ghost, err := mc.Bridge.GetGhostByID(ctx, user)
 	if err != nil {
@@ -152,7 +154,7 @@ func (mc *MessageConverter) ToMatrix(
 			cm.Parts = append(cm.Parts, xmaPart)
 			if content.XMATextBody != "" {
 				textPart := mc.wrapText(ctx, content.XMATextBody, msg.Mentions)
-				textPart.ID = "xma-text-body"
+				textPart.ID = XMATextBodyPartID
 				cm.Parts = append(cm.Parts, textPart)
 			}
 		} else {
