@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -14,8 +12,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/status"
 
-	"go.mau.fi/util/exslices"
 	"go.mau.fi/util/l10n"
+	"go.mau.fi/util/shape"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -148,7 +146,7 @@ func loginWithCookies(
 	beforeClientStart func(),
 ) (*bridgev2.LoginStep, error) {
 	log.Debug().
-		Strs("cookie_names", exslices.CastToString[string](slices.Collect(maps.Keys(c.GetAll())))).
+		Strs("cookie_names", shape.Keys(c.GetAll())).
 		Msg("Logging in with cookies")
 	if requireNative {
 		if nativeSession == nil || nativeSession.Authorization == "" || nativeSession.UserID != c.Get(cookies.IGCookieDSUserID) {

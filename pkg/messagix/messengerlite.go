@@ -10,14 +10,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"go.mau.fi/util/shape"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
@@ -528,7 +528,7 @@ func (m *MessengerLiteMethods) DoLoginSteps(ctx context.Context, userInput map[s
 		}
 		m.client.Logger.Debug().
 			Str("credential_type", loginRespPayload.CredentialType).
-			Any("cookie_names", slices.Collect(maps.Keys(newCookies.GetAll()))).
+			Strs("cookie_names", shape.Keys(newCookies.GetAll())).
 			Msg("Exchanged access token for session cookies")
 		return nil, newCookies, nil
 	}
