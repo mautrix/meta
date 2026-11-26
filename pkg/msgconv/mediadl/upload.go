@@ -126,6 +126,12 @@ func ReuploadFileToMeta(
 	if client.GetPlatform() == types.Instagram {
 		mediaID, err := client.SendInstagramRUploadRequest(ctx, media)
 		if err == nil {
+			zerolog.Ctx(ctx).Debug().
+				Int64("media_id", mediaID).
+				Str("mime_type", mime).
+				Int("size", len(data)).
+				Bool("is_voice_clip", isVoice).
+				Msg("Uploaded attachment via rupload")
 			return mediaID, nil
 		}
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to upload attachment via rupload, falling back to mercury")

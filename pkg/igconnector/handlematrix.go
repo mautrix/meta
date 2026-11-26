@@ -36,6 +36,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/methods"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
 )
 
@@ -170,7 +171,7 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	case *slidetypes.SendTextRequest:
 		resp, err = cli.SendMessage(ctx, req)
 	case *slidetypes.SendMediaRequest:
-		resp, err = cli.SendMedia(ctx, req)
+		resp, err = sendMediaWithRetry(ctx, cli, req)
 	case *slidetypes.SendStoreStickerRequest:
 		resp, err = cli.SendStoreSticker(ctx, req)
 	default:
@@ -189,6 +190,33 @@ func (ic *IGClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		},
 		StreamOrder: respMsg.TimestampMS.UnixMilli(),
 	}, nil
+}
+
+const errCodeFieldException = 1675030
+
+func isFieldException(err error) bool {
+	var gqlErr *types.GraphQLError
+	return errors.As(err, &gqlErr) && gqlErr.Code == errCodeFieldException
+}
+
+func sendMediaWithRetry(ctx context.Context, cli *instameow.Client, req *slidetypes.SendMediaRequest) (*slidetypes.SendMediaResponse, error) {
+	resp, err := cli.SendMedia(ctx, req)
+	for attempt := 1; attempt <= 2 && isFieldException(err); attempt++ {
+		zerolog.Ctx(ctx).Warn().Err(err).
+			Int("attempt", attempt).
+			Str("attachment_fbid", req.AttachmentFBID).
+			Msg("Instagram rejected media send with field_exception, retrying")
+		select {
+		case <-time.After(time.Duration(attempt) * 2 * time.Second):
+		case <-ctx.Done():
+			return nil, err
+		}
+		resp, err = cli.SendMedia(ctx, req)
+		if err == nil {
+			zerolog.Ctx(ctx).Info().Int("attempt", attempt).Msg("Instagram media send succeeded after retry")
+		}
+	}
+	return resp, err
 }
 
 func (ic *IGClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
