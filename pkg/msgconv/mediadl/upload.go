@@ -73,13 +73,13 @@ func GetAudioInfo(content *event.MessageEventContent) (waveform []byte, duration
 	return
 }
 
-const maxGIFDimension = 2048
+const MaxGIFDimension = 2048
 
-var gifScaleFilter = fmt.Sprintf("scale=%[1]d:%[1]d:force_original_aspect_ratio=decrease:flags=lanczos", maxGIFDimension)
+var gifScaleFilter = fmt.Sprintf("scale=%[1]d:%[1]d:force_original_aspect_ratio=decrease:flags=lanczos", MaxGIFDimension)
 
 func downscaleGIF(ctx context.Context, data []byte) ([]byte, error) {
 	cfg, err := gif.DecodeConfig(bytes.NewReader(data))
-	if err != nil || max(cfg.Width, cfg.Height) <= maxGIFDimension || !ffmpeg.Supported() {
+	if err != nil || max(cfg.Width, cfg.Height) <= MaxGIFDimension || !ffmpeg.Supported() {
 		return data, nil
 	}
 	tempDir, err := os.MkdirTemp("", "mautrix_meta_gif_*")
