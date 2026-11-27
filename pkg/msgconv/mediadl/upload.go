@@ -26,6 +26,8 @@ import (
 	"image/gif"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -73,23 +75,40 @@ func GetAudioInfo(content *event.MessageEventContent) (waveform []byte, duration
 
 const maxGIFDimension = 2048
 
-func downscaleGIF(ctx context.Context, data []byte) []byte {
+var gifScaleFilter = fmt.Sprintf("scale=%[1]d:%[1]d:force_original_aspect_ratio=decrease:flags=lanczos", maxGIFDimension)
+
+func downscaleGIF(ctx context.Context, data []byte) ([]byte, error) {
 	cfg, err := gif.DecodeConfig(bytes.NewReader(data))
 	if err != nil || max(cfg.Width, cfg.Height) <= maxGIFDimension || !ffmpeg.Supported() {
-		return data
+		return data, nil
 	}
-	scaled, err := ffmpeg.ConvertBytes(ctx, data, ".gif", []string{"-f", "gif"}, []string{
-		"-vf", fmt.Sprintf(
-			"scale=%[1]d:%[1]d:force_original_aspect_ratio=decrease:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse",
-			maxGIFDimension,
-		),
-	}, "")
+	tempDir, err := os.MkdirTemp("", "mautrix_meta_gif_*")
 	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).
-			Int("width", cfg.Width).
-			Int("height", cfg.Height).
-			Msg("Failed to downscale GIF, uploading original")
-		return data
+		return nil, err
+	}
+	defer os.RemoveAll(tempDir)
+	inputPath := filepath.Join(tempDir, "input.gif")
+	palettePath := filepath.Join(tempDir, "palette.png")
+	outputPath := filepath.Join(tempDir, "output.gif")
+	err = os.WriteFile(inputPath, data, 0600)
+	if err != nil {
+		return nil, err
+	}
+	err = ffmpeg.ConvertPathWithDestination(ctx, inputPath, palettePath, nil, []string{
+		"-vf", gifScaleFilter + ",palettegen", "-update", "1",
+	}, false)
+	if err != nil {
+		return nil, err
+	}
+	err = ffmpeg.ConvertPathWithDestination(ctx, inputPath, outputPath, nil, []string{
+		"-i", palettePath, "-lavfi", gifScaleFilter + "[s];[s][1:v]paletteuse",
+	}, false)
+	if err != nil {
+		return nil, err
+	}
+	scaled, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, err
 	}
 	zerolog.Ctx(ctx).Debug().
 		Int("width", cfg.Width).
@@ -97,7 +116,7 @@ func downscaleGIF(ctx context.Context, data []byte) []byte {
 		Int("original_size", len(data)).
 		Int("new_size", len(scaled)).
 		Msg("Downscaled GIF before upload")
-	return scaled
+	return scaled, nil
 }
 
 func ReuploadFileToMeta(
@@ -118,7 +137,10 @@ func ReuploadFileToMeta(
 		mime = http.DetectContentType(data)
 	}
 	if mime == "image/gif" {
-		data = downscaleGIF(ctx, data)
+		data, err = downscaleGIF(ctx, data)
+		if err != nil {
+			return 0, fmt.Errorf("%w (downscale gif): %w", bridgev2.ErrMediaConvertFailed, err)
+		}
 	}
 	isVoice := content.MSC3245Voice != nil
 	waveform, duration := GetAudioInfo(content)
