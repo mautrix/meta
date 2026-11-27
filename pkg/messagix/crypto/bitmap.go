@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"bytes"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -18,24 +19,12 @@ func NewBitmap() *Bitmap {
 }
 
 func (b *Bitmap) Update(data []int) *Bitmap {
-	maxIndex := -1
-	for _, index := range data {
-		if index > maxIndex {
-			maxIndex = index
-		}
-	}
-
-	if maxIndex >= len(b.BMap) {
-		expanded := make([]int, maxIndex+1)
-		copy(expanded, b.BMap)
-		b.BMap = expanded
-	}
-
-	for _, index := range data {
-		if b.BMap[index] == 0 && b.CompressedStr != "" {
-			b.CompressedStr = ""
-		}
-		b.BMap[index] = 1
+	prevLen := len(b.BMap)
+	b.BMap = append(b.BMap, data...)
+	slices.Sort(b.BMap)
+	b.BMap = slices.Compact(b.BMap)
+	if len(b.BMap) != prevLen {
+		b.CompressedStr = ""
 	}
 
 	return b
@@ -51,23 +40,25 @@ func (b *Bitmap) ToCompressedString() *Bitmap {
 	}
 
 	var buf bytes.Buffer
-	count := 1
-	lastValue := b.BMap[0]
-	buf.WriteString(strconv.Itoa(lastValue))
-	for i := 1; i < len(b.BMap); i++ {
-		currentValue := b.BMap[i]
-		if currentValue == lastValue {
-			count++
-		} else {
-			buf.WriteString(encodeRunLength(count))
-			lastValue = currentValue
-			count = 1
+	if b.BMap[0] == 0 {
+		buf.WriteByte('1')
+	} else {
+		buf.WriteByte('0')
+	}
+	prevIndex := -1
+	setRun := 0
+	for _, index := range b.BMap {
+		if index != prevIndex+1 {
+			if setRun > 0 {
+				buf.WriteString(encodeRunLength(setRun))
+			}
+			buf.WriteString(encodeRunLength(index - prevIndex - 1))
+			setRun = 0
 		}
+		setRun++
+		prevIndex = index
 	}
-
-	if count > 0 {
-		buf.WriteString(encodeRunLength(count))
-	}
+	buf.WriteString(encodeRunLength(setRun))
 
 	compressedStr := encodeBase64(buf.String())
 	b.CompressedStr = compressedStr
