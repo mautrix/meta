@@ -68,6 +68,21 @@ func GetAudioInfo(content *event.MessageEventContent) (waveform []byte, duration
 	return
 }
 
+const maxUploadWaveformSamples = 100
+
+func downsampleWaveform(waveform []byte) []byte {
+	if len(waveform) <= maxUploadWaveformSamples {
+		return waveform
+	}
+	output := make([]byte, maxUploadWaveformSamples)
+	for i := range output {
+		start := i * len(waveform) / maxUploadWaveformSamples
+		end := (i + 1) * len(waveform) / maxUploadWaveformSamples
+		output[i] = slices.Max(waveform[start:end])
+	}
+	return output
+}
+
 func ReuploadFileToMeta(
 	ctx context.Context,
 	client *httpclient.HTTPClient,
@@ -89,6 +104,7 @@ func ReuploadFileToMeta(
 	waveform, duration := GetAudioInfo(content)
 	var waveformData *httpclient.WaveformData
 	if isVoice && len(waveform) > 0 {
+		waveform = downsampleWaveform(waveform)
 		waveformData = &httpclient.WaveformData{
 			Amplitudes:        make([]float64, len(waveform)),
 			SamplingFrequency: 9,
