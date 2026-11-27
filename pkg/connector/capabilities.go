@@ -28,6 +28,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
@@ -53,7 +54,7 @@ func (m *MetaConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (m *MetaConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 20
+	return 1, 21
 }
 
 const MaxTextLength = 20000
@@ -68,7 +69,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.meta.capabilities.2026_11_11"
+	base := "fi.mau.meta.capabilities.2026_11_27"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -133,6 +134,8 @@ var metaCaps = &event.RoomFeatures{
 			Caption:          event.CapLevelDropped,
 			MaxCaptionLength: MaxTextLength,
 			MaxSize:          MaxFileSize,
+			MaxWidth:         mediadl.MaxGIFDimension,
+			MaxHeight:        mediadl.MaxGIFDimension,
 		},
 		event.CapMsgSticker: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{

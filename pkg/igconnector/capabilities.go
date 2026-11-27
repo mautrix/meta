@@ -26,6 +26,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
+
+	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
 )
 
 var metaGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
@@ -52,7 +54,7 @@ func (ic *IGConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 }
 
 func (ic *IGConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 20
+	return 1, 21
 }
 
 const MaxTextLength = 1000
@@ -66,7 +68,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.instagram.capabilities.2026_11_26"
+	base := "fi.mau.instagram.capabilities.2026_11_27"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -118,8 +120,10 @@ var igCaps = &event.RoomFeatures{
 			MimeTypes: map[string]event.CapabilitySupportLevel{
 				"image/gif": event.CapLevelFullySupported,
 			},
-			Caption: event.CapLevelDropped,
-			MaxSize: MaxFileSize,
+			Caption:   event.CapLevelDropped,
+			MaxSize:   MaxFileSize,
+			MaxWidth:  mediadl.MaxGIFDimension,
+			MaxHeight: mediadl.MaxGIFDimension,
 		},
 		event.CapMsgSticker: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
