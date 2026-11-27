@@ -68,19 +68,50 @@ func GetAudioInfo(content *event.MessageEventContent) (waveform []byte, duration
 	return
 }
 
-const maxUploadWaveformSamples = 100
+const ruploadWaveformMaxSamples = 300
 
-func downsampleWaveform(waveform []byte) []byte {
-	if len(waveform) <= maxUploadWaveformSamples {
+func downsampleWaveform(waveform []byte, samples int) []byte {
+	if len(waveform) <= samples {
 		return waveform
 	}
-	output := make([]byte, maxUploadWaveformSamples)
+	output := make([]byte, samples)
 	for i := range output {
-		start := i * len(waveform) / maxUploadWaveformSamples
-		end := (i + 1) * len(waveform) / maxUploadWaveformSamples
+		start := i * len(waveform) / samples
+		end := (i + 1) * len(waveform) / samples
 		output[i] = slices.Max(waveform[start:end])
 	}
 	return output
+}
+
+func makeWaveformData(waveform []byte, duration int) *httpclient.WaveformData {
+	waveformData := &httpclient.WaveformData{
+		Amplitudes:        make([]float64, len(waveform)),
+		SamplingFrequency: 9,
+	}
+	if duration > 0 {
+		waveformData.SamplingFrequency = max(int(math.Round(float64(len(waveform))*1000/float64(duration))), 1)
+	}
+	for i, amp := range waveform {
+		waveformData.Amplitudes[i] = float64(amp) / 255
+	}
+	return waveformData
+}
+
+func makeRUploadWaveformData(waveform []byte, duration int) *httpclient.WaveformData {
+	if len(waveform) <= ruploadWaveformMaxSamples {
+		return makeWaveformData(waveform, duration)
+	} else if duration <= 0 {
+		return makeWaveformData(downsampleWaveform(waveform, ruploadWaveformMaxSamples), 0)
+	}
+	origFreq := max(int(math.Round(float64(len(waveform))*1000/float64(duration))), 1)
+	freq := min(max(ruploadWaveformMaxSamples*1000/duration, 1), origFreq)
+	samples := min(len(waveform), (freq*duration+999)/1000)
+	if samples > ruploadWaveformMaxSamples {
+		return makeWaveformData(downsampleWaveform(waveform, ruploadWaveformMaxSamples), duration)
+	}
+	waveformData := makeWaveformData(downsampleWaveform(waveform, samples), duration)
+	waveformData.SamplingFrequency = freq
+	return waveformData
 }
 
 func ReuploadFileToMeta(
@@ -104,17 +135,7 @@ func ReuploadFileToMeta(
 	waveform, duration := GetAudioInfo(content)
 	var waveformData *httpclient.WaveformData
 	if isVoice && len(waveform) > 0 {
-		waveform = downsampleWaveform(waveform)
-		waveformData = &httpclient.WaveformData{
-			Amplitudes:        make([]float64, len(waveform)),
-			SamplingFrequency: 9,
-		}
-		if duration > 0 {
-			waveformData.SamplingFrequency = max(int(math.Round(float64(len(waveform))*1000/float64(duration))), 1)
-		}
-		for i, amp := range waveform {
-			waveformData.Amplitudes[i] = float64(amp) / 255
-		}
+		waveformData = makeWaveformData(waveform, duration)
 	}
 	if client.GetPlatform().IsMessengerLite() {
 		if nativeSession == nil {
@@ -140,7 +161,11 @@ func ReuploadFileToMeta(
 		WaveformData: waveformData,
 	}
 	if client.GetPlatform() == types.Instagram {
-		mediaID, err := client.SendInstagramRUploadRequest(ctx, media)
+		ruploadMedia := *media
+		if waveformData != nil {
+			ruploadMedia.WaveformData = makeRUploadWaveformData(waveform, duration)
+		}
+		mediaID, err := client.SendInstagramRUploadRequest(ctx, &ruploadMedia)
 		if err == nil {
 			zerolog.Ctx(ctx).Debug().
 				Int64("media_id", mediaID).
