@@ -80,13 +80,16 @@ func (ic *IGClient) processMailbox(ctx, retryCtx context.Context, mailbox *slide
 			return
 		}
 		edges := mailbox.ThreadsByFolder.Edges
-		if resyncSince != nil && !backfilling && !ic.Main.Bridge.Background &&
-			mailbox.ThreadsByFolder.PageInfo.HasNextPage && len(edges) > 0 &&
-			!edges[len(edges)-1].Node.AsIGDirectThread.LastActivityTimestampMS.Before(*resyncSince) {
-			zerolog.Ctx(ctx).Info().
-				Time("since", *resyncSince).
-				Msg("First inbox page doesn't cover time since last seq ID, resyncing more chats")
-			go ic.doChatBackfill(ctx, mailbox.ThreadsByFolder.PageInfo.EndCursor, *resyncSince)
+		if resyncSince != nil && !backfilling && !ic.Main.Bridge.Background {
+			var inboxCursor string
+			if mailbox.ThreadsByFolder.PageInfo.HasNextPage && len(edges) > 0 &&
+				!edges[len(edges)-1].Node.AsIGDirectThread.LastActivityTimestampMS.Before(*resyncSince) {
+				zerolog.Ctx(ctx).Info().
+					Time("since", *resyncSince).
+					Msg("First inbox page doesn't cover time since last seq ID, resyncing more chats")
+				inboxCursor = mailbox.ThreadsByFolder.PageInfo.EndCursor
+			}
+			go ic.doChatBackfill(ctx, inboxCursor, *resyncSince)
 		}
 		err := ic.Main.DB.PutIGSeqID(ctx, ic.UserLogin.ID, mailbox.UQSeqID, startTS)
 		if err != nil {
@@ -154,7 +157,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 	ic.chatBackfillLock.Lock()
 	defer ic.chatBackfillLock.Unlock()
 	if since.IsZero() {
-		if ic.LoginMeta.BackfillCompleted {
+		if ic.LoginMeta.PendingBackfillCompleted {
 			return
 		}
 		cursor = ic.LoginMeta.ThreadBackfillCursor
@@ -192,6 +195,7 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		return nil
 	}
 	hasMore := true
+	folder := "INBOX"
 	processThreads := func(threads slidetypes.Edged[slidetypes.Node[slidetypes.WrappedThreadInfo]]) bool {
 		cursor = threads.PageInfo.EndCursor
 		hasMore = threads.PageInfo.HasNextPage
@@ -223,54 +227,80 @@ func (ic *IGClient) doChatBackfill(ctx context.Context, cursor string, since tim
 		}
 		return true
 	}
-
-	batchCount := 0
-	if cursor == "" {
-		log.Info().Msg("No start cursor, loading from scratch")
-		resp, err := ic.Client.GetMailbox(ctx)
-		if err != nil {
-			log.Err(err).Msg("Failed to fetch initial inbox")
-			return
-		} else if resp.Mailbox == nil {
-			log.Warn().Msg("Initial inbox response didn't contain a mailbox")
-			return
-		}
-		if !processThreads(resp.Mailbox.ThreadsByFolder) {
-			return
-		}
-	} else {
-		batchCount++
-	}
-	maxBatches := ic.Main.Config.ThreadBackfill.BatchCount
-	for hasMore && cursor != "" && (!since.IsZero() || maxBatches < 0 || batchCount < maxBatches) {
+	fetchPage := func() bool {
 		select {
 		case <-time.After(ic.Main.Config.ThreadBackfill.BatchDelay):
 		case <-ctx.Done():
-			return
+			return false
 		}
-		resp, err := ic.Client.PaginateMailbox(ctx, slidetypes.MakePaginateMailboxRequest(viewerFBID, cursor, "INBOX", nil))
+		resp, err := ic.Client.PaginateMailbox(ctx, slidetypes.MakePaginateMailboxRequest(viewerFBID, cursor, folder, nil))
 		if err != nil && resp != nil && resp.Mailbox != nil {
-			log.Warn().Err(err).Msg("Chat list page contained errors, ignoring")
+			log.Warn().Err(err).Str("folder", folder).Msg("Chat list page contained errors, ignoring")
 			err = nil
 		}
 		if err != nil {
-			log.Err(err).Msg("Failed to fetch more chats")
-			return
+			log.Err(err).Str("folder", folder).Msg("Failed to fetch more chats")
+			return false
 		} else if resp.Mailbox == nil {
-			log.Warn().Msg("Pagination response didn't contain a mailbox")
-			return
+			log.Warn().Str("folder", folder).Msg("Pagination response didn't contain a mailbox")
+			return false
 		}
-		if !processThreads(resp.Mailbox.ThreadsByFolder) {
+		return processThreads(resp.Mailbox.ThreadsByFolder)
+	}
+
+	batchCount := 0
+	maxBatches := ic.Main.Config.ThreadBackfill.BatchCount
+	pendingCursor := ""
+	if since.IsZero() && ic.LoginMeta.BackfillCompleted {
+		pendingCursor = cursor
+	} else if since.IsZero() || cursor != "" {
+		if cursor == "" {
+			log.Info().Msg("No start cursor, loading from scratch")
+			resp, err := ic.Client.GetMailbox(ctx)
+			if err != nil {
+				log.Err(err).Msg("Failed to fetch initial inbox")
+				return
+			} else if resp.Mailbox == nil {
+				log.Warn().Msg("Initial inbox response didn't contain a mailbox")
+				return
+			}
+			if !processThreads(resp.Mailbox.ThreadsByFolder) {
+				return
+			}
+		} else {
+			batchCount++
+		}
+		for hasMore && cursor != "" && (!since.IsZero() || maxBatches < 0 || batchCount < maxBatches) {
+			if !fetchPage() {
+				return
+			}
+			batchCount++
+		}
+		if since.IsZero() {
+			log.Info().Int("total_batch_count", batchCount).Msg("Completed inbox chat backfill, syncing message requests")
+			ic.LoginMeta.BackfillCompleted = true
+			ic.LoginMeta.ThreadBackfillCursor = ""
+			if err := ic.UserLogin.Save(ctx); err != nil {
+				log.Err(err).Msg("Failed to save user login after inbox chat backfill")
+			}
+		}
+	}
+	folder, cursor, hasMore = "PENDING", pendingCursor, true
+	for pendingBatches := 0; hasMore && (!since.IsZero() || maxBatches < 0 || pendingBatches < maxBatches); pendingBatches++ {
+		if !fetchPage() {
 			return
 		}
 		batchCount++
+		if cursor == "" {
+			break
+		}
 	}
 	if !since.IsZero() {
 		log.Info().Int("total_batch_count", batchCount).Msg("Completed resyncing chats after resnapshot")
 		return
 	}
 	log.Info().Int("total_batch_count", batchCount).Msg("Completed chat backfill successfully")
-	ic.LoginMeta.BackfillCompleted = true
+	ic.LoginMeta.PendingBackfillCompleted = true
 	ic.LoginMeta.ThreadBackfillCursor = ""
 	err := ic.UserLogin.Save(ctx)
 	if err != nil {
