@@ -36,6 +36,8 @@ type BackfillCollector struct {
 	Forward     bool
 	Anchor      *database.Message
 	Done        func()
+
+	gapReRequested bool
 }
 
 var globalUpsertCounter atomic.Int64
@@ -61,11 +63,22 @@ func (m *MetaClient) handleUpsertMessages(tk handlerParams, upsert *table.Upsert
 		Int("message_count", len(upsert.Messages)).
 		Msg("Received upsert messages")
 	if collector, ok := m.backfillCollectors[upsert.GetThreadKey()]; ok {
-		if collector.UpsertMessages != nil && upsert.Range.MaxTimestampMsTemplate > collector.Range.MinTimestampMs {
+		if collector.UpsertMessages != nil && (!collector.Forward || len(collector.Messages) > 0) &&
+			upsert.Range.MaxTimestampMsTemplate > collector.Range.MinTimestampMs {
 			log.Warn().
 				Int64("prev_min_timestamp_ms", collector.Range.MinTimestampMs).
 				Msg("Ignoring unexpected upsert messages while collecting history")
 			return nil
+		}
+		if collector.Forward && len(collector.Messages) > 0 && collector.Anchor != nil {
+			anchorTS := collector.Anchor.Timestamp.UnixMilli()
+			if !collector.gapReRequested && collector.Range.MinTimestampMs > anchorTS && upsert.Range.MaxTimestampMs < anchorTS {
+				log.Warn().
+					Int64("prev_min_timestamp_ms", collector.Range.MinTimestampMs).
+					Int64("anchor_timestamp_ms", anchorTS).
+					Msg("Ignoring upsert older than forward backfill anchor before the gap is filled")
+				return nil
+			}
 		}
 		if collector.MaxMessages > 0 {
 			collector.MaxMessages = max(collector.MaxMessages-len(upsert.Messages), 0)
@@ -288,6 +301,7 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 			return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
 		}
 		timeouts := 0
+		lastAnchorRequest := time.Now()
 	Loop:
 		for {
 			select {
@@ -295,7 +309,22 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 				upsert = collector.UpsertMessages
 				break Loop
 			case <-ticker.C:
-				if params.Forward && collector.UpsertMessages != nil && collector.UpsertMessages.Range.MinTimestampMs >= oldestMessageTS {
+				m.backfillLock.Lock()
+				reqTS, reqID := oldestMessageTS, oldestMessageID
+				gapMode := false
+				hasAll := false
+				if params.Forward && collector.UpsertMessages != nil {
+					hasAll = collector.Range.MinTimestampMs == oldestMessageTS ||
+						(collector.Anchor != nil && collector.Range.MinTimestampMs <= collector.Anchor.Timestamp.UnixMilli()) ||
+						(len(collector.Messages) > 0 && !collector.Range.HasMoreBefore)
+					if !hasAll && len(collector.Messages) > 0 {
+						reqTS, reqID = collector.Range.MinTimestampMs, collector.Range.MinMessageId
+						collector.gapReRequested = time.Since(lastAnchorRequest) >= 4*time.Second
+						gapMode = true
+					}
+				}
+				m.backfillLock.Unlock()
+				if hasAll {
 					zerolog.Ctx(ctx).Warn().Msg("Backfill collector did not call done, but has all messages")
 					break Loop
 				} else if time.Since(start) > timeout {
@@ -310,8 +339,11 @@ func (m *MetaClient) fetchFacebookHistory(ctx context.Context, params bridgev2.F
 					break Loop
 				}
 				// No response? Let's re-request that history again
-				if timeouts < MaxBackfillReRequests && !m.requestMoreHistory(ctx, threadID, oldestMessageTS, oldestMessageID) {
+				if (timeouts < MaxBackfillReRequests || gapMode) && !m.requestMoreHistory(ctx, threadID, reqTS, reqID) {
 					return nil, fmt.Errorf("failed to request more history for thread %d", threadID)
+				}
+				if !gapMode && timeouts < MaxBackfillReRequests {
+					lastAnchorRequest = time.Now()
 				}
 				timeouts++
 			case <-ctx.Done():
