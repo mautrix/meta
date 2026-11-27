@@ -11,6 +11,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/jsontime"
+	"go.mau.fi/whatsmeow"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -44,7 +46,7 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 	if err != nil {
 		return nil, err
 	} else if msg == nil {
-		return nil, fmt.Errorf("message not found")
+		return nil, mautrix.MNotFound.WithMessage("Message not found")
 	}
 
 	dmm := msg.Metadata.(*metaid.MessageMetadata).DirectMediaMeta
@@ -113,7 +115,13 @@ func (m *MetaConnector) Download(ctx context.Context, mediaID networkid.MediaID,
 		}
 		return &mediaproxy.GetMediaResponseFile{
 			Callback: func(f *os.File) (*mediaproxy.FileMeta, error) {
-				return &mediaproxy.FileMeta{}, e2eeClient.DownloadToFile(ctx, info, f)
+				err := e2eeClient.DownloadToFile(ctx, info, f)
+				if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) ||
+					errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) ||
+					errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+					err = fmt.Errorf("%w: %w", mautrix.MNotFound.WithMessage("Media no longer exists"), err)
+				}
+				return &mediaproxy.FileMeta{}, err
 			},
 		}, nil
 	default:
