@@ -680,6 +680,12 @@ func (m *MetaClient) LogoutRemote(ctx context.Context) {
 			cli = nil
 		}
 	}
+	if ecli := m.E2EEClient; ecli != nil && ecli.IsConnected() {
+		ecli.RemoveEventHandlers()
+		if err := ecli.Logout(ctx); err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to remove encrypted chat device")
+		}
+	}
 	m.disconnect(false)
 	if cli != nil {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
