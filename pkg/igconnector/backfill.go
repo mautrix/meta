@@ -30,6 +30,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/metaid"
+	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
 )
 
 var _ bridgev2.BackfillingNetworkAPI = (*IGClient)(nil)
@@ -218,11 +219,19 @@ func (ic *IGClient) wrapBackfillMessages(
 			Reactions:   make([]*bridgev2.BackfillReaction, len(msg.Node.Reactions)),
 			//TxnID: msg.Node.OfflineThreadingID,
 		}
+		var reactionTargetPart *networkid.PartID
+		for _, part := range out[i].Parts {
+			if part.ID == igconv.XMATextBodyPartID {
+				reactionTargetPart = &part.ID
+				break
+			}
+		}
 		for j, react := range msg.Node.Reactions {
 			out[i].Reactions[j] = &bridgev2.BackfillReaction{
-				Timestamp: react.ReactionTimestampMS.Time,
-				Sender:    ic.makeEventSender(react.SenderFBID),
-				Emoji:     react.Reaction,
+				TargetPart: reactionTargetPart,
+				Timestamp:  react.ReactionTimestampMS.Time,
+				Sender:     ic.makeEventSender(react.SenderFBID),
+				Emoji:      react.Reaction,
 			}
 			if react.LogMessageID != "" {
 				reactions = append(reactions, &metadb.IGReactionEntry{
