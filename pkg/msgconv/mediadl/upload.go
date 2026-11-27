@@ -17,17 +17,20 @@
 package mediadl
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/gif"
 	"math"
 	"net/http"
 	"slices"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -68,6 +71,35 @@ func GetAudioInfo(content *event.MessageEventContent) (waveform []byte, duration
 	return
 }
 
+const maxGIFDimension = 2048
+
+func downscaleGIF(ctx context.Context, data []byte) []byte {
+	cfg, err := gif.DecodeConfig(bytes.NewReader(data))
+	if err != nil || max(cfg.Width, cfg.Height) <= maxGIFDimension || !ffmpeg.Supported() {
+		return data
+	}
+	scaled, err := ffmpeg.ConvertBytes(ctx, data, ".gif", []string{"-f", "gif"}, []string{
+		"-vf", fmt.Sprintf(
+			"scale=%[1]d:%[1]d:force_original_aspect_ratio=decrease:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse",
+			maxGIFDimension,
+		),
+	}, "")
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).
+			Int("width", cfg.Width).
+			Int("height", cfg.Height).
+			Msg("Failed to downscale GIF, uploading original")
+		return data
+	}
+	zerolog.Ctx(ctx).Debug().
+		Int("width", cfg.Width).
+		Int("height", cfg.Height).
+		Int("original_size", len(data)).
+		Int("new_size", len(scaled)).
+		Msg("Downscaled GIF before upload")
+	return scaled
+}
+
 func ReuploadFileToMeta(
 	ctx context.Context,
 	client *httpclient.HTTPClient,
@@ -84,6 +116,9 @@ func ReuploadFileToMeta(
 	}
 	if mime == "" {
 		mime = http.DetectContentType(data)
+	}
+	if mime == "image/gif" {
+		data = downscaleGIF(ctx, data)
 	}
 	isVoice := content.MSC3245Voice != nil
 	waveform, duration := GetAudioInfo(content)
