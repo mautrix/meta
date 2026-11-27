@@ -555,6 +555,18 @@ func (m *MetaClient) connectE2EE() error {
 			return fmt.Errorf("failed to register e2ee device: %w", err)
 		}
 		m.LoginMeta.WADeviceID = m.WADevice.ID.Device
+		staleDevice, err := m.Main.DeviceStore.GetDevice(ctx, *m.WADevice.ID)
+		if err != nil {
+			return fmt.Errorf("failed to check for existing whatsmeow device: %w", err)
+		} else if staleDevice != nil {
+			log.Warn().
+				Stringer("jid", m.WADevice.ID).
+				Msg("Meta reissued an existing device ID, deleting old device keys from store")
+			err = m.Main.DeviceStore.DeleteDevice(ctx, staleDevice)
+			if err != nil {
+				return fmt.Errorf("failed to delete old whatsmeow device: %w", err)
+			}
+		}
 		err = m.WADevice.Save(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to save whatsmeow device store: %w", err)
