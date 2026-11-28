@@ -96,6 +96,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 			log.Debug().Msg("Handling cached initial table")
 			m.parseAndQueueTable(ctx, tbl, true)
 		}
+		m.startCommunitySync(ctx, false)
 		// Start thread backfill in background after initial sync
 		go func() {
 			if err := m.StartThreadBackfill(ctx); err != nil {
@@ -105,6 +106,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 	case *messagix.TransientDisconnectEvent:
 		log.Debug().Err(evt.Err).Msg("Disconnected from Meta socket")
 		m.connectWaiter.Clear()
+		m.stopCommunitySyncLoop()
 		if m.metaState.StateEvent != status.StateBadCredentials {
 			m.metaState = status.BridgeState{
 				StateEvent: status.StateTransientDisconnect,
@@ -127,6 +129,7 @@ func (m *MetaClient) handleMetaEvent(ctx context.Context, rawEvt any) {
 		m.connectWaiter.Set()
 		m.requestedThreads.Clear()
 		m.retryPendingPolls(ctx)
+		m.startCommunitySync(ctx, true)
 		if m.metaState.StateEvent != status.StateBadCredentials {
 			m.metaState = status.BridgeState{StateEvent: status.StateConnected}
 			m.sendBridgeState(m.metaState)
@@ -301,6 +304,7 @@ func (m *MetaClient) parseTable(ctx context.Context, tbl *table.LSTable) (innerQ
 		activeThreads.Add(dit.ThreadKey)
 	}
 	innerQueue = make([]bridgev2.RemoteEvent, 0, 8)
+	m.handleCommunitySyncTables(ctx, tbl)
 	for _, jid := range tbl.LSUpdateThreadAuthorityAndMappingWithOTIDFromJID {
 		waThreadMap[jid.ThreadKey] = jid.ThreadJID
 		if err := m.Main.DB.PutHybridThreadMapping(ctx, m.UserLogin.ID, jid.ThreadKey, jid.ThreadJID, 0); err != nil {

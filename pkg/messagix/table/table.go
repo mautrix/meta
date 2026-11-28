@@ -65,6 +65,11 @@ type LSTable struct {
 	LSDeleteThenInsertMessage                        []*LSDeleteThenInsertMessage                        `json:",omitempty"`
 	LSResetUserBlockStatus                           []*LSResetUserBlockStatus                           `json:",omitempty"`
 	LSUpdateCommunityMemberBlockStatus               []*LSUpdateCommunityMemberBlockStatus               `json:",omitempty"`
+	LSUpdateSelectiveSyncStateV2                     []*LSUpdateSelectiveSyncStateV2                     `json:",omitempty"`
+	LSUpdateSelectiveSyncState                       []*LSUpdateSelectiveSyncState                       `json:",omitempty"`
+	LSUpdateCommunityThreadStaleState                []*LSUpdateCommunityThreadStaleState                `json:",omitempty"`
+	LSVerifyAndUpsertThreadQueueSequenceID           []*LSVerifyAndUpsertThreadQueueSequenceID           `json:",omitempty"`
+	LSMarkJoinedCommunityThreadsStale                []*LSMarkJoinedCommunityThreadsStale                `json:",omitempty"`
 	LSUpdatePublicChannelMemberBlockStatus           []*LSUpdatePublicChannelMemberBlockStatus           `json:",omitempty"`
 	LSUpdateThreadSnippetFromLastMessage             []*LSUpdateThreadSnippetFromLastMessage             `json:",omitempty"`
 	LSUpdateForRollCallMessageDeleted                []*LSUpdateForRollCallMessageDeleted                `json:",omitempty"`
@@ -278,6 +283,11 @@ var SPTable = map[string]string{
 	"deleteThenInsertMessage":                        "LSDeleteThenInsertMessage",
 	"resetUserBlockStatus":                           "LSResetUserBlockStatus",
 	"updateCommunityMemberBlockStatus":               "LSUpdateCommunityMemberBlockStatus",
+	"updateSelectiveSyncStateV2":                     "LSUpdateSelectiveSyncStateV2",
+	"updateSelectiveSyncState":                       "LSUpdateSelectiveSyncState",
+	"updateCommunityThreadStaleState":                "LSUpdateCommunityThreadStaleState",
+	"verifyAndUpsertThreadQueueSequenceID":           "LSVerifyAndUpsertThreadQueueSequenceID",
+	"markJoinedCommunityThreadsStale":                "LSMarkJoinedCommunityThreadsStale",
 	"updatePublicChannelMemberBlockStatus":           "LSUpdatePublicChannelMemberBlockStatus",
 	"deleteThenInsertContact":                        "LSDeleteThenInsertContact",
 	"updateTypingIndicator":                          "LSUpdateTypingIndicator",

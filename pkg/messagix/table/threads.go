@@ -793,3 +793,55 @@ type LSDisableSyncForSyncGroup struct {
 
 	Unrecognized map[int]any `json:",omitempty"`
 }
+
+type LSUpdateSelectiveSyncStateV2 struct {
+	ThreadKey                    int64 `index:"0" json:",omitempty"`
+	ThreadQueueSequenceID        int64 `index:"1" json:",omitempty"`
+	LastSelectiveSyncTimestampMs int64 `index:"2" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSUpdateSelectiveSyncStateV2) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
+type LSUpdateSelectiveSyncState struct {
+	ThreadKey                    int64 `index:"0" json:",omitempty"`
+	LastSelectiveSyncTimestampMs int64 `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSUpdateSelectiveSyncState) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
+type LSUpdateCommunityThreadStaleState struct {
+	ThreadKey int64 `index:"0" json:",omitempty"`
+	IsStale   bool  `index:"1" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSUpdateCommunityThreadStaleState) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
+type LSVerifyAndUpsertThreadQueueSequenceID struct {
+	ThreadKey             int64 `index:"0" json:",omitempty"`
+	ThreadQueueSequenceID int64 `index:"1" json:",omitempty"`
+	DeltaType             int64 `index:"2" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
+
+func (ls *LSVerifyAndUpsertThreadQueueSequenceID) GetThreadKey() int64 {
+	return ls.ThreadKey
+}
+
+type LSMarkJoinedCommunityThreadsStale struct {
+	IssueThreadPointQuery bool `index:"0" json:",omitempty"`
+
+	Unrecognized map[int]any `json:",omitempty"`
+}
