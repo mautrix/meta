@@ -494,3 +494,19 @@ func (t *CommunityThreadHoleDetection) GetLabel() string {
 func (t *CommunityThreadHoleDetection) Create() (any, string) {
 	return t, fmt.Sprintf("cm_thread_hole_detection%d", t.ThreadID)
 }
+
+type ReportThreadViewOpenTask struct {
+	ThreadKey                 int64   `json:"thread_key"`
+	IsStale                   bool    `json:"is_stale"`
+	ClientSeqID               int64   `json:"client_seq_id"`
+	SyncParamsEncoded         *string `json:"sync_params_encoded"`
+	ClientLastSyncTimestampMs *int64  `json:"client_last_sync_timestamp_ms"`
+}
+
+func (t *ReportThreadViewOpenTask) GetLabel() string {
+	return TaskLabels["ReportThreadViewOpen"]
+}
+
+func (t *ReportThreadViewOpenTask) Create() (any, string) {
+	return t, fmt.Sprintf("report_thread_view_open_%d", t.ThreadKey)
+}

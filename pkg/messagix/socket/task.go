@@ -36,6 +36,7 @@ var TaskLabels = map[string]string{
 	"CommunityThreadHoleDetection": "501",
 	"FetchReactionsV2UserList":     "577",
 	"SendReactionV2":               "604",
+	"ReportThreadViewOpen":         "605",
 	"DeleteCommunitySubThread":     "639",
 	"CreateCommunitySubThread":     "665",
 	"FetchAdditionalThreadData":    "733",

@@ -47,6 +47,13 @@ type MetaClient struct {
 	tableLoopLock        sync.Mutex
 	backfillCollectors   map[int64]*BackfillCollector
 	historyReadStates    *exsync.Map[int64, historyReadState]
+	communitySync        map[int64]communitySyncState
+	communitySyncLock    sync.Mutex
+	communitySyncQueue   chan communitySyncRequest
+	communitySweepWake   chan struct{}
+	communitySweepFlags  atomic.Int32
+	stopCommunitySync    atomic.Pointer[context.CancelFunc]
+	communityLoopLock    sync.Mutex
 	backfillLock         sync.Mutex
 	mediaRefreshLock     exsync.KeyedMutex[int64]
 	connectLock          sync.Mutex
@@ -114,6 +121,9 @@ func (m *MetaConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserL
 		parsedTablesWake:   make(chan struct{}, 1),
 		backfillCollectors: make(map[int64]*BackfillCollector),
 		historyReadStates:  exsync.NewMap[int64, historyReadState](),
+		communitySync:      make(map[int64]communitySyncState),
+		communitySyncQueue: make(chan communitySyncRequest, 256),
+		communitySweepWake: make(chan struct{}, 1),
 		requestedThreads:   exsync.NewSet[int64](),
 
 		connectBackgroundWAOfflineSync: exsync.NewEvent(),
@@ -650,6 +660,7 @@ func (m *MetaClient) disconnect(dumpState bool) (state json.RawMessage) {
 		ecli.Disconnect()
 		m.E2EEClient = nil
 	}
+	m.stopCommunitySyncLoop()
 	if stopTableLoop := m.stopHandlingTables.Swap(nil); stopTableLoop != nil {
 		(*stopTableLoop)()
 	}
