@@ -42,6 +42,7 @@ var (
 	_ bridgev2.DeleteChatHandlingNetworkAPI      = (*MetaClient)(nil)
 	_ bridgev2.RoomNameHandlingNetworkAPI        = (*MetaClient)(nil)
 	_ bridgev2.RoomAvatarHandlingNetworkAPI      = (*MetaClient)(nil)
+	_ bridgev2.MuteHandlingNetworkAPI            = (*MetaClient)(nil)
 )
 
 var _ bridgev2.TransactionIDGeneratingNetwork = (*MetaConnector)(nil)
@@ -784,6 +785,39 @@ func (m *MetaClient) HandleMatrixAcceptMessageRequest(ctx context.Context, msg *
 	_, err := m.Client.ExecuteTasks(ctx, &socket.AcceptMessageRequestTask{
 		ThreadKey: threadKey,
 		SyncGroup: syncGroup,
+	})
+	return wrapMetaError(err)
+}
+
+func (m *MetaClient) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) error {
+	threadKey := metaid.ParseFBPortalID(msg.Portal.ID)
+	syncGroup := int64(1)
+	// Hybrid (E2EE) threads are muted in sync group 95 using their original Facebook thread key,
+	// like deleting and accepting message requests.
+	portalMeta := msg.Portal.Metadata.(*metaid.PortalMetadata)
+	if portalMeta.ThreadType.IsWhatsApp() {
+		if portalMeta.FBThreadKey == 0 {
+			return fmt.Errorf("muting not supported in this chat: no Facebook thread key")
+		}
+		threadKey = portalMeta.FBThreadKey
+		syncGroup = 95
+	}
+	// Same encoding as LSUpdateThreadMuteSetting: -1 is forever, 0 is unmuted, otherwise a unix ms timestamp.
+	var muteExpireTimeMS int64
+	if until := msg.Content.GetMutedUntilTime(); until == event.MutedForever {
+		muteExpireTimeMS = -1
+	} else if until.After(time.Now()) {
+		muteExpireTimeMS = until.UnixMilli()
+	}
+	zerolog.Ctx(ctx).Debug().
+		Int64("thread_key", threadKey).
+		Int64("mute_expire_time_ms", muteExpireTimeMS).
+		Msg("Muting chat")
+	_, err := m.Client.ExecuteTasks(ctx, &socket.MuteThreadTask{
+		ThreadKey:        threadKey,
+		MailboxType:      0,
+		MuteExpireTimeMS: muteExpireTimeMS,
+		SyncGroup:        syncGroup,
 	})
 	return wrapMetaError(err)
 }
