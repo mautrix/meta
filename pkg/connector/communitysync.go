@@ -93,7 +93,8 @@ func (m *MetaClient) queueCommunitySync(ctx context.Context, req communitySyncRe
 	select {
 	case m.communitySyncQueue <- req:
 	default:
-		zerolog.Ctx(ctx).Warn().Int64("thread_id", req.ThreadKey).Msg("Community sync queue is full, dropping request")
+		zerolog.Ctx(ctx).Debug().Int64("thread_id", req.ThreadKey).Msg("Community sync queue is full, deferring request")
+		m.deferCommunitySync(req)
 	}
 }
 
