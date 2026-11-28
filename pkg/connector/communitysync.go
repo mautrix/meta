@@ -332,10 +332,17 @@ func (m *MetaClient) selectiveSyncThread(ctx context.Context, threadKey int64, p
 		return true
 	}
 	log.Debug().Strs("response_table_fields", resp.NonNilFields()).Msg("Selective synced community thread")
+	staleAgain := false
+	for _, upd := range resp.LSUpdateCommunityThreadStaleState {
+		if upd.ThreadKey == threadKey {
+			staleAgain = upd.IsStale
+		}
+	}
 	if m.queueCommunitySyncResponse(ctx, resp) {
 		m.communitySyncLock.Lock()
 		st = m.communitySync[threadKey]
 		st.LastSyncTimestampMs = max(st.LastSyncTimestampMs, time.Now().UnixMilli())
+		st.Stale = staleAgain
 		m.communitySync[threadKey] = st
 		m.communitySyncLock.Unlock()
 	}
