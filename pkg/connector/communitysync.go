@@ -15,6 +15,7 @@ const (
 	communitySyncMinInterval  = 1 * time.Minute
 	communitySyncStaleAfter   = 30 * time.Minute
 	communitySyncRequestDelay = 1 * time.Second
+	communitySyncRetryPeriod  = 30 * time.Second
 )
 
 type communitySyncState struct {
@@ -22,6 +23,9 @@ type communitySyncState struct {
 	LastSyncTimestampMs int64
 	Stale               bool
 	LastRequested       time.Time
+	Pending             bool
+	PendingHole         *table.LSVerifyAndUpsertThreadQueueSequenceID
+	PendingHolePrev     int64
 }
 
 type communitySyncRequest struct {
@@ -145,10 +149,14 @@ func (m *MetaClient) handleCommunitySyncTables(ctx context.Context, tbl *table.L
 func (m *MetaClient) communitySyncLoop(ctx context.Context) {
 	log := m.UserLogin.Log.With().Str("action", "community selective sync").Logger()
 	ctx = log.WithContext(ctx)
+	retry := time.NewTicker(communitySyncRetryPeriod)
+	defer retry.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-retry.C:
+			m.retryPendingCommunitySyncs(ctx)
 		case req := <-m.communitySyncQueue:
 			m.handleCommunitySyncRequest(ctx, req)
 		case <-m.communitySweepWake:
@@ -187,8 +195,49 @@ func (m *MetaClient) isBridgedSelectiveSyncThread(ctx context.Context, threadKey
 	return portal != nil && portal.MXID != "" && isSelectiveSyncThread(portal.Metadata.(*metaid.PortalMetadata).ThreadType)
 }
 
+func (m *MetaClient) retryPendingCommunitySyncs(ctx context.Context) {
+	var reqs []communitySyncRequest
+	m.communitySyncLock.Lock()
+	for threadKey, st := range m.communitySync {
+		if !st.Pending || time.Since(st.LastRequested) < communitySyncMinInterval {
+			continue
+		}
+		reqs = append(reqs, communitySyncRequest{ThreadKey: threadKey, Hole: st.PendingHole, PrevSeqID: st.PendingHolePrev})
+		st.Pending = false
+		st.PendingHole = nil
+		st.PendingHolePrev = 0
+		m.communitySync[threadKey] = st
+	}
+	m.communitySyncLock.Unlock()
+	for _, req := range reqs {
+		m.handleCommunitySyncRequest(ctx, req)
+	}
+}
+
+func (m *MetaClient) deferCommunitySync(req communitySyncRequest) {
+	m.communitySyncLock.Lock()
+	defer m.communitySyncLock.Unlock()
+	st := m.communitySync[req.ThreadKey]
+	st.Pending = true
+	if req.Hole != nil {
+		if st.PendingHole == nil {
+			st.PendingHole = req.Hole
+			st.PendingHolePrev = req.PrevSeqID
+		} else {
+			st.PendingHolePrev = min(st.PendingHolePrev, req.PrevSeqID)
+			if req.Hole.ThreadQueueSequenceID > st.PendingHole.ThreadQueueSequenceID {
+				st.PendingHole = req.Hole
+			}
+		}
+	}
+	m.communitySync[req.ThreadKey] = st
+}
+
 func (m *MetaClient) requestCommunityThreadHole(ctx context.Context, req communitySyncRequest) {
-	if !m.isBridgedSelectiveSyncThread(ctx, req.ThreadKey) || !m.claimCommunitySync(req.ThreadKey) {
+	if !m.isBridgedSelectiveSyncThread(ctx, req.ThreadKey) {
+		return
+	} else if !m.claimCommunitySync(req.ThreadKey) {
+		m.deferCommunitySync(req)
 		return
 	}
 	log := zerolog.Ctx(ctx).With().
@@ -258,6 +307,7 @@ func (m *MetaClient) selectiveSyncThread(ctx context.Context, threadKey int64, p
 		return false
 	}
 	if !m.claimCommunitySync(threadKey) {
+		m.deferCommunitySync(communitySyncRequest{ThreadKey: threadKey})
 		return false
 	}
 	m.communitySyncLock.Lock()
