@@ -258,6 +258,7 @@ func (m *MetaClient) requestCommunityThreadHole(ctx context.Context, req communi
 	}
 	log.Debug().Strs("response_table_fields", resp.NonNilFields()).Msg("Requested missing community thread messages")
 	m.queueCommunitySyncResponse(ctx, resp)
+	m.deferCommunitySync(communitySyncRequest{ThreadKey: req.ThreadKey})
 }
 
 func (m *MetaClient) selectiveSyncAllThreads(ctx context.Context, onlyOutdated, markStale bool) {
